@@ -14,6 +14,40 @@ type LoginRequest struct {
 	RememberMe bool   `json:"rememberMe"`
 }
 
+// RefreshRequest is the body of POST /auth/refresh.
+type RefreshRequest struct {
+	// RefreshToken is capped: real ones are 43 characters, and anything much longer is
+	// not worth hashing.
+	RefreshToken string `json:"refreshToken" validate:"required,max=256"`
+}
+
+// TokenPairResponse is the body returned by a successful refresh.
+type TokenPairResponse struct {
+	AccessToken          string `json:"accessToken"`
+	AccessTokenExpiresAt string `json:"accessTokenExpiresAt"`
+	RefreshToken         string `json:"refreshToken"`
+}
+
+func newTokenPairResponse(p TokenPair) TokenPairResponse {
+	return TokenPairResponse{
+		AccessToken:          p.AccessToken,
+		AccessTokenExpiresAt: timeutil.FormatTimestamp(p.AccessTokenExpiresAt),
+		RefreshToken:         p.RefreshToken,
+	}
+}
+
+// LogoutResponse is the body returned by POST /auth/logout.
+type LogoutResponse struct {
+	Message string `json:"message"`
+}
+
+// LogoutAllResponse is the body returned by POST /auth/logout-all.
+type LogoutAllResponse struct {
+	Message string `json:"message"`
+	// SessionsEnded is how many sessions were still active and have now been revoked.
+	SessionsEnded int64 `json:"sessionsEnded"`
+}
+
 // LoginResponse is the body returned by a successful login.
 type LoginResponse struct {
 	AccessToken          string  `json:"accessToken"`

@@ -24,8 +24,9 @@ type Deps struct {
 	JWTSecret      []byte
 	CORSOrigins    []string
 	ClientIPHeader string
-	// RateLimitPrefix is put in front of rate limiter Redis keys.
-	RateLimitPrefix string
+	// RedisPrefix is put in front of the Redis keys of the rate limiters and the session
+	// revocation list. Empty in production; tests use a random one.
+	RedisPrefix string
 	// Passwords defaults to argon2id with DefaultPasswordParams. Tests pass a cheaper one.
 	Passwords *auth.Passwords
 	// ExtraRoutes mounts additional routes. They sit behind the same authentication as the
@@ -45,18 +46,19 @@ func NewRouter(d Deps) *chi.Mux {
 		passwords = auth.NewPasswords(auth.DefaultPasswordParams)
 	}
 	tokens := auth.NewTokens(d.JWTSecret, clk)
+	revocations := auth.NewRevocations(d.Redis, d.RedisPrefix, d.Logger)
 
 	router := httpx.NewRouter(httpx.RouterConfig{
 		Logger:       d.Logger,
 		CORSOrigins:  d.CORSOrigins,
 		DB:           d.DB,
-		Authenticate: auth.Require(tokens),
+		Authenticate: auth.Require(tokens, revocations),
 	})
 
 	clientIP := httpx.ClientIPFunc(d.ClientIPHeader)
-	failures := httpx.NewFailureLimiter(d.Redis, d.RateLimitPrefix, d.Logger)
+	failures := httpx.NewFailureLimiter(d.Redis, d.RedisPrefix, d.Logger)
 
-	authService := auth.NewService(d.DB, passwords, tokens, clk)
+	authService := auth.NewService(d.DB, passwords, tokens, clk, revocations)
 	auth.NewHandler(authService, clientIP, failures).Routes(router)
 
 	if d.ExtraRoutes != nil {

@@ -24,6 +24,9 @@ type Route struct {
 var PublicRoutes = []Route{
 	{http.MethodGet, "/api/v1/health"},
 	{http.MethodPost, "/api/v1/auth/login"},
+	// Refresh authenticates with the refresh token in its body; the access token has
+	// usually expired by then.
+	{http.MethodPost, "/api/v1/auth/refresh"},
 }
 
 // Principal is the authenticated caller, taken from the access token.
@@ -51,11 +54,15 @@ func From(ctx context.Context) (p Principal, ok bool) {
 //   - Unknown paths get 401 rather than 404 without a token, so an anonymous caller cannot
 //     map out which routes exist.
 //
-// ⚠ Trade-off: access tokens are stateless and verified by signature and expiry alone; the
-// session is not looked up. A user who is disabled, or whose session is revoked, keeps
-// working until the token expires, at most accessTokenTTL (15 minutes). Checking the
-// database on every request would remove that window at the cost of a query per request.
-func Require(tokens *Tokens) func(http.Handler) http.Handler {
+// ⚠ Access tokens are stateless: a token is verified by signature and expiry, with no
+// database lookup, so by itself it would stay valid for up to 15 minutes after its session
+// ended. To close that gap the session ID in the token is also looked up in Revocations, one
+// fast Redis read, and a revoked session is refused at once. That lookup fails open: if Redis
+// is down the token is accepted on signature and expiry alone, see Revocations.
+//
+// Not everything is checked live. The role in the token is whatever it was at login or the
+// last refresh, so a role change reaches the user within 15 minutes.
+func Require(tokens *Tokens, revocations *Revocations) func(http.Handler) http.Handler {
 	public := make(map[Route]struct{}, len(PublicRoutes))
 	for _, r := range PublicRoutes {
 		public[r] = struct{}{}
@@ -69,7 +76,8 @@ func Require(tokens *Tokens) func(http.Handler) http.Handler {
 			}
 
 			claims, err := authenticate(tokens, r)
-			if err != nil {
+			// Cheapest check first: Redis is only asked about a token that is otherwise good.
+			if err != nil || revocations.IsRevoked(r.Context(), claims.SessionID) {
 				w.Header().Set("WWW-Authenticate", `Bearer realm="siapp"`)
 				httpx.Error(w, r, apperr.ErrUnauthenticated)
 				return

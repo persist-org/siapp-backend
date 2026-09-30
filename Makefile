@@ -2,7 +2,7 @@
 -include .env
 export
 
-.PHONY: up up-db down run migrate seed generate lint test check
+.PHONY: up up-db down run worker migrate seed generate lint test check
 
 # Mailpit and MinIO only. Use native MySQL/Redis, or `make up-db` to run them in containers.
 up:
@@ -16,6 +16,10 @@ down:
 
 run:
 	go run ./cmd/api
+
+# Background jobs (session cleanup, ...). Needs Redis.
+worker:
+	go run ./cmd/worker
 
 migrate:
 	goose -dir db/migrations mysql "$$MYSQL_DSN" up

@@ -30,6 +30,16 @@ const (
 	loginFailuresPerIPAccount = 10
 	loginFailureWindow        = time.Minute
 
+	// revocationTTL is how long a revoked session stays on the revocation list: a little
+	// longer than the access tokens it has to cut off, for clock differences between hosts.
+	// Sessions created within the same window are the ones whose tokens can still be alive.
+	revocationTTL = accessTokenTTL + time.Minute
+
+	// Session cleanup (see SessionCleaner).
+	sessionRetention = 30 * 24 * time.Hour
+	cleanupBatchSize = 1000
+	cleanupTimeout   = 10 * time.Minute
+
 	maxUserAgentLen = 255
 	dummyPassword   = "not-a-real-password"
 )

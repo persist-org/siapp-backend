@@ -86,6 +86,81 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
+  /api/v1/auth/refresh:
+    post:
+      operationId: refresh
+      summary: Exchange a refresh token for a new token pair
+      description: >
+        Public: it authenticates with the refresh token, because the access token has usually
+        expired by then. A refresh token works exactly once. Using it retires it and returns
+        the next one, and the new session lives as long as the old one would have from now.
+        Presenting a token that was already used, or whose session was ended, revokes every
+        session of that login chain (`AUTH_REFRESH_REUSED`).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshRequest"
+      responses:
+        "200":
+          description: A new token pair. The old refresh token no longer works.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenPairResponse"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          description: >
+            The refresh token is unknown or expired (`AUTH_TOKEN_INVALID`), or it was already
+            used or its session ended (`AUTH_REFRESH_REUSED`, and the whole chain is revoked).
+            Either way the client must log in again.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: The account is disabled (`AUTH_ACCOUNT_DISABLED`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/v1/auth/logout:
+    post:
+      operationId: logout
+      summary: End the current session
+      description: >
+        Ends the session of the access token. Its refresh token stops working and the access
+        token itself is cut off at once, on every endpoint. Calling it again with the same
+        access token therefore returns 401.
+      responses:
+        "200":
+          description: The session is ended.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogoutResponse"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+
+  /api/v1/auth/logout-all:
+    post:
+      operationId: logoutAll
+      summary: End every session of the user
+      description: >
+        Ends all sessions on every device, and cuts off their access tokens at once, including
+        the one used for this call. Calling it again with the same access token returns 401.
+      responses:
+        "200":
+          description: All sessions are ended.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogoutAllResponse"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -177,6 +252,52 @@ components:
         rememberMe:
           type: boolean
           default: false
+
+    RefreshRequest:
+      type: object
+      required: [refreshToken]
+      additionalProperties: false
+      properties:
+        refreshToken:
+          type: string
+          minLength: 1
+          maxLength: 256
+
+    LogoutResponse:
+      type: object
+      required: [message]
+      additionalProperties: false
+      properties:
+        message:
+          type: string
+          description: Indonesian text that is safe to show to users.
+
+    LogoutAllResponse:
+      type: object
+      required: [message, sessionsEnded]
+      additionalProperties: false
+      properties:
+        message:
+          type: string
+          description: Indonesian text that is safe to show to users.
+        sessionsEnded:
+          type: integer
+          minimum: 0
+          description: How many sessions were still active and have now been revoked.
+
+    TokenPairResponse:
+      type: object
+      required: [accessToken, accessTokenExpiresAt, refreshToken]
+      additionalProperties: false
+      properties:
+        accessToken:
+          type: string
+        accessTokenExpiresAt:
+          type: string
+          format: date-time
+        refreshToken:
+          type: string
+          description: The next refresh token. Replace the stored one; the old one is now dead.
 
     LoginResponse:
       type: object

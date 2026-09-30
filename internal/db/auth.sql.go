@@ -106,6 +106,89 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) error {
 	return err
 }
 
+const deleteSessionsExpiredBefore = `-- name: DeleteSessionsExpiredBefore :execrows
+DELETE FROM sessions
+WHERE expires_at < ?
+LIMIT ?
+`
+
+type DeleteSessionsExpiredBeforeParams struct {
+	Cutoff time.Time
+	Limit  int32
+}
+
+func (q *Queries) DeleteSessionsExpiredBefore(ctx context.Context, arg DeleteSessionsExpiredBeforeParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteSessionsExpiredBefore, arg.Cutoff, arg.Limit)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const deleteSessionsRevokedBefore = `-- name: DeleteSessionsRevokedBefore :execrows
+DELETE FROM sessions
+WHERE revoked_at IS NOT NULL AND revoked_at < ?
+LIMIT ?
+`
+
+type DeleteSessionsRevokedBeforeParams struct {
+	Cutoff sql.NullTime
+	Limit  int32
+}
+
+// Deleted in batches (the caller loops) so one run never holds a huge lock.
+func (q *Queries) DeleteSessionsRevokedBefore(ctx context.Context, arg DeleteSessionsRevokedBeforeParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteSessionsRevokedBefore, arg.Cutoff, arg.Limit)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const getSessionForRefresh = `-- name: GetSessionForRefresh :one
+SELECT s.id, s.user_id, s.family_id, s.remember_me, s.expires_at, s.revoked_at,
+       u.system_role, u.status AS user_status, u.deleted_at AS user_deleted_at
+FROM sessions s
+JOIN users u ON u.id = s.user_id
+WHERE s.refresh_token_hash = ?
+FOR UPDATE OF s
+`
+
+type GetSessionForRefreshRow struct {
+	ID            string
+	UserID        string
+	FamilyID      string
+	RememberMe    bool
+	ExpiresAt     time.Time
+	RevokedAt     sql.NullTime
+	SystemRole    UsersSystemRole
+	UserStatus    UsersStatus
+	UserDeletedAt sql.NullTime
+}
+
+// ⚠ FOR UPDATE OF s locks the session row until the transaction ends, so two requests
+// presenting the same refresh token are serialised: the second one waits, then sees the
+// row already revoked by the first. Without the lock both could read "not revoked" and
+// both rotate, handing out two valid token chains from one token.
+// The user's current role and status come along: a refresh reflects changes made since
+// login, and a disabled or deleted user cannot refresh.
+func (q *Queries) GetSessionForRefresh(ctx context.Context, refreshTokenHash string) (GetSessionForRefreshRow, error) {
+	row := q.db.QueryRowContext(ctx, getSessionForRefresh, refreshTokenHash)
+	var i GetSessionForRefreshRow
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.FamilyID,
+		&i.RememberMe,
+		&i.ExpiresAt,
+		&i.RevokedAt,
+		&i.SystemRole,
+		&i.UserStatus,
+		&i.UserDeletedAt,
+	)
+	return i, err
+}
+
 const getUserByIdentifier = `-- name: GetUserByIdentifier :one
 SELECT id, email, username, full_name, phone, birth_date, system_role, status, password_hash, failed_login_count, locked_until, last_login_at, created_at, updated_at, deleted_at, active_email, active_username FROM users
 WHERE (email = ? OR username = ?)
@@ -146,6 +229,118 @@ func (q *Queries) GetUserByIdentifier(ctx context.Context, arg GetUserByIdentifi
 	return i, err
 }
 
+const listRecentSessionIDsByFamily = `-- name: ListRecentSessionIDsByFamily :many
+SELECT id FROM sessions
+WHERE family_id = ? AND last_used_at > ?
+`
+
+type ListRecentSessionIDsByFamilyParams struct {
+	FamilyID string
+	Since    sql.NullTime
+}
+
+// Same, for one login chain: what reuse detection has to cut off.
+func (q *Queries) ListRecentSessionIDsByFamily(ctx context.Context, arg ListRecentSessionIDsByFamilyParams) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listRecentSessionIDsByFamily, arg.FamilyID, arg.Since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRecentSessionIDsByUser = `-- name: ListRecentSessionIDsByUser :many
+SELECT id FROM sessions
+WHERE user_id = ? AND last_used_at > ?
+FOR UPDATE
+`
+
+type ListRecentSessionIDsByUserParams struct {
+	UserID string
+	Since  sql.NullTime
+}
+
+// Sessions whose access token can still be alive. Access tokens are issued only when a
+// session is created (login or refresh), at last_used_at, and live 15 minutes, so a token
+// that is still valid always belongs to a session created within that window, whether or
+// not the session has since been rotated or revoked. FOR UPDATE locks the range so a login
+// racing with logout-all cannot slip a new session in between this read and the revoke.
+func (q *Queries) ListRecentSessionIDsByUser(ctx context.Context, arg ListRecentSessionIDsByUserParams) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listRecentSessionIDsByUser, arg.UserID, arg.Since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRecentSessionIDsOfSessionFamily = `-- name: ListRecentSessionIDsOfSessionFamily :many
+SELECT s2.id
+FROM sessions s1
+JOIN sessions s2 ON s2.family_id = s1.family_id
+WHERE s1.id = ? AND s1.user_id = ?
+  AND s2.last_used_at > ?
+`
+
+type ListRecentSessionIDsOfSessionFamilyParams struct {
+	SessionID string
+	UserID    string
+	Since     sql.NullTime
+}
+
+// Same, for the login chain of one session, for logout. The user_id condition keeps it to
+// the caller's own sessions.
+func (q *Queries) ListRecentSessionIDsOfSessionFamily(ctx context.Context, arg ListRecentSessionIDsOfSessionFamilyParams) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listRecentSessionIDsOfSessionFamily, arg.SessionID, arg.UserID, arg.Since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const recordFailedLogin = `-- name: RecordFailedLogin :exec
 UPDATE users
 SET failed_login_count = failed_login_count + 1,
@@ -184,5 +379,76 @@ type RecordSuccessfulLoginParams struct {
 
 func (q *Queries) RecordSuccessfulLogin(ctx context.Context, arg RecordSuccessfulLoginParams) error {
 	_, err := q.db.ExecContext(ctx, recordSuccessfulLogin, arg.Now, arg.ID)
+	return err
+}
+
+const revokeSession = `-- name: RevokeSession :exec
+UPDATE sessions
+SET revoked_at = ?
+WHERE id = ? AND user_id = ? AND revoked_at IS NULL
+`
+
+type RevokeSessionParams struct {
+	Now    sql.NullTime
+	ID     string
+	UserID string
+}
+
+// The user_id condition means a token can only ever end its owner's session.
+func (q *Queries) RevokeSession(ctx context.Context, arg RevokeSessionParams) error {
+	_, err := q.db.ExecContext(ctx, revokeSession, arg.Now, arg.ID, arg.UserID)
+	return err
+}
+
+const revokeSessionFamily = `-- name: RevokeSessionFamily :exec
+UPDATE sessions
+SET revoked_at = ?
+WHERE family_id = ? AND revoked_at IS NULL
+`
+
+type RevokeSessionFamilyParams struct {
+	Now      sql.NullTime
+	FamilyID string
+}
+
+func (q *Queries) RevokeSessionFamily(ctx context.Context, arg RevokeSessionFamilyParams) error {
+	_, err := q.db.ExecContext(ctx, revokeSessionFamily, arg.Now, arg.FamilyID)
+	return err
+}
+
+const revokeUserSessions = `-- name: RevokeUserSessions :execrows
+UPDATE sessions
+SET revoked_at = ?
+WHERE user_id = ? AND revoked_at IS NULL
+`
+
+type RevokeUserSessionsParams struct {
+	Now    sql.NullTime
+	UserID string
+}
+
+func (q *Queries) RevokeUserSessions(ctx context.Context, arg RevokeUserSessionsParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, revokeUserSessions, arg.Now, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const rotateSession = `-- name: RotateSession :exec
+UPDATE sessions
+SET revoked_at = ?, replaced_by_id = ?
+WHERE id = ?
+`
+
+type RotateSessionParams struct {
+	Now          sql.NullTime
+	ReplacedByID sql.NullString
+	ID           string
+}
+
+// Retires a session that has been exchanged for a new one.
+func (q *Queries) RotateSession(ctx context.Context, arg RotateSessionParams) error {
+	_, err := q.db.ExecContext(ctx, rotateSession, arg.Now, arg.ReplacedByID, arg.ID)
 	return err
 }

@@ -390,7 +390,7 @@ func TestLockoutCountsConcurrentAttempts(t *testing.T) {
 	user := testkit.CreateUser(t, pool, testkit.UserOpts{})
 
 	clk := clock.System{}
-	service := auth.NewService(pool, testkit.Passwords, auth.NewTokens([]byte(testkit.TestJWTSecret), clk), clk)
+	service := auth.NewService(pool, testkit.Passwords, auth.NewTokens([]byte(testkit.TestJWTSecret), clk), clk, testkit.Revocations(t))
 
 	// Exactly five attempts: the lock is only set by the fifth increment, so none of them can
 	// observe a lock and skip counting, and the outcome is deterministic.

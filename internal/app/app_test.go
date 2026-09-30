@@ -42,7 +42,7 @@ func TestEveryRouteRequiresAuthUnlessPublic(t *testing.T) {
 
 	param := regexp.MustCompile(`\{[^}]*\}`)
 	seenPublic := make(map[auth.Route]bool)
-	protected := 0
+	checked := make(map[auth.Route]bool) // routes found protected
 	err := chi.Walk(router, func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
 		r := auth.Route{Method: method, Path: route}
 		if public[r] {
@@ -56,12 +56,20 @@ func TestEveryRouteRequiresAuthUnlessPublic(t *testing.T) {
 		_ = res.Body.Close()
 
 		require.Equal(t, http.StatusUnauthorized, res.StatusCode, "%s %s is reachable without a token but is not in auth.PublicRoutes", method, route)
-		protected++
+		checked[r] = true
 		return nil
 	})
 	require.NoError(t, err)
 
-	require.Equal(t, 3, protected, "the three extra routes must have been walked and found protected")
+	// The stand-ins for future endpoints must have been found and found protected. Real
+	// protected routes (logout, ...) are walked too, but their number changes every phase.
+	for _, extra := range []auth.Route{
+		{Method: http.MethodGet, Path: "/api/v1/test/unlisted"},
+		{Method: http.MethodPost, Path: "/api/v1/test/{id}/action"},
+		{Method: http.MethodDelete, Path: "/api/v1/admin/test/{id}"},
+	} {
+		require.True(t, checked[extra], "%s %s was not walked", extra.Method, extra.Path)
+	}
 	for _, r := range auth.PublicRoutes {
 		require.True(t, seenPublic[r], "auth.PublicRoutes lists %s %s but the router has no such route", r.Method, r.Path)
 	}

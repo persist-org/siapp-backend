@@ -23,14 +23,25 @@ type Service struct {
 	passwords *Passwords
 	tokens    *Tokens
 	clock     clock.Clock
+	// revocations cuts off the access tokens of sessions that are ended.
+	revocations *Revocations
 
 	dummyOnce sync.Once
 	dummyHash string
 }
 
 // NewService returns the auth Service.
-func NewService(pool *sql.DB, passwords *Passwords, tokens *Tokens, c clock.Clock) *Service {
-	return &Service{pool: pool, q: db.New(pool), passwords: passwords, tokens: tokens, clock: c}
+func NewService(pool *sql.DB, passwords *Passwords, tokens *Tokens, c clock.Clock, revocations *Revocations) *Service {
+	return &Service{
+		pool: pool, q: db.New(pool), passwords: passwords, tokens: tokens, clock: c,
+		revocations: revocations,
+	}
+}
+
+// recentSince is the earliest creation time of a session whose access token can still be
+// alive at now. See ListRecentSessionIDsByUser.
+func recentSince(now time.Time) sql.NullTime {
+	return sql.NullTime{Time: now.Add(-revocationTTL), Valid: true}
 }
 
 // LoginInput is a login attempt with the request metadata stored on the session.
@@ -117,10 +128,7 @@ func (s *Service) openSession(ctx context.Context, user db.User, in LoginInput, 
 		return LoginResult{}, err
 	}
 
-	ttl := sessionTTLDefault
-	if in.RememberMe {
-		ttl = sessionTTLRememberMe
-	}
+	ttl := sessionTTL(in.RememberMe)
 
 	err = database.WithTx(ctx, s.pool, func(q *db.Queries) error {
 		if err := q.RecordSuccessfulLogin(ctx, db.RecordSuccessfulLoginParams{

@@ -46,6 +46,24 @@ type Config struct {
 // minJWTSecretBytes is the shortest accepted HS256 key: the size of the SHA-256 output.
 const minJWTSecretBytes = 32
 
+// WorkerConfig is the configuration of cmd/worker, which needs only the database, Redis
+// (the job queue) and the log level.
+type WorkerConfig struct {
+	MySQLDSN string     `env:"MYSQL_DSN,required,notEmpty"`
+	RedisURL string     `env:"REDIS_URL,required,notEmpty"`
+	LogLevel slog.Level `env:"LOG_LEVEL" envDefault:"info"`
+}
+
+// LoadWorker parses the worker configuration from the process environment.
+func LoadWorker() (WorkerConfig, error) {
+	var cfg WorkerConfig
+	err := env.ParseWithOptions(&cfg, env.Options{Environment: env.ToMap(os.Environ())})
+	if err != nil {
+		return WorkerConfig{}, fmt.Errorf("invalid configuration: %w", err)
+	}
+	return cfg, nil
+}
+
 // SeedConfig is the configuration of cmd/seed, which needs far less than the API.
 type SeedConfig struct {
 	MySQLDSN      string `env:"MYSQL_DSN,required,notEmpty"`

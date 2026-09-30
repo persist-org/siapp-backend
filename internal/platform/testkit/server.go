@@ -37,6 +37,9 @@ type Deps struct {
 	Clock clock.Clock
 	// ExtraRoutes mounts routes that are not part of the API, behind the real authentication.
 	ExtraRoutes func(chi.Router)
+	// RedisPrefix prefixes the Redis keys of the server. Defaults to a random one, so tests
+	// never share limiter counters or revocations; set it to look at the keys afterwards.
+	RedisPrefix string
 }
 
 // NewRouter builds the real API router from the same wiring as production (internal/app),
@@ -46,16 +49,26 @@ func NewRouter(t *testing.T, deps Deps) *chi.Mux {
 	if deps.DB == nil {
 		deps.DB = DB(t)
 	}
+	if deps.RedisPrefix == "" {
+		deps.RedisPrefix = RandomPrefix(t)
+	}
 	return app.NewRouter(app.Deps{
-		Logger:          slog.New(slog.NewJSONHandler(io.Discard, nil)),
-		DB:              deps.DB,
-		Redis:           Redis(t),
-		Clock:           deps.Clock,
-		JWTSecret:       []byte(TestJWTSecret),
-		RateLimitPrefix: RandomPrefix(t),
-		Passwords:       Passwords,
-		ExtraRoutes:     deps.ExtraRoutes,
+		Logger:      slog.New(slog.NewJSONHandler(io.Discard, nil)),
+		DB:          deps.DB,
+		Redis:       Redis(t),
+		Clock:       deps.Clock,
+		JWTSecret:   []byte(TestJWTSecret),
+		RedisPrefix: deps.RedisPrefix,
+		Passwords:   Passwords,
+		ExtraRoutes: deps.ExtraRoutes,
 	})
+}
+
+// Revocations returns a session revocation list on the test Redis with a prefix of its own,
+// for tests that build an auth.Service directly instead of going through the router.
+func Revocations(t *testing.T) *auth.Revocations {
+	t.Helper()
+	return auth.NewRevocations(Redis(t), RandomPrefix(t), slog.New(slog.NewJSONHandler(io.Discard, nil)))
 }
 
 // NewServer starts an httptest.Server running NewRouter and closes it when the test ends.

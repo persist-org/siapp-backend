@@ -7,5 +7,8 @@ import "github.com/go-chi/chi/v5"
 func (h *Handler) Routes(r chi.Router) {
 	r.Route("/api/v1/auth", func(r chi.Router) {
 		r.Post("/login", h.login)
+		r.Post("/refresh", h.refresh)
+		r.Post("/logout", h.logout)
+		r.Post("/logout-all", h.logoutAll)
 	})
 }
