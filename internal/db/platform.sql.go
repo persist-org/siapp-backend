@@ -7,7 +7,47 @@ package db
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
 )
+
+const insertAuditLog = `-- name: InsertAuditLog :exec
+INSERT INTO audit_logs (id, actor_id, action, entity_type, entity_id, metadata, created_at)
+VALUES (
+    ?,
+    ?,
+    ?,
+    ?,
+    ?,
+    ?,
+    COALESCE(CAST(? AS DATETIME(3)), CURRENT_TIMESTAMP(3))
+)
+`
+
+type InsertAuditLogParams struct {
+	ID         string
+	ActorID    sql.NullString
+	Action     string
+	EntityType string
+	EntityID   string
+	Metadata   json.RawMessage
+	CreatedAt  sql.NullTime
+}
+
+// created_at is optional: services pass clock.Now(), and NULL falls back to the database
+// clock (always UTC, see the DSN rules).
+func (q *Queries) InsertAuditLog(ctx context.Context, arg InsertAuditLogParams) error {
+	_, err := q.db.ExecContext(ctx, insertAuditLog,
+		arg.ID,
+		arg.ActorID,
+		arg.Action,
+		arg.EntityType,
+		arg.EntityID,
+		arg.Metadata,
+		arg.CreatedAt,
+	)
+	return err
+}
 
 const ping = `-- name: Ping :one
 SELECT 1

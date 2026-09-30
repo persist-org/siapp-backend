@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/go-playground/validator/v10"
+	"github.com/google/uuid"
 
 	"siapp/internal/platform/apperr"
 )
@@ -40,7 +41,24 @@ func newValidator() *validator.Validate {
 		}
 		return name
 	})
+	// The client-generated IDs of offline creates (idem.OfflineCreate) must be UUIDv7.
+	// The error can only be a reserved tag name, which is a programming mistake.
+	if err := v.RegisterValidation("uuid7", isUUIDv7); err != nil {
+		panic("httpx: register uuid7 validator: " + err.Error())
+	}
 	return v
+}
+
+// isUUIDv7 accepts only the canonical lowercase 36-character form of a version 7 UUID.
+//
+// ⚠ Canonical form matters because IDs are stored in an ascii_bin (case-sensitive)
+// column: "0193…-AB" and "0193…-ab" would be two different rows, and a replay that
+// changed the case would create a duplicate instead of being recognised. uuid.Parse alone
+// also accepts braces, "urn:uuid:" prefixes and uppercase, so compare the round trip.
+func isUUIDv7(fl validator.FieldLevel) bool {
+	s := fl.Field().String()
+	u, err := uuid.Parse(s)
+	return err == nil && u.Version() == 7 && u.String() == s
 }
 
 // Decode reads the JSON request body into dst and validates it.

@@ -3,3 +3,19 @@
 //   sqlc v1.31.1
 
 package db
+
+import (
+	"database/sql"
+	"encoding/json"
+	"time"
+)
+
+type AuditLog struct {
+	ID         string
+	ActorID    sql.NullString
+	Action     string
+	EntityType string
+	EntityID   string
+	Metadata   json.RawMessage
+	CreatedAt  time.Time
+}
