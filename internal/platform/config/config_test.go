@@ -10,8 +10,9 @@ import (
 
 func validEnv() map[string]string {
 	return map[string]string{
-		"MYSQL_DSN": "siapp:siapp@tcp(localhost:3306)/siapp?parseTime=true&loc=UTC",
-		"REDIS_URL": "redis://localhost:6379/0",
+		"MYSQL_DSN":  "siapp:siapp@tcp(localhost:3306)/siapp?parseTime=true&loc=UTC",
+		"REDIS_URL":  "redis://localhost:6379/0",
+		"JWT_SECRET": "0123456789abcdef0123456789abcdef",
 	}
 }
 
@@ -48,6 +49,16 @@ func TestParseErrors(t *testing.T) {
 			wantMsgs: []string{`"MYSQL_DSN"`, `"REDIS_URL"`, "LOG_LEVEL", "APP_ENV"},
 		},
 		{
+			name:     "missing JWT_SECRET",
+			drop:     []string{"JWT_SECRET"},
+			wantMsgs: []string{`"JWT_SECRET"`},
+		},
+		{
+			name:     "JWT_SECRET too short",
+			override: map[string]string{"JWT_SECRET": "short"},
+			wantMsgs: []string{"JWT_SECRET must be at least 32 bytes"},
+		},
+		{
 			name:     "migrate on start in production",
 			override: map[string]string{"APP_ENV": "production", "MIGRATE_ON_START": "true"},
 			wantMsgs: []string{"MIGRATE_ON_START"},
@@ -68,6 +79,18 @@ func TestParseErrors(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestParseClientIPHeader(t *testing.T) {
+	cfg, err := Parse(validEnv())
+	require.NoError(t, err)
+	require.Empty(t, cfg.ClientIPHeader)
+
+	environ := validEnv()
+	environ["CLIENT_IP_HEADER"] = "X-Forwarded-For"
+	cfg, err = Parse(environ)
+	require.NoError(t, err)
+	require.Equal(t, "X-Forwarded-For", cfg.ClientIPHeader)
 }
 
 func TestParseCORSOrigins(t *testing.T) {

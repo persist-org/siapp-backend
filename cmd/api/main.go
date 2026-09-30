@@ -17,6 +17,9 @@ import (
 	// there, which would break every business-date calculation in project timezones.
 	_ "time/tzdata"
 
+	"github.com/redis/go-redis/v9"
+
+	"siapp/internal/app"
 	"siapp/internal/platform/config"
 	"siapp/internal/platform/database"
 	"siapp/internal/platform/httpx"
@@ -61,7 +64,24 @@ func run() error {
 		logger.Info("migrations applied")
 	}
 
-	router := httpx.NewRouter(httpx.RouterConfig{Logger: logger, CORSOrigins: cfg.CORSOrigins, DB: pool})
+	redisOpts, err := redis.ParseURL(cfg.RedisURL)
+	if err != nil {
+		return fmt.Errorf("parse REDIS_URL: %w", err)
+	}
+	rdb := redis.NewClient(redisOpts)
+	defer func() { _ = rdb.Close() }()
+	if err := rdb.Ping(startCtx).Err(); err != nil {
+		return fmt.Errorf("ping redis: %w", err)
+	}
+
+	router := app.NewRouter(app.Deps{
+		Logger:         logger,
+		DB:             pool,
+		Redis:          rdb,
+		JWTSecret:      []byte(cfg.JWTSecret),
+		CORSOrigins:    cfg.CORSOrigins,
+		ClientIPHeader: cfg.ClientIPHeader,
+	})
 	srv := httpx.NewServer(cfg.HTTPAddr, router)
 
 	serveErr := make(chan error, 1)

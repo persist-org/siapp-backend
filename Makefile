@@ -2,7 +2,7 @@
 -include .env
 export
 
-.PHONY: up up-db down run migrate generate lint test check
+.PHONY: up up-db down run migrate seed generate lint test check
 
 # Mailpit and MinIO only. Use native MySQL/Redis, or `make up-db` to run them in containers.
 up:
@@ -19,6 +19,10 @@ run:
 
 migrate:
 	goose -dir db/migrations mysql "$$MYSQL_DSN" up
+
+# Creates the first admin from SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD; safe to repeat.
+seed:
+	go run ./cmd/seed
 
 generate:
 	sqlc generate

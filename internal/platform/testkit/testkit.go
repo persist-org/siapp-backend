@@ -22,9 +22,6 @@ import (
 	"encoding/hex"
 	"flag"
 	"fmt"
-	"io"
-	"log/slog"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,7 +31,6 @@ import (
 	"github.com/go-sql-driver/mysql"
 
 	"siapp/internal/platform/database"
-	"siapp/internal/platform/httpx"
 )
 
 // defaultAdminDSN matches the root account of docker-compose.yml. The database name is
@@ -209,25 +205,4 @@ func Reset(t *testing.T, sqlDB *sql.DB) {
 			t.Fatalf("testkit reset: truncate %s: %v", table, err)
 		}
 	}
-}
-
-// Deps are the dependencies NewServer wires into the router. Zero values get defaults.
-type Deps struct {
-	DB *sql.DB
-}
-
-// NewServer starts an httptest.Server running the real router and closes it when the
-// test ends.
-func NewServer(t *testing.T, deps Deps) *httptest.Server {
-	t.Helper()
-	if deps.DB == nil {
-		deps.DB = DB(t)
-	}
-	router := httpx.NewRouter(httpx.RouterConfig{
-		Logger: slog.New(slog.NewJSONHandler(io.Discard, nil)),
-		DB:     deps.DB,
-	})
-	srv := httptest.NewServer(router)
-	t.Cleanup(srv.Close)
-	return srv
 }

@@ -32,6 +32,9 @@ func newTestServerWithDB(t *testing.T, logs io.Writer, db Pinger, extra func(r *
 		Logger:      slog.New(slog.NewJSONHandler(logs, nil)),
 		CORSOrigins: []string{"http://localhost:3000"},
 		DB:          db,
+		// These tests are about the other middleware, not authentication (auth has its
+		// own tests), so authentication is explicitly switched off here.
+		Authenticate: func(next http.Handler) http.Handler { return next },
 	})
 	if extra != nil {
 		mux := http.NewServeMux()
@@ -77,6 +80,42 @@ func TestHealth(t *testing.T) {
 			require.NotEmpty(t, got)
 			require.NotEqual(t, id, got)
 		}
+	})
+}
+
+func TestNewRouterRequiresAuthenticate(t *testing.T) {
+	require.Panics(t, func() {
+		NewRouter(RouterConfig{Logger: slog.New(slog.NewJSONHandler(io.Discard, nil)), DB: fakeDB{}})
+	})
+}
+
+func TestClientIP(t *testing.T) {
+	request := func(remote string, headers map[string]string) *http.Request {
+		r := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
+		r.RemoteAddr = remote
+		for k, v := range headers {
+			r.Header.Set(k, v)
+		}
+		return r
+	}
+
+	t.Run("no header configured uses the connection address and ignores spoofable headers", func(t *testing.T) {
+		got := ClientIPFunc("")(request("10.0.0.5:4321", map[string]string{"X-Forwarded-For": "1.2.3.4"}))
+		require.Equal(t, "10.0.0.5", got)
+	})
+	t.Run("configured header: last entry, the one our proxy appended", func(t *testing.T) {
+		got := ClientIPFunc("X-Forwarded-For")(request("10.0.0.5:1", map[string]string{"X-Forwarded-For": "6.6.6.6, 203.0.113.9"}))
+		require.Equal(t, "203.0.113.9", got)
+	})
+	t.Run("single value and IPv6", func(t *testing.T) {
+		require.Equal(t, "2001:db8::1", ClientIPFunc("X-Real-IP")(request("10.0.0.5:1", map[string]string{"X-Real-IP": "2001:db8::1"})))
+	})
+	t.Run("missing or garbage header falls back to the connection address", func(t *testing.T) {
+		require.Equal(t, "10.0.0.5", ClientIPFunc("X-Real-IP")(request("10.0.0.5:1", nil)))
+		require.Equal(t, "10.0.0.5", ClientIPFunc("X-Real-IP")(request("10.0.0.5:1", map[string]string{"X-Real-IP": "not-an-ip"})))
+	})
+	t.Run("remote address without a port", func(t *testing.T) {
+		require.Equal(t, "pipe", ClientIPFunc("")(request("pipe", nil)))
 	})
 }
 

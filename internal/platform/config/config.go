@@ -33,6 +33,34 @@ type Config struct {
 	// MigrateOnStart runs pending migrations when the API starts. Development only:
 	// production migrates as a separate deploy step (make migrate).
 	MigrateOnStart bool `env:"MIGRATE_ON_START" envDefault:"false"`
+	// JWTSecret signs access tokens (HS256). At least 32 bytes of randomness, e.g.
+	// `openssl rand -base64 48`. Changing it logs everyone out.
+	JWTSecret string `env:"JWT_SECRET,required,notEmpty"`
+	// ClientIPHeader names the request header in which a trusted reverse proxy puts the
+	// real client address (e.g. X-Forwarded-For). Empty means use the connection address.
+	// Only set it when a proxy you control overwrites that header on every request,
+	// otherwise clients can spoof their IP and dodge the login rate limit.
+	ClientIPHeader string `env:"CLIENT_IP_HEADER"`
+}
+
+// minJWTSecretBytes is the shortest accepted HS256 key: the size of the SHA-256 output.
+const minJWTSecretBytes = 32
+
+// SeedConfig is the configuration of cmd/seed, which needs far less than the API.
+type SeedConfig struct {
+	MySQLDSN      string `env:"MYSQL_DSN,required,notEmpty"`
+	AdminEmail    string `env:"SEED_ADMIN_EMAIL,required,notEmpty"`
+	AdminPassword string `env:"SEED_ADMIN_PASSWORD,required,notEmpty"`
+}
+
+// LoadSeed parses the seed configuration from the process environment.
+func LoadSeed() (SeedConfig, error) {
+	var cfg SeedConfig
+	err := env.ParseWithOptions(&cfg, env.Options{Environment: env.ToMap(os.Environ())})
+	if err != nil {
+		return SeedConfig{}, fmt.Errorf("invalid configuration: %w", err)
+	}
+	return cfg, nil
 }
 
 // Load parses the configuration from the process environment.
@@ -63,6 +91,10 @@ func Parse(environ map[string]string) (Config, error) {
 	}
 	if cfg.MigrateOnStart && cfg.AppEnv == EnvProduction {
 		problems = append(problems, "MIGRATE_ON_START must not be true when APP_ENV is production")
+	}
+	// A missing secret is already reported above; only judge the length of a present one.
+	if cfg.JWTSecret != "" && len(cfg.JWTSecret) < minJWTSecretBytes {
+		problems = append(problems, fmt.Sprintf("JWT_SECRET must be at least %d bytes, got %d", minJWTSecretBytes, len(cfg.JWTSecret)))
 	}
 
 	if len(problems) > 0 {

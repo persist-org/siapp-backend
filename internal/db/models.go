@@ -6,9 +6,95 @@ package db
 
 import (
 	"database/sql"
+	"database/sql/driver"
 	"encoding/json"
+	"fmt"
 	"time"
 )
+
+type UsersStatus string
+
+const (
+	UsersStatusACTIVE   UsersStatus = "ACTIVE"
+	UsersStatusDISABLED UsersStatus = "DISABLED"
+)
+
+func (e *UsersStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = UsersStatus(s)
+	case string:
+		*e = UsersStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for UsersStatus: %T", src)
+	}
+	return nil
+}
+
+type NullUsersStatus struct {
+	UsersStatus UsersStatus
+	Valid       bool // Valid is true if UsersStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullUsersStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.UsersStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.UsersStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullUsersStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.UsersStatus), nil
+}
+
+type UsersSystemRole string
+
+const (
+	UsersSystemRoleADMIN  UsersSystemRole = "ADMIN"
+	UsersSystemRoleMEMBER UsersSystemRole = "MEMBER"
+)
+
+func (e *UsersSystemRole) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = UsersSystemRole(s)
+	case string:
+		*e = UsersSystemRole(s)
+	default:
+		return fmt.Errorf("unsupported scan type for UsersSystemRole: %T", src)
+	}
+	return nil
+}
+
+type NullUsersSystemRole struct {
+	UsersSystemRole UsersSystemRole
+	Valid           bool // Valid is true if UsersSystemRole is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullUsersSystemRole) Scan(value interface{}) error {
+	if value == nil {
+		ns.UsersSystemRole, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.UsersSystemRole.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullUsersSystemRole) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.UsersSystemRole), nil
+}
 
 type AuditLog struct {
 	ID         string
@@ -18,4 +104,40 @@ type AuditLog struct {
 	EntityID   string
 	Metadata   json.RawMessage
 	CreatedAt  time.Time
+}
+
+type Session struct {
+	ID               string
+	UserID           string
+	FamilyID         string
+	RefreshTokenHash string
+	RememberMe       bool
+	ExpiresAt        time.Time
+	RevokedAt        sql.NullTime
+	ReplacedByID     sql.NullString
+	UserAgent        sql.NullString
+	Ip               sql.NullString
+	LastUsedAt       sql.NullTime
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
+type User struct {
+	ID               string
+	Email            string
+	Username         sql.NullString
+	FullName         string
+	Phone            sql.NullString
+	BirthDate        sql.NullTime
+	SystemRole       UsersSystemRole
+	Status           UsersStatus
+	PasswordHash     string
+	FailedLoginCount int32
+	LockedUntil      sql.NullTime
+	LastLoginAt      sql.NullTime
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	DeletedAt        sql.NullTime
+	ActiveEmail      sql.NullString
+	ActiveUsername   sql.NullString
 }

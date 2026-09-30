@@ -129,6 +129,13 @@ func TestDateSQL(t *testing.T) {
 	require.Error(t, back.Scan("not a date"))
 }
 
+func TestFormatTimestamp(t *testing.T) {
+	wit := time.FixedZone("WIT", 9*3600)
+	require.Equal(t, "2026-03-10T06:30:00.000Z", FormatTimestamp(time.Date(2026, 3, 10, 15, 30, 0, 0, wit)))
+	require.Equal(t, "2026-03-10T06:30:00.120Z", FormatTimestamp(time.Date(2026, 3, 10, 6, 30, 0, 120_000_000, time.UTC)))
+	require.Equal(t, "2026-03-10T06:30:00.123Z", FormatTimestamp(time.Date(2026, 3, 10, 6, 30, 0, 123_999_999, time.UTC)))
+}
+
 func TestDateArithmetic(t *testing.T) {
 	d := NewDate(2028, time.February, 28)
 	require.Equal(t, "2028-02-29", d.AddDays(1).String())

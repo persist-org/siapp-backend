@@ -30,6 +30,62 @@ paths:
               schema:
                 $ref: "#/components/schemas/Health"
 
+  /api/v1/auth/login:
+    post:
+      operationId: login
+      summary: Log in with email or username
+      description: >
+        Public. Creates a session (12 hours, or 30 days with `rememberMe`) and returns an
+        access token (15 minutes) and a refresh token. Only failed logins are limited: 10 per
+        minute for one client IP and account name, and 100 per minute for one client IP.
+        Successful logins never count, so many users on one network are not affected.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Logged in.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          description: >
+            Unknown user or wrong password (`AUTH_INVALID_CREDENTIALS`). The same response is
+            used for both, so it cannot be used to find out which accounts exist.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: >
+            The password is correct but the account is disabled (`AUTH_ACCOUNT_DISABLED`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "423":
+          description: >
+            Locked for 15 minutes after 5 consecutive failed attempts (`AUTH_ACCOUNT_LOCKED`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          description: >
+            Too many failed logins from this client IP (`RATE_LIMITED`). Even the right
+            password is refused until the window ends. `Retry-After` gives the seconds to wait.
+          headers:
+            Retry-After:
+              description: Seconds until the limit resets.
+              schema: { type: integer, minimum: 1 }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -106,6 +162,52 @@ components:
           schema: { $ref: "#/components/schemas/Error" }
 
   schemas:
+    LoginRequest:
+      type: object
+      required: [identifier, password]
+      additionalProperties: false
+      properties:
+        identifier:
+          type: string
+          maxLength: 255
+          description: The user's email or username.
+        password:
+          type: string
+          maxLength: 256
+        rememberMe:
+          type: boolean
+          default: false
+
+    LoginResponse:
+      type: object
+      required: [accessToken, accessTokenExpiresAt, refreshToken, user]
+      additionalProperties: false
+      properties:
+        accessToken:
+          type: string
+          description: JWT (HS256), valid for 15 minutes. Send it as a Bearer token in the Authorization header.
+        accessTokenExpiresAt:
+          type: string
+          format: date-time
+        refreshToken:
+          type: string
+          description: Opaque token for getting a new access token.
+        user:
+          $ref: "#/components/schemas/User"
+
+    User:
+      type: object
+      required: [id, email, username, fullName, phone, systemRole, status]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string }
+        username: { type: string, nullable: true }
+        fullName: { type: string }
+        phone: { type: string, nullable: true }
+        systemRole: { type: string, enum: [ADMIN, MEMBER] }
+        status: { type: string, enum: [ACTIVE, DISABLED] }
+
     Health:
       type: object
       required: [status]
