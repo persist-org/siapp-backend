@@ -1,0 +1,13 @@
+# Local environment (secrets); .env.example is committed instead
+.env
+.env.*
+!.env.example
+
+# Build output
+/bin/
+/tmp/
+coverage.out
+
+# Editors / OS
+.idea/
+.DS_Store

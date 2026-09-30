@@ -1,0 +1,109 @@
+package httpx
+
+import (
+	"bytes"
+	"encoding/json"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
+func newTestServer(t *testing.T, logs io.Writer, extra func(r *http.ServeMux)) *httptest.Server {
+	t.Helper()
+	router := NewRouter(RouterConfig{
+		Logger:      slog.New(slog.NewJSONHandler(logs, nil)),
+		CORSOrigins: []string{"http://localhost:3000"},
+	})
+	if extra != nil {
+		mux := http.NewServeMux()
+		extra(mux)
+		router.Mount("/test", mux)
+	}
+	srv := httptest.NewServer(router)
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func get(t *testing.T, url string, header http.Header) *http.Response {
+	t.Helper()
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, url, nil)
+	require.NoError(t, err)
+	for k, v := range header {
+		req.Header[k] = v
+	}
+	res, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = res.Body.Close() })
+	return res
+}
+
+func TestHealth(t *testing.T) {
+	srv := newTestServer(t, io.Discard, nil)
+
+	t.Run("echoes the request ID", func(t *testing.T) {
+		res := get(t, srv.URL+"/api/v1/health", http.Header{HeaderRequestID: {"req-123"}})
+		require.Equal(t, http.StatusOK, res.StatusCode)
+		require.Equal(t, "req-123", res.Header.Get(HeaderRequestID))
+
+		var body map[string]string
+		require.NoError(t, json.NewDecoder(res.Body).Decode(&body))
+		require.Equal(t, map[string]string{"status": "ok"}, body)
+	})
+
+	t.Run("generates a request ID when missing or unsafe", func(t *testing.T) {
+		for _, id := range []string{"", "has spaces and \"quotes\"", strings.Repeat("a", maxRequestIDLen+1)} {
+			res := get(t, srv.URL+"/api/v1/health", http.Header{HeaderRequestID: {id}})
+			require.Equal(t, http.StatusOK, res.StatusCode)
+			got := res.Header.Get(HeaderRequestID)
+			require.NotEmpty(t, got)
+			require.NotEqual(t, id, got)
+		}
+	})
+}
+
+func TestRecovererAndAccessLog(t *testing.T) {
+	var logs bytes.Buffer
+	srv := newTestServer(t, &logs, func(mux *http.ServeMux) {
+		mux.HandleFunc("/test/panic", func(http.ResponseWriter, *http.Request) { panic("boom") })
+	})
+
+	res := get(t, srv.URL+"/test/panic", http.Header{
+		HeaderRequestID: {"req-panic"},
+		"Authorization": {"Bearer secret-token"},
+	})
+	require.Equal(t, http.StatusInternalServerError, res.StatusCode)
+
+	var body struct {
+		Error struct{ Code string } `json:"error"`
+	}
+	require.NoError(t, json.NewDecoder(res.Body).Decode(&body))
+	require.Equal(t, "INTERNAL_ERROR", body.Error.Code)
+
+	out := logs.String()
+	require.Contains(t, out, `"panic":"boom"`)
+	require.Contains(t, out, `"status":500`)
+	require.Contains(t, out, `"requestId":"req-panic"`)
+	require.NotContains(t, out, "secret-token")
+}
+
+func TestCORS(t *testing.T) {
+	srv := newTestServer(t, io.Discard, nil)
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodOptions, srv.URL+"/api/v1/health", nil)
+	require.NoError(t, err)
+	req.Header.Set("Origin", "http://localhost:3000")
+	req.Header.Set("Access-Control-Request-Method", http.MethodGet)
+	res, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	_ = res.Body.Close()
+	require.Equal(t, http.StatusNoContent, res.StatusCode)
+	require.Equal(t, "http://localhost:3000", res.Header.Get("Access-Control-Allow-Origin"))
+
+	res = get(t, srv.URL+"/api/v1/health", http.Header{"Origin": {"https://evil.example.com"}})
+	require.Empty(t, res.Header.Get("Access-Control-Allow-Origin"))
+}
