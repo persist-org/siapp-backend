@@ -1,7 +1,6 @@
 package httpx_test
 
 import (
-	"encoding/json"
 	"net/http"
 	"os"
 	"testing"
@@ -13,17 +12,15 @@ import (
 
 func TestMain(m *testing.M) { os.Exit(testkit.NewDatabase(m)) }
 
+// TestHealthWithDatabase also proves the contract client: it fails if /api/v1/health or its
+// response drifts from api/openapi.yaml.
 func TestHealthWithDatabase(t *testing.T) {
-	srv := testkit.NewServer(t, testkit.Deps{})
+	client := testkit.NewClient(t, testkit.NewServer(t, testkit.Deps{}))
 
-	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+"/api/v1/health", nil)
-	require.NoError(t, err)
-	res, err := http.DefaultClient.Do(req)
-	require.NoError(t, err)
-	defer func() { _ = res.Body.Close() }()
+	res := client.Do(http.MethodGet, "/api/v1/health", nil)
+	require.Equal(t, http.StatusOK, res.Status)
 
-	require.Equal(t, http.StatusOK, res.StatusCode)
 	var body map[string]string
-	require.NoError(t, json.NewDecoder(res.Body).Decode(&body))
+	res.JSON(t, &body)
 	require.Equal(t, map[string]string{"status": "ok"}, body)
 }

@@ -2,7 +2,6 @@ package httpx
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"runtime/debug"
@@ -12,6 +11,8 @@ import (
 
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
+
+	"siapp/internal/platform/apperr"
 )
 
 // HeaderRequestID carries the request ID in both directions.
@@ -110,23 +111,11 @@ func recoverer(logger *slog.Logger) func(http.Handler) http.Handler {
 					slog.String("stack", string(debug.Stack())),
 					slog.String("requestId", RequestID(r.Context())),
 				)
-				writeInternalError(w)
+				writeAppError(w, apperr.ErrInternal)
 			}()
 			next.ServeHTTP(w, r)
 		})
 	}
-}
-
-// writeInternalError writes the standard error body for an unexpected failure.
-func writeInternalError(w http.ResponseWriter) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusInternalServerError)
-	_ = json.NewEncoder(w).Encode(map[string]any{
-		"error": map[string]string{
-			"code":    "INTERNAL_ERROR",
-			"message": "Terjadi kesalahan pada server. Silakan coba lagi.",
-		},
-	})
 }
 
 // cors allows browser requests from the configured origins only. Origins are matched

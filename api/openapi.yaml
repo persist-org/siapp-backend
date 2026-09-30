@@ -1,0 +1,164 @@
+openapi: 3.0.3
+info:
+  title: SiAPP API
+  version: 0.1.0
+  description: >
+    Backend API for SiAPP. Every endpoint added by a phase is described here, and HTTP tests
+    validate each request and response against this file.
+
+# Bearer auth is the default; public endpoints opt out with `security: []`.
+security:
+  - bearerAuth: []
+
+paths:
+  /api/v1/health:
+    get:
+      operationId: getHealth
+      summary: Liveness and database check
+      security: []
+      responses:
+        "200":
+          description: The API and its database are up.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+        "503":
+          description: The database is unreachable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    Q:
+      name: q
+      in: query
+      description: Free-text search.
+      schema: { type: string, maxLength: 100 }
+    Date:
+      name: date
+      in: query
+      description: Business date. Cannot be combined with `month`.
+      schema: { type: string, format: date }
+    Month:
+      name: month
+      in: query
+      description: Business month, `YYYY-MM`. Cannot be combined with `date`.
+      schema: { type: string, pattern: '^\d{4}-(0[1-9]|1[0-2])$' }
+    CategoryId:
+      name: categoryId
+      in: query
+      schema: { type: string, format: uuid }
+    Cursor:
+      name: cursor
+      in: query
+      description: Opaque cursor from the `nextCursor` of the previous page.
+      schema: { type: string }
+    Limit:
+      name: limit
+      in: query
+      description: Page size. Values above 100 are clamped to 100.
+      schema: { type: integer, minimum: 1, default: 20 }
+
+  responses:
+    ValidationFailed:
+      description: The request is malformed or failed validation (`VALIDATION_FAILED`).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthenticated:
+      description: Missing or invalid credentials (`UNAUTHENTICATED`).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    PermissionDenied:
+      description: The caller may not do this (`PERMISSION_DENIED`).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: The resource does not exist (`NOT_FOUND`).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Conflict:
+      description: The request conflicts with current state (`CONFLICT` or `ID_CONFLICT`).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    RateLimited:
+      description: Too many requests (`RATE_LIMITED`).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    InternalError:
+      description: Unexpected failure (`INTERNAL_ERROR`).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Health:
+      type: object
+      required: [status]
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum: [ok, unavailable]
+
+    Error:
+      type: object
+      required: [error]
+      additionalProperties: false
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          additionalProperties: false
+          properties:
+            code:
+              type: string
+              description: Stable UPPER_SNAKE code.
+              example: VALIDATION_FAILED
+            message:
+              type: string
+              description: Indonesian text that is safe to show to users.
+            details:
+              description: >
+                Optional context. For `VALIDATION_FAILED` it is a list of `FieldError`.
+              type: array
+              items: { $ref: "#/components/schemas/FieldError" }
+
+    FieldError:
+      type: object
+      required: [field, messages]
+      additionalProperties: false
+      properties:
+        field:
+          type: string
+          description: The JSON name of the offending field.
+        messages:
+          type: array
+          items: { type: string }
+
+    # Endpoints return `allOf` this wrapper with a concrete `items` schema.
+    Page:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items: {}
+        nextCursor:
+          type: string
+          nullable: true
+          description: Pass as `cursor` to get the next page. Null on the last page.

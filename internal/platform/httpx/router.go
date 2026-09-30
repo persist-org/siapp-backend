@@ -3,12 +3,13 @@ package httpx
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+
+	"siapp/internal/platform/apperr"
 )
 
 const healthPingTimeout = 2 * time.Second
@@ -33,6 +34,9 @@ func NewRouter(cfg RouterConfig) *chi.Mux {
 	// inside the access log so a recovered panic is still logged with its 500 status.
 	r.Use(requestID, accessLog(cfg.Logger), recoverer(cfg.Logger), cors(cfg.CORSOrigins))
 
+	// Unknown paths get the standard error shape instead of chi's plain-text 404.
+	r.NotFound(func(w http.ResponseWriter, r *http.Request) { Error(w, r, apperr.ErrNotFound) })
+
 	r.Get("/api/v1/health", health(cfg.Logger, cfg.DB))
 	return r
 }
@@ -48,15 +52,9 @@ func health(logger *slog.Logger, db Pinger) http.HandlerFunc {
 				slog.String("error", err.Error()),
 				slog.String("requestId", RequestID(r.Context())),
 			)
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "unavailable"})
+			JSON(w, http.StatusServiceUnavailable, map[string]string{"status": "unavailable"})
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+		JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	}
-}
-
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
 }
