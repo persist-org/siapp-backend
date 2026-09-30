@@ -2,7 +2,9 @@ package httpx
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -13,11 +15,23 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// fakeDB stands in for the database in tests that exercise middleware only; the real
+// database is covered by health_test.go through testkit.
+type fakeDB struct{ err error }
+
+func (f fakeDB) PingContext(context.Context) error { return f.err }
+
 func newTestServer(t *testing.T, logs io.Writer, extra func(r *http.ServeMux)) *httptest.Server {
+	t.Helper()
+	return newTestServerWithDB(t, logs, fakeDB{}, extra)
+}
+
+func newTestServerWithDB(t *testing.T, logs io.Writer, db Pinger, extra func(r *http.ServeMux)) *httptest.Server {
 	t.Helper()
 	router := NewRouter(RouterConfig{
 		Logger:      slog.New(slog.NewJSONHandler(logs, nil)),
 		CORSOrigins: []string{"http://localhost:3000"},
+		DB:          db,
 	})
 	if extra != nil {
 		mux := http.NewServeMux()
@@ -64,6 +78,19 @@ func TestHealth(t *testing.T) {
 			require.NotEqual(t, id, got)
 		}
 	})
+}
+
+func TestHealthDatabaseDown(t *testing.T) {
+	var logs bytes.Buffer
+	srv := newTestServerWithDB(t, &logs, fakeDB{err: errors.New("connection refused")}, nil)
+
+	res := get(t, srv.URL+"/api/v1/health", nil)
+	require.Equal(t, http.StatusServiceUnavailable, res.StatusCode)
+
+	var body map[string]string
+	require.NoError(t, json.NewDecoder(res.Body).Decode(&body))
+	require.Equal(t, map[string]string{"status": "unavailable"}, body)
+	require.Contains(t, logs.String(), "connection refused")
 }
 
 func TestRecovererAndAccessLog(t *testing.T) {

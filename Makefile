@@ -1,17 +1,27 @@
-# Load local settings for `make run`, if present.
+# Load local settings, if present, and pass them to every command.
 -include .env
 export
 
-.PHONY: up down run lint test check
+.PHONY: up up-db down run migrate generate lint test check
 
+# Mailpit and MinIO only. Use native MySQL/Redis, or `make up-db` to run them in containers.
 up:
 	docker compose up -d --wait
 
+up-db:
+	docker compose --profile db up -d --wait
+
 down:
-	docker compose down
+	docker compose --profile db down
 
 run:
 	go run ./cmd/api
+
+migrate:
+	goose -dir db/migrations mysql "$$MYSQL_DSN" up
+
+generate:
+	sqlc generate
 
 lint:
 	golangci-lint run
@@ -19,7 +29,9 @@ lint:
 test:
 	go test -race ./...
 
+# sqlc diff fails when internal/db is stale; run `make generate` and commit the result.
 check:
+	sqlc diff
 	go vet ./...
 	golangci-lint run
 	go test -race ./...

@@ -18,10 +18,14 @@ import (
 	_ "time/tzdata"
 
 	"siapp/internal/platform/config"
+	"siapp/internal/platform/database"
 	"siapp/internal/platform/httpx"
 )
 
-const shutdownTimeout = 20 * time.Second
+const (
+	startupTimeout  = 30 * time.Second
+	shutdownTimeout = 20 * time.Second
+)
 
 func main() {
 	if err := run(); err != nil {
@@ -42,7 +46,22 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	router := httpx.NewRouter(httpx.RouterConfig{Logger: logger, CORSOrigins: cfg.CORSOrigins})
+	startCtx, cancelStart := context.WithTimeout(ctx, startupTimeout)
+	defer cancelStart()
+	pool, err := database.Open(startCtx, cfg.MySQLDSN)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = pool.Close() }()
+
+	if cfg.MigrateOnStart {
+		if err := database.Migrate(startCtx, pool); err != nil {
+			return err
+		}
+		logger.Info("migrations applied")
+	}
+
+	router := httpx.NewRouter(httpx.RouterConfig{Logger: logger, CORSOrigins: cfg.CORSOrigins, DB: pool})
 	srv := httpx.NewServer(cfg.HTTPAddr, router)
 
 	serveErr := make(chan error, 1)

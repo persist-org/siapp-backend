@@ -1,0 +1,26 @@
+-- Phase 00.2: the first migration. It creates no tables. It gives goose and sqlc a schema
+-- directory and records the conventions every later migration follows.
+--
+-- ⚠ IDs: every primary key is CHAR(36) CHARACTER SET ascii COLLATE ascii_bin, holding a
+-- UUIDv7 generated in Go (uuid.NewV7()).
+--   - UUIDv7 starts with a millisecond timestamp, so even in text form new IDs sort after
+--     old ones. Inserts append to the end of the InnoDB clustered index instead of
+--     splitting random pages, which is the problem with random UUIDv4 keys.
+--   - CHAR(36) instead of BINARY(16) keeps sqlc types as plain Go strings, readable in
+--     queries, logs and the mysql client, at the cost of ~20 bytes per key.
+--   - ascii / ascii_bin stores 1 byte per character and compares byte-wise, so lookups
+--     skip utf8mb4 collation work.
+--
+-- ⚠ Timestamps: DATETIME(3) holding UTC.
+--   - DATETIME, not TIMESTAMP: no 2038 limit and no silent conversion through the server
+--     time zone.
+--   - The DSN must set parseTime=true, loc=UTC and time_zone='+00:00', so Go values and
+--     MySQL functions such as NOW(3) agree on UTC. database.Open refuses a DSN without them.
+--   - Millisecond precision matches the API's RFC 3339 format and keeps keyset pagination
+--     on created_at stable.
+--   - Business dates (work_date, occurred_date) are DATE columns computed in the project
+--     timezone. Never filter by day on a UTC timestamp.
+
+-- +goose Up
+
+-- +goose Down

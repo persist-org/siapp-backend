@@ -30,6 +30,9 @@ type Config struct {
 	RedisURL    string     `env:"REDIS_URL,required,notEmpty"`
 	CORSOrigins []string   `env:"CORS_ORIGINS" envSeparator:","`
 	LogLevel    slog.Level `env:"LOG_LEVEL" envDefault:"info"`
+	// MigrateOnStart runs pending migrations when the API starts. Development only:
+	// production migrates as a separate deploy step (make migrate).
+	MigrateOnStart bool `env:"MIGRATE_ON_START" envDefault:"false"`
 }
 
 // Load parses the configuration from the process environment.
@@ -57,6 +60,9 @@ func Parse(environ map[string]string) (Config, error) {
 
 	if !slices.Contains(appEnvs, cfg.AppEnv) {
 		problems = append(problems, fmt.Sprintf("APP_ENV must be one of %s, got %q", strings.Join(appEnvs, ", "), cfg.AppEnv))
+	}
+	if cfg.MigrateOnStart && cfg.AppEnv == EnvProduction {
+		problems = append(problems, "MIGRATE_ON_START must not be true when APP_ENV is production")
 	}
 
 	if len(problems) > 0 {

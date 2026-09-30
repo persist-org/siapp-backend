@@ -47,6 +47,11 @@ func TestParseErrors(t *testing.T) {
 			override: map[string]string{"LOG_LEVEL": "loud", "APP_ENV": "staging"},
 			wantMsgs: []string{`"MYSQL_DSN"`, `"REDIS_URL"`, "LOG_LEVEL", "APP_ENV"},
 		},
+		{
+			name:     "migrate on start in production",
+			override: map[string]string{"APP_ENV": "production", "MIGRATE_ON_START": "true"},
+			wantMsgs: []string{"MIGRATE_ON_START"},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
