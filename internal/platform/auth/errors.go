@@ -14,6 +14,11 @@ const (
 	CodeAccountDisabled    = "AUTH_ACCOUNT_DISABLED"
 	CodeTokenInvalid       = "AUTH_TOKEN_INVALID" //nolint:gosec // an error code, not a secret
 	CodeRefreshReused      = "AUTH_REFRESH_REUSED"
+	CodeResetInvalid       = "AUTH_RESET_INVALID"
+	CodePasswordWeak       = "AUTH_PASSWORD_WEAK"
+	CodeUserNotFound       = "USER_NOT_FOUND"
+	CodeEmailTaken         = "USER_EMAIL_TAKEN"
+	CodeUsernameTaken      = "USER_USERNAME_TAKEN"
 )
 
 // ErrInvalidCredentials is returned for an unknown user and for a wrong password alike, so
@@ -33,3 +38,21 @@ var ErrRefreshReused = apperr.New(http.StatusUnauthorized, CodeRefreshReused, "S
 
 // ErrAccountDisabled is returned after a correct password for a disabled account.
 var ErrAccountDisabled = apperr.New(http.StatusForbidden, CodeAccountDisabled, "Akun Anda dinonaktifkan. Hubungi administrator.")
+
+// ErrResetInvalid is returned for a password reset link that is unknown, expired, already
+// used, replaced by a newer one, or belongs to an account that can no longer reset.
+// The reasons are deliberately not told apart.
+var ErrResetInvalid = apperr.New(http.StatusBadRequest, CodeResetInvalid, "Tautan atur ulang kata sandi tidak valid atau sudah kedaluwarsa. Silakan minta tautan baru.")
+
+// ErrPasswordWeak is returned when a password a user chose breaks the password rules. Use
+// WithMessage to say which rule.
+var ErrPasswordWeak = apperr.New(http.StatusBadRequest, CodePasswordWeak, "Kata sandi terlalu lemah.")
+
+// ErrUserNotFound is returned when an admin asks for a user that does not exist.
+var ErrUserNotFound = apperr.New(http.StatusNotFound, CodeUserNotFound, "Pengguna tidak ditemukan.")
+
+// ErrEmailTaken is returned when creating a user with an email another active user has.
+var ErrEmailTaken = apperr.New(http.StatusConflict, CodeEmailTaken, "Email sudah digunakan oleh pengguna lain.")
+
+// ErrUsernameTaken is returned when a username belongs to another active user.
+var ErrUsernameTaken = apperr.New(http.StatusConflict, CodeUsernameTaken, "Username sudah digunakan oleh pengguna lain.")

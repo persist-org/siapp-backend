@@ -43,3 +43,22 @@ const (
 	maxUserAgentLen = 255
 	dummyPassword   = "not-a-real-password"
 )
+
+// Password reset (see Service.RequestPasswordReset).
+const (
+	// passwordResetTTL is how long an emailed reset link works.
+	passwordResetTTL = time.Hour
+
+	// Forgot-password limits, per 15 minutes. Every request counts, including ones for
+	// addresses without an account, so the limit itself reveals nothing.
+	//
+	// forgotPerIP is a flood guard and is generous on purpose: a whole site can share one IP.
+	// forgotPerEmail is what stops someone from filling a victim's inbox with reset mails,
+	// whichever IP the requests come from.
+	forgotWindow   = 15 * time.Minute
+	forgotPerIP    = 30
+	forgotPerEmail = 3
+)
+
+// Bounds for a birth date given by an admin.
+const minBirthYear = 1900

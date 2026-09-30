@@ -22,6 +22,28 @@ func (q *Queries) CountAdmins(ctx context.Context) (int64, error) {
 	return count, err
 }
 
+const createResetToken = `-- name: CreateResetToken :exec
+INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at)
+VALUES (?, ?, ?, ?)
+`
+
+type CreateResetTokenParams struct {
+	ID        string
+	UserID    string
+	TokenHash string
+	ExpiresAt time.Time
+}
+
+func (q *Queries) CreateResetToken(ctx context.Context, arg CreateResetTokenParams) error {
+	_, err := q.db.ExecContext(ctx, createResetToken,
+		arg.ID,
+		arg.UserID,
+		arg.TokenHash,
+		arg.ExpiresAt,
+	)
+	return err
+}
+
 const createSession = `-- name: CreateSession :exec
 INSERT INTO sessions (id, user_id, family_id, refresh_token_hash, remember_me, expires_at, user_agent, ip, last_used_at)
 VALUES (
@@ -145,6 +167,74 @@ func (q *Queries) DeleteSessionsRevokedBefore(ctx context.Context, arg DeleteSes
 	return result.RowsAffected()
 }
 
+const getActiveUserByEmail = `-- name: GetActiveUserByEmail :one
+SELECT id, email, username, full_name, phone, birth_date, system_role, status, password_hash, failed_login_count, locked_until, last_login_at, created_at, updated_at, deleted_at, active_email, active_username FROM users
+WHERE email = ? AND status = 'ACTIVE' AND deleted_at IS NULL
+`
+
+// Only an ACTIVE user can ask for a password reset link.
+func (q *Queries) GetActiveUserByEmail(ctx context.Context, email string) (User, error) {
+	row := q.db.QueryRowContext(ctx, getActiveUserByEmail, email)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.Username,
+		&i.FullName,
+		&i.Phone,
+		&i.BirthDate,
+		&i.SystemRole,
+		&i.Status,
+		&i.PasswordHash,
+		&i.FailedLoginCount,
+		&i.LockedUntil,
+		&i.LastLoginAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.ActiveEmail,
+		&i.ActiveUsername,
+	)
+	return i, err
+}
+
+const getResetTokenForUpdate = `-- name: GetResetTokenForUpdate :one
+SELECT t.id, t.user_id, t.expires_at, t.used_at,
+       u.email, u.username, u.status AS user_status, u.deleted_at AS user_deleted_at
+FROM password_reset_tokens t
+JOIN users u ON u.id = t.user_id
+WHERE t.token_hash = ?
+FOR UPDATE OF t
+`
+
+type GetResetTokenForUpdateRow struct {
+	ID            string
+	UserID        string
+	ExpiresAt     time.Time
+	UsedAt        sql.NullTime
+	Email         string
+	Username      sql.NullString
+	UserStatus    UsersStatus
+	UserDeletedAt sql.NullTime
+}
+
+// ⚠ FOR UPDATE OF t: two requests with the same link are serialised, so the link works once.
+func (q *Queries) GetResetTokenForUpdate(ctx context.Context, tokenHash string) (GetResetTokenForUpdateRow, error) {
+	row := q.db.QueryRowContext(ctx, getResetTokenForUpdate, tokenHash)
+	var i GetResetTokenForUpdateRow
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.ExpiresAt,
+		&i.UsedAt,
+		&i.Email,
+		&i.Username,
+		&i.UserStatus,
+		&i.UserDeletedAt,
+	)
+	return i, err
+}
+
 const getSessionForRefresh = `-- name: GetSessionForRefresh :one
 SELECT s.id, s.user_id, s.family_id, s.remember_me, s.expires_at, s.revoked_at,
        u.system_role, u.status AS user_status, u.deleted_at AS user_deleted_at
@@ -189,6 +279,66 @@ func (q *Queries) GetSessionForRefresh(ctx context.Context, refreshTokenHash str
 	return i, err
 }
 
+const getUserByID = `-- name: GetUserByID :one
+SELECT id, email, username, full_name, phone, birth_date, system_role, status, password_hash, failed_login_count, locked_until, last_login_at, created_at, updated_at, deleted_at, active_email, active_username FROM users WHERE id = ? AND deleted_at IS NULL
+`
+
+func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
+	row := q.db.QueryRowContext(ctx, getUserByID, id)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.Username,
+		&i.FullName,
+		&i.Phone,
+		&i.BirthDate,
+		&i.SystemRole,
+		&i.Status,
+		&i.PasswordHash,
+		&i.FailedLoginCount,
+		&i.LockedUntil,
+		&i.LastLoginAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.ActiveEmail,
+		&i.ActiveUsername,
+	)
+	return i, err
+}
+
+const getUserByIDForUpdate = `-- name: GetUserByIDForUpdate :one
+SELECT id, email, username, full_name, phone, birth_date, system_role, status, password_hash, failed_login_count, locked_until, last_login_at, created_at, updated_at, deleted_at, active_email, active_username FROM users WHERE id = ? AND deleted_at IS NULL FOR UPDATE
+`
+
+// Locks the row: a change to a user reads it, decides, and writes inside one transaction,
+// so two admins editing the same user cannot overwrite each other unnoticed.
+func (q *Queries) GetUserByIDForUpdate(ctx context.Context, id string) (User, error) {
+	row := q.db.QueryRowContext(ctx, getUserByIDForUpdate, id)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.Username,
+		&i.FullName,
+		&i.Phone,
+		&i.BirthDate,
+		&i.SystemRole,
+		&i.Status,
+		&i.PasswordHash,
+		&i.FailedLoginCount,
+		&i.LockedUntil,
+		&i.LastLoginAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.ActiveEmail,
+		&i.ActiveUsername,
+	)
+	return i, err
+}
+
 const getUserByIdentifier = `-- name: GetUserByIdentifier :one
 SELECT id, email, username, full_name, phone, birth_date, system_role, status, password_hash, failed_login_count, locked_until, last_login_at, created_at, updated_at, deleted_at, active_email, active_username FROM users
 WHERE (email = ? OR username = ?)
@@ -227,6 +377,23 @@ func (q *Queries) GetUserByIdentifier(ctx context.Context, arg GetUserByIdentifi
 		&i.ActiveUsername,
 	)
 	return i, err
+}
+
+const invalidateUnusedResetTokens = `-- name: InvalidateUnusedResetTokens :exec
+UPDATE password_reset_tokens
+SET used_at = ?
+WHERE user_id = ? AND used_at IS NULL
+`
+
+type InvalidateUnusedResetTokensParams struct {
+	Now    sql.NullTime
+	UserID string
+}
+
+// Only the newest link may work: asking again replaces the earlier one.
+func (q *Queries) InvalidateUnusedResetTokens(ctx context.Context, arg InvalidateUnusedResetTokensParams) error {
+	_, err := q.db.ExecContext(ctx, invalidateUnusedResetTokens, arg.Now, arg.UserID)
+	return err
 }
 
 const listRecentSessionIDsByFamily = `-- name: ListRecentSessionIDsByFamily :many
@@ -341,6 +508,99 @@ func (q *Queries) ListRecentSessionIDsOfSessionFamily(ctx context.Context, arg L
 	return items, nil
 }
 
+const listUsers = `-- name: ListUsers :many
+SELECT id, email, username, full_name, phone, birth_date, system_role, status, password_hash, failed_login_count, locked_until, last_login_at, created_at, updated_at, deleted_at, active_email, active_username FROM users
+WHERE deleted_at IS NULL
+  AND (? IS NULL OR status = ?)
+  AND (? IS NULL
+       OR full_name LIKE ?
+       OR email LIKE ?
+       OR username LIKE ?)
+  AND (? IS NULL
+       OR created_at < ?
+       OR (created_at = ? AND id < ?))
+ORDER BY created_at DESC, id DESC
+LIMIT ?
+`
+
+type ListUsersParams struct {
+	Status     NullUsersStatus
+	Search     sql.NullString
+	CursorTime sql.NullTime
+	CursorID   sql.NullString
+	Limit      int32
+}
+
+// Newest first. Keyset pagination in the form the README requires: MySQL uses the index
+// reliably only with the expanded OR, not with a row-constructor comparison.
+// search is a LIKE pattern built by the caller (wildcards in user input already escaped).
+func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]User, error) {
+	rows, err := q.db.QueryContext(ctx, listUsers,
+		arg.Status,
+		arg.Status,
+		arg.Search,
+		arg.Search,
+		arg.Search,
+		arg.Search,
+		arg.CursorTime,
+		arg.CursorTime,
+		arg.CursorTime,
+		arg.CursorID,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []User{}
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.Email,
+			&i.Username,
+			&i.FullName,
+			&i.Phone,
+			&i.BirthDate,
+			&i.SystemRole,
+			&i.Status,
+			&i.PasswordHash,
+			&i.FailedLoginCount,
+			&i.LockedUntil,
+			&i.LastLoginAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.ActiveEmail,
+			&i.ActiveUsername,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const markResetTokenUsed = `-- name: MarkResetTokenUsed :exec
+UPDATE password_reset_tokens SET used_at = ? WHERE id = ?
+`
+
+type MarkResetTokenUsedParams struct {
+	Now sql.NullTime
+	ID  string
+}
+
+func (q *Queries) MarkResetTokenUsed(ctx context.Context, arg MarkResetTokenUsedParams) error {
+	_, err := q.db.ExecContext(ctx, markResetTokenUsed, arg.Now, arg.ID)
+	return err
+}
+
 const recordFailedLogin = `-- name: RecordFailedLogin :exec
 UPDATE users
 SET failed_login_count = failed_login_count + 1,
@@ -450,5 +710,70 @@ type RotateSessionParams struct {
 // Retires a session that has been exchanged for a new one.
 func (q *Queries) RotateSession(ctx context.Context, arg RotateSessionParams) error {
 	_, err := q.db.ExecContext(ctx, rotateSession, arg.Now, arg.ReplacedByID, arg.ID)
+	return err
+}
+
+const setUserStatus = `-- name: SetUserStatus :exec
+UPDATE users SET status = ? WHERE id = ?
+`
+
+type SetUserStatusParams struct {
+	Status UsersStatus
+	ID     string
+}
+
+func (q *Queries) SetUserStatus(ctx context.Context, arg SetUserStatusParams) error {
+	_, err := q.db.ExecContext(ctx, setUserStatus, arg.Status, arg.ID)
+	return err
+}
+
+const updateUser = `-- name: UpdateUser :exec
+UPDATE users
+SET full_name = ?,
+    phone = ?,
+    birth_date = ?,
+    username = ?,
+    system_role = ?
+WHERE id = ?
+`
+
+type UpdateUserParams struct {
+	FullName   string
+	Phone      sql.NullString
+	BirthDate  sql.NullTime
+	Username   sql.NullString
+	SystemRole UsersSystemRole
+	ID         string
+}
+
+func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) error {
+	_, err := q.db.ExecContext(ctx, updateUser,
+		arg.FullName,
+		arg.Phone,
+		arg.BirthDate,
+		arg.Username,
+		arg.SystemRole,
+		arg.ID,
+	)
+	return err
+}
+
+const updateUserPassword = `-- name: UpdateUserPassword :exec
+UPDATE users
+SET password_hash = ?,
+    failed_login_count = 0,
+    locked_until = NULL
+WHERE id = ?
+`
+
+type UpdateUserPasswordParams struct {
+	PasswordHash string
+	ID           string
+}
+
+// A new password also clears the lockout: a user who was locked out and used the reset link
+// has proven they control the mailbox, and should not have to wait out the lock.
+func (q *Queries) UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error {
+	_, err := q.db.ExecContext(ctx, updateUserPassword, arg.PasswordHash, arg.ID)
 	return err
 }

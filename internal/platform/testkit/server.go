@@ -14,6 +14,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"siapp/internal/app"
+	"siapp/internal/mail"
 	"siapp/internal/platform/auth"
 	"siapp/internal/platform/clock"
 )
@@ -22,6 +23,9 @@ import (
 const TestJWTSecret = "test-secret-test-secret-test-secret-0123"
 
 const defaultRedisURL = "redis://localhost:6379/0"
+
+// DefaultResetURL is the reset page that test emails link to.
+const DefaultResetURL = "https://app.example.com/reset-password"
 
 // TestPasswordParams keep argon2 fast: tests hash and verify passwords all the time and
 // need none of the production cost.
@@ -37,6 +41,11 @@ type Deps struct {
 	Clock clock.Clock
 	// ExtraRoutes mounts routes that are not part of the API, behind the real authentication.
 	ExtraRoutes func(chi.Router)
+	// Mailer receives the emails the API sends. Defaults to a fresh mail.FakeSender; pass your
+	// own to look at what was sent.
+	Mailer mail.Sender
+	// ResetURL is the reset page the email links to. Defaults to DefaultResetURL.
+	ResetURL string
 	// RedisPrefix prefixes the Redis keys of the server. Defaults to a random one, so tests
 	// never share limiter counters or revocations; set it to look at the keys afterwards.
 	RedisPrefix string
@@ -52,6 +61,12 @@ func NewRouter(t *testing.T, deps Deps) *chi.Mux {
 	if deps.RedisPrefix == "" {
 		deps.RedisPrefix = RandomPrefix(t)
 	}
+	if deps.Mailer == nil {
+		deps.Mailer = mail.NewFakeSender()
+	}
+	if deps.ResetURL == "" {
+		deps.ResetURL = DefaultResetURL
+	}
 	return app.NewRouter(app.Deps{
 		Logger:      slog.New(slog.NewJSONHandler(io.Discard, nil)),
 		DB:          deps.DB,
@@ -60,6 +75,8 @@ func NewRouter(t *testing.T, deps Deps) *chi.Mux {
 		JWTSecret:   []byte(TestJWTSecret),
 		RedisPrefix: deps.RedisPrefix,
 		Passwords:   Passwords,
+		Mailer:      deps.Mailer,
+		ResetURL:    deps.ResetURL,
 		ExtraRoutes: deps.ExtraRoutes,
 	})
 }
@@ -69,6 +86,25 @@ func NewRouter(t *testing.T, deps Deps) *chi.Mux {
 func Revocations(t *testing.T) *auth.Revocations {
 	t.Helper()
 	return auth.NewRevocations(Redis(t), RandomPrefix(t), slog.New(slog.NewJSONHandler(io.Discard, nil)))
+}
+
+// AuthService builds an auth.Service directly, for tests that need to call it from many
+// goroutines at once or read its results without going through HTTP. It uses the cheap
+// password hasher and a revocation list of its own. A nil clock means the system clock and a
+// nil mailer a FakeSender.
+func AuthService(t *testing.T, pool *sql.DB, clk clock.Clock, mailer mail.Sender) *auth.Service {
+	t.Helper()
+	if clk == nil {
+		clk = clock.System{}
+	}
+	if mailer == nil {
+		mailer = mail.NewFakeSender()
+	}
+	return auth.NewService(auth.ServiceConfig{
+		Pool: pool, Passwords: Passwords, Tokens: auth.NewTokens([]byte(TestJWTSecret), clk), Clock: clk,
+		Revocations: Revocations(t), Mailer: mailer, ResetURL: DefaultResetURL,
+		Logger: slog.New(slog.NewJSONHandler(io.Discard, nil)),
+	})
 }
 
 // NewServer starts an httptest.Server running NewRouter and closes it when the test ends.

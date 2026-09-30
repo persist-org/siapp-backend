@@ -20,6 +20,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"siapp/internal/app"
+	"siapp/internal/mail"
 	"siapp/internal/platform/config"
 	"siapp/internal/platform/database"
 	"siapp/internal/platform/httpx"
@@ -74,6 +75,20 @@ func run() error {
 		return fmt.Errorf("ping redis: %w", err)
 	}
 
+	// Config already checked SMTP_TLS, so the parse cannot fail here.
+	tlsMode, err := mail.ParseTLSMode(cfg.SMTPTLS)
+	if err != nil {
+		return err
+	}
+	smtp, err := mail.NewSMTPSender(mail.SMTPConfig{
+		Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.SMTPUsername, Password: cfg.SMTPPassword,
+		From: cfg.SMTPFrom, TLS: tlsMode,
+	})
+	if err != nil {
+		return err
+	}
+	mailer := mail.NewAsync(smtp, logger)
+
 	router := app.NewRouter(app.Deps{
 		Logger:         logger,
 		DB:             pool,
@@ -81,6 +96,8 @@ func run() error {
 		JWTSecret:      []byte(cfg.JWTSecret),
 		CORSOrigins:    cfg.CORSOrigins,
 		ClientIPHeader: cfg.ClientIPHeader,
+		Mailer:         mailer,
+		ResetURL:       cfg.AppResetURL,
 	})
 	srv := httpx.NewServer(cfg.HTTPAddr, router)
 
@@ -105,6 +122,12 @@ func run() error {
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		return fmt.Errorf("shutdown http server: %w", err)
+	}
+	// Mail is sent in the background. Now that no request can start a new delivery, give the
+	// ones still under way a chance to finish, so a reset link asked for just before a
+	// restart is not silently lost.
+	if err := mailer.Wait(shutdownCtx); err != nil {
+		logger.Warn("some emails may not have been sent before shutdown", "error", err)
 	}
 	logger.Info("shutdown complete")
 	return nil

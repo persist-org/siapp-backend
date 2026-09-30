@@ -188,26 +188,36 @@ func (s *Service) LogoutAll(ctx context.Context, userID string) (int64, error) {
 	var recent []string
 	var ended int64
 
-	// One transaction, and the read locks its range: a login that races with this call
-	// cannot insert a session between the read and the revoke and escape the list.
 	err := database.WithTx(ctx, s.pool, func(q *db.Queries) error {
 		var err error
-		if recent, err = q.ListRecentSessionIDsByUser(ctx, db.ListRecentSessionIDsByUserParams{
-			UserID: userID, Since: recentSince(now),
-		}); err != nil {
-			return fmt.Errorf("list recent sessions: %w", err)
-		}
-		if ended, err = q.RevokeUserSessions(ctx, db.RevokeUserSessionsParams{
-			UserID: userID,
-			Now:    sql.NullTime{Time: now, Valid: true},
-		}); err != nil {
-			return fmt.Errorf("revoke user sessions: %w", err)
-		}
-		return nil
+		recent, ended, err = revokeAllSessions(ctx, q, userID, now)
+		return err
 	})
 	if err != nil {
 		return 0, err
 	}
 	s.revocations.Revoke(ctx, recent...)
 	return ended, nil
+}
+
+// revokeAllSessions ends every session of the user inside the caller's transaction. It
+// returns the IDs whose access tokens can still be alive, so that the caller can put them on
+// the revocation list once the transaction has committed, and how many sessions were active.
+// Account disabling and password reset call it in the same transaction as their own change.
+//
+// The read locks its range, so a login that races with this call cannot insert a session
+// between the read and the revoke and escape the list.
+func revokeAllSessions(ctx context.Context, q *db.Queries, userID string, now time.Time) (recent []string, ended int64, err error) {
+	if recent, err = q.ListRecentSessionIDsByUser(ctx, db.ListRecentSessionIDsByUserParams{
+		UserID: userID, Since: recentSince(now),
+	}); err != nil {
+		return nil, 0, fmt.Errorf("list recent sessions: %w", err)
+	}
+	if ended, err = q.RevokeUserSessions(ctx, db.RevokeUserSessionsParams{
+		UserID: userID,
+		Now:    sql.NullTime{Time: now, Valid: true},
+	}); err != nil {
+		return nil, 0, fmt.Errorf("revoke user sessions: %w", err)
+	}
+	return recent, ended, nil
 }

@@ -371,7 +371,7 @@ func TestParallelRefreshExactlyOneSucceeds(t *testing.T) {
 	user := testkit.CreateUser(t, pool, testkit.UserOpts{})
 
 	clk := clock.System{}
-	service := auth.NewService(pool, testkit.Passwords, auth.NewTokens([]byte(testkit.TestJWTSecret), clk), clk, testkit.Revocations(t))
+	service := testkit.AuthService(t, pool, clk, nil)
 	login, err := service.Login(t.Context(), auth.LoginInput{Identifier: user.Email, Password: user.Password})
 	require.NoError(t, err)
 

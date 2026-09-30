@@ -126,3 +126,76 @@ FROM sessions s1
 JOIN sessions s2 ON s2.family_id = s1.family_id
 WHERE s1.id = sqlc.arg('session_id') AND s1.user_id = sqlc.arg('user_id')
   AND s2.last_used_at > sqlc.arg('since');
+
+-- name: GetUserByID :one
+SELECT * FROM users WHERE id = sqlc.arg('id') AND deleted_at IS NULL;
+
+-- name: GetUserByIDForUpdate :one
+-- Locks the row: a change to a user reads it, decides, and writes inside one transaction,
+-- so two admins editing the same user cannot overwrite each other unnoticed.
+SELECT * FROM users WHERE id = sqlc.arg('id') AND deleted_at IS NULL FOR UPDATE;
+
+-- name: GetActiveUserByEmail :one
+-- Only an ACTIVE user can ask for a password reset link.
+SELECT * FROM users
+WHERE email = sqlc.arg('email') AND status = 'ACTIVE' AND deleted_at IS NULL;
+
+-- name: ListUsers :many
+-- Newest first. Keyset pagination in the form the README requires: MySQL uses the index
+-- reliably only with the expanded OR, not with a row-constructor comparison.
+-- search is a LIKE pattern built by the caller (wildcards in user input already escaped).
+SELECT * FROM users
+WHERE deleted_at IS NULL
+  AND (sqlc.narg('status') IS NULL OR status = sqlc.narg('status'))
+  AND (sqlc.narg('search') IS NULL
+       OR full_name LIKE sqlc.narg('search')
+       OR email LIKE sqlc.narg('search')
+       OR username LIKE sqlc.narg('search'))
+  AND (sqlc.narg('cursor_time') IS NULL
+       OR created_at < sqlc.narg('cursor_time')
+       OR (created_at = sqlc.narg('cursor_time') AND id < sqlc.narg('cursor_id')))
+ORDER BY created_at DESC, id DESC
+LIMIT ?;
+
+-- name: UpdateUser :exec
+UPDATE users
+SET full_name = sqlc.arg('full_name'),
+    phone = sqlc.narg('phone'),
+    birth_date = sqlc.narg('birth_date'),
+    username = sqlc.narg('username'),
+    system_role = sqlc.arg('system_role')
+WHERE id = sqlc.arg('id');
+
+-- name: SetUserStatus :exec
+UPDATE users SET status = sqlc.arg('status') WHERE id = sqlc.arg('id');
+
+-- name: UpdateUserPassword :exec
+-- A new password also clears the lockout: a user who was locked out and used the reset link
+-- has proven they control the mailbox, and should not have to wait out the lock.
+UPDATE users
+SET password_hash = sqlc.arg('password_hash'),
+    failed_login_count = 0,
+    locked_until = NULL
+WHERE id = sqlc.arg('id');
+
+-- name: InvalidateUnusedResetTokens :exec
+-- Only the newest link may work: asking again replaces the earlier one.
+UPDATE password_reset_tokens
+SET used_at = sqlc.arg('now')
+WHERE user_id = sqlc.arg('user_id') AND used_at IS NULL;
+
+-- name: CreateResetToken :exec
+INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at)
+VALUES (sqlc.arg('id'), sqlc.arg('user_id'), sqlc.arg('token_hash'), sqlc.arg('expires_at'));
+
+-- name: GetResetTokenForUpdate :one
+-- ⚠ FOR UPDATE OF t: two requests with the same link are serialised, so the link works once.
+SELECT t.id, t.user_id, t.expires_at, t.used_at,
+       u.email, u.username, u.status AS user_status, u.deleted_at AS user_deleted_at
+FROM password_reset_tokens t
+JOIN users u ON u.id = t.user_id
+WHERE t.token_hash = sqlc.arg('token_hash')
+FOR UPDATE OF t;
+
+-- name: MarkResetTokenUsed :exec
+UPDATE password_reset_tokens SET used_at = sqlc.arg('now') WHERE id = sqlc.arg('id');

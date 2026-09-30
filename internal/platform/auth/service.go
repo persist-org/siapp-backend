@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	"siapp/internal/db"
+	"siapp/internal/mail"
 	"siapp/internal/platform/clock"
 	"siapp/internal/platform/database"
 )
@@ -25,16 +27,36 @@ type Service struct {
 	clock     clock.Clock
 	// revocations cuts off the access tokens of sessions that are ended.
 	revocations *Revocations
+	mailer      mail.Sender
+	resetURL    string
+	logger      *slog.Logger
 
 	dummyOnce sync.Once
 	dummyHash string
 }
 
+// ServiceConfig is what the Service is built from.
+type ServiceConfig struct {
+	Pool        *sql.DB
+	Passwords   *Passwords
+	Tokens      *Tokens
+	Clock       clock.Clock
+	Revocations *Revocations
+	// Mailer sends the password reset email. In production it is an mail.Async around the
+	// SMTP sender, see mail.Async for why.
+	Mailer mail.Sender
+	// ResetURL is the page of the client app that takes a reset token, e.g.
+	// "https://app.example.com/reset-password". The token is added as ?token=...
+	ResetURL string
+	Logger   *slog.Logger
+}
+
 // NewService returns the auth Service.
-func NewService(pool *sql.DB, passwords *Passwords, tokens *Tokens, c clock.Clock, revocations *Revocations) *Service {
+func NewService(cfg ServiceConfig) *Service {
 	return &Service{
-		pool: pool, q: db.New(pool), passwords: passwords, tokens: tokens, clock: c,
-		revocations: revocations,
+		pool: cfg.Pool, q: db.New(cfg.Pool), passwords: cfg.Passwords, tokens: cfg.Tokens,
+		clock: cfg.Clock, revocations: cfg.Revocations, mailer: cfg.Mailer,
+		resetURL: cfg.ResetURL, logger: cfg.Logger,
 	}
 }
 

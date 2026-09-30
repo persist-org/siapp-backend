@@ -14,12 +14,14 @@ import (
 type Handler struct {
 	service  *Service
 	clientIP func(*http.Request) string
-	limiter  *httpx.FailureLimiter
+	// limiter counts failed logins; rates limits requests, such as forgot-password.
+	limiter *httpx.FailureLimiter
+	rates   *httpx.RateLimiter
 }
 
 // NewHandler returns the auth Handler. clientIP extracts the caller's address.
-func NewHandler(service *Service, clientIP func(*http.Request) string, limiter *httpx.FailureLimiter) *Handler {
-	return &Handler{service: service, clientIP: clientIP, limiter: limiter}
+func NewHandler(service *Service, clientIP func(*http.Request) string, limiter *httpx.FailureLimiter, rates *httpx.RateLimiter) *Handler {
+	return &Handler{service: service, clientIP: clientIP, limiter: limiter, rates: rates}
 }
 
 // login checks two failure limits before the password is verified, and counts a failure
@@ -119,6 +121,58 @@ func (h *Handler) logoutAll(w http.ResponseWriter, r *http.Request) {
 		Message:       "Anda telah keluar dari semua perangkat.",
 		SessionsEnded: ended,
 	})
+}
+
+// forgotPassword always answers 202, whether or not the email has an account, so that it
+// cannot be used to find out which addresses are registered.
+//
+// ⚠ Every request counts against the limits, known address or not, so that being limited
+// reveals nothing either. Two limits, for two different abuses:
+//   - per IP, 30 per 15 minutes: a flood guard. Generous, because a whole site can share one IP;
+//   - per email address, 3 per 15 minutes, from anywhere: stops anyone from filling a victim's
+//     inbox with reset mails. The price is that someone who knows an address can make it
+//     unable to ask for a link for a few minutes; the links that were sent keep working.
+//
+// The IP limit is checked first, so a blocked IP does not use up an address's allowance.
+func (h *Handler) forgotPassword(w http.ResponseWriter, r *http.Request) {
+	var req ForgotPasswordRequest
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	if allowed, retryAfter := h.rates.Allow(r.Context(), "forgot-ip", h.clientIP(r), httpx.PerPeriod(forgotPerIP, forgotWindow)); !allowed {
+		httpx.TooManyRequests(w, r, retryAfter)
+		return
+	}
+	sum := sha256.Sum256([]byte(normalizeIdentifier(string(req.Email))))
+	if allowed, retryAfter := h.rates.Allow(r.Context(), "forgot-email", hex.EncodeToString(sum[:]), httpx.PerPeriod(forgotPerEmail, forgotWindow)); !allowed {
+		httpx.TooManyRequests(w, r, retryAfter)
+		return
+	}
+
+	if err := h.service.RequestPasswordReset(r.Context(), string(req.Email)); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusAccepted, MessageResponse{
+		Message: "Jika email terdaftar, tautan untuk mengatur ulang kata sandi telah dikirim.",
+	})
+}
+
+// resetPassword is public: the token in the body is the credential. Tokens are 256 bits of
+// randomness, so there is nothing to guess and no failure limit is needed.
+func (h *Handler) resetPassword(w http.ResponseWriter, r *http.Request) {
+	var req ResetPasswordRequest
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	if err := h.service.ResetPassword(r.Context(), req.Token, req.NewPassword); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, MessageResponse{Message: "Kata sandi berhasil diubah. Silakan masuk dengan kata sandi baru."})
 }
 
 // loginFailureRules are the limits that apply to a login attempt from ip for identifier.

@@ -1,6 +1,7 @@
 package httpx
 
 import (
+	"context"
 	"log/slog"
 	"math"
 	"net"
@@ -40,27 +41,43 @@ func NewRateLimiter(rdb redis.UniversalClient, prefix string, logger *slog.Logge
 // logged, because refusing everything whenever Redis blips would be a worse outage than
 // briefly losing a rate limit.
 func (l *RateLimiter) PerMinute(name string, limit int, clientIP func(*http.Request) string) func(http.Handler) http.Handler {
-	rate := redis_rate.PerMinute(limit)
+	rate := PerPeriod(limit, time.Minute)
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			key := l.prefix + name + ":" + clientIP(r)
-			res, err := l.limiter.Allow(r.Context(), key, rate)
-			if err != nil {
-				l.logger.ErrorContext(r.Context(), "rate limiter unavailable, allowing request",
-					slog.String("limit", name),
-					slog.String("error", err.Error()),
-					slog.String("requestId", RequestID(r.Context())),
-				)
-				next.ServeHTTP(w, r)
-				return
-			}
-			if res.Allowed == 0 {
-				TooManyRequests(w, r, res.RetryAfter)
+			if allowed, retryAfter := l.Allow(r.Context(), name, clientIP(r), rate); !allowed {
+				TooManyRequests(w, r, retryAfter)
 				return
 			}
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// Limit is a rate: n requests per period, with bursts of up to n.
+type Limit = redis_rate.Limit
+
+// PerPeriod returns a limit of n requests per period, e.g. PerPeriod(3, 15*time.Minute).
+// It is a smooth limit, not a fixed window: requests are refilled evenly, so after a burst
+// of n the next one is allowed after period/n.
+func PerPeriod(n int, period time.Duration) Limit {
+	return Limit{Rate: n, Burst: n, Period: period}
+}
+
+// Allow counts one request for key under the named limit and reports whether it is within
+// the limit; when it is not, retryAfter says how long to wait. It is for handlers whose key
+// is not known until the body is read, such as an email address. It fails open, see
+// PerMinute.
+func (l *RateLimiter) Allow(ctx context.Context, name, key string, limit Limit) (allowed bool, retryAfter time.Duration) {
+	res, err := l.limiter.Allow(ctx, l.prefix+name+":"+key, limit)
+	if err != nil {
+		l.logger.ErrorContext(ctx, "rate limiter unavailable, allowing request",
+			slog.String("limit", name),
+			slog.String("error", err.Error()),
+			slog.String("requestId", RequestID(ctx)),
+		)
+		return true, 0
+	}
+	return res.Allowed > 0, res.RetryAfter
 }
 
 // TooManyRequests writes the standard 429 RATE_LIMITED response with a Retry-After header,

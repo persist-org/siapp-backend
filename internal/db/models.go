@@ -106,6 +106,16 @@ type AuditLog struct {
 	CreatedAt  time.Time
 }
 
+type PasswordResetToken struct {
+	ID        string
+	UserID    string
+	TokenHash string
+	ExpiresAt time.Time
+	UsedAt    sql.NullTime
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
 type Session struct {
 	ID               string
 	UserID           string

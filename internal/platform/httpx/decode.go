@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"reflect"
+	"regexp"
 	"strings"
 
 	"github.com/go-playground/validator/v10"
@@ -46,8 +47,23 @@ func newValidator() *validator.Validate {
 	if err := v.RegisterValidation("uuid7", isUUIDv7); err != nil {
 		panic("httpx: register uuid7 validator: " + err.Error())
 	}
+	if err := v.RegisterValidation("username", func(fl validator.FieldLevel) bool { return ValidUsername(fl.Field().String()) }); err != nil {
+		panic("httpx: register username validator: " + err.Error())
+	}
+	if err := v.RegisterValidation("notblank", func(fl validator.FieldLevel) bool { return strings.TrimSpace(fl.Field().String()) != "" }); err != nil {
+		panic("httpx: register notblank validator: " + err.Error())
+	}
 	return v
 }
+
+// usernamePattern is 3 to 50 letters, digits, dots, underscores and hyphens.
+//
+// ⚠ It must never allow '@'. A login identifier is an email or a username, told apart by
+// the '@'; a username that contained one could collide with someone else's email.
+var usernamePattern = regexp.MustCompile(`^[A-Za-z0-9._-]{3,50}$`)
+
+// ValidUsername reports whether s is an acceptable username.
+func ValidUsername(s string) bool { return usernamePattern.MatchString(s) }
 
 // isUUIDv7 accepts only the canonical lowercase 36-character form of a version 7 UUID.
 //
@@ -167,6 +183,10 @@ func tagMessage(fe validator.FieldError) string {
 		return "harus berupa UUID yang valid"
 	case "email":
 		return "harus berupa email yang valid"
+	case "username":
+		return "harus 3 sampai 50 karakter: huruf, angka, titik, garis bawah atau tanda hubung"
+	case "notblank":
+		return "tidak boleh kosong"
 	case "min":
 		return "terlalu kecil atau terlalu pendek (minimum " + fe.Param() + ")"
 	case "max":

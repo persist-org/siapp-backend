@@ -161,6 +161,225 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthenticated"
 
+  /api/v1/auth/forgot-password:
+    post:
+      operationId: forgotPassword
+      summary: Ask for a password reset link
+      description: >
+        Public. Always answers 202 with the same body, whether or not the email has an account,
+        so it cannot be used to find out which addresses are registered. For an ACTIVE user
+        an email with a single-use link, valid for 1 hour, is sent; asking again replaces the
+        earlier link. Every request counts toward the limits, including ones for unknown
+        addresses: 30 per 15 minutes per client IP, and 3 per 15 minutes per email address.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ForgotPasswordRequest"
+      responses:
+        "202":
+          description: Accepted. A link is sent if the address belongs to an active account.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimitedWithRetryAfter"
+
+  /api/v1/auth/reset-password:
+    post:
+      operationId: resetPassword
+      summary: Set a new password with a reset link's token
+      description: >
+        Public: the token from the emailed link is the credential. On success the password is
+        replaced, the lockout is cleared, and every session of the user is ended, so all
+        devices have to log in again. The link works once. A password that breaks the rules
+        (`AUTH_PASSWORD_WEAK`) does not use the link up.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResetPasswordRequest"
+      responses:
+        "200":
+          description: The password is changed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        "400":
+          description: >
+            The body is invalid (`VALIDATION_FAILED`), the link is unknown, expired or already
+            used (`AUTH_RESET_INVALID`), or the new password breaks the rules
+            (`AUTH_PASSWORD_WEAK`: at least 8 characters, not the email name or username).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/v1/admin/users:
+    post:
+      operationId: createUser
+      summary: Create a user (admin)
+      description: >
+        Creates an ACTIVE user who can log in at once, with no activation step. The password is
+        the birthdate as `DDMMYYYY` (for example 1994-05-10 gives `10051994`); it is never
+        returned, and the user is not forced to change it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserRequest"
+      responses:
+        "201":
+          description: The user was created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUser"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "409":
+          description: The email (`USER_EMAIL_TAKEN`) or the username (`USER_USERNAME_TAKEN`) is already used.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    get:
+      operationId: listUsers
+      summary: List users (admin)
+      description: Newest first, with cursor pagination.
+      parameters:
+        - $ref: "#/components/parameters/Q"
+        - name: status
+          in: query
+          schema: { type: string, enum: [ACTIVE, DISABLED] }
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: One page of users.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUserPage"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+
+  /api/v1/admin/users/{id}:
+    parameters:
+      - $ref: "#/components/parameters/UserId"
+    get:
+      operationId: getUser
+      summary: Get one user (admin)
+      responses:
+        "200":
+          description: The user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUser"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/UserNotFound"
+    patch:
+      operationId: updateUser
+      summary: Change a user's profile (admin)
+      description: >
+        Every field is optional and a missing one is left alone; send at least one. An empty
+        `username` or `phone` clears it. Changing `birthDate` does not change the password. An
+        admin cannot change their own role.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserRequest"
+      responses:
+        "200":
+          description: The user after the change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUser"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/UserNotFound"
+        "409":
+          description: >
+            The username is already used (`USER_USERNAME_TAKEN`), or an admin tried to change
+            their own role (`CONFLICT`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/v1/admin/users/{id}/disable:
+    parameters:
+      - $ref: "#/components/parameters/UserId"
+    post:
+      operationId: disableUser
+      summary: Disable a user (admin)
+      description: >
+        The user can no longer log in or refresh, and every session is ended at once, including
+        the access tokens. Disabling a user who is already disabled changes nothing. An admin
+        cannot disable their own account.
+      responses:
+        "200":
+          description: The user after the change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUser"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/UserNotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/admin/users/{id}/enable:
+    parameters:
+      - $ref: "#/components/parameters/UserId"
+    post:
+      operationId: enableUser
+      summary: Enable a disabled user (admin)
+      responses:
+        "200":
+          description: The user after the change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUser"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/UserNotFound"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -198,6 +417,11 @@ components:
       in: query
       description: Page size. Values above 100 are clamped to 100.
       schema: { type: integer, minimum: 1, default: 20 }
+    UserId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
 
   responses:
     ValidationFailed:
@@ -227,6 +451,20 @@ components:
           schema: { $ref: "#/components/schemas/Error" }
     RateLimited:
       description: Too many requests (`RATE_LIMITED`).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    RateLimitedWithRetryAfter:
+      description: Too many requests (`RATE_LIMITED`). `Retry-After` gives the seconds to wait.
+      headers:
+        Retry-After:
+          description: Seconds until the limit allows another request.
+          schema: { type: integer, minimum: 1 }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    UserNotFound:
+      description: No such user (`USER_NOT_FOUND`).
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
@@ -262,6 +500,95 @@ components:
           type: string
           minLength: 1
           maxLength: 256
+
+    Message:
+      type: object
+      required: [message]
+      additionalProperties: false
+      properties:
+        message:
+          type: string
+          description: Indonesian text that is safe to show to users.
+
+    ForgotPasswordRequest:
+      type: object
+      required: [email]
+      additionalProperties: false
+      properties:
+        email: { type: string, maxLength: 255 }
+
+    ResetPasswordRequest:
+      type: object
+      required: [token, newPassword]
+      additionalProperties: false
+      properties:
+        token:
+          type: string
+          minLength: 1
+          maxLength: 256
+          description: The `token` from the emailed link.
+        newPassword:
+          type: string
+          minLength: 1
+          maxLength: 256
+
+    CreateUserRequest:
+      type: object
+      required: [email, fullName, birthDate, systemRole]
+      additionalProperties: false
+      properties:
+        email: { type: string, maxLength: 255 }
+        username:
+          type: string
+          pattern: '^[A-Za-z0-9._-]{3,50}$'
+          description: Optional. Letters, digits, dot, underscore and hyphen; never an "@".
+        fullName: { type: string, minLength: 1, maxLength: 150 }
+        phone: { type: string, maxLength: 30 }
+        birthDate:
+          type: string
+          format: date
+          description: Also the user's starting password, as `DDMMYYYY`.
+        systemRole: { type: string, enum: [ADMIN, MEMBER] }
+
+    UpdateUserRequest:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        fullName: { type: string, minLength: 1, maxLength: 150 }
+        phone: { type: string, maxLength: 30, description: Empty clears it. }
+        username: { type: string, maxLength: 50, description: Empty clears it. }
+        birthDate: { type: string, format: date }
+        systemRole: { type: string, enum: [ADMIN, MEMBER] }
+
+    AdminUser:
+      type: object
+      required: [id, email, username, fullName, phone, birthDate, systemRole, status, lastLoginAt, createdAt]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string }
+        username: { type: string, nullable: true }
+        fullName: { type: string }
+        phone: { type: string, nullable: true }
+        birthDate: { type: string, format: date, nullable: true }
+        systemRole: { type: string, enum: [ADMIN, MEMBER] }
+        status: { type: string, enum: [ACTIVE, DISABLED] }
+        lastLoginAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    AdminUserPage:
+      type: object
+      required: [items, nextCursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/AdminUser" }
+        nextCursor:
+          type: string
+          nullable: true
+          description: Pass as `cursor` to get the next page. Null on the last page.
 
     LogoutResponse:
       type: object

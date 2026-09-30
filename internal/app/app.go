@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/redis/go-redis/v9"
 
+	"siapp/internal/mail"
 	"siapp/internal/platform/auth"
 	"siapp/internal/platform/clock"
 	"siapp/internal/platform/httpx"
@@ -29,6 +30,10 @@ type Deps struct {
 	RedisPrefix string
 	// Passwords defaults to argon2id with DefaultPasswordParams. Tests pass a cheaper one.
 	Passwords *auth.Passwords
+	// Mailer sends email. In production it is an mail.Async around the SMTP sender.
+	Mailer mail.Sender
+	// ResetURL is the client app page that takes a reset token, see config.AppResetURL.
+	ResetURL string
 	// ExtraRoutes mounts additional routes. They sit behind the same authentication as the
 	// real ones; tests use it to add a route that is not part of the API.
 	ExtraRoutes func(chi.Router)
@@ -57,9 +62,13 @@ func NewRouter(d Deps) *chi.Mux {
 
 	clientIP := httpx.ClientIPFunc(d.ClientIPHeader)
 	failures := httpx.NewFailureLimiter(d.Redis, d.RedisPrefix, d.Logger)
+	rates := httpx.NewRateLimiter(d.Redis, d.RedisPrefix, d.Logger)
 
-	authService := auth.NewService(d.DB, passwords, tokens, clk, revocations)
-	auth.NewHandler(authService, clientIP, failures).Routes(router)
+	authService := auth.NewService(auth.ServiceConfig{
+		Pool: d.DB, Passwords: passwords, Tokens: tokens, Clock: clk, Revocations: revocations,
+		Mailer: d.Mailer, ResetURL: d.ResetURL, Logger: d.Logger,
+	})
+	auth.NewHandler(authService, clientIP, failures, rates).Routes(router)
 
 	if d.ExtraRoutes != nil {
 		d.ExtraRoutes(router)

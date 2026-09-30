@@ -27,6 +27,9 @@ var PublicRoutes = []Route{
 	// Refresh authenticates with the refresh token in its body; the access token has
 	// usually expired by then.
 	{http.MethodPost, "/api/v1/auth/refresh"},
+	// Password recovery is for people who cannot log in. The reset token is the credential.
+	{http.MethodPost, "/api/v1/auth/forgot-password"},
+	{http.MethodPost, "/api/v1/auth/reset-password"},
 }
 
 // Principal is the authenticated caller, taken from the access token.
@@ -86,6 +89,27 @@ func Require(tokens *Tokens, revocations *Revocations) func(http.Handler) http.H
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+// RequireAdmin lets only administrators through, with 403 PERMISSION_DENIED for everyone else.
+// Mount it on admin routes; authentication (Require) has already happened by then.
+//
+// The role comes from the access token, so a user demoted from admin keeps admin access until
+// their token expires or they refresh, at most 15 minutes. Refresh reads the role fresh from
+// the database, and demoting someone, unlike disabling them, does not end their sessions.
+func RequireAdmin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p, ok := From(r.Context())
+		if !ok {
+			httpx.Error(w, r, apperr.ErrUnauthenticated)
+			return
+		}
+		if p.SystemRole != db.UsersSystemRoleADMIN {
+			httpx.Error(w, r, apperr.ErrPermissionDenied)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func authenticate(tokens *Tokens, r *http.Request) (Claims, error) {
