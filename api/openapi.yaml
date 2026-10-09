@@ -380,6 +380,226 @@ paths:
         "404":
           $ref: "#/components/responses/UserNotFound"
 
+  /api/v1/auth/help:
+    get:
+      operationId: listLoginHelp
+      summary: Help articles for people who cannot log in
+      description: >
+        Public, because the people who need it cannot log in. Only published articles, in the
+        order admins set. The list is short and returned whole, so `nextCursor` is always null.
+      security: []
+      responses:
+        "200":
+          description: The published articles.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HelpArticlePage"
+
+  /api/v1/me:
+    get:
+      operationId: getMe
+      summary: The signed-in user's profile
+      description: >
+        The same fields as `user` in the login response. The birth date is not included: it is
+        also the default password.
+      responses:
+        "200":
+          description: The profile.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+    patch:
+      operationId: updateMe
+      summary: Change the signed-in user's phone number
+      description: >
+        Only the phone number can be changed here; admins edit the rest of the biodata. An
+        empty string clears the number.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMeRequest"
+      responses:
+        "200":
+          description: The profile after the change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+
+  /api/v1/me/password:
+    post:
+      operationId: changePassword
+      summary: Change the signed-in user's password
+      description: >
+        Needs the current password. On success every other device is signed out (refresh tokens
+        and access tokens) and the device making the call stays signed in. Wrong guesses of the
+        current password are limited to 5 per 15 minutes per user; the account is not locked by
+        them.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordRequest"
+      responses:
+        "200":
+          description: The password is changed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        "400":
+          description: >
+            The body is invalid (`VALIDATION_FAILED`), the current password is wrong
+            (`AUTH_CURRENT_PASSWORD_WRONG`, a 400 and not a 401 so that clients do not treat it as
+            an expired session), or the new password breaks the rules (`AUTH_PASSWORD_WEAK`: at
+            least 8 characters, not the email name or username, different from the current one).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "429":
+          $ref: "#/components/responses/RateLimitedWithRetryAfter"
+
+  /api/v1/me/device:
+    put:
+      operationId: putDevice
+      summary: Register or update the device for push notifications
+      description: >
+        There is one device per login. Calling it again updates the device. The device stays
+        registered across token refreshes and is removed when the login ends (logout, logout-all,
+        password reset, the account being disabled). A push token belongs to one device: saving
+        it removes it from any other device that had it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceRequest"
+      responses:
+        "200":
+          description: The registered device.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Device"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+
+  /api/v1/admin/login-help:
+    post:
+      operationId: createLoginHelp
+      summary: Add a login help article (admin)
+      description: >
+        A new article is a draft (`published` is false) unless the request says otherwise.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateHelpRequest"
+      responses:
+        "201":
+          description: The article.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminHelpArticle"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+    get:
+      operationId: listLoginHelpAdmin
+      summary: List all login help articles, drafts included (admin)
+      responses:
+        "200":
+          description: Every article, in display order.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminHelpArticlePage"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+
+  /api/v1/admin/login-help/{id}:
+    parameters:
+      - $ref: "#/components/parameters/HelpId"
+    get:
+      operationId: getLoginHelp
+      summary: Get one login help article (admin)
+      responses:
+        "200":
+          description: The article.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminHelpArticle"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateLoginHelp
+      summary: Change a login help article (admin)
+      description: Every field is optional; send at least one. Use `published` to publish or hide it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateHelpRequest"
+      responses:
+        "200":
+          description: The article after the change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminHelpArticle"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteLoginHelp
+      summary: Delete a login help article (admin)
+      responses:
+        "200":
+          description: The article is deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -418,6 +638,11 @@ components:
       description: Page size. Values above 100 are clamped to 100.
       schema: { type: integer, minimum: 1, default: 20 }
     UserId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    HelpId:
       name: id
       in: path
       required: true
@@ -576,6 +801,105 @@ components:
         status: { type: string, enum: [ACTIVE, DISABLED] }
         lastLoginAt: { type: string, format: date-time, nullable: true }
         createdAt: { type: string, format: date-time }
+
+    UpdateMeRequest:
+      type: object
+      required: [phone]
+      additionalProperties: false
+      properties:
+        phone: { type: string, maxLength: 30, description: Empty clears it. }
+
+    ChangePasswordRequest:
+      type: object
+      required: [currentPassword, newPassword]
+      additionalProperties: false
+      properties:
+        currentPassword: { type: string, minLength: 1, maxLength: 256 }
+        newPassword: { type: string, minLength: 1, maxLength: 256 }
+
+    DeviceRequest:
+      type: object
+      required: [platform, pushToken, appVersion]
+      additionalProperties: false
+      properties:
+        platform: { type: string, enum: [ANDROID, IOS] }
+        pushToken:
+          type: string
+          minLength: 1
+          maxLength: 512
+          description: The FCM registration token. Printable ASCII only.
+        appVersion: { type: string, minLength: 1, maxLength: 32 }
+
+    Device:
+      type: object
+      required: [platform, appVersion, lastSeenAt]
+      additionalProperties: false
+      properties:
+        platform: { type: string, enum: [ANDROID, IOS] }
+        appVersion: { type: string }
+        lastSeenAt: { type: string, format: date-time }
+
+    HelpArticle:
+      type: object
+      required: [id, question, answer]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        question: { type: string }
+        answer: { type: string }
+
+    HelpArticlePage:
+      type: object
+      required: [items, nextCursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/HelpArticle" }
+        nextCursor: { type: string, nullable: true }
+
+    AdminHelpArticle:
+      type: object
+      required: [id, question, answer, sortOrder, published, createdAt, updatedAt]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        question: { type: string }
+        answer: { type: string }
+        sortOrder: { type: integer }
+        published: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    AdminHelpArticlePage:
+      type: object
+      required: [items, nextCursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/AdminHelpArticle" }
+        nextCursor: { type: string, nullable: true }
+
+    CreateHelpRequest:
+      type: object
+      required: [question, answer]
+      additionalProperties: false
+      properties:
+        question: { type: string, minLength: 1, maxLength: 300 }
+        answer: { type: string, minLength: 1, maxLength: 5000 }
+        sortOrder: { type: integer, minimum: 0, maximum: 10000, default: 0 }
+        published: { type: boolean, default: false }
+
+    UpdateHelpRequest:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        question: { type: string, minLength: 1, maxLength: 300 }
+        answer: { type: string, minLength: 1, maxLength: 5000 }
+        sortOrder: { type: integer, minimum: 0, maximum: 10000 }
+        published: { type: boolean }
 
     AdminUserPage:
       type: object

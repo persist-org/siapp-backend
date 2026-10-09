@@ -30,6 +30,8 @@ var PublicRoutes = []Route{
 	// Password recovery is for people who cannot log in. The reset token is the credential.
 	{http.MethodPost, "/api/v1/auth/forgot-password"},
 	{http.MethodPost, "/api/v1/auth/reset-password"},
+	// The login help is for people who cannot log in.
+	{http.MethodGet, "/api/v1/auth/help"},
 }
 
 // Principal is the authenticated caller, taken from the access token.

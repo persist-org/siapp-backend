@@ -19,6 +19,7 @@ const (
 	CodeUserNotFound       = "USER_NOT_FOUND"
 	CodeEmailTaken         = "USER_EMAIL_TAKEN"
 	CodeUsernameTaken      = "USER_USERNAME_TAKEN"
+	CodeCurrentPassword    = "AUTH_CURRENT_PASSWORD_WRONG" //nolint:gosec // an error code, not a secret
 )
 
 // ErrInvalidCredentials is returned for an unknown user and for a wrong password alike, so
@@ -56,3 +57,10 @@ var ErrEmailTaken = apperr.New(http.StatusConflict, CodeEmailTaken, "Email sudah
 
 // ErrUsernameTaken is returned when a username belongs to another active user.
 var ErrUsernameTaken = apperr.New(http.StatusConflict, CodeUsernameTaken, "Username sudah digunakan oleh pengguna lain.")
+
+// ErrCurrentPasswordWrong is returned when someone changing their password gets the current
+// one wrong.
+//
+// It is a 400, not a 401, on purpose: clients treat 401 as "the session has expired" and react
+// by refreshing or logging the user out, which is wrong for a mistyped password.
+var ErrCurrentPasswordWrong = apperr.New(http.StatusBadRequest, CodeCurrentPassword, "Kata sandi saat ini salah.")

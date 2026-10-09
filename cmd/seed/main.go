@@ -48,5 +48,15 @@ func run() error {
 	} else {
 		fmt.Println("seed: an admin already exists, nothing to do")
 	}
+
+	helpAdded, err := auth.SeedLoginHelp(ctx, pool)
+	if err != nil {
+		return err
+	}
+	if helpAdded > 0 {
+		fmt.Printf("seed: added %d login help articles\n", helpAdded)
+	} else {
+		fmt.Println("seed: login help articles already exist, nothing to do")
+	}
 	return nil
 }

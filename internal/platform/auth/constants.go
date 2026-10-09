@@ -62,3 +62,11 @@ const (
 
 // Bounds for a birth date given by an admin.
 const minBirthYear = 1900
+
+// Changing the password asks for the current one, so a stolen access token could be used to
+// guess it. Wrong guesses are therefore limited per user, whatever the IP. The account is NOT
+// locked: that would let anyone holding a token lock the real owner out.
+const (
+	changePasswordFailures = 5
+	changePasswordWindow   = 15 * time.Minute
+)

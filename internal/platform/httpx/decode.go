@@ -187,6 +187,8 @@ func tagMessage(fe validator.FieldError) string {
 		return "harus 3 sampai 50 karakter: huruf, angka, titik, garis bawah atau tanda hubung"
 	case "notblank":
 		return "tidak boleh kosong"
+	case "printascii":
+		return "hanya boleh berisi karakter ASCII yang dapat dicetak"
 	case "min":
 		return "terlalu kecil atau terlalu pendek (minimum " + fe.Param() + ")"
 	case "max":

@@ -1,27 +1,45 @@
-# Local infrastructure for development and tests. Start with `make up`.
+# Local stack for development and tests. Everything SiAPP talks to runs here.
 #
-# mysql and redis are opt-in (`make up-db`) because most dev machines already run native
-# ones on ports 3306 / 6379; mailpit and minio always start with `make up`.
+#   make up         postgres, redis, minio                (infrastructure only)
+#   make up-stub    + the fake Persist Personel           (from Phase 00.5)
+#   make up-app     + migrate, api, worker in containers  (from Phase 00.2)
+#   make up-cctv    + MediaMTX                            (Phase 13.2)
+name: siapp
+
+x-app: &app
+  build: .
+  env_file: .env
+  # Inside the compose network services are reached by name, not localhost.
+  environment:
+    DATABASE_URL: postgres://siapp_app:siapp_app@postgres:5432/siapp?sslmode=disable
+    MIGRATE_DSN: postgres://siapp_owner:siapp_owner@postgres:5432/siapp?sslmode=disable
+    REDIS_URL: redis://redis:6379/0
+    S3_ENDPOINT: http://minio:9000
+    PERSONEL_BASE_URL: http://personel-stub:8090
+  depends_on:
+    postgres: { condition: service_healthy }
+    redis: { condition: service_healthy }
+
 services:
-  mysql:
-    profiles: [db]
-    image: mysql:8.4
+  postgres:
+    image: postgres:16
     environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: siapp
-      MYSQL_USER: siapp
-      MYSQL_PASSWORD: siapp
-    command: ["--default-time-zone=+00:00"]
-    ports: ["3306:3306"]
-    volumes: [mysql-data:/var/lib/mysql]
+      POSTGRES_USER: siapp_owner        # owns the database, runs migrations
+      POSTGRES_PASSWORD: siapp_owner
+      POSTGRES_DB: siapp
+      TZ: UTC
+    ports: ["5432:5432"]
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      # Runs once, when the volume is first created: creates the app role siapp_app.
+      - ./deploy/postgres/init.sql:/docker-entrypoint-initdb.d/01-roles.sql:ro
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot"]
+      test: ["CMD-SHELL", "pg_isready -U siapp_owner -d siapp"]
       interval: 5s
       timeout: 3s
       retries: 20
 
   redis:
-    profiles: [db]
     image: redis:7
     ports: ["6379:6379"]
     healthcheck:
@@ -30,20 +48,54 @@ services:
       timeout: 3s
       retries: 20
 
-  # MinIO no longer publishes images (minio/minio is gone from Docker Hub), so this uses
-  # Bitnami's frozen legacy build of the same server. Local S3 for development only.
+  # minio/minio is no longer published on Docker Hub; Bitnami's frozen build of the
+  # same server is used for local S3 only.
   minio:
     image: bitnamilegacy/minio
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_DEFAULT_BUCKETS: persist-media
     ports: ["9000:9000", "9001:9001"]
     volumes: [minio-data:/bitnami/minio/data]
 
-  mailpit:
-    image: axllent/mailpit
-    ports: ["1025:1025", "8025:8025"]
+  # Fake Persist Personel (Phase 00.5): issues SSO tokens, answers NIK/org/attendance/leave calls.
+  personel-stub:
+    profiles: [stub]
+    build: .
+    entrypoint: ["/personel-stub"]
+    environment:
+      HTTP_ADDR: :8090
+    ports: ["8090:8090"]
+
+  migrate:
+    <<: *app
+    profiles: [app]
+    entrypoint: ["/migrate", "up"]
+    restart: "no"
+
+  api:
+    <<: *app
+    profiles: [app]
+    ports: ["8080:8080"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  worker:
+    <<: *app
+    profiles: [app]
+    entrypoint: ["/worker"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  # CCTV stream gateway (Phase 13.2, after the camera vendor is confirmed).
+  mediamtx:
+    profiles: [cctv]
+    image: bluenviron/mediamtx
+    ports: ["8554:8554", "8888:8888"]
 
 volumes:
-  mysql-data:
+  postgres-data:
   minio-data:

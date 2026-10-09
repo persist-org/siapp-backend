@@ -86,6 +86,10 @@ func (s *Service) Refresh(ctx context.Context, in RefreshInput) (TokenPair, erro
 			}); err != nil {
 				return fmt.Errorf("revoke session family: %w", err)
 			}
+			// A stolen chain must not keep receiving push notifications either.
+			if err := q.DeleteDevicesOfFamily(ctx, old.FamilyID); err != nil {
+				return fmt.Errorf("delete devices of family: %w", err)
+			}
 			reused = true
 			return nil
 		}
@@ -128,6 +132,12 @@ func (s *Service) Refresh(ctx context.Context, in RefreshInput) (TokenPair, erro
 		}); err != nil {
 			return fmt.Errorf("rotate session: %w", err)
 		}
+		// The device belongs to the login, not to one 15 minute session: it follows the new
+		// session, so the app does not have to register again after every refresh. (After
+		// CreateSession, because the device row points at the new session.)
+		if err := q.MoveDevice(ctx, db.MoveDeviceParams{OldSessionID: old.ID, NewSessionID: newID.String()}); err != nil {
+			return fmt.Errorf("move device to the new session: %w", err)
+		}
 
 		// The role comes from the database, so a role change reaches the user at the next
 		// refresh instead of waiting for a new login.
@@ -163,6 +173,14 @@ func (s *Service) Logout(ctx context.Context, userID, sessionID string) error {
 	})
 	if err != nil {
 		return fmt.Errorf("revoke session: %w", err)
+	}
+	// The device of this login goes too: a phone that has logged out must stop receiving push
+	// notifications meant for the user. Looked up through the session's chain, because the
+	// device now belongs to the chain's live session, which may not be the one in this token.
+	if err := s.q.DeleteDevicesOfSessionFamily(ctx, db.DeleteDevicesOfSessionFamilyParams{
+		SessionID: sessionID, UserID: userID,
+	}); err != nil {
+		return fmt.Errorf("delete device: %w", err)
 	}
 
 	// The whole chain, not just this session: an access token from the refresh just before
@@ -218,6 +236,10 @@ func revokeAllSessions(ctx context.Context, q *db.Queries, userID string, now ti
 		Now:    sql.NullTime{Time: now, Valid: true},
 	}); err != nil {
 		return nil, 0, fmt.Errorf("revoke user sessions: %w", err)
+	}
+	// With no session left there is nothing for a device to be signed in to.
+	if err = q.DeleteDevicesOfUser(ctx, userID); err != nil {
+		return nil, 0, fmt.Errorf("delete devices: %w", err)
 	}
 	return recent, ended, nil
 }

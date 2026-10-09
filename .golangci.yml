@@ -7,6 +7,15 @@ linters:
     - exhaustive
     - gosec
     - revive
+  exclusions:
+    rules:
+      # G101 guesses "hardcoded credentials" from names like "password" and "token". Test
+      # files are full of deliberate fake ones (a made-up push token, the /me/password path),
+      # so the rule is only noise there. It stays on for real code.
+      - path: _test\.go
+        linters:
+          - gosec
+        text: "G101"
 
 formatters:
   enable:

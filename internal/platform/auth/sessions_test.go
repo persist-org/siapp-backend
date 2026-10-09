@@ -492,3 +492,30 @@ func TestCleanupIsScheduled(t *testing.T) {
 	scheduler := asynq.NewScheduler(asynq.RedisClientOpt{Addr: "localhost:6379"}, &asynq.SchedulerOpts{Location: time.UTC})
 	require.NoError(t, auth.RegisterSchedule(scheduler), "the cron expression must be valid")
 }
+
+// A device is tied to its session with ON DELETE CASCADE, so the cleanup job cannot leave one
+// behind when it deletes an old session.
+func TestSessionCleanupTakesItsDeviceWithIt(t *testing.T) {
+	pool := testkit.DB(t)
+	testkit.Reset(t, pool)
+	user := testkit.CreateUser(t, pool, testkit.UserOpts{})
+
+	now := time.Now().UTC().Truncate(time.Second)
+	old := now.Add(-40 * 24 * time.Hour)
+	_, err := pool.ExecContext(t.Context(), `
+		INSERT INTO sessions (id, user_id, family_id, refresh_token_hash, remember_me, expires_at, revoked_at)
+		VALUES ('0193a5d8-7c1e-7000-8000-00000000aaaa', ?, UUID(), SHA2('old-session', 256), FALSE, ?, ?)`, user.ID, old, old)
+	require.NoError(t, err)
+	_, err = pool.ExecContext(t.Context(), `
+		INSERT INTO devices (id, user_id, session_id, platform, push_token, app_version, last_seen_at)
+		VALUES (UUID(), ?, '0193a5d8-7c1e-7000-8000-00000000aaaa', 'ANDROID', 'orphan-token', '1.0', ?)`, user.ID, old)
+	require.NoError(t, err)
+
+	deleted, err := auth.NewSessionCleaner(pool, clock.Fixed{T: now}).Cleanup(t.Context())
+	require.NoError(t, err)
+	require.EqualValues(t, 1, deleted)
+
+	var devices int
+	require.NoError(t, pool.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM devices").Scan(&devices))
+	require.Zero(t, devices)
+}
