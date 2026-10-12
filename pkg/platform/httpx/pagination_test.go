@@ -8,8 +8,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"siapp/internal/platform/apperr"
-	"siapp/internal/platform/timeutil"
+	"siapp/pkg/platform/apperr"
+	"siapp/pkg/platform/timeutil"
 )
 
 func TestCursorRoundTrip(t *testing.T) {

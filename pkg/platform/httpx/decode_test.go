@@ -10,7 +10,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"siapp/internal/platform/apperr"
+	"siapp/pkg/platform/apperr"
 )
 
 type echoRequest struct {

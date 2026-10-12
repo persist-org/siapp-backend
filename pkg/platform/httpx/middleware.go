@@ -12,7 +12,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
 
-	"siapp/internal/platform/apperr"
+	"siapp/pkg/platform/apperr"
 )
 
 // HeaderRequestID carries the request ID in both directions.

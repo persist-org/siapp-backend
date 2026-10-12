@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"siapp/internal/platform/apperr"
+	"siapp/pkg/platform/apperr"
 )
 
 // JSON writes v as a JSON response with the given status.

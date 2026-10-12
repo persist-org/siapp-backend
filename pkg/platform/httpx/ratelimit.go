@@ -13,7 +13,7 @@ import (
 	"github.com/go-redis/redis_rate/v10"
 	"github.com/redis/go-redis/v9"
 
-	"siapp/internal/platform/apperr"
+	"siapp/pkg/platform/apperr"
 )
 
 // RateLimiter limits requests per client with counters kept in Redis, so the limit holds

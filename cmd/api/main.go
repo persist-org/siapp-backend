@@ -17,19 +17,11 @@ import (
 	// there, which would break every business-date calculation in project timezones.
 	_ "time/tzdata"
 
-	"github.com/redis/go-redis/v9"
-
-	"siapp/internal/app"
-	"siapp/internal/mail"
-	"siapp/internal/platform/config"
-	"siapp/internal/platform/database"
-	"siapp/internal/platform/httpx"
+	"siapp/pkg/platform/config"
+	"siapp/pkg/platform/httpx"
 )
 
-const (
-	startupTimeout  = 30 * time.Second
-	shutdownTimeout = 20 * time.Second
-)
+const shutdownTimeout = 20 * time.Second
 
 func main() {
 	if err := run(); err != nil {
@@ -50,54 +42,12 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	startCtx, cancelStart := context.WithTimeout(ctx, startupTimeout)
-	defer cancelStart()
-	pool, err := database.Open(startCtx, cfg.MySQLDSN)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = pool.Close() }()
-
-	if cfg.MigrateOnStart {
-		if err := database.Migrate(startCtx, pool); err != nil {
-			return err
-		}
-		logger.Info("migrations applied")
-	}
-
-	redisOpts, err := redis.ParseURL(cfg.RedisURL)
-	if err != nil {
-		return fmt.Errorf("parse REDIS_URL: %w", err)
-	}
-	rdb := redis.NewClient(redisOpts)
-	defer func() { _ = rdb.Close() }()
-	if err := rdb.Ping(startCtx).Err(); err != nil {
-		return fmt.Errorf("ping redis: %w", err)
-	}
-
-	// Config already checked SMTP_TLS, so the parse cannot fail here.
-	tlsMode, err := mail.ParseTLSMode(cfg.SMTPTLS)
-	if err != nil {
-		return err
-	}
-	smtp, err := mail.NewSMTPSender(mail.SMTPConfig{
-		Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.SMTPUsername, Password: cfg.SMTPPassword,
-		From: cfg.SMTPFrom, TLS: tlsMode,
-	})
-	if err != nil {
-		return err
-	}
-	mailer := mail.NewAsync(smtp, logger)
-
-	router := app.NewRouter(app.Deps{
-		Logger:         logger,
-		DB:             pool,
-		Redis:          rdb,
-		JWTSecret:      []byte(cfg.JWTSecret),
-		CORSOrigins:    cfg.CORSOrigins,
-		ClientIPHeader: cfg.ClientIPHeader,
-		Mailer:         mailer,
-		ResetURL:       cfg.AppResetURL,
+	router := httpx.NewRouter(httpx.RouterConfig{
+		Logger:      logger,
+		CORSOrigins: cfg.CORSOrigins,
+		// Phase 01.1 replaces this with auth.Require (default-deny). Until then the API
+		// serves nothing but GET /api/v1/health, which is public anyway.
+		Authenticate: func(next http.Handler) http.Handler { return next },
 	})
 	srv := httpx.NewServer(cfg.HTTPAddr, router)
 
@@ -122,12 +72,6 @@ func run() error {
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		return fmt.Errorf("shutdown http server: %w", err)
-	}
-	// Mail is sent in the background. Now that no request can start a new delivery, give the
-	// ones still under way a chance to finish, so a reset link asked for just before a
-	// restart is not silently lost.
-	if err := mailer.Wait(shutdownCtx); err != nil {
-		logger.Warn("some emails may not have been sent before shutdown", "error", err)
 	}
 	logger.Info("shutdown complete")
 	return nil

@@ -59,7 +59,7 @@ services:
     ports: ["9000:9000", "9001:9001"]
     volumes: [minio-data:/bitnami/minio/data]
 
-  # Fake Persist Personel (Phase 00.5): issues SSO tokens, answers NIK/org/attendance/leave calls.
+  # Fake Persist Personel (Phase 00.5): answers the integration login, NIK/org/attendance/leave calls.
   personel-stub:
     profiles: [stub]
     build: .

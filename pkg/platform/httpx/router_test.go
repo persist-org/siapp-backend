@@ -15,8 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeDB stands in for the database in tests that exercise middleware only; the real
-// database is covered by health_test.go through testkit.
+// fakeDB stands in for the database in tests that exercise middleware only. Phase 00.2
+// adds a health test against the real database through testkit.
 type fakeDB struct{ err error }
 
 func (f fakeDB) PingContext(context.Context) error { return f.err }
@@ -81,6 +81,23 @@ func TestHealth(t *testing.T) {
 			require.NotEqual(t, id, got)
 		}
 	})
+}
+
+func TestHealthWithoutDatabase(t *testing.T) {
+	router := NewRouter(RouterConfig{
+		Logger:       slog.New(slog.NewJSONHandler(io.Discard, nil)),
+		Authenticate: func(next http.Handler) http.Handler { return next },
+	})
+	srv := httptest.NewServer(router)
+	t.Cleanup(srv.Close)
+
+	res := get(t, srv.URL+"/api/v1/health", http.Header{HeaderRequestID: {"req-no-db"}})
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	require.Equal(t, "req-no-db", res.Header.Get(HeaderRequestID))
+
+	var body map[string]string
+	require.NoError(t, json.NewDecoder(res.Body).Decode(&body))
+	require.Equal(t, map[string]string{"status": "ok"}, body)
 }
 
 func TestNewRouterRequiresAuthenticate(t *testing.T) {

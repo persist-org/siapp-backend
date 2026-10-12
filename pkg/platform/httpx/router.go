@@ -9,7 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"siapp/internal/platform/apperr"
+	"siapp/pkg/platform/apperr"
 )
 
 const healthPingTimeout = 2 * time.Second
@@ -23,7 +23,9 @@ type Pinger interface {
 type RouterConfig struct {
 	Logger      *slog.Logger
 	CORSOrigins []string
-	DB          Pinger
+	// DB is pinged by the health check. Nil skips the check: the API has no database until
+	// Phase 00.2 wires Postgres, and from then on cmd/api always sets it.
+	DB Pinger
 	// Authenticate is the authentication middleware (auth.Require). It is required and has
 	// no default: a router that forgot it would serve every route to anonymous callers.
 	// Tests that exercise other middleware pass a no-op explicitly.
@@ -54,6 +56,10 @@ func NewRouter(cfg RouterConfig) *chi.Mux {
 // stop routing traffic to an instance that cannot serve requests.
 func health(logger *slog.Logger, db Pinger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if db == nil {
+			JSON(w, http.StatusOK, map[string]string{"status": "ok"})
+			return
+		}
 		ctx, cancel := context.WithTimeout(r.Context(), healthPingTimeout)
 		defer cancel()
 		if err := db.PingContext(ctx); err != nil {

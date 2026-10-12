@@ -2,7 +2,7 @@
 -include .env
 export
 
-.PHONY: up up-stub up-app up-cctv down reset-db logs ps psql psql-app run worker migrate seed generate lint test check
+.PHONY: up up-stub up-app up-cctv down reset-db logs ps psql psql-app run worker migrate generate lint test check
 
 # postgres, redis, minio
 up:
@@ -46,18 +46,15 @@ psql-app:
 run:
 	go run ./cmd/api
 
-# Background jobs (session cleanup, ...). Needs Redis.
+# Background jobs (session cleanup, ...). Needs Redis. cmd/worker arrives in Phase 01.2.
 worker:
 	go run ./cmd/worker
 
-# Apply migrations from the host, as the owner
+# Apply migrations from the host, as the owner. Migrations start in Phase 00.2.
 migrate:
 	goose -dir db/migrations postgres "$$MIGRATE_DSN" up
 
-# Creates the first admin from SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD; safe to repeat.
-seed:
-	go run ./cmd/seed
-
+# sqlc code from db/queries. sqlc.yaml arrives in Phase 00.2; 00.3 adds the contract types.
 generate:
 	sqlc generate
 
@@ -67,9 +64,8 @@ lint:
 test:
 	go test -race ./...
 
-# sqlc diff fails when internal/db is stale; run `make generate` and commit the result.
+# Phase 00.2 puts `sqlc generate` + a no-diff check in front, and 00.3 adds `make contract`.
 check:
-	sqlc diff
 	go vet ./...
 	golangci-lint run
 	go test -race ./...

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"siapp/internal/platform/apperr"
+	"siapp/pkg/platform/apperr"
 )
 
 // Page limits.

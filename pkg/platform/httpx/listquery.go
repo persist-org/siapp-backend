@@ -7,8 +7,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"siapp/internal/platform/apperr"
-	"siapp/internal/platform/timeutil"
+	"siapp/pkg/platform/apperr"
+	"siapp/pkg/platform/timeutil"
 )
 
 const maxSearchLen = 100
