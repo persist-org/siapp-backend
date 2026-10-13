@@ -1,7 +1,6 @@
 # Local stack for development and tests. Everything SiAPP talks to runs here.
 #
 #   make up         postgres, redis, minio                (infrastructure only)
-#   make up-stub    + the fake Persist Personel           (from Phase 00.5)
 #   make up-app     + migrate, api, worker in containers  (from Phase 00.2)
 #   make up-cctv    + MediaMTX                            (Phase 13.2)
 name: siapp
@@ -15,7 +14,10 @@ x-app: &app
     MIGRATE_DSN: postgres://siapp_owner:siapp_owner@postgres:5432/siapp?sslmode=disable
     REDIS_URL: redis://redis:6379/0
     S3_ENDPOINT: http://minio:9000
-    PERSONEL_BASE_URL: http://personel-stub:8090
+    # kpi-personalia-api runs on the host (see docs/dev-setup.md), not in this stack.
+    PERSONEL_BASE_URL: http://host.docker.internal:8081/api/v3/integrations/siapp
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
   depends_on:
     postgres: { condition: service_healthy }
     redis: { condition: service_healthy }
@@ -58,15 +60,6 @@ services:
       MINIO_DEFAULT_BUCKETS: persist-media
     ports: ["9000:9000", "9001:9001"]
     volumes: [minio-data:/bitnami/minio/data]
-
-  # Fake Persist Personel (Phase 00.5): answers the integration login, NIK/org/attendance/leave calls.
-  personel-stub:
-    profiles: [stub]
-    build: .
-    entrypoint: ["/personel-stub"]
-    environment:
-      HTTP_ADDR: :8090
-    ports: ["8090:8090"]
 
   migrate:
     <<: *app

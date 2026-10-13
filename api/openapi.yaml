@@ -96,6 +96,43 @@ tags:
     description: Manajemen tenant/onboarding/plan/subscription/invoice/headcount
   - name: Billing
     description: Billing org-facing
+  - name: Seam
+    description: |
+      Seam server-to-server SiAPP <-> Persist Personel (LOCK F1). TIDAK dilayani oleh API ini:
+      ini adalah permukaan milik Personel (kpi-personalia-api), dipanggil backend SiAPP dengan
+      header X-Integration-Key (kunci bersama; Personalia hanya menyimpan SHA-256-nya, D8).
+      Daftar ini adalah satu-satunya tempat status tiap seam dicatat. `x-status`:
+      `implemented` = sudah ada di Personel dan diuji kontrak; `proposed` = usulan SiAPP,
+      menunggu review tim Personel (belum ada endpoint-nya).
+    x-seams:
+      - id: S1
+        name: Login (cek kredensial akun Personalia)
+        x-status: implemented
+        x-owner: personel
+        endpoint: POST /api/v3/integrations/siapp/login
+        notes: "Request {email, password, client_ip?, user_agent?}. Mengembalikan Identity (termasuk domain personalia|siapp), tanpa token dan tanpa binding perangkat. Binding satu-HP milik SiAPP."
+      - id: S2
+        name: Struktur organisasi (project, penempatan, jabatan)
+        x-status: proposed
+        x-owner: personel
+      - id: S3
+        name: Kehadiran (push event, status)
+        x-status: proposed
+        x-owner: personel
+      - id: S4
+        name: Lookup karyawan per NIK (maks. 200)
+        x-status: implemented
+        x-owner: personel
+        endpoint: POST /api/v3/integrations/siapp/employees
+        notes: "Request {niks: [...]}. NIK tidak dikenal dihilangkan; karyawan nonaktif dikembalikan dengan active=false."
+      - id: S5
+        name: Izin / cuti (jenis, ajukan, putuskan, daftar)
+        x-status: proposed
+        x-owner: personel
+      - id: S6
+        name: Event perubahan (webhook Personel ke SiAPP)
+        x-status: proposed
+        x-owner: personel
 
 components:
 

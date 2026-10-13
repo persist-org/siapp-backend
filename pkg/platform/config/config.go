@@ -40,11 +40,20 @@ type Config struct {
 	RedisURL       string     `env:"REDIS_URL,required,notEmpty"`
 	CORSOrigins    []string   `env:"CORS_ORIGINS" envSeparator:","`
 	LogLevel       slog.Level `env:"LOG_LEVEL" envDefault:"info"`
+
+	// PersonelBaseURL is the integration root of kpi-personalia-api, e.g.
+	// http://localhost:8081/api/v3/integrations/siapp. Optional until the first module that
+	// calls Personalia (Phase 01.3) needs it; when one of the two Personel settings is
+	// set, the other must be too.
+	PersonelBaseURL string `env:"PERSONEL_BASE_URL"`
+	// PersonelIntegrationKey is the shared secret sent as X-Integration-Key. Never logged.
+	PersonelIntegrationKey string `env:"PERSONEL_INTEGRATION_KEY"`
 }
 
 var (
 	postgresSchemes = []string{"postgres", "postgresql"}
 	redisSchemes    = []string{"redis", "rediss"}
+	httpSchemes     = []string{"http", "https"}
 )
 
 // Load parses the configuration from the process environment.
@@ -77,6 +86,10 @@ func Parse(environ map[string]string) (Config, error) {
 	problems = append(problems, checkURL("DATABASE_URL", cfg.DatabaseURL, postgresSchemes)...)
 	problems = append(problems, checkURL("MIGRATE_DSN", cfg.MigrateDSN, postgresSchemes)...)
 	problems = append(problems, checkURL("REDIS_URL", cfg.RedisURL, redisSchemes)...)
+	problems = append(problems, checkURL("PERSONEL_BASE_URL", cfg.PersonelBaseURL, httpSchemes)...)
+	if (cfg.PersonelBaseURL == "") != (cfg.PersonelIntegrationKey == "") {
+		problems = append(problems, "PERSONEL_BASE_URL and PERSONEL_INTEGRATION_KEY must be set together")
+	}
 
 	if cfg.MigrateOnStart {
 		if cfg.AppEnv == EnvProduction {

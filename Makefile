@@ -2,15 +2,11 @@
 -include .env
 export
 
-.PHONY: contract up up-stub up-app up-cctv down reset-db logs ps psql psql-app run worker migrate generate lint test check
+.PHONY: contract test-personel-live up up-app up-cctv down reset-db logs ps psql psql-app run worker migrate generate lint test check
 
 # postgres, redis, minio
 up:
 	docker compose up -d --wait
-
-# + the Personel stub
-up-stub:
-	docker compose --profile stub up -d --wait --build
 
 # + migrate, api and worker in containers (no --wait: migrate exits when done)
 up-app:
@@ -22,7 +18,7 @@ up-cctv:
 	docker compose --profile cctv up -d --wait
 
 down:
-	docker compose --profile stub --profile app --profile cctv down
+	docker compose --profile app --profile cctv down
 
 # Delete the database volume and start over (asks first)
 reset-db:
@@ -71,6 +67,11 @@ lint:
 
 test:
 	go test -race ./...
+
+# Contract test against a real kpi-personalia-api seeded with db/seed/40_siapp.sql. Set
+# PERSONEL_LIVE_URL (the integration root) and PERSONEL_LIVE_KEY; it skips without them.
+test-personel-live:
+	go test -tags personel_live -count=1 -v -run Live ./pkg/platform/personel
 
 # Generated code must be committed: regenerate, then fail if that changed anything. The
 # contract is re-vendored too when the persist-ecosystem checkout is next to this repo.

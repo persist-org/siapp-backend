@@ -6,7 +6,7 @@ RUN go mod download
 
 COPY . .
 # Static binaries run on distroless/static, which has no libc. ./cmd/... builds every main
-# package into /out, named after its folder (api, worker, migrate, seed, personel-stub).
+# package into /out, named after its folder (api, worker, migrate, seed).
 RUN mkdir -p /out && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/ ./cmd/...
 
 FROM gcr.io/distroless/static-debian12:nonroot

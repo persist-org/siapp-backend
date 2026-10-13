@@ -68,6 +68,21 @@ func TestParseErrors(t *testing.T) {
 			wantMsgs: []string{"MIGRATE_ON_START=true needs MIGRATE_DSN"},
 		},
 		{
+			name:     "PERSONEL_BASE_URL without a scheme",
+			override: map[string]string{"PERSONEL_BASE_URL": "localhost:8081", "PERSONEL_INTEGRATION_KEY": "k"},
+			wantMsgs: []string{"PERSONEL_BASE_URL must be a URL like http://"},
+		},
+		{
+			name:     "PERSONEL_BASE_URL without a key",
+			override: map[string]string{"PERSONEL_BASE_URL": "http://localhost:8081/api/v3/integrations/siapp"},
+			wantMsgs: []string{"PERSONEL_BASE_URL and PERSONEL_INTEGRATION_KEY must be set together"},
+		},
+		{
+			name:     "PERSONEL_INTEGRATION_KEY without a URL",
+			override: map[string]string{"PERSONEL_INTEGRATION_KEY": "k"},
+			wantMsgs: []string{"must be set together"},
+		},
+		{
 			name:     "all problems reported together",
 			drop:     []string{"DATABASE_URL", "REDIS_URL"},
 			override: map[string]string{"LOG_LEVEL": "loud", "APP_ENV": "staging"},
@@ -116,4 +131,25 @@ func TestParseCORSOrigins(t *testing.T) {
 	cfg, err := Parse(environ)
 	require.NoError(t, err)
 	require.Equal(t, []string{"http://localhost:3000", "https://admin.example.com"}, cfg.CORSOrigins)
+}
+
+func TestParsePersonel(t *testing.T) {
+	environ := validEnv()
+	environ["PERSONEL_BASE_URL"] = "http://localhost:8081/api/v3/integrations/siapp"
+	environ["PERSONEL_INTEGRATION_KEY"] = "s3cret-key"
+
+	cfg, err := Parse(environ)
+	require.NoError(t, err)
+	require.Equal(t, environ["PERSONEL_BASE_URL"], cfg.PersonelBaseURL)
+	require.Equal(t, "s3cret-key", cfg.PersonelIntegrationKey)
+}
+
+func TestParseNeverEchoesTheIntegrationKey(t *testing.T) {
+	environ := validEnv()
+	environ["PERSONEL_BASE_URL"] = "not a url"
+	environ["PERSONEL_INTEGRATION_KEY"] = "s3cret-key"
+
+	_, err := Parse(environ)
+	require.Error(t, err)
+	require.NotContains(t, err.Error(), "s3cret-key")
 }
