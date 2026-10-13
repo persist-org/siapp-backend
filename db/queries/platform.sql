@@ -15,3 +15,8 @@ SET name = EXCLUDED.name,
     updated_at = CASE WHEN organizations.name IS DISTINCT FROM EXCLUDED.name
                       THEN now() ELSE organizations.updated_at END
 RETURNING *;
+
+-- Background jobs that work per organization loop over this list, then run each
+-- organization in its own WithTenant.
+-- name: ListOrganizationIDs :many
+SELECT id FROM organizations ORDER BY id;

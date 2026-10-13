@@ -27,6 +27,32 @@ func (q *Queries) GetOrganization(ctx context.Context, id int64) (Organization, 
 	return i, err
 }
 
+const listOrganizationIDs = `-- name: ListOrganizationIDs :many
+SELECT id FROM organizations ORDER BY id
+`
+
+// Background jobs that work per organization loop over this list, then run each
+// organization in its own WithTenant.
+func (q *Queries) ListOrganizationIDs(ctx context.Context) ([]int64, error) {
+	rows, err := q.db.Query(ctx, listOrganizationIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const ping = `-- name: Ping :one
 SELECT 1
 `

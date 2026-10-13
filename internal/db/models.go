@@ -6,6 +6,7 @@ package db
 
 import (
 	"database/sql/driver"
+	"encoding/json"
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -51,6 +52,29 @@ func (ns NullOrganizationStatus) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return string(ns.OrganizationStatus), nil
+}
+
+type AuditLog struct {
+	ID               int64
+	OrganizationID   int64
+	ActorPersonnelID pgtype.Int8
+	Action           string
+	EntityType       string
+	EntityID         int64
+	Metadata         json.RawMessage
+	CreatedAt        pgtype.Timestamptz
+}
+
+type IdempotencyKey struct {
+	OrganizationID   int64
+	ActorPersonnelID int64
+	Key              pgtype.UUID
+	Method           string
+	Path             string
+	RequestHash      []byte
+	StatusCode       pgtype.Int4
+	ResponseBody     json.RawMessage
+	CreatedAt        pgtype.Timestamptz
 }
 
 type Organization struct {
