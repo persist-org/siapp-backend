@@ -35,7 +35,7 @@ const DevKey = "fake-integration-key"
 // one it has no 15-minute window: a test that needs a fresh budget uses another email.
 const loginFailureLimit = 10
 
-// maxNIKs is the most NIKs one /employees request may carry.
+// maxNIKs is the most distinct NIKs one /employees request may carry.
 const maxNIKs = 200
 
 // Fixture identities, mirroring kpi-personalia-api/db/seed/40_siapp.sql. Every account's
@@ -403,16 +403,29 @@ func (f *Fake) employees(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
-	if len(req.NIKs) == 0 || len(req.NIKs) > maxNIKs {
+	if len(req.NIKs) == 0 || slices.Contains(req.NIKs, "") {
 		write(w, http.StatusUnprocessableEntity, envelope{
-			Error: map[string][]string{"niks": {"harus berisi 1 sampai 200 NIK"}}, Message: "Data tidak valid.", ErrorType: "validation",
+			Error: map[string][]string{"niks": {"wajib diisi"}}, Message: "Data tidak valid.", ErrorType: "validation",
 		})
+		return
+	}
+	// Like the real API, the 200 limit counts distinct NIKs (trimmed), not the
+	// raw list.
+	var unique []string
+	for _, nik := range req.NIKs {
+		nik = strings.TrimSpace(nik)
+		if nik != "" && !slices.Contains(unique, nik) {
+			unique = append(unique, nik)
+		}
+	}
+	if len(unique) > maxNIKs {
+		fail(w, http.StatusUnprocessableEntity, "too_many_niks", "Data tidak valid.", "validation")
 		return
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	data := make([]identityDTO, 0, len(req.NIKs))
-	for _, nik := range req.NIKs {
+	data := make([]identityDTO, 0, len(unique))
+	for _, nik := range unique {
 		for _, a := range f.accounts {
 			if a.id.NIK == nik && !a.noWork {
 				data = append(data, toDTO(a.id))
