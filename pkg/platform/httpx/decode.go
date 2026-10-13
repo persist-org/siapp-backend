@@ -18,12 +18,6 @@ import (
 
 const maxBodyBytes = 1 << 20 // 1 MB
 
-// FieldError lists the problems found with one request field.
-type FieldError struct {
-	Field    string   `json:"field"`
-	Messages []string `json:"messages"`
-}
-
 // validate is safe for concurrent use and caches struct metadata, so it is shared.
 var validate = newValidator()
 
@@ -77,11 +71,24 @@ func isUUIDv7(fl validator.FieldLevel) bool {
 	return err == nil && u.Version() == 7 && u.String() == s
 }
 
+// Field error codes (FieldError.code). They are stable: clients may map them to messages.
+const (
+	codeRequired = "REQUIRED"
+	codeInvalid  = "INVALID"
+	codeTooShort = "TOO_SHORT"
+	codeTooLong  = "TOO_LONG"
+	codeTooSmall = "TOO_SMALL"
+	codeTooLarge = "TOO_LARGE"
+)
+
 // Decode reads the JSON request body into dst and validates it.
 //
-// The body is limited to 1 MB, unknown fields are rejected and trailing data after the
-// JSON value is an error. Every failure is a *apperr.Error with code VALIDATION_FAILED
-// (status 413 when the body is too large), ready for Error.
+// The body is limited to 1 MB and unknown fields are rejected. Failures are *apperr.Error,
+// ready for Error:
+//   - not JSON at all, empty, or more than one value: 400 BAD_REQUEST;
+//   - over 1 MB: 413 PAYLOAD_TOO_LARGE;
+//   - an unknown field, a wrong type or a failed `validate` tag: 422 VALIDATION_ERROR with
+//     one errors[] entry per bad field, named by its JSON name.
 func Decode(r *http.Request, dst any) error {
 	// A nil ResponseWriter is allowed: it only means the server is not told to close
 	// the connection after an oversized body.
@@ -94,7 +101,7 @@ func Decode(r *http.Request, dst any) error {
 	}
 	// A second value ({"a":1}{"b":2}) would otherwise be silently ignored.
 	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
-		return apperr.ErrValidationFailed.WithMessage("Body harus berisi satu objek JSON.")
+		return apperr.ErrBadRequest.WithMessage("Body harus berisi satu objek JSON.")
 	}
 	return Validate(dst)
 }
@@ -107,25 +114,23 @@ func decodeError(err error) error {
 	)
 	switch {
 	case errors.As(err, &maxBytes):
-		e := *apperr.ErrValidationFailed.WithMessage("Body terlalu besar.")
-		e.Status = http.StatusRequestEntityTooLarge
-		return &e
+		return apperr.ErrPayloadTooLarge
 	case errors.Is(err, io.EOF):
-		return apperr.ErrValidationFailed.WithMessage("Body wajib diisi.")
+		return apperr.ErrBadRequest.WithMessage("Body wajib diisi.")
 	case errors.As(err, &syntax), errors.Is(err, io.ErrUnexpectedEOF):
-		return apperr.ErrValidationFailed.WithMessage("Body bukan JSON yang valid.")
+		return apperr.ErrBadRequest.WithMessage("Body bukan JSON yang valid.")
 	case errors.As(err, &typeErr):
-		return apperr.ErrValidationFailed.WithDetails([]FieldError{
-			{Field: typeErr.Field, Messages: []string{"harus bertipe " + jsonKind(typeErr.Type)}},
+		return apperr.ErrValidation.WithFields(apperr.FieldError{
+			Field: typeErr.Field, Code: codeInvalid, Message: "Harus bertipe " + jsonKind(typeErr.Type) + ".",
 		})
 	}
 	// encoding/json has no typed error for unknown fields; it is reported as text.
 	if field, ok := strings.CutPrefix(err.Error(), "json: unknown field "); ok {
-		return apperr.ErrValidationFailed.WithDetails([]FieldError{
-			{Field: strings.Trim(field, `"`), Messages: []string{"field tidak dikenal"}},
+		return apperr.ErrValidation.WithFields(apperr.FieldError{
+			Field: strings.Trim(field, `"`), Code: codeInvalid, Message: "Field tidak dikenal.",
 		})
 	}
-	return apperr.ErrValidationFailed.WithMessage("Body tidak dapat dibaca.")
+	return apperr.ErrBadRequest.WithMessage("Body tidak dapat dibaca.")
 }
 
 func jsonKind(t reflect.Type) string {
@@ -148,58 +153,63 @@ func jsonKind(t reflect.Type) string {
 }
 
 // Validate runs the `validate` struct tags on v and converts failures to a
-// VALIDATION_FAILED error with details [{field, messages}].
+// VALIDATION_ERROR with one errors[] entry per bad field (the first failing tag wins).
 func Validate(v any) error {
 	err := validate.Struct(v)
 	if err == nil {
 		return nil
 	}
-	var verrs validator.ValidationErrors
-	if !errors.As(err, &verrs) {
+	verrs, ok := errors.AsType[validator.ValidationErrors](err)
+	if !ok {
 		return fmt.Errorf("validate request: %w", err)
 	}
 
-	var fields []FieldError
-	index := make(map[string]int)
+	var fields []apperr.FieldError
+	seen := make(map[string]bool)
 	for _, fe := range verrs {
 		// Namespace is "Root.items[0].name"; drop the root type name, keep the path.
 		_, path, _ := strings.Cut(fe.Namespace(), ".")
-		i, seen := index[path]
-		if !seen {
-			i = len(fields)
-			index[path] = i
-			fields = append(fields, FieldError{Field: path})
+		if seen[path] {
+			continue
 		}
-		fields[i].Messages = append(fields[i].Messages, tagMessage(fe))
+		seen[path] = true
+		code, msg := describeTag(fe)
+		fields = append(fields, apperr.FieldError{Field: path, Code: code, Message: msg})
 	}
-	return apperr.ErrValidationFailed.WithDetails(fields)
+	return apperr.ErrValidation.WithFields(fields...)
 }
 
-func tagMessage(fe validator.FieldError) string {
+// describeTag maps a failed validator tag to the field error code and an Indonesian message.
+func describeTag(fe validator.FieldError) (code, msg string) {
+	text := fe.Kind() == reflect.String || fe.Kind() == reflect.Slice || fe.Kind() == reflect.Map
 	switch fe.Tag() {
 	case "required":
-		return "wajib diisi"
+		return codeRequired, "Wajib diisi."
 	case "uuid", "uuid4", "uuid7":
-		return "harus berupa UUID yang valid"
+		return codeInvalid, "Harus berupa UUID yang valid."
 	case "email":
-		return "harus berupa email yang valid"
+		return codeInvalid, "Harus berupa email yang valid."
 	case "username":
-		return "harus 3 sampai 50 karakter: huruf, angka, titik, garis bawah atau tanda hubung"
+		return codeInvalid, "Harus 3 sampai 50 karakter: huruf, angka, titik, garis bawah atau tanda hubung."
 	case "notblank":
-		return "tidak boleh kosong"
+		return codeRequired, "Tidak boleh kosong."
 	case "printascii":
-		return "hanya boleh berisi karakter ASCII yang dapat dicetak"
-	case "min":
-		return "terlalu kecil atau terlalu pendek (minimum " + fe.Param() + ")"
-	case "max":
-		return "terlalu besar atau terlalu panjang (maksimum " + fe.Param() + ")"
+		return codeInvalid, "Hanya boleh berisi karakter ASCII yang dapat dicetak."
+	case "min", "gte", "gt":
+		if text {
+			return codeTooShort, "Terlalu pendek (minimum " + fe.Param() + ")."
+		}
+		return codeTooSmall, "Terlalu kecil (minimum " + fe.Param() + ")."
+	case "max", "lte", "lt":
+		if text {
+			return codeTooLong, "Terlalu panjang (maksimum " + fe.Param() + ")."
+		}
+		return codeTooLarge, "Terlalu besar (maksimum " + fe.Param() + ")."
 	case "len":
-		return "harus tepat " + fe.Param()
+		return codeInvalid, "Harus tepat " + fe.Param() + "."
 	case "oneof":
-		return "harus salah satu dari: " + fe.Param()
-	case "gte", "gt", "lte", "lt":
-		return "di luar batas yang diizinkan"
+		return codeInvalid, "Harus salah satu dari: " + fe.Param() + "."
 	default:
-		return "tidak valid"
+		return codeInvalid, "Tidak valid."
 	}
 }

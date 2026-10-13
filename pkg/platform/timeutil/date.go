@@ -7,12 +7,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const dateLayout = time.DateOnly // "2006-01-02"
 
 // Date is a calendar day without a time or zone: a business date such as work_date.
-// It is JSON "YYYY-MM-DD" and a MySQL DATE. The zero value is "no date".
+// It is JSON "YYYY-MM-DD" and a Postgres date. The zero value is "no date".
 //
 // Internally it is midnight UTC, so two Dates compare with == and sort with Before/After
 // regardless of where they were built.
@@ -80,7 +82,28 @@ func (d *Date) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// Value implements driver.Valuer: a MySQL DATE, or NULL for the zero Date.
+// DateValue implements pgtype.DateValuer, so pgx encodes a Date as a Postgres date (NULL
+// for the zero Date).
+func (d Date) DateValue() (pgtype.Date, error) {
+	if d.IsZero() {
+		return pgtype.Date{}, nil
+	}
+	return pgtype.Date{Time: d.t, Valid: true}, nil
+}
+
+// ScanDate implements pgtype.DateScanner, so pgx scans a Postgres date into a Date. NULL
+// and infinite dates become the zero Date.
+func (d *Date) ScanDate(v pgtype.Date) error {
+	if !v.Valid || v.InfinityModifier != pgtype.Finite {
+		*d = Date{}
+		return nil
+	}
+	// Take the calendar fields as reported; converting zones here could shift the day.
+	*d = NewDate(v.Time.Year(), v.Time.Month(), v.Time.Day())
+	return nil
+}
+
+// Value implements driver.Valuer for database/sql users: a date, or NULL for the zero Date.
 func (d Date) Value() (driver.Value, error) {
 	if d.IsZero() {
 		return nil, nil //nolint:nilnil // NULL is the correct driver value
@@ -88,15 +111,12 @@ func (d Date) Value() (driver.Value, error) {
 	return d.t, nil
 }
 
-// Scan implements sql.Scanner for a DATE column. With parseTime=true the driver returns
-// time.Time; the string and []byte cases cover drivers or DSNs without it.
+// Scan implements sql.Scanner for a date column.
 func (d *Date) Scan(src any) error {
 	switch v := src.(type) {
 	case nil:
 		*d = Date{}
 	case time.Time:
-		// Take the calendar fields as the driver reports them; converting zones here
-		// could shift the day.
 		*d = NewDate(v.Year(), v.Month(), v.Day())
 	case []byte:
 		return d.scanString(string(v))

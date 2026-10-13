@@ -2,7 +2,7 @@
 -include .env
 export
 
-.PHONY: up up-stub up-app up-cctv down reset-db logs ps psql psql-app run worker migrate generate lint test check
+.PHONY: contract up up-stub up-app up-cctv down reset-db logs ps psql psql-app run worker migrate generate lint test check
 
 # postgres, redis, minio
 up:
@@ -54,6 +54,14 @@ worker:
 migrate:
 	go run ./cmd/migrate up
 
+# Where the PERSIST contract lives (set CONTRACT_SRC in .env to override).
+CONTRACT_SRC ?= ../persist-ecosystem/contracts/openapi.yaml
+
+# Vendor the PERSIST contract into api/openapi.yaml and regenerate internal/apigen (models only).
+contract:
+	cp "$(CONTRACT_SRC)" api/openapi.yaml
+	cd api && go generate ./...
+
 # sqlc code from db/queries into internal/db. Phase 00.3 adds the contract types.
 generate:
 	sqlc generate
@@ -64,11 +72,13 @@ lint:
 test:
 	go test -race ./...
 
-# Generated code must be committed: regenerate, then fail if that changed anything.
-# Phase 00.3 adds `make contract`. Tests need `make up` (Postgres + Redis) and MIGRATE_DSN.
+# Generated code must be committed: regenerate, then fail if that changed anything. The
+# contract is re-vendored too when the persist-ecosystem checkout is next to this repo.
+# Tests need `make up` (Postgres + Redis) and MIGRATE_DSN.
 check:
 	sqlc generate
-	git diff --exit-code -- internal/db
+	@if [ -f "$(CONTRACT_SRC)" ]; then $(MAKE) contract; else cd api && go generate ./...; fi
+	git diff --exit-code -- internal/db internal/apigen api
 	go vet ./...
 	golangci-lint run
 	go test -race ./...
