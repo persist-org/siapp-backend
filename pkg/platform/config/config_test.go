@@ -58,6 +58,16 @@ func TestParseErrors(t *testing.T) {
 			wantMsgs: []string{"REDIS_URL must be a URL like redis://"},
 		},
 		{
+			name:     "MIGRATE_ON_START in production",
+			override: map[string]string{"MIGRATE_ON_START": "true", "APP_ENV": "production", "MIGRATE_DSN": "postgres://o:o@localhost/siapp"},
+			wantMsgs: []string{"MIGRATE_ON_START", "production"},
+		},
+		{
+			name:     "MIGRATE_ON_START without MIGRATE_DSN",
+			override: map[string]string{"MIGRATE_ON_START": "true"},
+			wantMsgs: []string{"MIGRATE_ON_START=true needs MIGRATE_DSN"},
+		},
+		{
 			name:     "all problems reported together",
 			drop:     []string{"DATABASE_URL", "REDIS_URL"},
 			override: map[string]string{"LOG_LEVEL": "loud", "APP_ENV": "staging"},

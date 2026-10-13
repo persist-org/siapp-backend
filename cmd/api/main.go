@@ -18,6 +18,7 @@ import (
 	_ "time/tzdata"
 
 	"siapp/pkg/platform/config"
+	"siapp/pkg/platform/database"
 	"siapp/pkg/platform/httpx"
 )
 
@@ -42,9 +43,25 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// Dev convenience only; config refuses it in production. It uses the owner DSN, which
+	// the API otherwise never touches.
+	if cfg.MigrateOnStart {
+		logger.Info("applying migrations (MIGRATE_ON_START)")
+		if err := database.Migrate(ctx, cfg.MigrateDSN, "up"); err != nil {
+			return err
+		}
+	}
+
+	pool, err := database.Open(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+
 	router := httpx.NewRouter(httpx.RouterConfig{
 		Logger:      logger,
 		CORSOrigins: cfg.CORSOrigins,
+		DB:          pool,
 		// Phase 01.1 replaces this with auth.Require (default-deny). Until then the API
 		// serves nothing but GET /api/v1/health, which is public anyway.
 		Authenticate: func(next http.Handler) http.Handler { return next },

@@ -50,11 +50,11 @@ run:
 worker:
 	go run ./cmd/worker
 
-# Apply migrations from the host, as the owner. Migrations start in Phase 00.2.
+# Apply migrations from the host, as the owner (MIGRATE_DSN). Also: go run ./cmd/migrate down|status
 migrate:
-	goose -dir db/migrations postgres "$$MIGRATE_DSN" up
+	go run ./cmd/migrate up
 
-# sqlc code from db/queries. sqlc.yaml arrives in Phase 00.2; 00.3 adds the contract types.
+# sqlc code from db/queries into internal/db. Phase 00.3 adds the contract types.
 generate:
 	sqlc generate
 
@@ -64,8 +64,11 @@ lint:
 test:
 	go test -race ./...
 
-# Phase 00.2 puts `sqlc generate` + a no-diff check in front, and 00.3 adds `make contract`.
+# Generated code must be committed: regenerate, then fail if that changed anything.
+# Phase 00.3 adds `make contract`. Tests need `make up` (Postgres + Redis) and MIGRATE_DSN.
 check:
+	sqlc generate
+	git diff --exit-code -- internal/db
 	go vet ./...
 	golangci-lint run
 	go test -race ./...

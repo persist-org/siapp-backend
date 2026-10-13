@@ -19,7 +19,7 @@ import (
 // adds a health test against the real database through testkit.
 type fakeDB struct{ err error }
 
-func (f fakeDB) PingContext(context.Context) error { return f.err }
+func (f fakeDB) Ping(context.Context) error { return f.err }
 
 func newTestServer(t *testing.T, logs io.Writer, extra func(r *http.ServeMux)) *httptest.Server {
 	t.Helper()
