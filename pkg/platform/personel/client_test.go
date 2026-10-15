@@ -4,8 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -69,11 +73,49 @@ func TestLoginMapsFailuresToTypedErrors(t *testing.T) {
 	_, err = login(c, personeltest.EmailAnggota2Satu, personeltest.Password)
 	require.ErrorIs(t, err, personel.ErrRateLimited)
 
-	// Empty input never reaches Personalia.
+	// Empty input, or an email without "@", never reaches Personalia.
 	before := fake.CallCount("/login")
 	_, err = login(c, "", "")
 	require.ErrorIs(t, err, personel.ErrInvalidCredentials)
+	_, err = login(c, "danru.satu", personeltest.Password)
+	require.ErrorIs(t, err, personel.ErrInvalidCredentials)
 	require.Equal(t, before, fake.CallCount("/login"))
+
+	// A malformed email Personalia refuses with 422 is a wrong email, not an outage.
+	_, err = login(c, "danru.satu@", personeltest.Password)
+	require.ErrorIs(t, err, personel.ErrInvalidCredentials)
+	require.NotErrorIs(t, err, personel.ErrUnavailable)
+	require.Equal(t, before+1, fake.CallCount("/login"))
+
+	// Spaces a phone keyboard adds around the address are not the person's mistake.
+	_, err = login(c, " "+personeltest.EmailDanruSatu+" ", personeltest.Password)
+	require.NoError(t, err)
+}
+
+func TestLoginCutsDeviceDetailsToPersonaliaLimits(t *testing.T) {
+	_, c := testkit.NewPersonel(t)
+
+	// The fake refuses values over Personalia's limits with 422, like the real API.
+	_, err := c.Login(context.Background(), personel.LoginInput{
+		Email: personeltest.EmailDanruSatu, Password: personeltest.Password,
+		ClientIP: strings.Repeat("1", 100), UserAgent: strings.Repeat("é", 600),
+	})
+	require.NoError(t, err, "over-long device details must not block the login")
+}
+
+func TestA422ThatIsNotThePersonsInputIsUnavailable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_, _ = w.Write([]byte(`{"data":null,"error":{"user_agent":["too long"]},"message":"Data tidak valid."}`))
+	}))
+	t.Cleanup(srv.Close)
+	c, err := personel.New(personel.Config{BaseURL: srv.URL, Key: "k"})
+	require.NoError(t, err)
+
+	_, err = login(c, personeltest.EmailDanruSatu, personeltest.Password)
+	require.ErrorIs(t, err, personel.ErrUnavailable, "our request broke the contract: not the person's fault")
+	require.NotErrorIs(t, err, personel.ErrInvalidCredentials)
 }
 
 func TestLoginIsNeverRetried(t *testing.T) {
@@ -163,6 +205,13 @@ func TestDirectory(t *testing.T) {
 		require.Equal(t, 3, fake.CallCount("/employees")-before, "450 NIKs are 3 requests")
 	})
 
+	t.Run("a NIK longer than Personalia accepts is not found and does not fail the batch", func(t *testing.T) {
+		got, err := c.EmployeesByNIKs(ctx, personeltest.OrgSatu, []string{strings.Repeat("9", 101), personeltest.NIKDanruSatu})
+		require.NoError(t, err)
+		require.Len(t, got, 1)
+		require.Equal(t, personeltest.NIKDanruSatu, got[0].NIK)
+	})
+
 	t.Run("no NIKs is no request", func(t *testing.T) {
 		before := fake.CallCount("/employees")
 		got, err := c.EmployeesByNIKs(ctx, personeltest.OrgSatu, nil)
@@ -245,6 +294,109 @@ func TestCircuitBreakerOpensAndRecovers(t *testing.T) {
 	require.NoError(t, lookup())
 	_, err = login(c, personeltest.EmailDanruSatu, personeltest.Password)
 	require.NoError(t, err)
+}
+
+// hangingPersonalia serves fake, except while the returned flag is set: then it answers
+// nothing until the client goes away.
+func hangingPersonalia(t *testing.T, fake *personeltest.Fake) (*httptest.Server, *atomic.Bool) {
+	t.Helper()
+	var hang atomic.Bool
+	stop := make(chan struct{})
+	h := fake.Handler()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if hang.Load() {
+			// The server notices a client that went away only once the body is read.
+			_, _ = io.Copy(io.Discard, r.Body)
+			select {
+			case <-r.Context().Done():
+			case <-stop:
+			}
+			return
+		}
+		h.ServeHTTP(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	t.Cleanup(func() { close(stop) }) // runs first: Close waits for the handlers
+	return srv, &hang
+}
+
+func TestCallerGivingUpDoesNotOpenTheBreaker(t *testing.T) {
+	fake := personeltest.New()
+	srv, hang := hangingPersonalia(t, fake)
+	zero := time.Duration(0)
+	c, err := personel.New(personel.Config{BaseURL: srv.URL + personeltest.BasePath, Key: fake.Key, Backoff: &zero})
+	require.NoError(t, err)
+
+	// Twice the threshold of callers whose own deadline runs out (phones closing the app
+	// during login, request deadlines), and one that cancels.
+	hang.Store(true)
+	for range 10 {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+		_, err := c.Login(ctx, personel.LoginInput{Email: personeltest.EmailDanruSatu, Password: personeltest.Password})
+		cancel()
+		require.ErrorIs(t, err, personel.ErrUnavailable)
+		require.ErrorIs(t, err, context.DeadlineExceeded, "the caller can tell it gave up")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err = c.EmployeeByNIK(ctx, personeltest.OrgSatu, personeltest.NIKDanruSatu)
+	require.ErrorIs(t, err, context.Canceled)
+
+	hang.Store(false)
+	_, err = login(c, personeltest.EmailDanruSatu, personeltest.Password)
+	require.NoError(t, err, "Personalia was never down: the breaker must still be closed")
+	require.Equal(t, 1, fake.CallCount("/login"))
+}
+
+func TestPersonaliaHangingPastTheClientTimeoutOpensTheBreaker(t *testing.T) {
+	fake := personeltest.New()
+	srv, hang := hangingPersonalia(t, fake)
+	zero := time.Duration(0)
+	c, err := personel.New(personel.Config{
+		BaseURL: srv.URL + personeltest.BasePath, Key: fake.Key, Backoff: &zero,
+		HTTPClient: &http.Client{Timeout: 20 * time.Millisecond},
+	})
+	require.NoError(t, err)
+
+	// The client's own timeout leaves the caller's context alone: these are outages.
+	hang.Store(true)
+	for range 5 {
+		_, err := login(c, personeltest.EmailDanruSatu, personeltest.Password)
+		require.ErrorIs(t, err, personel.ErrUnavailable)
+	}
+
+	hang.Store(false)
+	_, err = login(c, personeltest.EmailDanruSatu, personeltest.Password)
+	require.ErrorIs(t, err, personel.ErrUnavailable)
+	require.Zero(t, fake.CallCount("/login"), "the breaker is open: nothing was sent")
+}
+
+func TestAnAbandonedProbeDoesNotReopenTheBreaker(t *testing.T) {
+	fake := personeltest.New()
+	srv := httptest.NewServer(fake.Handler())
+	t.Cleanup(srv.Close)
+	clk := &manualClock{t: time.Date(2026, 3, 10, 8, 0, 0, 0, time.UTC)}
+	zero := time.Duration(0)
+	c, err := personel.New(personel.Config{BaseURL: srv.URL + personeltest.BasePath, Key: fake.Key, Clock: clk, Backoff: &zero})
+	require.NoError(t, err)
+	lookup := func(ctx context.Context) error {
+		_, err := c.EmployeeByNIK(ctx, personeltest.OrgSatu, personeltest.NIKDanruSatu)
+		return err
+	}
+
+	fake.Down()
+	for range 5 {
+		require.ErrorIs(t, lookup(context.Background()), personel.ErrUnavailable)
+	}
+	fake.Up()
+	clk.Advance(31 * time.Second)
+
+	// The probe's caller goes away: no outcome, so the probe slot is simply freed.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	require.ErrorIs(t, lookup(ctx), context.Canceled)
+
+	require.NoError(t, lookup(context.Background()), "the next call probes at once and closes the breaker")
 }
 
 func TestClientErrorsDoNotOpenTheBreaker(t *testing.T) {

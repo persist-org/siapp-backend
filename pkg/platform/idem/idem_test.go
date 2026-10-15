@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -70,6 +71,12 @@ func newEnv(t *testing.T, cfg func(*idem.Config)) *env {
 		case "text":
 			w.Header().Set("Content-Type", "text/plain")
 			_, _ = w.Write([]byte("not json"))
+		case "text-400":
+			w.Header().Set("Content-Type", "text/plain")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte("not json"))
+		case "big":
+			httpx.OK(w, r, http.StatusCreated, map[string]any{"run": n, "pad": strings.Repeat("x", 300<<10)})
 		default:
 			httpx.OK(w, r, http.StatusCreated, map[string]any{"run": n})
 		}
@@ -180,7 +187,7 @@ func TestWhichResponsesAreStored(t *testing.T) {
 		{"500", http.StatusInternalServerError, false},
 		{"409", http.StatusConflict, false},
 		{"429", http.StatusTooManyRequests, false},
-		{"text", http.StatusOK, false}, // not JSON: cannot be kept in the jsonb column
+		{"text-400", http.StatusBadRequest, false}, // not JSON, and a 4xx changed nothing
 	}
 	for _, tc := range tests {
 		t.Run(tc.behavior, func(t *testing.T) {
@@ -220,6 +227,37 @@ func TestWhichResponsesAreStored(t *testing.T) {
 		require.Equal(t, http.StatusCreated, e.do(t, call{key: key, body: `{}`, org: org, actor: 5}).status)
 		require.EqualValues(t, 2, e.runs.Load())
 	})
+}
+
+// A 2xx whose body cannot be kept (not JSON for the jsonb column, or too large) still did
+// its work: the retry must not run the handler again, and says why there is no response.
+func TestSuccessThatCannotBeStoredIsNotRunAgain(t *testing.T) {
+	for _, tc := range []struct {
+		behavior   string
+		wantStatus int
+	}{
+		{"text", http.StatusOK},
+		{"big", http.StatusCreated},
+	} {
+		t.Run(tc.behavior, func(t *testing.T) {
+			e := newEnv(t, nil)
+			org, key := testkit.NewOrg(t), newKey()
+			c := call{key: key, body: `{}`, org: org, actor: 5, behavior: tc.behavior}
+
+			first := e.do(t, c)
+			require.Equal(t, tc.wantStatus, first.status, "the first caller gets the real response")
+			require.Empty(t, first.header.Get(idem.HeaderReplayed))
+
+			for range 2 {
+				again := e.do(t, c)
+				require.Equal(t, http.StatusConflict, again.status)
+				testkit.ValidateSchema(t, "ErrorEnvelope", []byte(again.body))
+				require.Contains(t, again.body, `"IDEMPOTENCY_RESPONSE_NOT_STORED"`)
+				require.Equal(t, "true", again.header.Get(idem.HeaderReplayed))
+			}
+			require.EqualValues(t, 1, e.runs.Load(), "the handler's side effects must not run twice")
+		})
+	}
 }
 
 func TestKeyBelongsToOrganizationAndActor(t *testing.T) {

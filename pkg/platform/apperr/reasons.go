@@ -11,6 +11,10 @@ const (
 	// ReasonIdempotencyKeyInFlight: the first request with this key is still running.
 	// 409 CONFLICT; the client retries a moment later.
 	ReasonIdempotencyKeyInFlight = "IDEMPOTENCY_KEY_IN_FLIGHT"
+	// ReasonIdempotencyResponseNotStored: the first request with this key succeeded, but
+	// its response could not be kept for replays. 409 CONFLICT; the client must not retry
+	// with a new key (that would repeat the action) but reload the data instead.
+	ReasonIdempotencyResponseNotStored = "IDEMPOTENCY_RESPONSE_NOT_STORED"
 	// ReasonOccurredAtInFuture: an offline item claims to have happened more than 5 minutes
 	// from now. 422 UNPROCESSABLE.
 	ReasonOccurredAtInFuture = "OCCURRED_AT_IN_FUTURE"

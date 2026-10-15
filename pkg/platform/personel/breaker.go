@@ -17,7 +17,8 @@ const (
 // breaker stops SiAPP from hammering a Personalia that is down, and stops every request
 // from waiting out the timeout. It counts calls, not HTTP attempts: a call that failed
 // after its retries is one failure. Only outages count (network error, timeout, 5xx); a
-// 4xx means Personalia is up and answered.
+// 4xx means Personalia is up and answered. A call the caller gave up on (its context was
+// cancelled or ran out) counts as neither: see abandon.
 //
 // closed -> (threshold failures) -> open -> (cooldown) -> half-open: exactly one probe
 // call; success closes it, failure opens it again for another cooldown.
@@ -34,7 +35,7 @@ type breaker struct {
 func newBreaker(c clock.Clock) *breaker { return &breaker{clock: c} }
 
 // allow reports whether a call may go out. When it returns true the caller must report
-// the outcome with done.
+// the outcome with done, or with abandon when there is none.
 func (b *breaker) allow() bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -64,4 +65,13 @@ func (b *breaker) done(outage bool) {
 		b.open = true
 		b.openedAt = b.clock.Now()
 	}
+}
+
+// abandon ends a call that allow let through without an outcome: the caller went away
+// (a phone that hung up, a request deadline), which says nothing about Personalia. The
+// counts stay as they are, and a half-open probe slot is freed for the next call.
+func (b *breaker) abandon() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.probing = false
 }

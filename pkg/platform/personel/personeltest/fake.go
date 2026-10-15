@@ -17,10 +17,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/mail"
 	"slices"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"siapp/pkg/platform/personel"
 )
@@ -358,10 +360,24 @@ func (f *Fake) login(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
-	if req.Email == "" || req.Password == "" {
-		write(w, http.StatusUnprocessableEntity, envelope{
-			Error: map[string][]string{"email": {"wajib diisi"}}, Message: "Data tidak valid.", ErrorType: "validation",
-		})
+	// The real LoginRequest rules: email required,email; password required;
+	// user_agent max=512; client_ip max=64 (characters). net/mail stands in for the
+	// validator's email rule: they agree on the addresses tests use.
+	invalid := map[string][]string{}
+	if addr, err := mail.ParseAddress(req.Email); err != nil || addr.Address != req.Email {
+		invalid["email"] = []string{"format tidak valid"}
+	}
+	if req.Password == "" {
+		invalid["password"] = []string{"wajib diisi"}
+	}
+	if utf8.RuneCountInString(req.UserAgent) > 512 {
+		invalid["user_agent"] = []string{"maksimal 512 karakter"}
+	}
+	if utf8.RuneCountInString(req.ClientIP) > 64 {
+		invalid["client_ip"] = []string{"maksimal 64 karakter"}
+	}
+	if len(invalid) > 0 {
+		write(w, http.StatusUnprocessableEntity, envelope{Error: invalid, Message: "Data tidak valid.", ErrorType: "validation"})
 		return
 	}
 
@@ -403,7 +419,8 @@ func (f *Fake) employees(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
-	if len(req.NIKs) == 0 || slices.Contains(req.NIKs, "") {
+	// The real rule: niks required,min=1,dive,required,max=100.
+	if len(req.NIKs) == 0 || slices.ContainsFunc(req.NIKs, func(n string) bool { return n == "" || utf8.RuneCountInString(n) > 100 }) {
 		write(w, http.StatusUnprocessableEntity, envelope{
 			Error: map[string][]string{"niks": {"wajib diisi"}}, Message: "Data tidak valid.", ErrorType: "validation",
 		})

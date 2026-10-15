@@ -75,6 +75,7 @@ type IdempotencyKey struct {
 	StatusCode       pgtype.Int4
 	ResponseBody     json.RawMessage
 	CreatedAt        pgtype.Timestamptz
+	ResponseOmitted  bool
 }
 
 type Organization struct {

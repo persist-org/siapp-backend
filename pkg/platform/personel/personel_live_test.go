@@ -5,6 +5,7 @@ package personel_test
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -65,6 +66,15 @@ func TestLiveLoginAndLookup(t *testing.T) {
 
 	_, err := c.Login(ctx, personel.LoginInput{Email: personeltest.EmailDanruSatu, Password: "definitely-wrong"})
 	require.ErrorIs(t, err, personel.ErrInvalidCredentials)
+
+	// Personalia's 422 for a malformed email is a wrong email, not an outage.
+	_, err = c.Login(ctx, personel.LoginInput{Email: "danru.satu@", Password: personeltest.Password})
+	require.ErrorIs(t, err, personel.ErrInvalidCredentials)
+
+	// Over-long device details are cut to Personalia's limits, never refuse the login.
+	_, err = c.Login(ctx, personel.LoginInput{Email: personeltest.EmailDanruSatu, Password: personeltest.Password,
+		ClientIP: strings.Repeat("1", 100), UserAgent: strings.Repeat("é", 600)})
+	require.NoError(t, err)
 
 	_, err = c.Login(ctx, personel.LoginInput{Email: personeltest.EmailNonaktifSatu, Password: personeltest.Password})
 	require.ErrorIs(t, err, personel.ErrAccountDisabled)

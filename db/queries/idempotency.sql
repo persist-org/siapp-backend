@@ -10,13 +10,15 @@ RETURNING *;
 -- name: GetIdempotencyKey :one
 SELECT * FROM idempotency_keys WHERE actor_personnel_id = $1 AND key = $2;
 
+-- Stores the response. response_omitted is true for a 2xx whose body could not be kept:
+-- the key is still completed, so a retry does not run the handler again.
 -- name: CompleteIdempotencyKey :exec
 UPDATE idempotency_keys
-SET status_code = $3, response_body = $4
+SET status_code = $3, response_body = $4, response_omitted = $5
 WHERE actor_personnel_id = $1 AND key = $2 AND status_code IS NULL;
 
--- Drops an in-flight claim: the response is not stored (5xx, 409, 429, a panic), so a
--- retry must run again.
+-- Drops an in-flight claim: the response is not stored (5xx, 409, 429, a 4xx that cannot
+-- be kept, a panic), so a retry must run again.
 -- name: ReleaseIdempotencyKey :exec
 DELETE FROM idempotency_keys
 WHERE actor_personnel_id = $1 AND key = $2 AND status_code IS NULL;

@@ -17,7 +17,7 @@ const claimIdempotencyKey = `-- name: ClaimIdempotencyKey :one
 INSERT INTO idempotency_keys (actor_personnel_id, key, method, path, request_hash)
 VALUES ($1, $2, $3, $4, $5)
 ON CONFLICT DO NOTHING
-RETURNING organization_id, actor_personnel_id, key, method, path, request_hash, status_code, response_body, created_at
+RETURNING organization_id, actor_personnel_id, key, method, path, request_hash, status_code, response_body, created_at, response_omitted
 `
 
 type ClaimIdempotencyKeyParams struct {
@@ -49,13 +49,14 @@ func (q *Queries) ClaimIdempotencyKey(ctx context.Context, arg ClaimIdempotencyK
 		&i.StatusCode,
 		&i.ResponseBody,
 		&i.CreatedAt,
+		&i.ResponseOmitted,
 	)
 	return i, err
 }
 
 const completeIdempotencyKey = `-- name: CompleteIdempotencyKey :exec
 UPDATE idempotency_keys
-SET status_code = $3, response_body = $4
+SET status_code = $3, response_body = $4, response_omitted = $5
 WHERE actor_personnel_id = $1 AND key = $2 AND status_code IS NULL
 `
 
@@ -64,14 +65,18 @@ type CompleteIdempotencyKeyParams struct {
 	Key              pgtype.UUID
 	StatusCode       pgtype.Int4
 	ResponseBody     json.RawMessage
+	ResponseOmitted  bool
 }
 
+// Stores the response. response_omitted is true for a 2xx whose body could not be kept:
+// the key is still completed, so a retry does not run the handler again.
 func (q *Queries) CompleteIdempotencyKey(ctx context.Context, arg CompleteIdempotencyKeyParams) error {
 	_, err := q.db.Exec(ctx, completeIdempotencyKey,
 		arg.ActorPersonnelID,
 		arg.Key,
 		arg.StatusCode,
 		arg.ResponseBody,
+		arg.ResponseOmitted,
 	)
 	return err
 }
@@ -90,7 +95,7 @@ func (q *Queries) DeleteExpiredIdempotencyKeys(ctx context.Context, olderThanSec
 }
 
 const getIdempotencyKey = `-- name: GetIdempotencyKey :one
-SELECT organization_id, actor_personnel_id, key, method, path, request_hash, status_code, response_body, created_at FROM idempotency_keys WHERE actor_personnel_id = $1 AND key = $2
+SELECT organization_id, actor_personnel_id, key, method, path, request_hash, status_code, response_body, created_at, response_omitted FROM idempotency_keys WHERE actor_personnel_id = $1 AND key = $2
 `
 
 type GetIdempotencyKeyParams struct {
@@ -111,6 +116,7 @@ func (q *Queries) GetIdempotencyKey(ctx context.Context, arg GetIdempotencyKeyPa
 		&i.StatusCode,
 		&i.ResponseBody,
 		&i.CreatedAt,
+		&i.ResponseOmitted,
 	)
 	return i, err
 }
@@ -125,8 +131,8 @@ type ReleaseIdempotencyKeyParams struct {
 	Key              pgtype.UUID
 }
 
-// Drops an in-flight claim: the response is not stored (5xx, 409, 429, a panic), so a
-// retry must run again.
+// Drops an in-flight claim: the response is not stored (5xx, 409, 429, a 4xx that cannot
+// be kept, a panic), so a retry must run again.
 func (q *Queries) ReleaseIdempotencyKey(ctx context.Context, arg ReleaseIdempotencyKeyParams) error {
 	_, err := q.db.Exec(ctx, releaseIdempotencyKey, arg.ActorPersonnelID, arg.Key)
 	return err

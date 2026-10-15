@@ -10,7 +10,12 @@
 //     (same status, same body) with the header "Idempotent-Replayed: true", and nothing
 //     runs again: no handler, no side effects, no notifications, no outbox rows;
 //   - the same key with a different request is 409 CONFLICT, reason IDEMPOTENCY_KEY_REUSED;
-//   - a request that fails with 5xx, 409 or 429 is not stored, so the retry really runs.
+//   - a request that fails with 5xx, 409 or 429 is not stored, so the retry really runs;
+//   - a 2xx whose response cannot be kept (not JSON, or over 256 KB) still completes the
+//     key, because its side effects happened: the retry does not run again and answers
+//     409 CONFLICT, reason IDEMPOTENCY_RESPONSE_NOT_STORED, with "Idempotent-Replayed:
+//     true". Such a response on an idempotent route is a bug and is logged as an error. A
+//     4xx that cannot be kept is not stored: it changed nothing, so the retry may run.
 //
 // The middleware answers a replay itself and never calls the handler, so a handler cannot
 // accidentally repeat a side effect. Replayed exists for code that sits outside that path
@@ -184,7 +189,7 @@ func (s *Service) serve(w http.ResponseWriter, r *http.Request, next http.Handle
 	case !rq.matches(*stored):
 		httpx.Error(w, r, reused())
 	default:
-		replay(w, *stored)
+		replay(w, r, *stored)
 	}
 }
 
@@ -198,6 +203,12 @@ func inFlight() *apperr.Error {
 	return apperr.ErrConflict.
 		WithReason(apperr.ReasonIdempotencyKeyInFlight).
 		WithMessage("Permintaan dengan Idempotency-Key ini masih diproses. Coba lagi sebentar lagi.")
+}
+
+func notStored() *apperr.Error {
+	return apperr.ErrConflict.
+		WithReason(apperr.ReasonIdempotencyResponseNotStored).
+		WithMessage("Permintaan ini sudah berhasil diproses, tetapi hasilnya tidak dapat dikirim ulang. Muat ulang data untuk melihatnya.")
 }
 
 // claim either takes the key (claimed true) or returns the completed row of the request
@@ -297,8 +308,13 @@ func (s *Service) run(w http.ResponseWriter, r *http.Request, next http.Handler,
 	next.ServeHTTP(cw, r)
 	finished = true
 
-	if body, ok := cw.storable(); ok {
-		err := s.complete(finishCtx, rq, cw.statusCode(), body)
+	if body, omitted, ok := cw.storable(); ok {
+		if omitted {
+			slog.ErrorContext(r.Context(), "idempotency: a 2xx response is not JSON or too large to store; replays will answer 409 IDEMPOTENCY_RESPONSE_NOT_STORED",
+				slog.String("path", rq.path), slog.Int("status", cw.statusCode()),
+				slog.String("requestId", httpx.RequestID(r.Context())))
+		}
+		err := s.complete(finishCtx, rq, cw.statusCode(), body, omitted)
 		if err == nil {
 			return
 		}
@@ -308,14 +324,15 @@ func (s *Service) run(w http.ResponseWriter, r *http.Request, next http.Handler,
 	s.release(finishCtx, rq)
 }
 
-func (s *Service) complete(ctx context.Context, rq request, status int, body []byte) error {
+func (s *Service) complete(ctx context.Context, rq request, status int, body []byte, omitted bool) error {
 	ctx, cancel := context.WithTimeout(ctx, finishTimeout)
 	defer cancel()
 	return database.WithTenant(ctx, s.cfg.Pool, rq.org, func(q *db.Queries) error {
 		return q.CompleteIdempotencyKey(ctx, db.CompleteIdempotencyKeyParams{
 			ActorPersonnelID: rq.actor, Key: rq.key,
-			StatusCode:   pgtype.Int4{Int32: int32(status), Valid: true}, //nolint:gosec // an HTTP status fits
-			ResponseBody: body,
+			StatusCode:      pgtype.Int4{Int32: int32(status), Valid: true}, //nolint:gosec // an HTTP status fits
+			ResponseBody:    body,
+			ResponseOmitted: omitted,
 		})
 	})
 }
@@ -332,9 +349,15 @@ func (s *Service) release(ctx context.Context, rq request) {
 	}
 }
 
-func replay(w http.ResponseWriter, row db.IdempotencyKey) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+func replay(w http.ResponseWriter, r *http.Request, row db.IdempotencyKey) {
 	w.Header().Set(HeaderReplayed, "true")
+	if row.ResponseOmitted {
+		// The first request succeeded but its response was not kept: say so rather than
+		// run the handler again.
+		httpx.Error(w, r, notStored())
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(int(row.StatusCode.Int32))
 	if len(row.ResponseBody) > 0 {
 		_, _ = w.Write(row.ResponseBody)
@@ -381,22 +404,25 @@ func (c *captureWriter) statusCode() int {
 	return c.status
 }
 
-// storable reports whether the response is kept for replays and returns the body to store.
-// Kept: 2xx, and 4xx other than 409 and 429, because the client would get the same answer
-// again. Not kept: 5xx, 409 and 429 (transient, a retry should run), anything that is not
-// JSON (the column is jsonb), and responses too large to keep.
-func (c *captureWriter) storable() ([]byte, bool) {
+// storable reports whether the key is completed (ok) and returns the body to store.
+// Completed: 2xx, and 4xx other than 409 and 429, because the client would get the same
+// answer again. Released: 5xx, 409 and 429 (transient, a retry should run).
+//
+// A body that cannot be kept (not JSON, as the column is jsonb, or too large) is omitted.
+// A 2xx is still completed, with omitted true and no body: its side effects happened and
+// must not run again. A 4xx is released instead: it changed nothing.
+func (c *captureWriter) storable() (body []byte, omitted, ok bool) {
 	status := c.statusCode()
 	class := status / statusClassMask
 	keep := class == 2 || (class == 4 && status != http.StatusConflict && status != http.StatusTooManyRequests)
-	if !keep || c.overflow {
-		return nil, false
+	if !keep {
+		return nil, false, false
+	}
+	if c.overflow || (c.buf.Len() > 0 && !json.Valid(c.buf.Bytes())) {
+		return nil, true, class == 2
 	}
 	if c.buf.Len() == 0 {
-		return nil, true
+		return nil, false, true
 	}
-	if !json.Valid(c.buf.Bytes()) {
-		return nil, false
-	}
-	return bytes.Clone(c.buf.Bytes()), true
+	return bytes.Clone(c.buf.Bytes()), false, true
 }

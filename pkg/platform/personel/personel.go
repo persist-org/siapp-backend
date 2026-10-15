@@ -62,7 +62,8 @@ type Identity struct {
 
 // Typed errors. Callers match with errors.Is.
 var (
-	// ErrInvalidCredentials: wrong email or password. Personalia answers both the same.
+	// ErrInvalidCredentials: wrong email or password. Personalia answers both the same. An
+	// email Personalia refuses as malformed is a wrong email too.
 	ErrInvalidCredentials = errors.New("personel: invalid credentials")
 	// ErrAccountDisabled: the password is right but the person may not sign in. See
 	// DisabledError for the reason.

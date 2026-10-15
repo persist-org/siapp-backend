@@ -8,10 +8,13 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"siapp/pkg/platform/clock"
 )
@@ -28,6 +31,12 @@ const (
 	employeesBatch = 200
 	// maxResponseBytes caps what is read from Personalia: 200 identities are ~100 KB.
 	maxResponseBytes = 4 << 20
+	// Personalia's request limits, in characters (kpi-personalia-api
+	// internal/modules/integration/dto.go). A value over one makes it refuse the whole
+	// request with 422.
+	maxUserAgentLen = 512
+	maxClientIPLen  = 64
+	maxNIKLen       = 100
 
 	headerIntegrationKey = "X-Integration-Key"
 )
@@ -103,14 +112,21 @@ func New(cfg Config) (*Client, error) {
 // Login implements Auth. One request, never retried: a retry is a second failed attempt
 // against the account.
 func (c *Client) Login(ctx context.Context, in LoginInput) (Identity, error) {
-	if in.Email == "" || in.Password == "" {
+	// Surrounding spaces (a phone keyboard's autocomplete) are never part of an address,
+	// and Personalia would refuse them as malformed.
+	email := strings.TrimSpace(in.Email)
+	// An address without "@" can never pass Personalia's email check: no round trip.
+	// Subtler format errors come back as 422 and are mapped in interpret.
+	if email == "" || in.Password == "" || !strings.Contains(email, "@") {
 		return Identity{}, ErrInvalidCredentials
 	}
 	body := map[string]string{
-		"email":      in.Email,
-		"password":   in.Password,
-		"client_ip":  in.ClientIP,
-		"user_agent": in.UserAgent,
+		"email":    email,
+		"password": in.Password,
+		// Both only feed Personalia's security log, so an over-long value is cut rather
+		// than allowed to refuse the login.
+		"client_ip":  truncate(in.ClientIP, maxClientIPLen),
+		"user_agent": truncate(in.UserAgent, maxUserAgentLen),
 	}
 	var out identityJSON
 	if err := c.call(ctx, "/login", body, false, &out); err != nil {
@@ -137,7 +153,9 @@ func (c *Client) EmployeesByNIKs(ctx context.Context, orgID int64, niks []string
 	seen := make(map[string]bool, len(niks))
 	var unique []string
 	for _, n := range niks {
-		if n != "" && !seen[n] {
+		// A NIK longer than Personalia accepts cannot exist there; sending it would make
+		// it refuse the whole batch with 422. It is simply not found.
+		if n != "" && !seen[n] && utf8.RuneCountInString(n) <= maxNIKLen {
 			seen[n] = true
 			unique = append(unique, n)
 		}
@@ -179,16 +197,35 @@ func (e envelope) code() string {
 	return ""
 }
 
+// invalidFields returns the field names of a validation failure, whose `error` is an
+// object of field -> messages. It is nil for any other error.
+func (e envelope) invalidFields() []string {
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(e.Error, &fields) != nil {
+		return nil
+	}
+	return slices.Sorted(maps.Keys(fields))
+}
+
+// onlyPersonFields reports whether a login's validation failure names only what the person
+// typed: that is their mistake (a malformed email). Any other field is ours: the contract
+// drifted.
+func onlyPersonFields(fields []string) bool {
+	return len(fields) > 0 && !slices.ContainsFunc(fields, func(f string) bool {
+		return f != "email" && f != "password"
+	})
+}
+
 // call POSTs body to path and decodes the envelope's data into out. It returns the typed
 // errors of this package; any other failure is wrapped in ErrUnavailable.
 func (c *Client) call(ctx context.Context, path string, body any, idempotent bool, out any) error {
-	if !c.breaker.allow() {
-		return fmt.Errorf("%w: circuit breaker open", ErrUnavailable)
-	}
+	// Encoded before the breaker is asked, so a call that never goes out holds no slot.
 	payload, err := json.Marshal(body)
 	if err != nil {
-		c.breaker.done(false)
 		return fmt.Errorf("personel: encode request: %w", err)
+	}
+	if !c.breaker.allow() {
+		return fmt.Errorf("%w: circuit breaker open", ErrUnavailable)
 	}
 
 	attempts := 1
@@ -199,18 +236,28 @@ func (c *Client) call(ctx context.Context, path string, body any, idempotent boo
 		status int
 		env    envelope
 		last   error
+		// outage is set when an attempt failed while the caller was still waiting. An
+		// attempt that failed because ctx was cancelled or ran out is the caller giving
+		// up, not Personalia failing. The client's own per-attempt timeout
+		// (http.Client.Timeout) does not touch ctx, so it still counts.
+		outage bool
 	)
 	for attempt := 1; attempt <= attempts; attempt++ {
 		status, env, last = c.send(ctx, path, payload)
 		if last == nil && status < 500 {
 			break
 		}
-		// An outage: network error, timeout or 5xx.
+		// A failure: network error, timeout or 5xx.
 		if last == nil {
 			last = fmt.Errorf("status %d", status)
 		}
+		if ctx.Err() != nil {
+			c.log.Debug("personel request abandoned by the caller", "path", path, "attempt", attempt, "error", last)
+			break
+		}
+		outage = true
 		c.log.Warn("personel request failed", "path", path, "attempt", attempt, "of", attempts, "status", status, "error", last)
-		if attempt == attempts || ctx.Err() != nil {
+		if attempt == attempts {
 			break
 		}
 		if !sleep(ctx, c.backoff<<(attempt-1)) {
@@ -219,10 +266,17 @@ func (c *Client) call(ctx context.Context, path string, body any, idempotent boo
 	}
 
 	if last != nil || status >= 500 {
-		c.breaker.done(true)
 		if last == nil {
 			last = fmt.Errorf("status %d", status)
 		}
+		if !outage {
+			// Every failed attempt failed because the caller went away (ctx.Err() is set).
+			// Counting it would let a few users closing the app during login open the
+			// breaker for everyone while Personalia is healthy.
+			c.breaker.abandon()
+			return fmt.Errorf("%w: %w", ErrUnavailable, ctx.Err())
+		}
+		c.breaker.done(true)
 		return fmt.Errorf("%w: %v", ErrUnavailable, last)
 	}
 	// Personalia answered: whatever the status, it is up.
@@ -281,10 +335,15 @@ func (c *Client) interpret(path string, status int, env envelope, out any) error
 		return &DisabledError{Reason: code}
 	case status == http.StatusTooManyRequests:
 		return ErrRateLimited
+	case status == http.StatusUnprocessableEntity && path == "/login" && onlyPersonFields(env.invalidFields()):
+		// What the person typed failed Personalia's validation (a malformed email): to
+		// them it is a wrong email, not an outage.
+		return ErrInvalidCredentials
 	default:
-		// 404 means the integration is not mounted (empty key_hashes); 400/422 mean our
-		// request does not match the contract. Neither is the person's fault.
-		c.log.Error("personel answered an unexpected status", "path", path, "status", status, "code", code)
+		// 404 means the integration is not mounted (empty key_hashes); 400 and any other
+		// 422 mean our request does not match the contract. Neither is the person's fault.
+		c.log.Error("personel answered an unexpected status", "path", path, "status", status, "code", code,
+			"fields", env.invalidFields())
 		return fmt.Errorf("%w: unexpected status %d", ErrUnavailable, status)
 	}
 }
@@ -349,6 +408,19 @@ func (j identityJSON) identity() (Identity, error) {
 		id.PositionID, id.PositionName = j.Position.ID, j.Position.Name
 	}
 	return id, nil
+}
+
+// truncate cuts s to at most n characters, counted as Personalia's max= rule counts them
+// (runes; each invalid UTF-8 byte is one).
+func truncate(s string, n int) string {
+	count := 0
+	for i := range s {
+		if count == n {
+			return s[:i]
+		}
+		count++
+	}
+	return s
 }
 
 func deref(s *string) string {
