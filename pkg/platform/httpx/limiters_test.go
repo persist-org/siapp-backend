@@ -1,13 +1,10 @@
 package httpx_test
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strconv"
 	"testing"
 	"time"
@@ -16,42 +13,15 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"siapp/pkg/platform/httpx"
+	"siapp/pkg/platform/testkit"
 )
 
 var quiet = slog.New(slog.NewJSONHandler(io.Discard, nil))
 
-// testRedis and randomPrefix stand in for the testkit helpers until Phase 00.2 rebuilds
-// testkit; then these tests switch back to testkit.Redis and testkit.RandomPrefix.
-func testRedis(t *testing.T) *redis.Client {
-	t.Helper()
-	if testing.Short() {
-		t.Skip("-short set, skipping tests that need Redis")
-	}
-	url := os.Getenv("TEST_REDIS_URL")
-	if url == "" {
-		url = "redis://localhost:6379/0"
-	}
-	opts, err := redis.ParseURL(url)
-	require.NoError(t, err, "parse TEST_REDIS_URL")
-	rdb := redis.NewClient(opts)
-	t.Cleanup(func() { _ = rdb.Close() })
-	require.NoError(t, rdb.Ping(t.Context()).Err(), "cannot reach redis at %s (make up, or set TEST_REDIS_URL)", url)
-	return rdb
-}
-
-// randomPrefix returns a Redis key prefix no other test uses.
-func randomPrefix(t *testing.T) string {
-	t.Helper()
-	b := make([]byte, 6)
-	_, err := rand.Read(b)
-	require.NoError(t, err)
-	return "test:" + hex.EncodeToString(b) + ":"
-}
-
 func TestFailureLimiter(t *testing.T) {
-	rdb := testRedis(t)
+	rdb := testkit.Redis(t)
 	newLimiter := func() *httpx.FailureLimiter {
-		return httpx.NewFailureLimiter(rdb, randomPrefix(t), quiet)
+		return httpx.NewFailureLimiter(rdb, testkit.RandomPrefix(t), quiet)
 	}
 	rule := func(key string, limit int, window time.Duration) httpx.FailureRule {
 		return httpx.FailureRule{Name: "test", Key: key, Max: limit, Window: window}
@@ -114,7 +84,7 @@ func TestFailureLimiter(t *testing.T) {
 	})
 
 	t.Run("the counter always has a TTL, so a client can never be blocked forever", func(t *testing.T) {
-		prefix := randomPrefix(t)
+		prefix := testkit.RandomPrefix(t)
 		l := httpx.NewFailureLimiter(rdb, prefix, quiet)
 		l.Record(t.Context(), rule("a", 3, time.Minute))
 
@@ -143,7 +113,7 @@ func TestFailureLimiter(t *testing.T) {
 }
 
 func TestRateLimiterPerMinute(t *testing.T) {
-	limiter := httpx.NewRateLimiter(testRedis(t), randomPrefix(t), quiet)
+	limiter := httpx.NewRateLimiter(testkit.Redis(t), testkit.RandomPrefix(t), quiet)
 	ok := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
 	byHeader := func(r *http.Request) string { return r.Header.Get("X-Client") }
 	srv := httptest.NewServer(limiter.PerMinute("test", 3, byHeader)(ok))

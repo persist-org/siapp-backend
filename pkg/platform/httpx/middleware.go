@@ -111,7 +111,7 @@ func recoverer(logger *slog.Logger) func(http.Handler) http.Handler {
 					slog.String("stack", string(debug.Stack())),
 					slog.String("requestId", RequestID(r.Context())),
 				)
-				writeAppError(w, apperr.ErrInternal)
+				writeAppError(w, r, apperr.ErrInternal)
 			}()
 			next.ServeHTTP(w, r)
 		})

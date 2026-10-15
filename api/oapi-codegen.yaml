@@ -1,0 +1,6 @@
+package: apigen
+generate:
+  models: true
+output: ../internal/apigen/models.gen.go
+output-options:
+  skip-prune: true

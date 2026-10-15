@@ -14,9 +14,9 @@ import (
 
 const healthPingTimeout = 2 * time.Second
 
-// Pinger is the part of *sql.DB the health check needs.
+// Pinger is the part of *pgxpool.Pool the health check needs.
 type Pinger interface {
-	PingContext(ctx context.Context) error
+	Ping(ctx context.Context) error
 }
 
 // RouterConfig holds what the router needs to build its middleware stack.
@@ -62,7 +62,7 @@ func health(logger *slog.Logger, db Pinger) http.HandlerFunc {
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), healthPingTimeout)
 		defer cancel()
-		if err := db.PingContext(ctx); err != nil {
+		if err := db.Ping(ctx); err != nil {
 			logger.WarnContext(r.Context(), "health: database ping failed",
 				slog.String("error", err.Error()),
 				slog.String("requestId", RequestID(r.Context())),

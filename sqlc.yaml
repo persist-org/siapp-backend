@@ -1,0 +1,22 @@
+version: "2"
+sql:
+  - engine: postgresql
+    schema: db/migrations
+    queries: db/queries
+    gen:
+      go:
+        package: db
+        out: internal/db
+        sql_package: pgx/v5
+        emit_json_tags: false
+        emit_interface: false
+        emit_empty_slices: true
+        overrides:
+          # The pool uses QueryExecModeExec (see pkg/platform/database), which sends a []byte
+          # parameter as bytea text, so a jsonb column typed []byte fails with "invalid
+          # input syntax for type json". json.RawMessage is encoded as JSON, and nil as NULL.
+          - db_type: jsonb
+            go_type: encoding/json.RawMessage
+          - db_type: jsonb
+            nullable: true
+            go_type: encoding/json.RawMessage

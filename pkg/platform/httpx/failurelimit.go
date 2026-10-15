@@ -30,7 +30,7 @@ type FailureRule struct {
 //
 // ⚠ It fails open: if Redis cannot be reached, Check reports "not blocked" and the error
 // is logged. Refusing every login whenever Redis blips would be a worse outage than
-// briefly losing this limit; the per-account lockout in MySQL still applies.
+// briefly losing this limit; the per-account lockout in Postgres still applies.
 type FailureLimiter struct {
 	rdb    redis.UniversalClient
 	prefix string
