@@ -75,6 +75,11 @@ func newEnv(t *testing.T, cfg func(*idem.Config)) *env {
 			w.Header().Set("Content-Type", "text/plain")
 			w.WriteHeader(http.StatusBadRequest)
 			_, _ = w.Write([]byte("not json"))
+		case "nul":
+			// Valid JSON, but encoding/json writes the NUL as \u0000, which jsonb refuses.
+			httpx.OK(w, r, http.StatusCreated, map[string]any{"run": n, "echo": "a\x00b"})
+		case "nul-400":
+			httpx.Error(w, r, apperr.ErrValidation.WithMessage("bad \x00 input"))
 		case "big":
 			httpx.OK(w, r, http.StatusCreated, map[string]any{"run": n, "pad": strings.Repeat("x", 300<<10)})
 		default:
@@ -187,7 +192,8 @@ func TestWhichResponsesAreStored(t *testing.T) {
 		{"500", http.StatusInternalServerError, false},
 		{"409", http.StatusConflict, false},
 		{"429", http.StatusTooManyRequests, false},
-		{"text-400", http.StatusBadRequest, false}, // not JSON, and a 4xx changed nothing
+		{"text-400", http.StatusBadRequest, false},         // not JSON, and a 4xx changed nothing
+		{"nul-400", http.StatusUnprocessableEntity, false}, // jsonb refuses it, and a 4xx changed nothing
 	}
 	for _, tc := range tests {
 		t.Run(tc.behavior, func(t *testing.T) {
@@ -238,6 +244,7 @@ func TestSuccessThatCannotBeStoredIsNotRunAgain(t *testing.T) {
 	}{
 		{"text", http.StatusOK},
 		{"big", http.StatusCreated},
+		{"nul", http.StatusCreated}, // valid JSON that Postgres jsonb refuses
 	} {
 		t.Run(tc.behavior, func(t *testing.T) {
 			e := newEnv(t, nil)

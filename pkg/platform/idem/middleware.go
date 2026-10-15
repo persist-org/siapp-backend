@@ -11,7 +11,8 @@
 //     runs again: no handler, no side effects, no notifications, no outbox rows;
 //   - the same key with a different request is 409 CONFLICT, reason IDEMPOTENCY_KEY_REUSED;
 //   - a request that fails with 5xx, 409 or 429 is not stored, so the retry really runs;
-//   - a 2xx whose response cannot be kept (not JSON, or over 256 KB) still completes the
+//   - a 2xx whose response cannot be kept (not JSON, over 256 KB, or refused by the jsonb
+//     column, for example a string with a NUL character) still completes the
 //     key, because its side effects happened: the retry does not run again and answers
 //     409 CONFLICT, reason IDEMPOTENCY_RESPONSE_NOT_STORED, with "Idempotent-Replayed:
 //     true". Such a response on an idempotent route is a bug and is logged as an error. A
@@ -314,12 +315,30 @@ func (s *Service) run(w http.ResponseWriter, r *http.Request, next http.Handler,
 				slog.String("path", rq.path), slog.Int("status", cw.statusCode()),
 				slog.String("requestId", httpx.RequestID(r.Context())))
 		}
-		err := s.complete(finishCtx, rq, cw.statusCode(), body, omitted)
+		status := cw.statusCode()
+		err := s.complete(finishCtx, rq, status, body, omitted)
 		if err == nil {
 			return
 		}
 		slog.ErrorContext(r.Context(), "idempotency: store response failed",
 			slog.String("error", err.Error()), slog.String("requestId", httpx.RequestID(r.Context())))
+		if status/statusClassMask == 2 {
+			// ⚠ A 2xx did its work, so the key must never be released: a retry would run
+			// the handler and its side effects again. json.Valid is not the whole jsonb
+			// test (Postgres refuses the \u0000 escape that encoding/json writes for a NUL
+			// character), so the body can still be rejected here. Complete the key without
+			// the body, the same way as a response that was never storable.
+			if !omitted {
+				if err := s.complete(finishCtx, rq, status, nil, true); err != nil {
+					slog.ErrorContext(r.Context(), "idempotency: complete key without body failed",
+						slog.String("error", err.Error()), slog.String("requestId", httpx.RequestID(r.Context())))
+				}
+			}
+			// If even that failed (the database is unreachable) the key stays in flight:
+			// retries answer 409 IDEMPOTENCY_KEY_IN_FLIGHT until InFlightTTL, which is better
+			// than repeating a side effect that already happened.
+			return
+		}
 	}
 	s.release(finishCtx, rq)
 }
@@ -411,6 +430,9 @@ func (c *captureWriter) statusCode() int {
 // A body that cannot be kept (not JSON, as the column is jsonb, or too large) is omitted.
 // A 2xx is still completed, with omitted true and no body: its side effects happened and
 // must not run again. A 4xx is released instead: it changed nothing.
+//
+// This is only what can be seen before the write. Postgres can still refuse a valid JSON
+// body (a \u0000 escape); run handles that by completing a 2xx key without the body.
 func (c *captureWriter) storable() (body []byte, omitted, ok bool) {
 	status := c.statusCode()
 	class := status / statusClassMask
