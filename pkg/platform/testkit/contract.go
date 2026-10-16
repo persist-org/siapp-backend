@@ -220,3 +220,20 @@ func findRoute(routes []route, method, path string) (*routers.Route, map[string]
 	}
 	return best.route, bestParams, true
 }
+
+// ContractPublicOperations returns the operations the contract marks `security: []`, as
+// "METHOD /api/v1/path" (the form auth.PublicRoutes uses, with path parameters left as
+// {name}). A guard test compares it with auth.PublicRoutes.
+func ContractPublicOperations(t testing.TB) map[string]bool {
+	t.Helper()
+	doc, _ := loadContract(t)
+	out := map[string]bool{}
+	for path, item := range doc.Paths.Map() {
+		for method, op := range item.Operations() {
+			if op.Security != nil && len(*op.Security) == 0 {
+				out[method+" "+apiPrefix+path] = true
+			}
+		}
+	}
+	return out
+}

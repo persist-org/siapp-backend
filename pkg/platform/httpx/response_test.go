@@ -83,6 +83,9 @@ func call(t *testing.T, srv string, method, path, body string, header http.Heade
 	t.Helper()
 	req, err := http.NewRequestWithContext(t.Context(), method, srv+path, strings.NewReader(body))
 	require.NoError(t, err)
+	// The test routes sit behind the real authentication middleware; who the caller is does
+	// not matter to them.
+	req.Header.Set("Authorization", "Bearer "+testkit.Token(t, 1, 1))
 	for k, v := range header {
 		req.Header[k] = v
 	}

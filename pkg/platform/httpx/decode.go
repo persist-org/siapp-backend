@@ -183,7 +183,7 @@ func Validate(v any) error {
 func describeTag(fe validator.FieldError) (code, msg string) {
 	text := fe.Kind() == reflect.String || fe.Kind() == reflect.Slice || fe.Kind() == reflect.Map
 	switch fe.Tag() {
-	case "required":
+	case "required", "required_if":
 		return codeRequired, "Wajib diisi."
 	case "uuid", "uuid4", "uuid7":
 		return codeInvalid, "Harus berupa UUID yang valid."

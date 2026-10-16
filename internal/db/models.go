@@ -12,6 +12,49 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type DevicePlatform string
+
+const (
+	DevicePlatformANDROID DevicePlatform = "ANDROID"
+	DevicePlatformIOS     DevicePlatform = "IOS"
+	DevicePlatformWEB     DevicePlatform = "WEB"
+)
+
+func (e *DevicePlatform) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = DevicePlatform(s)
+	case string:
+		*e = DevicePlatform(s)
+	default:
+		return fmt.Errorf("unsupported scan type for DevicePlatform: %T", src)
+	}
+	return nil
+}
+
+type NullDevicePlatform struct {
+	DevicePlatform DevicePlatform
+	Valid          bool // Valid is true if DevicePlatform is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullDevicePlatform) Scan(value interface{}) error {
+	if value == nil {
+		ns.DevicePlatform, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.DevicePlatform.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullDevicePlatform) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.DevicePlatform), nil
+}
+
 type OrganizationStatus string
 
 const (
@@ -54,6 +97,179 @@ func (ns NullOrganizationStatus) Value() (driver.Value, error) {
 	return string(ns.OrganizationStatus), nil
 }
 
+type PersonnelStatus string
+
+const (
+	PersonnelStatusACTIVE   PersonnelStatus = "ACTIVE"
+	PersonnelStatusINACTIVE PersonnelStatus = "INACTIVE"
+)
+
+func (e *PersonnelStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PersonnelStatus(s)
+	case string:
+		*e = PersonnelStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PersonnelStatus: %T", src)
+	}
+	return nil
+}
+
+type NullPersonnelStatus struct {
+	PersonnelStatus PersonnelStatus
+	Valid           bool // Valid is true if PersonnelStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPersonnelStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.PersonnelStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PersonnelStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPersonnelStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PersonnelStatus), nil
+}
+
+type SessionClient string
+
+const (
+	SessionClientMOBILE SessionClient = "MOBILE"
+	SessionClientWEB    SessionClient = "WEB"
+)
+
+func (e *SessionClient) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = SessionClient(s)
+	case string:
+		*e = SessionClient(s)
+	default:
+		return fmt.Errorf("unsupported scan type for SessionClient: %T", src)
+	}
+	return nil
+}
+
+type NullSessionClient struct {
+	SessionClient SessionClient
+	Valid         bool // Valid is true if SessionClient is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullSessionClient) Scan(value interface{}) error {
+	if value == nil {
+		ns.SessionClient, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.SessionClient.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullSessionClient) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.SessionClient), nil
+}
+
+type SessionRevokeReason string
+
+const (
+	SessionRevokeReasonROTATED         SessionRevokeReason = "ROTATED"
+	SessionRevokeReasonLOGOUT          SessionRevokeReason = "LOGOUT"
+	SessionRevokeReasonREUSEDETECTED   SessionRevokeReason = "REUSE_DETECTED"
+	SessionRevokeReasonDEVICERESET     SessionRevokeReason = "DEVICE_RESET"
+	SessionRevokeReasonDEVICECHANGED   SessionRevokeReason = "DEVICE_CHANGED"
+	SessionRevokeReasonACCOUNTDISABLED SessionRevokeReason = "ACCOUNT_DISABLED"
+	SessionRevokeReasonWEBROLEREVOKED  SessionRevokeReason = "WEB_ROLE_REVOKED"
+)
+
+func (e *SessionRevokeReason) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = SessionRevokeReason(s)
+	case string:
+		*e = SessionRevokeReason(s)
+	default:
+		return fmt.Errorf("unsupported scan type for SessionRevokeReason: %T", src)
+	}
+	return nil
+}
+
+type NullSessionRevokeReason struct {
+	SessionRevokeReason SessionRevokeReason
+	Valid               bool // Valid is true if SessionRevokeReason is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullSessionRevokeReason) Scan(value interface{}) error {
+	if value == nil {
+		ns.SessionRevokeReason, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.SessionRevokeReason.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullSessionRevokeReason) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.SessionRevokeReason), nil
+}
+
+type WebRole string
+
+const (
+	WebRoleORGADMIN     WebRole = "ORG_ADMIN"
+	WebRolePROJECTADMIN WebRole = "PROJECT_ADMIN"
+)
+
+func (e *WebRole) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = WebRole(s)
+	case string:
+		*e = WebRole(s)
+	default:
+		return fmt.Errorf("unsupported scan type for WebRole: %T", src)
+	}
+	return nil
+}
+
+type NullWebRole struct {
+	WebRole WebRole
+	Valid   bool // Valid is true if WebRole is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullWebRole) Scan(value interface{}) error {
+	if value == nil {
+		ns.WebRole, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.WebRole.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullWebRole) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.WebRole), nil
+}
+
 type AuditLog struct {
 	ID               int64
 	OrganizationID   int64
@@ -63,6 +279,30 @@ type AuditLog struct {
 	EntityID         int64
 	Metadata         json.RawMessage
 	CreatedAt        pgtype.Timestamptz
+}
+
+type Device struct {
+	ID             int64
+	OrganizationID int64
+	PersonnelID    int64
+	SessionID      int64
+	Platform       DevicePlatform
+	PushToken      string
+	AppVersion     pgtype.Text
+	LastSeenAt     pgtype.Timestamptz
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
+type DeviceBinding struct {
+	ID              int64
+	OrganizationID  int64
+	PersonnelID     int64
+	DeviceTokenHash string
+	BoundAt         pgtype.Timestamptz
+	LastSeenAt      pgtype.Timestamptz
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
 }
 
 type IdempotencyKey struct {
@@ -85,4 +325,53 @@ type Organization struct {
 	FirstSeenAt pgtype.Timestamptz
 	CreatedAt   pgtype.Timestamptz
 	UpdatedAt   pgtype.Timestamptz
+}
+
+type Personnel struct {
+	ID             int64
+	OrganizationID int64
+	PersonelUserID int64
+	Nik            pgtype.Text
+	ClientID       pgtype.Int8
+	ClientName     pgtype.Text
+	FullName       string
+	Email          pgtype.Text
+	Phone          pgtype.Text
+	PhotoUrl       pgtype.Text
+	Status         PersonnelStatus
+	SyncedAt       pgtype.Timestamptz
+	LastSeenAt     pgtype.Timestamptz
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
+type Session struct {
+	ID               int64
+	OrganizationID   int64
+	PersonnelID      int64
+	FamilyID         pgtype.UUID
+	RefreshTokenHash string
+	DeviceTokenHash  pgtype.Text
+	RememberMe       bool
+	Client           SessionClient
+	ExpiresAt        pgtype.Timestamptz
+	RevokedAt        pgtype.Timestamptz
+	ReplacedByID     pgtype.Int8
+	UserAgent        pgtype.Text
+	Ip               pgtype.Text
+	LastUsedAt       pgtype.Timestamptz
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+	RevokeReason     NullSessionRevokeReason
+}
+
+type WebRoleAssignment struct {
+	ID                   int64
+	OrganizationID       int64
+	PersonnelID          int64
+	Role                 WebRole
+	ProjectIds           []int64
+	GrantedByPersonnelID pgtype.Int8
+	CreatedAt            pgtype.Timestamptz
+	UpdatedAt            pgtype.Timestamptz
 }

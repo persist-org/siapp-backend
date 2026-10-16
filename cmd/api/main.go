@@ -17,9 +17,14 @@ import (
 	// there, which would break every business-date calculation in project timezones.
 	_ "time/tzdata"
 
+	"github.com/redis/go-redis/v9"
+
+	"siapp/pkg/platform/auth"
+	"siapp/pkg/platform/clock"
 	"siapp/pkg/platform/config"
 	"siapp/pkg/platform/database"
 	"siapp/pkg/platform/httpx"
+	"siapp/pkg/platform/personel"
 )
 
 const shutdownTimeout = 20 * time.Second
@@ -58,13 +63,37 @@ func run() error {
 	}
 	defer pool.Close()
 
-	router := httpx.NewRouter(httpx.RouterConfig{
+	redisOpts, err := redis.ParseURL(cfg.RedisURL)
+	if err != nil {
+		// The message of a parse error can quote the URL, which holds a password.
+		return fmt.Errorf("REDIS_URL cannot be parsed, check its format")
+	}
+	rdb := redis.NewClient(redisOpts)
+	defer func() { _ = rdb.Close() }()
+
+	personelClient, err := personel.New(personel.Config{
+		BaseURL: cfg.PersonelBaseURL,
+		Key:     cfg.PersonelIntegrationKey,
+		Logger:  logger,
+	})
+	if err != nil {
+		return fmt.Errorf("personel client: %w", err)
+	}
+	tokens, err := auth.NewTokens([]byte(cfg.JWTSecret), clock.System{})
+	if err != nil {
+		return err
+	}
+
+	router := newRouter(deps{
 		Logger:      logger,
 		CORSOrigins: cfg.CORSOrigins,
-		DB:          pool,
-		// Phase 01.1 replaces this with auth.Require (default-deny). Until then the API
-		// serves nothing but GET /api/v1/health, which is public anyway.
-		Authenticate: func(next http.Handler) http.Handler { return next },
+		Pool:        pool,
+		Redis:       rdb,
+		RedisPrefix: config.RedisKeyPrefix,
+		Personel:    personelClient,
+		Tokens:      tokens,
+		Clock:       clock.System{},
+		ClientIP:    httpx.ClientIPFunc(cfg.ClientIPHeader),
 	})
 	srv := httpx.NewServer(cfg.HTTPAddr, router)
 

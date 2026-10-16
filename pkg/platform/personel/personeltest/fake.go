@@ -181,6 +181,25 @@ func (f *Fake) SetDomain(email string, d personel.Domain) {
 	f.mutate(email, "", func(a *account) { a.id.Domain = d })
 }
 
+// Identity returns the fixture with this email as Personalia would answer for it now. ok is
+// false for an email that is not a fixture.
+func (f *Fake) Identity(email string) (personel.Identity, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, a := range f.accounts {
+		if a.id.Email == email {
+			return a.id, true
+		}
+	}
+	return personel.Identity{}, false
+}
+
+// Rename changes the person's name, as HR does in Personalia: SiAPP's cached copy catches up
+// at the person's next login.
+func (f *Fake) Rename(nik, fullName string) {
+	f.mutate("", nik, func(a *account) { a.id.FullName = fullName })
+}
+
 // MoveToCompany moves the person to another employing company, which is another tenant.
 func (f *Fake) MoveToCompany(nik string, orgID int64) {
 	f.mutate("", nik, func(a *account) {

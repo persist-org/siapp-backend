@@ -222,6 +222,24 @@ func (e ListEnvelopeSuccess) Valid() bool {
 	}
 }
 
+// Defines values for LoginRequestClient.
+const (
+	MOBILE LoginRequestClient = "MOBILE"
+	WEB    LoginRequestClient = "WEB"
+)
+
+// Valid indicates whether the value is a known member of the LoginRequestClient enum.
+func (e LoginRequestClient) Valid() bool {
+	switch e {
+	case MOBILE:
+		return true
+	case WEB:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for MasterReviewType.
 const (
 	MasterReviewTypePELANGGARAN MasterReviewType = "PELANGGARAN"
@@ -276,10 +294,29 @@ func (e MeResultTeamRole) Valid() bool {
 	}
 }
 
+// Defines values for MeResultWebRoleRole.
+const (
+	MeResultWebRoleRoleORGADMIN     MeResultWebRoleRole = "ORG_ADMIN"
+	MeResultWebRoleRolePROJECTADMIN MeResultWebRoleRole = "PROJECT_ADMIN"
+)
+
+// Valid indicates whether the value is a known member of the MeResultWebRoleRole enum.
+func (e MeResultWebRoleRole) Valid() bool {
+	switch e {
+	case MeResultWebRoleRoleORGADMIN:
+		return true
+	case MeResultWebRoleRolePROJECTADMIN:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for NotificationTokenInputPlatform.
 const (
 	Android NotificationTokenInputPlatform = "android"
 	Ios     NotificationTokenInputPlatform = "ios"
+	Web     NotificationTokenInputPlatform = "web"
 )
 
 // Valid indicates whether the value is a known member of the NotificationTokenInputPlatform enum.
@@ -288,6 +325,8 @@ func (e NotificationTokenInputPlatform) Valid() bool {
 	case Android:
 		return true
 	case Ios:
+		return true
+	case Web:
 		return true
 	default:
 		return false
@@ -873,6 +912,42 @@ func (e TeamMemberInputRole) Valid() bool {
 	case TeamMemberInputRoleDANRU:
 		return true
 	case TeamMemberInputRoleMEMBER:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WebRoleAssignmentRole.
+const (
+	WebRoleAssignmentRoleORGADMIN     WebRoleAssignmentRole = "ORG_ADMIN"
+	WebRoleAssignmentRolePROJECTADMIN WebRoleAssignmentRole = "PROJECT_ADMIN"
+)
+
+// Valid indicates whether the value is a known member of the WebRoleAssignmentRole enum.
+func (e WebRoleAssignmentRole) Valid() bool {
+	switch e {
+	case WebRoleAssignmentRoleORGADMIN:
+		return true
+	case WebRoleAssignmentRolePROJECTADMIN:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WebRoleInputRole.
+const (
+	WebRoleInputRoleORGADMIN     WebRoleInputRole = "ORG_ADMIN"
+	WebRoleInputRolePROJECTADMIN WebRoleInputRole = "PROJECT_ADMIN"
+)
+
+// Valid indicates whether the value is a known member of the WebRoleInputRole enum.
+func (e WebRoleInputRole) Valid() bool {
+	switch e {
+	case WebRoleInputRoleORGADMIN:
+		return true
+	case WebRoleInputRolePROJECTADMIN:
 		return true
 	default:
 		return false
@@ -2586,6 +2661,36 @@ const (
 func (e PostAdminTeamsByIdMembers201JSONResponseBodySuccess) Valid() bool {
 	switch e {
 	case PostAdminTeamsByIdMembers201JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetAdminWebRoles200JSONResponseBodySuccess.
+const (
+	GetAdminWebRoles200JSONResponseBodySuccessTrue GetAdminWebRoles200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetAdminWebRoles200JSONResponseBodySuccess enum.
+func (e GetAdminWebRoles200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetAdminWebRoles200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PutAdminWebRole200JSONResponseBodySuccess.
+const (
+	PutAdminWebRole200JSONResponseBodySuccessTrue PutAdminWebRole200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PutAdminWebRole200JSONResponseBodySuccess enum.
+func (e PutAdminWebRole200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PutAdminWebRole200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
@@ -5548,12 +5653,24 @@ type LocationLog struct {
 
 // LoginRequest defines model for LoginRequest.
 type LoginRequest struct {
-	// Identifier username atau email
-	Identifier       string  `json:"identifier"`
+	// Client Aplikasi yang login. MOBILE mengikat satu perangkat per orang; WEB tidak mengikat perangkat.
+	Client LoginRequestClient `json:"client"`
+
+	// DeviceToken Pengenal perangkat. Wajib bila client = MOBILE (satu orang = satu HP); diabaikan untuk WEB.
+	DeviceToken *string `json:"device_token,omitempty"`
+
+	// Identifier Email akun Persist Personalia. Password diperiksa oleh Personalia, SiAPP tidak menyimpannya.
+	Identifier string `json:"identifier"`
+
+	// OrganizationCode Diabaikan. Organisasi ditentukan oleh Personalia (perusahaan tempat orang itu bekerja), bukan oleh request.
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	OrganizationCode *string `json:"organization_code,omitempty"`
 	Password         string  `json:"password"`
 	RememberMe       *bool   `json:"remember_me,omitempty"`
 }
+
+// LoginRequestClient Aplikasi yang login. MOBILE mengikat satu perangkat per orang; WEB tidak mengikat perangkat.
+type LoginRequestClient string
 
 // LoginResult defines model for LoginResult.
 type LoginResult struct {
@@ -5598,13 +5715,30 @@ type MasterReviewCreateType string
 
 // MeResult defines model for MeResult.
 type MeResult struct {
+	// Memberships Keanggotaan regu aktif beserta peran (diisi sejak Fase 02.2; kosong sebelumnya).
+	Memberships *[]map[string]interface{} `json:"memberships,omitempty"`
+
+	// Organization Organisasi (tenant) orang ini, dari Personalia.
+	Organization *struct {
+		Id   *int64  `json:"id,omitempty"`
+		Name *string `json:"name,omitempty"`
+	} `json:"organization,omitempty"`
 	Roles    *[]string         `json:"roles,omitempty"`
 	TeamRole *MeResultTeamRole `json:"team_role,omitempty"`
 	User     *Personnel        `json:"user,omitempty"`
+
+	// WebRole Penugasan peran web (admin) milik SiAPP; null untuk petugas lapangan.
+	WebRole *struct {
+		ProjectIds *[]int64             `json:"project_ids,omitempty"`
+		Role       *MeResultWebRoleRole `json:"role,omitempty"`
+	} `json:"web_role,omitempty"`
 }
 
 // MeResultTeamRole defines model for MeResult.TeamRole.
 type MeResultTeamRole string
+
+// MeResultWebRoleRole defines model for MeResult.WebRole.Role.
+type MeResultWebRoleRole string
 
 // Meta defines model for Meta.
 type Meta struct {
@@ -5649,7 +5783,9 @@ type NotificationTokenDelete struct {
 
 // NotificationTokenInput defines model for NotificationTokenInput.
 type NotificationTokenInput struct {
-	// FirebaseToken FCM token (tertaut personnels.firebase_token).
+	AppVersion *string `json:"app_version,omitempty"`
+
+	// FirebaseToken Push token perangkat ini. Satu token hanya milik satu perangkat; mendaftar ulang memperbarui baris yang sama.
 	FirebaseToken string                         `json:"firebase_token"`
 	Platform      NotificationTokenInputPlatform `json:"platform"`
 }
@@ -6549,6 +6685,33 @@ type VoidInput struct {
 	Reason string `json:"reason"`
 }
 
+// WebRoleAssignment defines model for WebRoleAssignment.
+type WebRoleAssignment struct {
+	CreatedAt            *time.Time `json:"created_at,omitempty"`
+	FullName             *string    `json:"full_name,omitempty"`
+	GrantedByPersonnelId *int64     `json:"granted_by_personnel_id,omitempty"`
+
+	// Nik Disamarkan; hanya 4 digit terakhir.
+	Nik         *string                `json:"nik,omitempty"`
+	PersonnelId *int64                 `json:"personnel_id,omitempty"`
+	ProjectIds  *[]int64               `json:"project_ids,omitempty"`
+	Role        *WebRoleAssignmentRole `json:"role,omitempty"`
+	UpdatedAt   *time.Time             `json:"updated_at,omitempty"`
+}
+
+// WebRoleAssignmentRole defines model for WebRoleAssignment.Role.
+type WebRoleAssignmentRole string
+
+// WebRoleInput defines model for WebRoleInput.
+type WebRoleInput struct {
+	// ProjectIds Wajib dan tidak kosong untuk PROJECT_ADMIN; harus kosong untuk ORG_ADMIN.
+	ProjectIds *[]int64         `json:"project_ids,omitempty"`
+	Role       WebRoleInputRole `json:"role"`
+}
+
+// WebRoleInputRole defines model for WebRoleInput.Role.
+type WebRoleInputRole string
+
 // WebUser defines model for WebUser.
 type WebUser struct {
 	CreatedAt      *time.Time        `json:"created_at,omitempty"`
@@ -6678,6 +6841,9 @@ type LimitParam = int
 // PageParam defines model for PageParam.
 type PageParam = int
 
+// PersonnelIdPath defines model for PersonnelIdPath.
+type PersonnelIdPath = int64
+
 // ProjectIdParam defines model for ProjectIdParam.
 type ProjectIdParam = int64
 
@@ -6713,6 +6879,9 @@ type NotFound = ErrorEnvelope
 
 // RateLimited defines model for RateLimited.
 type RateLimited = ErrorEnvelope
+
+// ServiceUnavailable defines model for ServiceUnavailable.
+type ServiceUnavailable = ErrorEnvelope
 
 // Unauthorized defines model for Unauthorized.
 type Unauthorized = ErrorEnvelope
@@ -7751,6 +7920,21 @@ type GetAdminTeamsByIdMembers200JSONResponseBodySuccess bool
 
 // PostAdminTeamsByIdMembers201JSONResponseBodySuccess defines parameters for PostAdminTeamsByIdMembers.
 type PostAdminTeamsByIdMembers201JSONResponseBodySuccess bool
+
+// GetAdminWebRolesParams defines parameters for GetAdminWebRoles.
+type GetAdminWebRolesParams struct {
+	// Page Nomor halaman (1-indexed).
+	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
+
+	// Limit Item per halaman (maks 100).
+	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetAdminWebRoles200JSONResponseBodySuccess defines parameters for GetAdminWebRoles.
+type GetAdminWebRoles200JSONResponseBodySuccess bool
+
+// PutAdminWebRole200JSONResponseBodySuccess defines parameters for PutAdminWebRole.
+type PutAdminWebRole200JSONResponseBodySuccess bool
 
 // GetAdminWebUsersParams defines parameters for GetAdminWebUsers.
 type GetAdminWebUsersParams struct {
@@ -9358,6 +9542,9 @@ type PatchAdminTeamsByIdJSONRequestBody = TeamInput
 
 // PostAdminTeamsByIdMembersJSONRequestBody defines body for PostAdminTeamsByIdMembers for application/json ContentType.
 type PostAdminTeamsByIdMembersJSONRequestBody = TeamMemberInput
+
+// PutAdminWebRoleJSONRequestBody defines body for PutAdminWebRole for application/json ContentType.
+type PutAdminWebRoleJSONRequestBody = WebRoleInput
 
 // PostAdminWebUsersJSONRequestBody defines body for PostAdminWebUsers for application/json ContentType.
 type PostAdminWebUsersJSONRequestBody = WebUserInput
