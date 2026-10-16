@@ -23,6 +23,11 @@ const (
 
 var appEnvs = []string{EnvDevelopment, EnvTest, EnvProduction}
 
+// RedisKeyPrefix goes in front of every Redis key SiAPP writes (revocation list, failure
+// counters). ⚠ The API and the worker must agree on it: the worker's people resync writes
+// revocations that the API's authentication reads, under the same keys.
+const RedisKeyPrefix = "siapp:"
+
 // Config is the full process configuration. Every field maps to one environment variable.
 type Config struct {
 	AppEnv   string `env:"APP_ENV" envDefault:"development"`

@@ -7,8 +7,10 @@ import (
 	"siapp/pkg/platform/auth"
 )
 
-// Error reasons of the login flow (details.reason). Phases 01.2 and 01.3 add their own to
-// this file. A reason that has shipped is never renamed.
+// Error reasons of module 01's sessions (details.reason). The token reasons
+// (AUTH_TOKEN_INVALID, AUTH_TOKEN_EXPIRED) live with the middleware in pkg/platform/auth, and
+// the admin reasons (NOT_ADMIN, ACCESS_*) in pkg/access. A reason that has shipped is never
+// renamed.
 const (
 	ReasonInvalidCredentials    = "AUTH_INVALID_CREDENTIALS" //nolint:gosec // a reason code, not a secret
 	ReasonAccountDisabled       = "AUTH_ACCOUNT_DISABLED"

@@ -377,6 +377,19 @@ func (q *Queries) GetSessionForRefresh(ctx context.Context, refreshTokenHash str
 	return i, err
 }
 
+const getSessionPersonnel = `-- name: GetSessionPersonnel :one
+SELECT personnel_id FROM sessions WHERE refresh_token_hash = $1
+`
+
+// Whose session a refresh token belongs to, read before any lock so that the person can be
+// locked first (see LockPersonnel).
+func (q *Queries) GetSessionPersonnel(ctx context.Context, refreshTokenHash string) (int64, error) {
+	row := q.db.QueryRow(ctx, getSessionPersonnel, refreshTokenHash)
+	var personnel_id int64
+	err := row.Scan(&personnel_id)
+	return personnel_id, err
+}
+
 const listRecentMobileSessionIDs = `-- name: ListRecentMobileSessionIDs :many
 SELECT id FROM sessions WHERE personnel_id = $1 AND client = 'MOBILE' AND created_at >= $2
 `
@@ -519,6 +532,39 @@ func (q *Queries) ListStalePersonnel(ctx context.Context, arg ListStalePersonnel
 	return items, nil
 }
 
+const lockPersonnel = `-- name: LockPersonnel :one
+SELECT id FROM personnels WHERE id = $1 FOR UPDATE
+`
+
+// ⚠ The person's row is the per-person lock. Every transaction that changes a person's
+// sessions, phone binding or devices takes it FIRST (login takes it through its upsert), so
+// they all queue in the same order and can neither deadlock nor miss each other's writes:
+// a logout that waits here for a refresh to commit then sees the session that refresh made.
+func (q *Queries) LockPersonnel(ctx context.Context, id int64) (int64, error) {
+	row := q.db.QueryRow(ctx, lockPersonnel, id)
+	var id_2 int64
+	err := row.Scan(&id_2)
+	return id_2, err
+}
+
+const lockPersonnelForSync = `-- name: LockPersonnelForSync :one
+SELECT synced_at, status FROM personnels WHERE id = $1 FOR UPDATE
+`
+
+type LockPersonnelForSyncRow struct {
+	SyncedAt pgtype.Timestamptz
+	Status   PersonnelStatus
+}
+
+// The resync's re-check under the per-person lock: what it read before asking Personalia may
+// have changed since (a login, a refresh, another deactivation).
+func (q *Queries) LockPersonnelForSync(ctx context.Context, id int64) (LockPersonnelForSyncRow, error) {
+	row := q.db.QueryRow(ctx, lockPersonnelForSync, id)
+	var i LockPersonnelForSyncRow
+	err := row.Scan(&i.SyncedAt, &i.Status)
+	return i, err
+}
+
 const markPersonnelInactive = `-- name: MarkPersonnelInactive :exec
 UPDATE personnels SET status = 'INACTIVE', synced_at = $1, updated_at = $1 WHERE id = $2
 `
@@ -617,6 +663,25 @@ func (q *Queries) RefreshPersonnel(ctx context.Context, arg RefreshPersonnelPara
 		arg.Now,
 		arg.ID,
 	)
+	return err
+}
+
+const releaseNIK = `-- name: ReleaseNIK :exec
+UPDATE personnels SET nik = NULL, updated_at = $1
+WHERE nik = $2 AND personel_user_id <> $3
+`
+
+type ReleaseNIKParams struct {
+	Now            pgtype.Timestamptz
+	Nik            pgtype.Text
+	PersonelUserID int64
+}
+
+// A NIK belongs to one Personalia account at a time. When Personalia hands a NIK to another
+// account (a re-hire under a new user, a corrected record), the stale row lets go of it, so
+// the unique (organization, nik) index does not turn the new owner's login into an error.
+func (q *Queries) ReleaseNIK(ctx context.Context, arg ReleaseNIKParams) error {
+	_, err := q.db.Exec(ctx, releaseNIK, arg.Now, arg.Nik, arg.PersonelUserID)
 	return err
 }
 
@@ -752,7 +817,7 @@ INSERT INTO personnels (
 ) VALUES (
     $1, $2, $3, $4,
     $5, $6, $7, $8,
-    $9, $10, $10, $10, $10
+    $9, $10, $11, $10, $10
 )
 ON CONFLICT (organization_id, personel_user_id) DO UPDATE SET
     nik          = EXCLUDED.nik,
@@ -764,7 +829,7 @@ ON CONFLICT (organization_id, personel_user_id) DO UPDATE SET
     photo_url    = EXCLUDED.photo_url,
     status       = EXCLUDED.status,
     synced_at    = EXCLUDED.synced_at,
-    last_seen_at = EXCLUDED.last_seen_at,
+    last_seen_at = COALESCE(EXCLUDED.last_seen_at, personnels.last_seen_at),
     updated_at   = EXCLUDED.updated_at
 RETURNING id, organization_id, personel_user_id, nik, client_id, client_name, full_name, email, phone, photo_url, status, synced_at, last_seen_at, created_at, updated_at
 `
@@ -780,6 +845,7 @@ type UpsertPersonnelParams struct {
 	PhotoUrl       pgtype.Text
 	Status         PersonnelStatus
 	Now            pgtype.Timestamptz
+	SeenAt         pgtype.Timestamptz
 }
 
 // Everything here runs inside database.WithTenant: organization_id is never a parameter, it
@@ -788,6 +854,11 @@ type UpsertPersonnelParams struct {
 // The upsert also takes the person's row lock until the transaction ends (an UPDATE, or an
 // INSERT that a concurrent insert of the same key has to wait for), which is what serialises
 // two logins of one person, see identity.Usecase.Login.
+//
+// seen_at is the person's own activity (a login or a refresh) and feeds last_seen_at, the
+// billing active-head clock. It is NULL when SiAPP fetches someone who did nothing themselves
+// (People.Ensure): the clock is then left as it was, so a person added to a team is not
+// counted as active.
 func (q *Queries) UpsertPersonnel(ctx context.Context, arg UpsertPersonnelParams) (Personnel, error) {
 	row := q.db.QueryRow(ctx, upsertPersonnel,
 		arg.PersonelUserID,
@@ -800,6 +871,7 @@ func (q *Queries) UpsertPersonnel(ctx context.Context, arg UpsertPersonnelParams
 		arg.PhotoUrl,
 		arg.Status,
 		arg.Now,
+		arg.SeenAt,
 	)
 	var i Personnel
 	err := row.Scan(

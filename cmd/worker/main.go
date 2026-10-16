@@ -75,7 +75,7 @@ func run() error {
 	}
 	rdb := redis.NewClient(redisClientOpts)
 	defer func() { _ = rdb.Close() }()
-	resyncer := identity.NewResyncer(pool, personelClient, auth.NewRevocations(rdb, "siapp:", logger), clock.System{}, logger)
+	resyncer := identity.NewResyncer(pool, personelClient, auth.NewRevocations(rdb, config.RedisKeyPrefix, logger), clock.System{}, logger)
 
 	srv := asynq.NewServer(redisOpt, asynq.Config{Concurrency: workerConcurrency})
 	mux := asynq.NewServeMux()

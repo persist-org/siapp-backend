@@ -479,6 +479,7 @@ func TestPersonaliaOwnLimitCoversGuessesSpreadOverManyAddresses(t *testing.T) {
 	res := e.post(web(personeltest.EmailDanruSatu), from("10.0.9.9"))
 	require.Equal(t, http.StatusTooManyRequests, res.Status)
 	require.Equal(t, "RATE_LIMITED", res.err(t).Code)
+	require.Equal(t, "900", res.Header.Get("Retry-After"), "Personalia's own 15-minute window, so the app waits")
 }
 
 func TestInvalidRequestsAreRefusedBeforePersonaliaIsAsked(t *testing.T) {

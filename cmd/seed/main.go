@@ -100,7 +100,8 @@ func grantAdmin(args []string) error {
 
 	personnelID, err := identity.NewPeople(pool, client, clock.System{}).Ensure(ctx, *org, *nik)
 	if err != nil {
-		return fmt.Errorf("find the person (NIK %s in organization %d): %w", *nik, *org, err)
+		// The NIK is not repeated back: it is personal data, and terminal output ends up in logs.
+		return fmt.Errorf("find the person with that NIK in organization %d: %w", *org, err)
 	}
 	if err := access.GrantFirstAdmin(ctx, pool, clock.System{}, *org, personnelID); err != nil {
 		return err

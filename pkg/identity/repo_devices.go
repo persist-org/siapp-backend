@@ -121,6 +121,9 @@ func (repo) personnelByNIK(ctx context.Context, q *db.Queries, nik string) (db.P
 // refreshPersonnel overwrites the cached copy with what Personalia says, without counting
 // it as the person's own activity.
 func (repo) refreshPersonnel(ctx context.Context, q *db.Queries, id int64, p personel.Identity, now time.Time) error {
+	if err := releaseNIK(ctx, q, p, now); err != nil {
+		return err
+	}
 	if err := q.RefreshPersonnel(ctx, db.RefreshPersonnelParams{
 		ID: id, Nik: textOrNull(p.NIK), ClientID: int8OrNull(p.ClientID), ClientName: textOrNull(p.ClientName),
 		FullName: p.FullName, Email: textOrNull(p.Email), Phone: textOrNull(p.Phone), PhotoUrl: textOrNull(p.PhotoURL),

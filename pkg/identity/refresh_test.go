@@ -3,7 +3,6 @@ package identity_test
 import (
 	"net/http"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -158,24 +157,15 @@ func TestParallelRefreshesWithOneTokenSucceedOnce(t *testing.T) {
 	first := e.login(web(personeltest.EmailDanruSatu)).data(t)
 
 	const attempts = 8
-	var ready, start sync.WaitGroup
-	ready.Add(attempts)
-	start.Add(1)
-	results := make(chan int, attempts)
-	for range attempts {
-		go func() {
-			ready.Done()
-			start.Wait() // all of them go at the same moment
-			res := e.postTo(refreshPath, map[string]any{"refresh_token": first.RefreshToken}, nil)
-			results <- res.Status
-		}()
+	// All of them are in flight at once; each reports back to the test goroutine.
+	results := make([]<-chan asyncResult, attempts)
+	for i := range attempts {
+		results[i] = e.async(http.MethodPost, refreshPath, "", map[string]any{"refresh_token": first.RefreshToken})
 	}
-	ready.Wait()
-	start.Done()
 
 	ok, refused := 0, 0
-	for range attempts {
-		switch <-results {
+	for i := range attempts {
+		switch await(t, results[i]).Status {
 		case http.StatusOK:
 			ok++
 		case http.StatusUnauthorized:

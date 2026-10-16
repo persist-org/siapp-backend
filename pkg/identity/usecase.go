@@ -82,7 +82,12 @@ func (u *Usecase) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 	// checked. The organization is the person's employing company: it comes from this
 	// answer and never from the request (D11).
 	if id.OrganizationID <= 0 {
-		return LoginResult{}, fmt.Errorf("personel login: answer without an organization for user %d", id.PersonelUserID)
+		// Personalia broke its own contract (a login answer always names the employing
+		// company). Not the person's fault and not something they can fix: report it as
+		// Personalia being unusable right now, and log it so it gets looked at.
+		u.logger.ErrorContext(ctx, "personel login answered without an organization",
+			slog.Int64("personel_user_id", id.PersonelUserID))
+		return LoginResult{}, apperr.ErrPersonelUnavailable
 	}
 
 	now := u.clock.Now()
@@ -100,7 +105,7 @@ func (u *Usecase) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 
 	var out LoginResult
 	err = database.WithTenant(ctx, u.pool, id.OrganizationID, func(q *db.Queries) error {
-		person, err := u.repo.upsertPersonnel(ctx, q, id, now)
+		person, err := u.repo.upsertPersonnel(ctx, q, id, now, true)
 		if err != nil {
 			return err
 		}

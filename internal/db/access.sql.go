@@ -112,6 +112,43 @@ func (q *Queries) ListWebRoles(ctx context.Context, arg ListWebRolesParams) ([]L
 	return items, nil
 }
 
+const lockWebRoles = `-- name: LockWebRoles :many
+SELECT personnel_id, role FROM web_role_assignments
+WHERE personnel_id = ANY($1::bigint[])
+ORDER BY personnel_id
+FOR UPDATE
+`
+
+type LockWebRolesRow struct {
+	PersonnelID int64
+	Role        WebRole
+}
+
+// ⚠ Locks the assignments of the acting admin and of the target, in one statement and in id
+// order, before a role change. The actor's role is then re-checked under the lock: two
+// ORG_ADMINs removing each other at the same moment queue here, and the second finds it is no
+// longer an admin, so the organization can never be left without one. The fixed order keeps
+// the two from deadlocking.
+func (q *Queries) LockWebRoles(ctx context.Context, personnelIds []int64) ([]LockWebRolesRow, error) {
+	rows, err := q.db.Query(ctx, lockWebRoles, personnelIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []LockWebRolesRow{}
+	for rows.Next() {
+		var i LockWebRolesRow
+		if err := rows.Scan(&i.PersonnelID, &i.Role); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const personnelNameAndNIK = `-- name: PersonnelNameAndNIK :one
 SELECT full_name, nik FROM personnels WHERE id = $1
 `
@@ -147,8 +184,7 @@ type UpsertWebRoleParams struct {
 	Now                  pgtype.Timestamptz
 }
 
-// Grants or changes a role. A person who is not in the people cache is a foreign key
-// failure, which the caller reports as NOT_FOUND.
+// Grants or changes a role. Callers check that the person exists first (PersonnelNameAndNIK).
 func (q *Queries) UpsertWebRole(ctx context.Context, arg UpsertWebRoleParams) (WebRoleAssignment, error) {
 	row := q.db.QueryRow(ctx, upsertWebRole,
 		arg.PersonnelID,

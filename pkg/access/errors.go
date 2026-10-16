@@ -7,11 +7,15 @@ import (
 )
 
 // Error reasons (details.reason). A reason that has shipped is never renamed.
+//
+// NOT_ADMIN keeps the name the plan and docs/api-response.md already give it (it is the
+// reason of the web login gate too); the others carry the module prefix that
+// docs/api-response.md asks for.
 const (
 	ReasonNotAdmin       = "NOT_ADMIN"
-	ReasonOrgAdminOnly   = "ORG_ADMIN_ONLY"
-	ReasonOwnRoleLocked  = "OWN_ROLE_PROTECTED"
-	ReasonOutsideProject = "OUTSIDE_ADMIN_SCOPE"
+	ReasonOrgAdminOnly   = "ACCESS_ORG_ADMIN_ONLY"
+	ReasonOwnRoleLocked  = "ACCESS_OWN_ROLE_PROTECTED"
+	ReasonOutsideProject = "ACCESS_OUTSIDE_ADMIN_SCOPE"
 )
 
 // ErrNotAdmin is returned to a person with no web role assignment: field staff, who cannot
@@ -20,11 +24,12 @@ var ErrNotAdmin = apperr.New(http.StatusForbidden, apperr.CodeForbidden,
 	ReasonNotAdmin, "Anda bukan admin. Akses ini hanya untuk admin.")
 
 // ErrOrgAdminOnly is returned to a PROJECT_ADMIN who tries something only an ORG_ADMIN may do.
-var ErrOrgAdminOnly = apperr.New(http.StatusForbidden, apperr.CodeScopeDenied,
+// It is a role check, so ROLE_DENIED.
+var ErrOrgAdminOnly = apperr.New(http.StatusForbidden, apperr.CodeRoleDenied,
 	ReasonOrgAdminOnly, "Hanya admin organisasi yang dapat melakukan ini.")
 
 // ErrOutsideAdminScope is returned to an admin who reaches for a person or project outside
-// their scope.
+// their scope. It is a scope check, so SCOPE_DENIED.
 var ErrOutsideAdminScope = apperr.New(http.StatusForbidden, apperr.CodeScopeDenied,
 	ReasonOutsideProject, "Orang ini berada di luar proyek yang Anda kelola.")
 

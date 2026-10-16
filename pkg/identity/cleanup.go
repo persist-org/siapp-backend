@@ -17,6 +17,10 @@ import (
 // TaskCleanupSessions is the worker task that runs Cleaner.Cleanup.
 const TaskCleanupSessions = "auth:cleanup-sessions"
 
+// CleanupSchedule runs the session cleanup daily at 20:00 UTC, 03:00 in Jakarta, when the
+// fewest guards are logging in. The scheduler runs in UTC (see cmd/worker).
+const CleanupSchedule = "0 20 * * *"
+
 // Cleaner deletes sessions that are long dead.
 type Cleaner struct {
 	pool  *pgxpool.Pool
@@ -102,9 +106,7 @@ func RegisterJobs(mux *asynq.ServeMux, cleaner *Cleaner, logger *slog.Logger) {
 
 // RegisterSchedule adds the identity periodic tasks to the scheduler.
 func RegisterSchedule(scheduler *asynq.Scheduler) error {
-	// 20:00 UTC is 03:00 in Jakarta, when the fewest guards are logging in. The scheduler
-	// runs in UTC (see cmd/worker), so this reads the same everywhere.
-	if _, err := scheduler.Register("0 20 * * *", asynq.NewTask(TaskCleanupSessions, nil),
+	if _, err := scheduler.Register(CleanupSchedule, asynq.NewTask(TaskCleanupSessions, nil),
 		asynq.MaxRetry(3), asynq.Timeout(cleanupTimeout)); err != nil {
 		return fmt.Errorf("register %s: %w", TaskCleanupSessions, err)
 	}

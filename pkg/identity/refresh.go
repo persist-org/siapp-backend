@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"siapp/internal/db"
+	"siapp/pkg/access"
 	"siapp/pkg/platform/auth"
 	"siapp/pkg/platform/database"
 	"siapp/pkg/platform/personel"
@@ -51,7 +52,8 @@ type resync struct {
 //  2. an already retired token: reuse, the whole chain ends (AUTH_REFRESH_REUSED);
 //  3. an expired session: AUTH_TOKEN_INVALID;
 //  4. the person is INACTIVE, or Personalia says so now: AUTH_ACCOUNT_DISABLED;
-//  5. a MOBILE session whose phone is no longer the bound one: AUTH_DEVICE_CHANGED.
+//  5. a MOBILE session whose phone is no longer the bound one: AUTH_DEVICE_CHANGED;
+//  6. a WEB session of a person who no longer has a web role: NOT_ADMIN.
 //
 // ⚠ Reuse detection. The usual cause of a replayed token is theft: a thief and the real
 // person each hold it, and whoever refreshes second is the replayer. SiAPP cannot tell which
@@ -59,7 +61,7 @@ type resync struct {
 // that an honest client that sends the same refresh twice, for instance a retry after a lost
 // response, ends up logged out. For a security app that is the right side to err on.
 //
-// ⚠ Every refusal that ends a chain (reuse, disabled, device changed) COMMITS the revocation
+// ⚠ Every refusal that ends a chain (reuse, disabled, device changed, not admin) COMMITS the revocation
 // first and returns its error afterwards. Returning the error from inside the transaction
 // would roll the revocation back, and the chain would stay alive.
 //
@@ -105,6 +107,19 @@ func (u *Usecase) Refresh(ctx context.Context, in RefreshInput) (LoginResult, er
 	}
 
 	err = database.WithTenant(ctx, u.pool, organizationID, func(q *db.Queries) error {
+		// ⚠ The person first, then the session: the lock order every session change follows
+		// (see the LockPersonnel query). Locking the session first would deadlock against a
+		// login of the same person, which holds the person and then wants the phone binding.
+		personnelID, found, err := u.repo.sessionPersonnel(ctx, q, hash)
+		if err != nil {
+			return err
+		}
+		if !found {
+			return ErrRefreshTokenInvalid
+		}
+		if _, err := u.repo.lockPersonnel(ctx, q, personnelID); err != nil {
+			return err
+		}
 		row, found, err := u.repo.sessionForRefresh(ctx, q, hash)
 		if err != nil {
 			return err
@@ -136,10 +151,20 @@ func (u *Usecase) Refresh(ctx context.Context, in RefreshInput) (LoginResult, er
 				return endChain(q, row.FamilyID, ErrDeviceChanged)
 			}
 		}
+		// ⚠ The web login gate holds on refresh too. Without this, an admin whose web role
+		// was revoked would keep a browser session alive by refreshing it, which is exactly
+		// the way around the one-phone rule that the gate closes at login.
+		if row.Client == db.SessionClientWEB {
+			if _, isAdmin, err := access.AdminScopeOf(ctx, q, row.PersonnelID); err != nil {
+				return err
+			} else if !isAdmin {
+				return endChain(q, row.FamilyID, access.ErrNotAdmin)
+			}
+		}
 
 		var person db.Personnel
 		if sync.state == resyncFresh {
-			person, err = u.repo.upsertPersonnel(ctx, q, sync.identity, now)
+			person, err = u.repo.upsertPersonnel(ctx, q, sync.identity, now, true)
 		} else {
 			person, err = u.repo.getPersonnel(ctx, q, row.PersonnelID)
 		}
@@ -261,13 +286,20 @@ func (u *Usecase) revalidate(ctx context.Context, organizationID int64, hash str
 // Logout ends the login chain of the caller's session: its refresh tokens stop working now,
 // and so do the access tokens of the chain, through the revocation list.
 //
-// It does not unbind the phone: the binding is the admin's record and outlives a logout
-// (Phase 01.3 deletes the session's push-token device here). Doing it twice with the same
-// access token fails with 401, because the first call already cut that token off.
+// The push-token devices of the chain go with it (repo.endFamily). It does not unbind the
+// phone: the binding is the admin's record and outlives a logout. Doing it twice with the
+// same access token fails with 401, because the first call already cut that token off.
+//
+// ⚠ It takes the per-person lock first: a refresh of the same chain that is in flight
+// commits before the chain is read, so the session it creates is ended too instead of
+// surviving the logout.
 func (u *Usecase) Logout(ctx context.Context, p auth.Principal) error {
 	now := u.clock.Now()
 	var cutOff []int64
 	err := database.WithTenant(ctx, u.pool, p.OrganizationID, func(q *db.Queries) error {
+		if found, err := u.repo.lockPersonnel(ctx, q, p.PersonnelID); err != nil || !found {
+			return err
+		}
 		family, found, err := u.repo.familyOf(ctx, q, p.SessionID, p.PersonnelID)
 		if err != nil || !found {
 			return err

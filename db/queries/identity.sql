@@ -5,6 +5,11 @@
 -- The upsert also takes the person's row lock until the transaction ends (an UPDATE, or an
 -- INSERT that a concurrent insert of the same key has to wait for), which is what serialises
 -- two logins of one person, see identity.Usecase.Login.
+--
+-- seen_at is the person's own activity (a login or a refresh) and feeds last_seen_at, the
+-- billing active-head clock. It is NULL when SiAPP fetches someone who did nothing themselves
+-- (People.Ensure): the clock is then left as it was, so a person added to a team is not
+-- counted as active.
 -- name: UpsertPersonnel :one
 INSERT INTO personnels (
     personel_user_id, nik, client_id, client_name, full_name, email, phone, photo_url,
@@ -12,7 +17,7 @@ INSERT INTO personnels (
 ) VALUES (
     @personel_user_id, sqlc.narg('nik'), sqlc.narg('client_id'), sqlc.narg('client_name'),
     @full_name, sqlc.narg('email'), sqlc.narg('phone'), sqlc.narg('photo_url'),
-    @status, @now, @now, @now, @now
+    @status, @now, sqlc.narg('seen_at'), @now, @now
 )
 ON CONFLICT (organization_id, personel_user_id) DO UPDATE SET
     nik          = EXCLUDED.nik,
@@ -24,9 +29,14 @@ ON CONFLICT (organization_id, personel_user_id) DO UPDATE SET
     photo_url    = EXCLUDED.photo_url,
     status       = EXCLUDED.status,
     synced_at    = EXCLUDED.synced_at,
-    last_seen_at = EXCLUDED.last_seen_at,
+    last_seen_at = COALESCE(EXCLUDED.last_seen_at, personnels.last_seen_at),
     updated_at   = EXCLUDED.updated_at
 RETURNING *;
+
+-- The resync's re-check under the per-person lock: what it read before asking Personalia may
+-- have changed since (a login, a refresh, another deactivation).
+-- name: LockPersonnelForSync :one
+SELECT synced_at, status FROM personnels WHERE id = $1 FOR UPDATE;
 
 -- name: GetDeviceBindingForUpdate :one
 SELECT * FROM device_bindings WHERE personnel_id = $1 FOR UPDATE;
@@ -51,6 +61,25 @@ RETURNING *;
 
 -- name: GetPersonnel :one
 SELECT * FROM personnels WHERE id = $1;
+
+-- ⚠ The person's row is the per-person lock. Every transaction that changes a person's
+-- sessions, phone binding or devices takes it FIRST (login takes it through its upsert), so
+-- they all queue in the same order and can neither deadlock nor miss each other's writes:
+-- a logout that waits here for a refresh to commit then sees the session that refresh made.
+-- name: LockPersonnel :one
+SELECT id FROM personnels WHERE id = $1 FOR UPDATE;
+
+-- Whose session a refresh token belongs to, read before any lock so that the person can be
+-- locked first (see LockPersonnel).
+-- name: GetSessionPersonnel :one
+SELECT personnel_id FROM sessions WHERE refresh_token_hash = $1;
+
+-- A NIK belongs to one Personalia account at a time. When Personalia hands a NIK to another
+-- account (a re-hire under a new user, a corrected record), the stale row lets go of it, so
+-- the unique (organization, nik) index does not turn the new owner's login into an error.
+-- name: ReleaseNIK :exec
+UPDATE personnels SET nik = NULL, updated_at = @now
+WHERE nik = @nik AND personel_user_id <> @personel_user_id;
 
 -- name: MarkPersonnelInactive :exec
 UPDATE personnels SET status = 'INACTIVE', synced_at = @now, updated_at = @now WHERE id = @id;

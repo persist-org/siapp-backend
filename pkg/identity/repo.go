@@ -31,10 +31,16 @@ func (repo) upsertOrganization(ctx context.Context, q *db.Queries, id int64, nam
 }
 
 // upsertPersonnel creates or refreshes the person from what Personalia just said.
-func (repo) upsertPersonnel(ctx context.Context, q *db.Queries, id personel.Identity, now time.Time) (db.Personnel, error) {
+//
+// seen says whether this is the person's own activity (a login or a refresh). Only then does
+// last_seen_at, the billing active-head clock, move; fetching someone for an admin does not.
+func (repo) upsertPersonnel(ctx context.Context, q *db.Queries, id personel.Identity, now time.Time, seen bool) (db.Personnel, error) {
 	status := db.PersonnelStatusACTIVE
 	if !id.Active {
 		status = db.PersonnelStatusINACTIVE
+	}
+	if err := releaseNIK(ctx, q, id, now); err != nil {
+		return db.Personnel{}, err
 	}
 	p, err := q.UpsertPersonnel(ctx, db.UpsertPersonnelParams{
 		PersonelUserID: id.PersonelUserID,
@@ -47,11 +53,51 @@ func (repo) upsertPersonnel(ctx context.Context, q *db.Queries, id personel.Iden
 		PhotoUrl:       textOrNull(id.PhotoURL),
 		Status:         status,
 		Now:            ts(now),
+		SeenAt:         pgtype.Timestamptz{Time: now, Valid: seen},
 	})
 	if err != nil {
 		return db.Personnel{}, fmt.Errorf("upsert personnel: %w", err)
 	}
 	return p, nil
+}
+
+// releaseNIK frees the NIK from any other cached account before this one takes it, see the
+// ReleaseNIK query.
+func releaseNIK(ctx context.Context, q *db.Queries, id personel.Identity, now time.Time) error {
+	if id.NIK == "" {
+		return nil
+	}
+	if err := q.ReleaseNIK(ctx, db.ReleaseNIKParams{
+		Nik: textOrNull(id.NIK), PersonelUserID: id.PersonelUserID, Now: ts(now),
+	}); err != nil {
+		return fmt.Errorf("release nik: %w", err)
+	}
+	return nil
+}
+
+// lockPersonnel takes the per-person lock (see the LockPersonnel query). ok is false when
+// the person does not exist in this organization.
+func (repo) lockPersonnel(ctx context.Context, q *db.Queries, id int64) (bool, error) {
+	_, err := q.LockPersonnel(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("lock personnel: %w", err)
+	}
+	return true, nil
+}
+
+// sessionPersonnel returns whose session a refresh token belongs to, without locking.
+func (repo) sessionPersonnel(ctx context.Context, q *db.Queries, hash string) (int64, bool, error) {
+	id, err := q.GetSessionPersonnel(ctx, hash)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, fmt.Errorf("get session personnel: %w", err)
+	}
+	return id, true, nil
 }
 
 // deviceBinding returns the person's binding, locked until the transaction ends, or ok=false

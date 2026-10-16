@@ -2131,7 +2131,7 @@ components:
       type: object
       required: [firebase_token]
       properties:
-        firebase_token: { type: string }
+        firebase_token: { type: string, minLength: 1, maxLength: 4096 }
     NotificationCount:
       type: object
       required: [unread, total]
@@ -2394,7 +2394,7 @@ paths:
           application/json:
             schema:
               type: object
-              properties: { firebase_token: { type: string } }
+              properties: { firebase_token: { type: string, maxLength: 4096 } }
       responses:
         '200':
           description: OK
@@ -2402,6 +2402,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/SuccessEnvelope' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
 
   # ============ OAUTH (Public API token) ============
   /oauth/token:
@@ -6013,6 +6014,7 @@ paths:
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessEnvelope' } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /notifications:
     get:
       operationId: getNotifications

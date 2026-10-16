@@ -16,8 +16,18 @@ LIMIT @page_limit OFFSET @page_offset;
 -- name: CountWebRoles :one
 SELECT count(*) FROM web_role_assignments;
 
--- Grants or changes a role. A person who is not in the people cache is a foreign key
--- failure, which the caller reports as NOT_FOUND.
+-- ⚠ Locks the assignments of the acting admin and of the target, in one statement and in id
+-- order, before a role change. The actor's role is then re-checked under the lock: two
+-- ORG_ADMINs removing each other at the same moment queue here, and the second finds it is no
+-- longer an admin, so the organization can never be left without one. The fixed order keeps
+-- the two from deadlocking.
+-- name: LockWebRoles :many
+SELECT personnel_id, role FROM web_role_assignments
+WHERE personnel_id = ANY(@personnel_ids::bigint[])
+ORDER BY personnel_id
+FOR UPDATE;
+
+-- Grants or changes a role. Callers check that the person exists first (PersonnelNameAndNIK).
 -- name: UpsertWebRole :one
 INSERT INTO web_role_assignments (personnel_id, role, project_ids, granted_by_personnel_id, created_at, updated_at)
 VALUES (@personnel_id, @role, @project_ids, sqlc.narg('granted_by_personnel_id'), @now, @now)

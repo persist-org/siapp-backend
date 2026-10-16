@@ -122,8 +122,7 @@ func (h *Handler) removeDevice(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, r, err)
 		return
 	}
-	// The platform is not part of a delete; any valid value passes the shared rules.
-	in := DeviceInput{FirebaseToken: req.FirebaseToken, Platform: "android"}
+	in := DeviceRemoveInput{FirebaseToken: req.FirebaseToken}
 	if err := httpx.Validate(&in); err != nil {
 		httpx.Error(w, r, err)
 		return
@@ -182,9 +181,9 @@ func (h *Handler) refresh(w http.ResponseWriter, r *http.Request) {
 	httpx.OK(w, r, http.StatusOK, toLoginResult(result))
 }
 
-// logout ends the caller's login chain. The body is optional: a client may send the
-// firebase_token of the phone, which Phase 01.3 uses to delete that push-token device; until
-// then it is accepted and ignored.
+// logout ends the caller's login chain. The body is optional. The contract lets a client send
+// the firebase_token of the phone; it is checked for shape but not needed, because every
+// push-token device of the chain is deleted with the chain (repo.endFamily).
 func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 	p, ok := auth.From(r.Context())
 	if !ok {
@@ -266,8 +265,16 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// Only wrong credentials count. A disabled account or a bound phone was reached
 		// with the correct password, and an outage is not the caller's doing.
-		if appErr, ok := errors.AsType[*apperr.Error](err); ok && appErr.Reason == ReasonInvalidCredentials {
+		appErr, ok := errors.AsType[*apperr.Error](err)
+		if ok && appErr.Reason == ReasonInvalidCredentials {
 			h.limiter.Record(r.Context(), rules...)
+		}
+		// Personalia refused because of too many failures for this email. Its window is
+		// personelLoginRetryAfter; say so, like every other 429, so the app does not retry
+		// at once and use up more of the budget.
+		if ok && appErr.Code == apperr.CodeRateLimited {
+			httpx.TooManyRequests(w, r, personelLoginRetryAfter)
+			return
 		}
 		httpx.Error(w, r, err)
 		return
@@ -312,7 +319,7 @@ func toUser(p Person) apigen.Personnel {
 		Id:             &p.ID,
 		OrganizationId: &p.OrganizationID,
 		FirstName:      &p.FullName,
-		IsActive:       new(true),
+		IsActive:       &p.Active,
 	}
 	setIfNotEmpty(&user.Nik, p.NIK)
 	setIfNotEmpty(&user.Email, p.Email)

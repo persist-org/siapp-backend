@@ -89,7 +89,7 @@ func run() error {
 		CORSOrigins: cfg.CORSOrigins,
 		Pool:        pool,
 		Redis:       rdb,
-		RedisPrefix: "siapp:",
+		RedisPrefix: config.RedisKeyPrefix,
 		Personel:    personelClient,
 		Tokens:      tokens,
 		Clock:       clock.System{},

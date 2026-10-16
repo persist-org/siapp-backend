@@ -71,6 +71,8 @@ func (p *People) Ensure(ctx context.Context, organizationID int64, nik string) (
 		return 0, apperr.ErrNotFound
 	case errors.Is(err, personel.ErrUnavailable):
 		return 0, apperr.ErrPersonelUnavailable
+	case errors.Is(err, personel.ErrRateLimited):
+		return 0, apperr.ErrRateLimited
 	case err != nil:
 		return 0, fmt.Errorf("personel employee lookup: %w", err)
 	}
@@ -87,7 +89,8 @@ func (p *People) Ensure(ctx context.Context, organizationID int64, nik string) (
 		return 0, err
 	}
 	err = database.WithTenant(ctx, p.pool, organizationID, func(q *db.Queries) error {
-		row, err := p.repo.upsertPersonnel(ctx, q, identity, now)
+		// Not the person's own activity: their billing clock stays where it is.
+		row, err := p.repo.upsertPersonnel(ctx, q, identity, now, false)
 		id = row.ID
 		return err
 	})

@@ -2,10 +2,7 @@ package identity
 
 import (
 	"context"
-	"errors"
 	"fmt"
-
-	"github.com/jackc/pgx/v5"
 
 	"siapp/internal/db"
 	"siapp/pkg/access"
@@ -47,11 +44,15 @@ func (u *Usecase) ResetDeviceBinding(ctx context.Context, actor auth.Principal, 
 	now := u.clock.Now()
 	var cutOff []int64
 	err := database.WithTenant(ctx, u.pool, actor.OrganizationID, func(q *db.Queries) error {
-		if _, err := u.repo.getPersonnel(ctx, q, target); err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				return apperr.ErrNotFound
-			}
+		// ⚠ The per-person lock first (see the LockPersonnel query): a refresh or login of the
+		// same person in flight commits before the reset reads the sessions, so the session it
+		// creates is revoked too, and the two cannot deadlock on the binding.
+		found, err := u.repo.lockPersonnel(ctx, q, target)
+		if err != nil {
 			return err
+		}
+		if !found {
+			return apperr.ErrNotFound
 		}
 		if !scope.All {
 			projects, err := u.placements.ProjectIDsOf(ctx, q, target)

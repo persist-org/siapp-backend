@@ -227,7 +227,7 @@ func TestWebRoleManagement(t *testing.T) {
 		projectAdmin := e.login(web(personeltest.EmailAnggota1Satu)).data(t) // has the role granted above
 		res := e.api(projectAdmin.AccessToken, http.MethodGet, "/admin/web-roles", nil)
 		require.Equal(t, http.StatusForbidden, res.Status)
-		require.Equal(t, "SCOPE_DENIED", res.err(t).Code)
+		require.Equal(t, "ROLE_DENIED", res.err(t).Code)
 		require.Equal(t, access.ReasonOrgAdminOnly, res.err(t).reason())
 		require.Equal(t, http.StatusForbidden,
 			e.api(projectAdmin.AccessToken, http.MethodPut, rolePath(adminID), map[string]any{"role": "ORG_ADMIN"}).Status)

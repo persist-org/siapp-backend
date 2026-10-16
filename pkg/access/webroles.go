@@ -102,6 +102,9 @@ func (w *WebRoles) Put(ctx context.Context, actor auth.Principal, scope AdminSco
 
 	var out WebRole
 	err = database.WithTenant(ctx, w.pool, actor.OrganizationID, func(q *db.Queries) error {
+		if err := lockAndRecheckActor(ctx, q, actor.PersonnelID, target); err != nil {
+			return err
+		}
 		who, err := q.PersonnelNameAndNIK(ctx, target)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return apperr.ErrNotFound
@@ -110,7 +113,8 @@ func (w *WebRoles) Put(ctx context.Context, actor auth.Principal, scope AdminSco
 			return fmt.Errorf("get personnel: %w", err)
 		}
 		if self {
-			// ORG_ADMIN again: nothing to change, and nothing to audit.
+			// ORG_ADMIN again: nothing to change, and nothing to audit. The row exists: the
+			// re-check above just found it.
 			current, err := q.GetWebRole(ctx, target)
 			if err != nil {
 				return fmt.Errorf("get own web role: %w", err)
@@ -142,8 +146,9 @@ func (w *WebRoles) Put(ctx context.Context, actor auth.Principal, scope AdminSco
 	return out, err
 }
 
-// Delete removes a person's web role. They are field staff again: they can no longer sign in
-// on the web, and their next admin request is refused.
+// Delete removes a person's web role. They are field staff again: their next admin request is
+// refused, they cannot sign in on the web, and their web session ends at its next refresh
+// (identity.Usecase.Refresh re-checks the role), so within one access-token lifetime.
 func (w *WebRoles) Delete(ctx context.Context, actor auth.Principal, scope AdminScope, target int64) error {
 	if !scope.All {
 		return ErrOrgAdminOnly
@@ -152,6 +157,9 @@ func (w *WebRoles) Delete(ctx context.Context, actor auth.Principal, scope Admin
 		return ErrOwnRoleProtected
 	}
 	return database.WithTenant(ctx, w.pool, actor.OrganizationID, func(q *db.Queries) error {
+		if err := lockAndRecheckActor(ctx, q, actor.PersonnelID, target); err != nil {
+			return err
+		}
 		n, err := q.DeleteWebRole(ctx, target)
 		if err != nil {
 			return fmt.Errorf("delete web role: %w", err)
@@ -182,6 +190,26 @@ func GrantFirstAdmin(ctx context.Context, pool *pgxpool.Pool, c clock.Clock, org
 			Metadata: map[string]any{"role": RoleOrgAdmin, "source": "cmd/seed"},
 		})
 	})
+}
+
+// lockAndRecheckActor locks the assignments of the actor and the target (see the LockWebRoles
+// query) and checks that the actor is still an ORG_ADMIN. RequireAdmin read the role in an
+// earlier transaction; another admin may have removed or narrowed it since.
+func lockAndRecheckActor(ctx context.Context, q *db.Queries, actorID, targetID int64) error {
+	rows, err := q.LockWebRoles(ctx, []int64{actorID, targetID})
+	if err != nil {
+		return fmt.Errorf("lock web roles: %w", err)
+	}
+	for _, r := range rows {
+		if r.PersonnelID != actorID {
+			continue
+		}
+		if r.Role != db.WebRoleORGADMIN {
+			return ErrOrgAdminOnly
+		}
+		return nil
+	}
+	return ErrNotAdmin
 }
 
 // normalize checks the cross-field rule of the role shapes and returns the project ids

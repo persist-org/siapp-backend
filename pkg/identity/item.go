@@ -40,6 +40,9 @@ type Person struct {
 	Email          string
 	Phone          string
 	PhotoURL       string
+	// Active mirrors the cached status. A login only ever returns an active person, but
+	// /auth/me can be asked by a token issued before the person was deactivated.
+	Active bool
 }
 
 // LoginResult is a started session: SiAPP's own token pair and who it belongs to.
@@ -58,6 +61,7 @@ func personFrom(p db.Personnel) Person {
 		Email:          p.Email.String,
 		Phone:          p.Phone.String,
 		PhotoURL:       p.PhotoUrl.String,
+		Active:         p.Status == db.PersonnelStatusACTIVE,
 	}
 }
 

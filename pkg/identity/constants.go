@@ -20,6 +20,9 @@ const (
 	// that do not exist. Other emails and other users on the same IP are unaffected.
 	loginFailuresPerIPIdentifier = 10
 	loginFailureWindow           = time.Minute
+	// personelLoginRetryAfter is the window of Personalia's own per-email failure limit
+	// (kpi-personalia-api, integrations.siapp.login_failures_per_email over 15 minutes).
+	personelLoginRetryAfter = 15 * time.Minute
 
 	// personelResyncAfter is how old the cached copy of a person may get before a refresh
 	// asks Personalia again. See Usecase.Refresh for the trade-off.

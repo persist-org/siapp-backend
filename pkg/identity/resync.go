@@ -2,11 +2,13 @@ package identity
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
 
 	"github.com/hibiken/asynq"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"siapp/internal/db"
@@ -18,6 +20,9 @@ import (
 
 // TaskResyncPeople is the worker task that runs Resyncer.Resync.
 const TaskResyncPeople = "identity:resync-people"
+
+// ResyncSchedule runs the people resync daily at 20:30 UTC, after the session cleanup.
+const ResyncSchedule = "30 20 * * *"
 
 const (
 	// resyncStaleAfter is how old a cached person may get before the daily job asks
@@ -121,6 +126,22 @@ func (r *Resyncer) resyncOrganization(ctx context.Context, org int64) (int64, er
 		var gone int
 		if err := database.WithTenant(ctx, r.pool, org, func(q *db.Queries) error {
 			for _, p := range batch {
+				// ⚠ Re-check under the per-person lock (people are locked in id order, the same
+				// order every batch uses). The batch was read before the Personalia call; a
+				// login or refresh since then has fresher data than this answer, and a person
+				// someone else deactivated meanwhile must not be marked ACTIVE again. Either
+				// way this person is skipped until the next run.
+				current, err := q.LockPersonnelForSync(ctx, p.ID)
+				if errors.Is(err, pgx.ErrNoRows) {
+					continue
+				}
+				if err != nil {
+					return fmt.Errorf("lock personnel for sync: %w", err)
+				}
+				if !current.SyncedAt.Time.Equal(p.SyncedAt.Time) || current.Status != db.PersonnelStatusACTIVE {
+					continue
+				}
+
 				fresh, found := byNIK[p.Nik.String]
 				// Gone: not returned, inactive, employed elsewhere now, or a NIK that belongs
 				// to another Personalia account than the one this person was cached from.
@@ -170,7 +191,7 @@ func RegisterResyncJob(mux *asynq.ServeMux, resyncer *Resyncer, logger *slog.Log
 
 // RegisterResyncSchedule adds the daily resync to the scheduler, after the session cleanup.
 func RegisterResyncSchedule(scheduler *asynq.Scheduler) error {
-	if _, err := scheduler.Register("30 20 * * *", asynq.NewTask(TaskResyncPeople, nil),
+	if _, err := scheduler.Register(ResyncSchedule, asynq.NewTask(TaskResyncPeople, nil),
 		asynq.MaxRetry(3), asynq.Timeout(resyncTimeout)); err != nil {
 		return fmt.Errorf("register %s: %w", TaskResyncPeople, err)
 	}
