@@ -406,6 +406,20 @@ components:
             success: false
             error: { code: RATE_LIMITED, message: "Terlalu banyak permintaan." }
             meta: { request_id: "req_abc123" }
+    ServiceUnavailable:
+      description: |
+        Persist Personel (Personalia) tidak dapat menjawab. `error.code` = INTERNAL_ERROR dengan
+        `error.details.reason` = PERSONEL_UNAVAILABLE (ErrorCode tidak punya kode 503). Klien mencoba lagi nanti.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          example:
+            success: false
+            error:
+              code: INTERNAL_ERROR
+              message: "Layanan Personalia sedang tidak tersedia. Coba lagi sebentar lagi."
+              details: { reason: PERSONEL_UNAVAILABLE }
+            meta: { request_id: "req_abc123" }
 
   schemas:
 
@@ -545,12 +559,27 @@ components:
     # ---------- Auth payloads ----------
     LoginRequest:
       type: object
-      required: [identifier, password]
+      required: [identifier, password, client]
       properties:
-        identifier: { type: string, description: username atau email, example: username01 }
+        identifier:
+          type: string
+          description: Email akun Persist Personalia. Password diperiksa oleh Personalia, SiAPP tidak menyimpannya.
+          example: budi@contoh.com
         password: { type: string, format: password }
+        client:
+          type: string
+          enum: [MOBILE, WEB]
+          description: Aplikasi yang login. MOBILE mengikat satu perangkat per orang; WEB tidak mengikat perangkat.
+        device_token:
+          type: string
+          maxLength: 512
+          description: Pengenal perangkat. Wajib bila client = MOBILE (satu orang = satu HP); diabaikan untuk WEB.
         remember_me: { type: boolean }
-        organization_code: { type: string, example: OS1 }
+        organization_code:
+          type: string
+          deprecated: true
+          description: Diabaikan. Organisasi ditentukan oleh Personalia (perusahaan tempat orang itu bekerja), bukan oleh request.
+          example: OS1
     LoginResult:
       type: object
       properties:
@@ -2130,7 +2159,7 @@ paths:
     post:
       operationId: postAuthLogin
       tags: [Auth]
-      summary: Login username/email + password
+      summary: Login dengan akun Personalia (email + password)
       security: []
       requestBody:
         required: true
@@ -2147,8 +2176,10 @@ paths:
                   - { $ref: '#/components/schemas/SuccessEnvelope' }
                   - properties: { data: { $ref: '#/components/schemas/LoginResult' } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/ValidationError' }
         '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /auth/refresh:
     post:
       operationId: postAuthRefresh

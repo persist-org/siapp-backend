@@ -41,14 +41,25 @@ type Config struct {
 	CORSOrigins    []string   `env:"CORS_ORIGINS" envSeparator:","`
 	LogLevel       slog.Level `env:"LOG_LEVEL" envDefault:"info"`
 
+	// JWTSecret signs SiAPP's own access tokens (HS256). Never logged. At least
+	// auth.MinSecretBytes bytes: generate one with `openssl rand -base64 48`.
+	JWTSecret string `env:"JWT_SECRET,required,notEmpty"`
+	// ClientIPHeader names the header a reverse proxy sets with the real client address
+	// (for example X-Forwarded-For). Empty uses the connection's remote address, which is
+	// right when nothing sits in front of the API.
+	ClientIPHeader string `env:"CLIENT_IP_HEADER"`
+
 	// PersonelBaseURL is the integration root of kpi-personalia-api, e.g.
-	// http://localhost:8081/api/v3/integrations/siapp. Optional until the first module that
-	// calls Personalia (Phase 01.3) needs it; when one of the two Personel settings is
-	// set, the other must be too.
-	PersonelBaseURL string `env:"PERSONEL_BASE_URL"`
+	// http://localhost:8081/api/v3/integrations/siapp. Login goes through it (Phase 01.1),
+	// so the API cannot start without it.
+	PersonelBaseURL string `env:"PERSONEL_BASE_URL,required,notEmpty"`
 	// PersonelIntegrationKey is the shared secret sent as X-Integration-Key. Never logged.
-	PersonelIntegrationKey string `env:"PERSONEL_INTEGRATION_KEY"`
+	PersonelIntegrationKey string `env:"PERSONEL_INTEGRATION_KEY,required,notEmpty"`
 }
+
+// minJWTSecretBytes mirrors auth.MinSecretBytes. It is repeated here, not imported, so that
+// the config package depends on nothing: auth depends on httpx, which must not pull config in.
+const minJWTSecretBytes = 32
 
 var (
 	postgresSchemes = []string{"postgres", "postgresql"}
@@ -87,8 +98,9 @@ func Parse(environ map[string]string) (Config, error) {
 	problems = append(problems, checkURL("MIGRATE_DSN", cfg.MigrateDSN, postgresSchemes)...)
 	problems = append(problems, checkURL("REDIS_URL", cfg.RedisURL, redisSchemes)...)
 	problems = append(problems, checkURL("PERSONEL_BASE_URL", cfg.PersonelBaseURL, httpSchemes)...)
-	if (cfg.PersonelBaseURL == "") != (cfg.PersonelIntegrationKey == "") {
-		problems = append(problems, "PERSONEL_BASE_URL and PERSONEL_INTEGRATION_KEY must be set together")
+	// Only the length is judged, and the value is never echoed: it is a secret.
+	if cfg.JWTSecret != "" && len(cfg.JWTSecret) < minJWTSecretBytes {
+		problems = append(problems, fmt.Sprintf("JWT_SECRET must be at least %d bytes (generate one with: openssl rand -base64 48)", minJWTSecretBytes))
 	}
 
 	if cfg.MigrateOnStart {

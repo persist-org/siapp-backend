@@ -118,6 +118,10 @@ func (e *env) do(t *testing.T, c call) reply {
 	if c.key != "" {
 		req.Header.Set(idem.HeaderKey, c.key)
 	}
+	// The test route sits behind the real authentication middleware. Who the idempotency
+	// middleware sees is decided by the X-Test headers below, so this token only gets the
+	// request past authentication.
+	req.Header.Set("Authorization", "Bearer "+testkit.Token(t, 1, 1))
 	req.Header.Set("X-Test-Org", strconv.FormatInt(c.org, 10))
 	req.Header.Set("X-Test-Actor", strconv.FormatInt(c.actor, 10))
 	req.Header.Set("X-Test-Behavior", c.behavior)

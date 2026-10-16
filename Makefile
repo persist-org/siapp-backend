@@ -2,7 +2,7 @@
 -include .env
 export
 
-.PHONY: contract test-personel-live up up-app up-cctv down reset-db logs ps psql psql-app run worker migrate generate lint test check
+.PHONY: contract test-personel-live up up-app up-cctv down reset-db logs ps psql psql-app run worker migrate seed generate lint test check
 
 # postgres, redis, minio
 up:
@@ -49,6 +49,10 @@ worker:
 # Apply migrations from the host, as the owner (MIGRATE_DSN). Also: go run ./cmd/migrate down|status
 migrate:
 	go run ./cmd/migrate up
+
+# Development seed. For identity it only prints who can log in: people come from Personalia.
+seed:
+	go run ./cmd/seed
 
 # Where the PERSIST contract lives (set CONTRACT_SRC in .env to override).
 CONTRACT_SRC ?= ../persist-ecosystem/contracts/openapi.yaml

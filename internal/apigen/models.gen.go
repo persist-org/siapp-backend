@@ -222,6 +222,24 @@ func (e ListEnvelopeSuccess) Valid() bool {
 	}
 }
 
+// Defines values for LoginRequestClient.
+const (
+	MOBILE LoginRequestClient = "MOBILE"
+	WEB    LoginRequestClient = "WEB"
+)
+
+// Valid indicates whether the value is a known member of the LoginRequestClient enum.
+func (e LoginRequestClient) Valid() bool {
+	switch e {
+	case MOBILE:
+		return true
+	case WEB:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for MasterReviewType.
 const (
 	MasterReviewTypePELANGGARAN MasterReviewType = "PELANGGARAN"
@@ -5548,12 +5566,24 @@ type LocationLog struct {
 
 // LoginRequest defines model for LoginRequest.
 type LoginRequest struct {
-	// Identifier username atau email
-	Identifier       string  `json:"identifier"`
+	// Client Aplikasi yang login. MOBILE mengikat satu perangkat per orang; WEB tidak mengikat perangkat.
+	Client LoginRequestClient `json:"client"`
+
+	// DeviceToken Pengenal perangkat. Wajib bila client = MOBILE (satu orang = satu HP); diabaikan untuk WEB.
+	DeviceToken *string `json:"device_token,omitempty"`
+
+	// Identifier Email akun Persist Personalia. Password diperiksa oleh Personalia, SiAPP tidak menyimpannya.
+	Identifier string `json:"identifier"`
+
+	// OrganizationCode Diabaikan. Organisasi ditentukan oleh Personalia (perusahaan tempat orang itu bekerja), bukan oleh request.
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	OrganizationCode *string `json:"organization_code,omitempty"`
 	Password         string  `json:"password"`
 	RememberMe       *bool   `json:"remember_me,omitempty"`
 }
+
+// LoginRequestClient Aplikasi yang login. MOBILE mengikat satu perangkat per orang; WEB tidak mengikat perangkat.
+type LoginRequestClient string
 
 // LoginResult defines model for LoginResult.
 type LoginResult struct {
@@ -6713,6 +6743,9 @@ type NotFound = ErrorEnvelope
 
 // RateLimited defines model for RateLimited.
 type RateLimited = ErrorEnvelope
+
+// ServiceUnavailable defines model for ServiceUnavailable.
+type ServiceUnavailable = ErrorEnvelope
 
 // Unauthorized defines model for Unauthorized.
 type Unauthorized = ErrorEnvelope

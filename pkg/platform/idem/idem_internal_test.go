@@ -136,6 +136,7 @@ func TestStaleInFlightKeyIsTakenOver(t *testing.T) {
 	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, srv.URL+"/test/idem", strings.NewReader(body))
 	require.NoError(t, err)
 	req.Header.Set(HeaderKey, key.String())
+	req.Header.Set("Authorization", "Bearer "+testkit.Token(t, org, 5))
 	res, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	_, _ = io.Copy(io.Discard, res.Body)

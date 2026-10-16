@@ -54,6 +54,90 @@ func (ns NullOrganizationStatus) Value() (driver.Value, error) {
 	return string(ns.OrganizationStatus), nil
 }
 
+type PersonnelStatus string
+
+const (
+	PersonnelStatusACTIVE   PersonnelStatus = "ACTIVE"
+	PersonnelStatusINACTIVE PersonnelStatus = "INACTIVE"
+)
+
+func (e *PersonnelStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PersonnelStatus(s)
+	case string:
+		*e = PersonnelStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PersonnelStatus: %T", src)
+	}
+	return nil
+}
+
+type NullPersonnelStatus struct {
+	PersonnelStatus PersonnelStatus
+	Valid           bool // Valid is true if PersonnelStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPersonnelStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.PersonnelStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PersonnelStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPersonnelStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PersonnelStatus), nil
+}
+
+type SessionClient string
+
+const (
+	SessionClientMOBILE SessionClient = "MOBILE"
+	SessionClientWEB    SessionClient = "WEB"
+)
+
+func (e *SessionClient) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = SessionClient(s)
+	case string:
+		*e = SessionClient(s)
+	default:
+		return fmt.Errorf("unsupported scan type for SessionClient: %T", src)
+	}
+	return nil
+}
+
+type NullSessionClient struct {
+	SessionClient SessionClient
+	Valid         bool // Valid is true if SessionClient is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullSessionClient) Scan(value interface{}) error {
+	if value == nil {
+		ns.SessionClient, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.SessionClient.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullSessionClient) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.SessionClient), nil
+}
+
 type AuditLog struct {
 	ID               int64
 	OrganizationID   int64
@@ -63,6 +147,17 @@ type AuditLog struct {
 	EntityID         int64
 	Metadata         json.RawMessage
 	CreatedAt        pgtype.Timestamptz
+}
+
+type DeviceBinding struct {
+	ID              int64
+	OrganizationID  int64
+	PersonnelID     int64
+	DeviceTokenHash string
+	BoundAt         pgtype.Timestamptz
+	LastSeenAt      pgtype.Timestamptz
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
 }
 
 type IdempotencyKey struct {
@@ -85,4 +180,41 @@ type Organization struct {
 	FirstSeenAt pgtype.Timestamptz
 	CreatedAt   pgtype.Timestamptz
 	UpdatedAt   pgtype.Timestamptz
+}
+
+type Personnel struct {
+	ID             int64
+	OrganizationID int64
+	PersonelUserID int64
+	Nik            pgtype.Text
+	ClientID       pgtype.Int8
+	ClientName     pgtype.Text
+	FullName       string
+	Email          pgtype.Text
+	Phone          pgtype.Text
+	PhotoUrl       pgtype.Text
+	Status         PersonnelStatus
+	SyncedAt       pgtype.Timestamptz
+	LastSeenAt     pgtype.Timestamptz
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
+type Session struct {
+	ID               int64
+	OrganizationID   int64
+	PersonnelID      int64
+	FamilyID         pgtype.UUID
+	RefreshTokenHash string
+	DeviceTokenHash  pgtype.Text
+	RememberMe       bool
+	Client           SessionClient
+	ExpiresAt        pgtype.Timestamptz
+	RevokedAt        pgtype.Timestamptz
+	ReplacedByID     pgtype.Int8
+	UserAgent        pgtype.Text
+	Ip               pgtype.Text
+	LastUsedAt       pgtype.Timestamptz
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
 }

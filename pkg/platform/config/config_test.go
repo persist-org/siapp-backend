@@ -12,6 +12,10 @@ func validEnv() map[string]string {
 	return map[string]string{
 		"DATABASE_URL": "postgres://siapp_app:siapp_app@localhost:5432/siapp?sslmode=disable",
 		"REDIS_URL":    "redis://localhost:6379/0",
+		// 36 bytes: over the 32-byte minimum.
+		"JWT_SECRET":               "test-secret-test-secret-test-secret",
+		"PERSONEL_BASE_URL":        "http://localhost:8081/api/v3/integrations/siapp",
+		"PERSONEL_INTEGRATION_KEY": "test-integration-key",
 	}
 }
 
@@ -73,14 +77,24 @@ func TestParseErrors(t *testing.T) {
 			wantMsgs: []string{"PERSONEL_BASE_URL must be a URL like http://"},
 		},
 		{
-			name:     "PERSONEL_BASE_URL without a key",
-			override: map[string]string{"PERSONEL_BASE_URL": "http://localhost:8081/api/v3/integrations/siapp"},
-			wantMsgs: []string{"PERSONEL_BASE_URL and PERSONEL_INTEGRATION_KEY must be set together"},
+			name:     "missing PERSONEL_BASE_URL",
+			drop:     []string{"PERSONEL_BASE_URL"},
+			wantMsgs: []string{`"PERSONEL_BASE_URL"`},
 		},
 		{
-			name:     "PERSONEL_INTEGRATION_KEY without a URL",
-			override: map[string]string{"PERSONEL_INTEGRATION_KEY": "k"},
-			wantMsgs: []string{"must be set together"},
+			name:     "missing PERSONEL_INTEGRATION_KEY",
+			drop:     []string{"PERSONEL_INTEGRATION_KEY"},
+			wantMsgs: []string{`"PERSONEL_INTEGRATION_KEY"`},
+		},
+		{
+			name:     "missing JWT_SECRET",
+			drop:     []string{"JWT_SECRET"},
+			wantMsgs: []string{`"JWT_SECRET"`},
+		},
+		{
+			name:     "JWT_SECRET too short",
+			override: map[string]string{"JWT_SECRET": "short"},
+			wantMsgs: []string{"JWT_SECRET must be at least 32 bytes"},
 		},
 		{
 			name:     "all problems reported together",
@@ -135,7 +149,6 @@ func TestParseCORSOrigins(t *testing.T) {
 
 func TestParsePersonel(t *testing.T) {
 	environ := validEnv()
-	environ["PERSONEL_BASE_URL"] = "http://localhost:8081/api/v3/integrations/siapp"
 	environ["PERSONEL_INTEGRATION_KEY"] = "s3cret-key"
 
 	cfg, err := Parse(environ)
@@ -152,4 +165,22 @@ func TestParseNeverEchoesTheIntegrationKey(t *testing.T) {
 	_, err := Parse(environ)
 	require.Error(t, err)
 	require.NotContains(t, err.Error(), "s3cret-key")
+}
+
+func TestParseNeverEchoesTheJWTSecret(t *testing.T) {
+	environ := validEnv()
+	environ["JWT_SECRET"] = "too-short-secret"
+
+	_, err := Parse(environ)
+	require.Error(t, err)
+	require.NotContains(t, err.Error(), "too-short-secret")
+}
+
+func TestParseClientIPHeader(t *testing.T) {
+	environ := validEnv()
+	environ["CLIENT_IP_HEADER"] = "X-Forwarded-For"
+
+	cfg, err := Parse(environ)
+	require.NoError(t, err)
+	require.Equal(t, "X-Forwarded-For", cfg.ClientIPHeader)
 }
