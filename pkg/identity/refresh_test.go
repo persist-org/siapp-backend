@@ -143,7 +143,9 @@ func TestReusingARetiredTokenEndsTheWholeChain(t *testing.T) {
 	// The revocation committed before the error was returned: nothing in the chain is alive,
 	// including the token the honest client was about to use.
 	require.Equal(t, 0, liveSessionsOfChain(t, satu, third.RefreshToken))
-	require.Equal(t, http.StatusUnauthorized, e.refresh(third.RefreshToken).Status)
+	afterReuse := e.refresh(third.RefreshToken)
+	require.Equal(t, http.StatusUnauthorized, afterReuse.Status)
+	require.Equal(t, identity.ReasonRefreshReused, afterReuse.err(t).reason())
 
 	// And their access tokens are cut off at once, not after 15 minutes.
 	for _, access := range []string{first.AccessToken, second.AccessToken, third.AccessToken} {
@@ -250,6 +252,11 @@ func TestAnInactivePersonCannotRefresh(t *testing.T) {
 	require.Equal(t, identity.ReasonAccountDisabled, res.err(t).reason())
 	require.Equal(t, 0, liveSessionsOfChain(t, satu, first.RefreshToken), "the chain is ended, not just refused")
 	require.Equal(t, http.StatusUnauthorized, e.whoami(first.AccessToken))
+
+	// The same token keeps getting the same, true answer: the session now records why it ended.
+	again := e.refresh(first.RefreshToken)
+	require.Equal(t, http.StatusForbidden, again.Status)
+	require.Equal(t, identity.ReasonAccountDisabled, again.err(t).reason())
 }
 
 func TestAStalePersonIsRevalidatedWithPersonalia(t *testing.T) {
@@ -406,7 +413,9 @@ func TestLogoutEndsTheChainAndCutsOffTheAccessTokens(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, e.whoami(first.AccessToken), "the whole chain, not just this session")
 	// The refresh token is dead as well.
 	require.Equal(t, 0, liveSessionsOfChain(t, satu, second.RefreshToken))
-	require.Equal(t, http.StatusUnauthorized, e.refresh(second.RefreshToken).Status)
+	afterLogout := e.refresh(second.RefreshToken)
+	require.Equal(t, http.StatusUnauthorized, afterLogout.Status)
+	require.Equal(t, auth.ReasonTokenInvalid, afterLogout.err(t).reason(), "signing out is not a token reuse")
 
 	// It does not unbind the phone: the binding is the admin's record.
 	require.Equal(t, 1, countRows(t, satu, "device_bindings"))

@@ -289,7 +289,10 @@ func TestDeviceReset(t *testing.T) {
 	require.Equal(t, 0, countRows(t, satu, "devices"))
 	// The old phone is out at once: its access token is cut off, and it cannot refresh.
 	require.Equal(t, http.StatusUnauthorized, e.whoami(phone.AccessToken))
-	require.Equal(t, http.StatusUnauthorized, e.refresh(phone.RefreshToken).Status)
+	afterReset := e.refresh(phone.RefreshToken)
+	require.Equal(t, http.StatusUnauthorized, afterReset.Status)
+	require.Equal(t, identity.ReasonDeviceChanged, afterReset.err(t).reason(),
+		"the old phone hears that it is no longer registered, not that its token was stolen")
 	// The person signs in on a new phone, which binds.
 	e.fieldSession(personeltest.EmailAnggota1Satu, phoneB)
 	require.Equal(t, auth.HashToken(phoneB), scalar[string](t, satu, "SELECT device_token_hash FROM device_bindings"))

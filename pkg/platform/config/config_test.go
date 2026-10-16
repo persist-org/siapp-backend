@@ -3,6 +3,8 @@ package config
 import (
 	"log/slog"
 	"maps"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -165,6 +167,70 @@ func TestParseNeverEchoesTheIntegrationKey(t *testing.T) {
 	_, err := Parse(environ)
 	require.Error(t, err)
 	require.NotContains(t, err.Error(), "s3cret-key")
+}
+
+// ⚠ A secret copied from the repository must not reach production: anyone who read the
+// repository could sign access tokens for any person of any organization.
+func TestProductionRefusesAPlaceholderOrWeakJWTSecret(t *testing.T) {
+	exampleValue := readExampleJWTSecret(t)
+
+	for name, secret := range map[string]string{
+		"the value in .env.example":  exampleValue,
+		"another change-me value":    "CHANGE-ME-please-to-something-long-enough",
+		"a replace-with placeholder": "replace-with-a-long-random-secret-value-ok",
+		"one repeated character":     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"a short repeated pattern":   "12341234123412341234123412341234",
+	} {
+		t.Run(name, func(t *testing.T) {
+			environ := validEnv()
+			environ["APP_ENV"] = EnvProduction
+			environ["JWT_SECRET"] = secret
+
+			_, err := Parse(environ)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "JWT_SECRET looks like a placeholder")
+			require.NotContains(t, err.Error(), secret, "the secret is never echoed")
+		})
+	}
+}
+
+func TestProductionAcceptsAGeneratedJWTSecret(t *testing.T) {
+	for name, secret := range map[string]string{
+		"base64, as openssl rand -base64 48": "q8Vz3mN0rT1yLw7KfX2pH9cJ4dS6bG5uE0aZ8iO1nM3vR7tY",
+		"hex, as openssl rand -hex 32":       "9f2c4e7a1b0d8e6f3a5c7b9d1e2f4a6c8b0d2e4f6a8c0e2a4b6d8f0a2c4e6b8d",
+	} {
+		t.Run(name, func(t *testing.T) {
+			environ := validEnv()
+			environ["APP_ENV"] = EnvProduction
+			environ["JWT_SECRET"] = secret
+			_, err := Parse(environ)
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestDevelopmentKeepsWorkingWithTheExampleJWTSecret(t *testing.T) {
+	environ := validEnv()
+	environ["APP_ENV"] = EnvDevelopment
+	environ["JWT_SECRET"] = readExampleJWTSecret(t)
+	_, err := Parse(environ)
+	require.NoError(t, err)
+}
+
+// readExampleJWTSecret reads the JWT_SECRET of .env.example, so that the test follows the
+// file if its example value ever changes.
+func readExampleJWTSecret(t *testing.T) string {
+	t.Helper()
+	raw, err := os.ReadFile("../../../.env.example")
+	require.NoError(t, err)
+	for _, line := range strings.Split(string(raw), "\n") {
+		if value, ok := strings.CutPrefix(strings.TrimSpace(line), "JWT_SECRET="); ok {
+			require.NotEmpty(t, value)
+			return value
+		}
+	}
+	t.Fatal("no JWT_SECRET in .env.example")
+	return ""
 }
 
 func TestParseNeverEchoesTheJWTSecret(t *testing.T) {

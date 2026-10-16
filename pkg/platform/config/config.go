@@ -66,6 +66,36 @@ type Config struct {
 // the config package depends on nothing: auth depends on httpx, which must not pull config in.
 const minJWTSecretBytes = 32
 
+// placeholderMarkers are fragments of the example values shipped in the repository
+// (.env.example) and of the usual ones. A secret containing one was copied, not generated.
+var placeholderMarkers = []string{"change-me", "changeme", "change_me", "replace-with", "example", "placeholder"}
+
+// minDistinctSecretBytes is the fewest different byte values a generated secret has. A
+// random 32-byte secret has far more, even hex-encoded (16 symbols): this only catches values
+// like "aaaa..." or "1234123412341234...".
+const minDistinctSecretBytes = 10
+
+// weakSecret reports whether secret is a copied placeholder or has too little variety to be
+// random.
+//
+// ⚠ HS256 tokens are only as safe as this key. The example value in .env.example is public,
+// so a production deployment that kept it would let anyone who read the repository sign
+// access tokens for any person of any organization. Development keeps working with the
+// example value; production refuses to start.
+func weakSecret(secret string) bool {
+	lower := strings.ToLower(secret)
+	for _, marker := range placeholderMarkers {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	distinct := map[byte]struct{}{}
+	for i := range len(secret) {
+		distinct[secret[i]] = struct{}{}
+	}
+	return len(distinct) < minDistinctSecretBytes
+}
+
 var (
 	postgresSchemes = []string{"postgres", "postgresql"}
 	redisSchemes    = []string{"redis", "rediss"}
@@ -103,9 +133,11 @@ func Parse(environ map[string]string) (Config, error) {
 	problems = append(problems, checkURL("MIGRATE_DSN", cfg.MigrateDSN, postgresSchemes)...)
 	problems = append(problems, checkURL("REDIS_URL", cfg.RedisURL, redisSchemes)...)
 	problems = append(problems, checkURL("PERSONEL_BASE_URL", cfg.PersonelBaseURL, httpSchemes)...)
-	// Only the length is judged, and the value is never echoed: it is a secret.
+	// The value is never echoed in a problem: it is a secret.
 	if cfg.JWTSecret != "" && len(cfg.JWTSecret) < minJWTSecretBytes {
 		problems = append(problems, fmt.Sprintf("JWT_SECRET must be at least %d bytes (generate one with: openssl rand -base64 48)", minJWTSecretBytes))
+	} else if cfg.AppEnv == EnvProduction && weakSecret(cfg.JWTSecret) {
+		problems = append(problems, "JWT_SECRET looks like a placeholder or a low-entropy value, which is refused in production (generate one with: openssl rand -base64 48)")
 	}
 
 	if cfg.MigrateOnStart {

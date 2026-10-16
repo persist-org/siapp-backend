@@ -28,6 +28,9 @@ func TestAWebSessionEndsAtRefreshOnceTheWebRoleIsGone(t *testing.T) {
 	require.Equal(t, access.ReasonNotAdmin, res.err(t).reason())
 	require.Equal(t, 0, liveSessionsOfChain(t, satu, first.RefreshToken), "the chain is ended, not just refused")
 	require.Equal(t, http.StatusUnauthorized, e.whoami(first.AccessToken), "and its access token is cut off")
+	again := e.refresh(first.RefreshToken)
+	require.Equal(t, http.StatusForbidden, again.Status, "the same token keeps the same answer")
+	require.Equal(t, access.ReasonNotAdmin, again.err(t).reason())
 
 	// A MOBILE session of the same person is not a web session and is unaffected.
 	phone := e.fieldSession(personeltest.EmailDanruSatu, phoneA)
@@ -140,6 +143,46 @@ func TestALoginAnswerWithoutAnOrganizationIsAnOutageNotA500(t *testing.T) {
 	_, err := usecase.Login(t.Context(), identity.LoginInput{Email: "x@siapp.test", Password: "x", Client: identity.ClientWeb})
 	got := requireAppError(t, err, http.StatusServiceUnavailable)
 	require.Equal(t, apperr.ReasonPersonelUnavailable, got.Reason)
+}
+
+// ⚠ Every revoke must say why (sessions_revoke_reason_check): a new query that revoked without
+// a reason would otherwise bring back the "everything reads as a token reuse" answers.
+func TestTheDatabaseRefusesARevokeWithoutAReason(t *testing.T) {
+	e := newEnv(t, "")
+	phone := e.fieldSession(personeltest.EmailAnggota1Satu, phoneA)
+
+	tx := openTenantTx(t, satu)
+	_, err := tx.Exec(t.Context(), "UPDATE sessions SET revoked_at = now() WHERE id = $1", sessionOf(t, satu, phone.RefreshToken))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "sessions_revoke_reason_check")
+}
+
+// Each way a session ends is answered with its own reason on the next refresh.
+func TestARevokedTokenIsAnsweredWithWhyItsSessionEnded(t *testing.T) {
+	cases := []struct {
+		reason string
+		status int
+		want   string
+	}{
+		{"ROTATED", http.StatusUnauthorized, identity.ReasonRefreshReused},
+		{"REUSE_DETECTED", http.StatusUnauthorized, identity.ReasonRefreshReused},
+		{"LOGOUT", http.StatusUnauthorized, "AUTH_TOKEN_INVALID"},
+		{"DEVICE_RESET", http.StatusUnauthorized, identity.ReasonDeviceChanged},
+		{"DEVICE_CHANGED", http.StatusUnauthorized, identity.ReasonDeviceChanged},
+		{"ACCOUNT_DISABLED", http.StatusForbidden, identity.ReasonAccountDisabled},
+		{"WEB_ROLE_REVOKED", http.StatusForbidden, access.ReasonNotAdmin},
+	}
+	for _, c := range cases {
+		t.Run(c.reason, func(t *testing.T) {
+			e := newEnv(t, "")
+			phone := e.fieldSession(personeltest.EmailAnggota1Satu, phoneA)
+			execTenant(t, satu, "UPDATE sessions SET revoked_at = now(), revoke_reason = $1::session_revoke_reason", c.reason)
+
+			res := e.refresh(phone.RefreshToken)
+			require.Equal(t, c.status, res.Status)
+			require.Equal(t, c.want, res.err(t).reason())
+		})
+	}
 }
 
 func TestSchedules(t *testing.T) {

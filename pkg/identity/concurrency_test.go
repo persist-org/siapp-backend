@@ -113,13 +113,15 @@ func refreshInFlight(t *testing.T, org, personnelID int64, refreshToken string) 
 	tx := openTenantTx(t, org)
 	_, err := tx.Exec(t.Context(), "SELECT id FROM personnels WHERE id = $1 FOR UPDATE", personnelID)
 	require.NoError(t, err)
-	_, err = tx.Exec(t.Context(), `
+	var nextID int64
+	require.NoError(t, tx.QueryRow(t.Context(), `
 		INSERT INTO sessions (personnel_id, family_id, refresh_token_hash, device_token_hash, client, expires_at)
 		SELECT personnel_id, family_id, md5(random()::text) || md5(random()::text), device_token_hash, client,
 		       now() + interval '1 day'
-		FROM sessions WHERE id = $1`, oldID)
-	require.NoError(t, err)
-	_, err = tx.Exec(t.Context(), "UPDATE sessions SET revoked_at = now() WHERE id = $1", oldID)
+		FROM sessions WHERE id = $1
+		RETURNING id`, oldID).Scan(&nextID))
+	_, err = tx.Exec(t.Context(),
+		"UPDATE sessions SET revoked_at = now(), revoke_reason = 'ROTATED', replaced_by_id = $2 WHERE id = $1", oldID, nextID)
 	require.NoError(t, err)
 	return tx
 }

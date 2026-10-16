@@ -47,7 +47,7 @@ INSERT INTO sessions (
     $1, $2, $3, $4, $5, $6,
     $7, $8, $9, $10, $10, $10
 )
-RETURNING id, organization_id, personnel_id, family_id, refresh_token_hash, device_token_hash, remember_me, client, expires_at, revoked_at, replaced_by_id, user_agent, ip, last_used_at, created_at, updated_at
+RETURNING id, organization_id, personnel_id, family_id, refresh_token_hash, device_token_hash, remember_me, client, expires_at, revoked_at, replaced_by_id, user_agent, ip, last_used_at, created_at, updated_at, revoke_reason
 `
 
 type CreateSessionParams struct {
@@ -94,6 +94,7 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 		&i.LastUsedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.RevokeReason,
 	)
 	return i, err
 }
@@ -334,7 +335,7 @@ func (q *Queries) GetSessionFamily(ctx context.Context, arg GetSessionFamilyPara
 
 const getSessionForRefresh = `-- name: GetSessionForRefresh :one
 SELECT s.id, s.personnel_id, s.family_id, s.device_token_hash, s.remember_me, s.client,
-       s.expires_at, s.revoked_at,
+       s.expires_at, s.revoked_at, s.revoke_reason,
        p.personel_user_id, p.status AS personnel_status
 FROM sessions s
 JOIN personnels p ON p.id = s.personnel_id
@@ -351,6 +352,7 @@ type GetSessionForRefreshRow struct {
 	Client          SessionClient
 	ExpiresAt       pgtype.Timestamptz
 	RevokedAt       pgtype.Timestamptz
+	RevokeReason    NullSessionRevokeReason
 	PersonelUserID  int64
 	PersonnelStatus PersonnelStatus
 }
@@ -371,6 +373,7 @@ func (q *Queries) GetSessionForRefresh(ctx context.Context, refreshTokenHash str
 		&i.Client,
 		&i.ExpiresAt,
 		&i.RevokedAt,
+		&i.RevokeReason,
 		&i.PersonelUserID,
 		&i.PersonnelStatus,
 	)
@@ -686,7 +689,7 @@ func (q *Queries) ReleaseNIK(ctx context.Context, arg ReleaseNIKParams) error {
 }
 
 const revokeMobileSessions = `-- name: RevokeMobileSessions :exec
-UPDATE sessions SET revoked_at = $1, updated_at = $1
+UPDATE sessions SET revoked_at = $1, revoke_reason = 'DEVICE_RESET', updated_at = $1
 WHERE personnel_id = $2 AND client = 'MOBILE' AND revoked_at IS NULL
 `
 
@@ -701,24 +704,25 @@ func (q *Queries) RevokeMobileSessions(ctx context.Context, arg RevokeMobileSess
 }
 
 const revokeSessionFamily = `-- name: RevokeSessionFamily :exec
-UPDATE sessions SET revoked_at = $1, updated_at = $1
-WHERE family_id = $2 AND revoked_at IS NULL
+UPDATE sessions SET revoked_at = $1, revoke_reason = $2, updated_at = $1
+WHERE family_id = $3 AND revoked_at IS NULL
 `
 
 type RevokeSessionFamilyParams struct {
 	Now      pgtype.Timestamptz
+	Reason   NullSessionRevokeReason
 	FamilyID pgtype.UUID
 }
 
 // Ends every live session of a login chain. Sessions that were already revoked keep the
 // time they were revoked.
 func (q *Queries) RevokeSessionFamily(ctx context.Context, arg RevokeSessionFamilyParams) error {
-	_, err := q.db.Exec(ctx, revokeSessionFamily, arg.Now, arg.FamilyID)
+	_, err := q.db.Exec(ctx, revokeSessionFamily, arg.Now, arg.Reason, arg.FamilyID)
 	return err
 }
 
 const revokeSessionsOfPersonnel = `-- name: RevokeSessionsOfPersonnel :exec
-UPDATE sessions SET revoked_at = $1, updated_at = $1
+UPDATE sessions SET revoked_at = $1, revoke_reason = 'ACCOUNT_DISABLED', updated_at = $1
 WHERE personnel_id = $2 AND revoked_at IS NULL
 `
 
@@ -727,6 +731,7 @@ type RevokeSessionsOfPersonnelParams struct {
 	PersonnelID int64
 }
 
+// Ends every session of a person whom the resync found no longer active in Personalia.
 func (q *Queries) RevokeSessionsOfPersonnel(ctx context.Context, arg RevokeSessionsOfPersonnelParams) error {
 	_, err := q.db.Exec(ctx, revokeSessionsOfPersonnel, arg.Now, arg.PersonnelID)
 	return err
@@ -734,7 +739,7 @@ func (q *Queries) RevokeSessionsOfPersonnel(ctx context.Context, arg RevokeSessi
 
 const rotateSession = `-- name: RotateSession :exec
 UPDATE sessions
-SET revoked_at = $1, replaced_by_id = $2, updated_at = $1
+SET revoked_at = $1, revoke_reason = 'ROTATED', replaced_by_id = $2, updated_at = $1
 WHERE id = $3
 `
 

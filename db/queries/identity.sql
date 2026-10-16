@@ -99,7 +99,7 @@ WHERE s.refresh_token_hash = $1;
 -- the row as revoked and is treated as reuse.
 -- name: GetSessionForRefresh :one
 SELECT s.id, s.personnel_id, s.family_id, s.device_token_hash, s.remember_me, s.client,
-       s.expires_at, s.revoked_at,
+       s.expires_at, s.revoked_at, s.revoke_reason,
        p.personel_user_id, p.status AS personnel_status
 FROM sessions s
 JOIN personnels p ON p.id = s.personnel_id
@@ -108,13 +108,13 @@ FOR UPDATE OF s;
 
 -- name: RotateSession :exec
 UPDATE sessions
-SET revoked_at = @now, replaced_by_id = @replaced_by_id, updated_at = @now
+SET revoked_at = @now, revoke_reason = 'ROTATED', replaced_by_id = @replaced_by_id, updated_at = @now
 WHERE id = @id;
 
 -- Ends every live session of a login chain. Sessions that were already revoked keep the
 -- time they were revoked.
 -- name: RevokeSessionFamily :exec
-UPDATE sessions SET revoked_at = @now, updated_at = @now
+UPDATE sessions SET revoked_at = @now, revoke_reason = @reason, updated_at = @now
 WHERE family_id = @family_id AND revoked_at IS NULL;
 
 -- The sessions of a chain whose access tokens can still be alive (created within the last
@@ -191,7 +191,7 @@ DELETE FROM device_bindings WHERE personnel_id = $1;
 SELECT id FROM sessions WHERE personnel_id = @personnel_id AND client = 'MOBILE' AND created_at >= @since;
 
 -- name: RevokeMobileSessions :exec
-UPDATE sessions SET revoked_at = @now, updated_at = @now
+UPDATE sessions SET revoked_at = @now, revoke_reason = 'DEVICE_RESET', updated_at = @now
 WHERE personnel_id = @personnel_id AND client = 'MOBILE' AND revoked_at IS NULL;
 
 -- name: DeleteMobileDevices :exec
@@ -210,8 +210,9 @@ LIMIT @batch;
 -- name: ListRecentSessionIDsOfPersonnel :many
 SELECT id FROM sessions WHERE personnel_id = @personnel_id AND created_at >= @since;
 
+-- Ends every session of a person whom the resync found no longer active in Personalia.
 -- name: RevokeSessionsOfPersonnel :exec
-UPDATE sessions SET revoked_at = @now, updated_at = @now
+UPDATE sessions SET revoked_at = @now, revoke_reason = 'ACCOUNT_DISABLED', updated_at = @now
 WHERE personnel_id = @personnel_id AND revoked_at IS NULL;
 
 -- name: DeleteDevicesOfPersonnel :exec

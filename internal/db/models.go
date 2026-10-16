@@ -181,6 +181,53 @@ func (ns NullSessionClient) Value() (driver.Value, error) {
 	return string(ns.SessionClient), nil
 }
 
+type SessionRevokeReason string
+
+const (
+	SessionRevokeReasonROTATED         SessionRevokeReason = "ROTATED"
+	SessionRevokeReasonLOGOUT          SessionRevokeReason = "LOGOUT"
+	SessionRevokeReasonREUSEDETECTED   SessionRevokeReason = "REUSE_DETECTED"
+	SessionRevokeReasonDEVICERESET     SessionRevokeReason = "DEVICE_RESET"
+	SessionRevokeReasonDEVICECHANGED   SessionRevokeReason = "DEVICE_CHANGED"
+	SessionRevokeReasonACCOUNTDISABLED SessionRevokeReason = "ACCOUNT_DISABLED"
+	SessionRevokeReasonWEBROLEREVOKED  SessionRevokeReason = "WEB_ROLE_REVOKED"
+)
+
+func (e *SessionRevokeReason) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = SessionRevokeReason(s)
+	case string:
+		*e = SessionRevokeReason(s)
+	default:
+		return fmt.Errorf("unsupported scan type for SessionRevokeReason: %T", src)
+	}
+	return nil
+}
+
+type NullSessionRevokeReason struct {
+	SessionRevokeReason SessionRevokeReason
+	Valid               bool // Valid is true if SessionRevokeReason is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullSessionRevokeReason) Scan(value interface{}) error {
+	if value == nil {
+		ns.SessionRevokeReason, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.SessionRevokeReason.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullSessionRevokeReason) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.SessionRevokeReason), nil
+}
+
 type WebRole string
 
 const (
@@ -315,6 +362,7 @@ type Session struct {
 	LastUsedAt       pgtype.Timestamptz
 	CreatedAt        pgtype.Timestamptz
 	UpdatedAt        pgtype.Timestamptz
+	RevokeReason     NullSessionRevokeReason
 }
 
 type WebRoleAssignment struct {

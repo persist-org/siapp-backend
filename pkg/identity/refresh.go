@@ -49,11 +49,19 @@ type resync struct {
 // ⚠ A refresh token works exactly once: using it retires it and issues the next one, in
 // the same login chain (family_id). The order of the checks under the lock is:
 //  1. unknown token (or another organization's prefix, which RLS hides): AUTH_TOKEN_INVALID;
-//  2. an already retired token: reuse, the whole chain ends (AUTH_REFRESH_REUSED);
-//  3. an expired session: AUTH_TOKEN_INVALID;
-//  4. the person is INACTIVE, or Personalia says so now: AUTH_ACCOUNT_DISABLED;
-//  5. a MOBILE session whose phone is no longer the bound one: AUTH_DEVICE_CHANGED;
-//  6. a WEB session of a person who no longer has a web role: NOT_ADMIN.
+//  2. a token that was already exchanged (revoke_reason ROTATED): reuse, the whole chain ends
+//     (AUTH_REFRESH_REUSED);
+//  3. a token whose session was ended for another reason: the answer that reason calls for,
+//     see refusalFor (AUTH_DEVICE_CHANGED after a device reset, AUTH_ACCOUNT_DISABLED after a
+//     deactivation, AUTH_TOKEN_INVALID after a logout, ...). Nothing is changed: the chain is
+//     already over;
+//  4. an expired session: AUTH_TOKEN_INVALID;
+//  5. the person is INACTIVE, or Personalia says so now: AUTH_ACCOUNT_DISABLED;
+//  6. a MOBILE session whose phone is no longer the bound one: AUTH_DEVICE_CHANGED;
+//  7. a WEB session of a person who no longer has a web role: NOT_ADMIN.
+//
+// Every refusal that ends a chain records why (sessions.revoke_reason), so the same token
+// keeps getting the same, true answer afterwards.
 //
 // ⚠ Reuse detection. The usual cause of a replayed token is theft: a thief and the real
 // person each hold it, and whoever refreshes second is the replayer. SiAPP cannot tell which
@@ -97,12 +105,12 @@ func (u *Usecase) Refresh(ctx context.Context, in RefreshInput) (LoginResult, er
 		cutOff  []int64 // sessions whose access tokens die because the chain ended
 		refused error   // returned after the transaction has committed
 	)
-	endChain := func(q *db.Queries, family pgtype.UUID, why error) error {
-		ids, err := u.repo.endFamily(ctx, q, family, now)
+	endChain := func(q *db.Queries, family pgtype.UUID, reason db.SessionRevokeReason) error {
+		ids, err := u.repo.endFamily(ctx, q, family, now, reason)
 		if err != nil {
 			return err
 		}
-		cutOff, refused = ids, why
+		cutOff, refused = ids, refusalFor(reason)
 		return nil
 	}
 
@@ -128,19 +136,27 @@ func (u *Usecase) Refresh(ctx context.Context, in RefreshInput) (LoginResult, er
 			return ErrRefreshTokenInvalid
 		}
 		if row.RevokedAt.Valid {
-			return endChain(q, row.FamilyID, ErrRefreshReused)
+			// ⚠ Only a ROTATED token is a replay: it was already exchanged for a newer one, so
+			// whoever presents it again may be a thief, and the whole chain ends. A session
+			// that was ended for any other reason (logout, device reset, deactivation, ...)
+			// is not a replay; its token gets the answer for that reason, and the chain,
+			// already over, is left as it is.
+			if row.RevokeReason.SessionRevokeReason == db.SessionRevokeReasonROTATED {
+				return endChain(q, row.FamilyID, db.SessionRevokeReasonREUSEDETECTED)
+			}
+			return refusalFor(row.RevokeReason.SessionRevokeReason)
 		}
 		if !row.ExpiresAt.Time.After(now) {
 			return ErrRefreshTokenInvalid
 		}
 		if row.PersonnelStatus == db.PersonnelStatusINACTIVE {
-			return endChain(q, row.FamilyID, ErrAccountDisabled)
+			return endChain(q, row.FamilyID, db.SessionRevokeReasonACCOUNTDISABLED)
 		}
 		if sync.state == resyncGone {
 			if err := u.repo.markInactive(ctx, q, row.PersonnelID, now); err != nil {
 				return err
 			}
-			return endChain(q, row.FamilyID, ErrAccountDisabled)
+			return endChain(q, row.FamilyID, db.SessionRevokeReasonACCOUNTDISABLED)
 		}
 		if row.Client == db.SessionClientMOBILE {
 			ok, err := u.deviceStillBound(ctx, q, row, now)
@@ -148,7 +164,7 @@ func (u *Usecase) Refresh(ctx context.Context, in RefreshInput) (LoginResult, er
 				return err
 			}
 			if !ok {
-				return endChain(q, row.FamilyID, ErrDeviceChanged)
+				return endChain(q, row.FamilyID, db.SessionRevokeReasonDEVICECHANGED)
 			}
 		}
 		// ⚠ The web login gate holds on refresh too. Without this, an admin whose web role
@@ -158,7 +174,7 @@ func (u *Usecase) Refresh(ctx context.Context, in RefreshInput) (LoginResult, er
 			if _, isAdmin, err := access.AdminScopeOf(ctx, q, row.PersonnelID); err != nil {
 				return err
 			} else if !isAdmin {
-				return endChain(q, row.FamilyID, access.ErrNotAdmin)
+				return endChain(q, row.FamilyID, db.SessionRevokeReasonWEBROLEREVOKED)
 			}
 		}
 
@@ -219,6 +235,29 @@ func (u *Usecase) Refresh(ctx context.Context, in RefreshInput) (LoginResult, er
 		return LoginResult{}, refused
 	}
 	return out, nil
+}
+
+// refusalFor is the answer to a refresh with the token of a session that was ended for this
+// reason. Each of them sends the person back to the login screen; the reason tells them why:
+// "your phone is no longer registered" is not "your token was used twice".
+func refusalFor(reason db.SessionRevokeReason) error {
+	switch reason {
+	case db.SessionRevokeReasonROTATED, db.SessionRevokeReasonREUSEDETECTED:
+		return ErrRefreshReused
+	case db.SessionRevokeReasonDEVICERESET, db.SessionRevokeReasonDEVICECHANGED:
+		return ErrDeviceChanged
+	case db.SessionRevokeReasonACCOUNTDISABLED:
+		return ErrAccountDisabled
+	case db.SessionRevokeReasonWEBROLEREVOKED:
+		return access.ErrNotAdmin
+	case db.SessionRevokeReasonLOGOUT:
+		// The person ended it themselves, and simply signs in again.
+		return ErrRefreshTokenInvalid
+	default:
+		// Unreachable while every reason above is listed (the exhaustive linter checks it);
+		// an unknown value still refuses, with the neutral answer.
+		return ErrRefreshTokenInvalid
+	}
 }
 
 // deviceStillBound reports whether the session's phone is the person's current binding, and
@@ -304,7 +343,7 @@ func (u *Usecase) Logout(ctx context.Context, p auth.Principal) error {
 		if err != nil || !found {
 			return err
 		}
-		cutOff, err = u.repo.endFamily(ctx, q, family, now)
+		cutOff, err = u.repo.endFamily(ctx, q, family, now, db.SessionRevokeReasonLOGOUT)
 		return err
 	})
 	if err != nil {

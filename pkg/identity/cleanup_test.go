@@ -20,10 +20,11 @@ import (
 func newDeadSession(t *testing.T, org, personnelID int64, revokedDaysAgo, expiredDaysAgo int) int64 {
 	t.Helper()
 	return scalar[int64](t, org, `
-		INSERT INTO sessions (personnel_id, family_id, refresh_token_hash, client, expires_at, revoked_at, created_at, updated_at)
+		INSERT INTO sessions (personnel_id, family_id, refresh_token_hash, client, expires_at, revoked_at, revoke_reason, created_at, updated_at)
 		VALUES ($1, gen_random_uuid(), md5(random()::text) || md5(random()::text), 'WEB',
 		        now() - make_interval(days => $2),
 		        CASE WHEN $3 < 0 THEN NULL ELSE now() - make_interval(days => $3) END,
+		        CASE WHEN $3 < 0 THEN NULL ELSE 'LOGOUT'::session_revoke_reason END,
 		        now() - interval '60 days', now())
 		RETURNING id`, personnelID, expiredDaysAgo, revokedDaysAgo)
 }

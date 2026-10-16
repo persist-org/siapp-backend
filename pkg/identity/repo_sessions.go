@@ -66,14 +66,19 @@ func (repo) rotateSession(ctx context.Context, q *db.Queries, oldID, newID int64
 // endFamily revokes every live session of a login chain, deletes its devices, and returns the ids of those whose
 // access tokens can still be alive, for the caller to put on the revocation list once the
 // transaction has committed.
-func (repo) endFamily(ctx context.Context, q *db.Queries, family pgtype.UUID, now time.Time) ([]int64, error) {
+//
+// reason is recorded on every session it ends, so that a later refresh with one of their
+// tokens is answered with the real cause (see refusalFor).
+func (repo) endFamily(ctx context.Context, q *db.Queries, family pgtype.UUID, now time.Time, reason db.SessionRevokeReason) ([]int64, error) {
 	ids, err := q.ListRecentSessionIDsByFamily(ctx, db.ListRecentSessionIDsByFamilyParams{
 		FamilyID: family, Since: ts(now.Add(-auth.RecentWindow)),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list recent sessions of family: %w", err)
 	}
-	if err := q.RevokeSessionFamily(ctx, db.RevokeSessionFamilyParams{FamilyID: family, Now: ts(now)}); err != nil {
+	if err := q.RevokeSessionFamily(ctx, db.RevokeSessionFamilyParams{
+		FamilyID: family, Now: ts(now), Reason: db.NullSessionRevokeReason{SessionRevokeReason: reason, Valid: true},
+	}); err != nil {
 		return nil, fmt.Errorf("revoke session family: %w", err)
 	}
 	// A device never outlives its login: a revoked session is not a deleted one, so the push

@@ -183,7 +183,10 @@ func TestResyncDeactivatesPeopleWhoLeftAndRefreshesTheRest(t *testing.T) {
 	require.Equal(t, 0, scalar[int](t, satu, "SELECT count(*) FROM sessions WHERE personnel_id = $1 AND revoked_at IS NULL", leaves.User.ID))
 	require.Empty(t, devicesOf(t, satu))
 	require.Equal(t, http.StatusUnauthorized, e.whoami(leaves.AccessToken), "cut off at once, not after 15 minutes")
-	require.Equal(t, http.StatusUnauthorized, e.refresh(leaves.RefreshToken).Status, "and their refresh fails")
+	afterResync := e.refresh(leaves.RefreshToken)
+	require.Equal(t, http.StatusForbidden, afterResync.Status, "and their refresh fails")
+	require.Equal(t, identity.ReasonAccountDisabled, afterResync.err(t).reason(),
+		"with the account-inactive answer, not a token-reuse one")
 
 	// The person who stays: fresh data, a new synced_at, sessions untouched.
 	require.Equal(t, "ACTIVE", scalar[string](t, satu, "SELECT status::text FROM personnels WHERE id = $1", stays.User.ID))
