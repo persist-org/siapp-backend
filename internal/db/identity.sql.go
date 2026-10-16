@@ -98,6 +98,87 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 	return i, err
 }
 
+const deleteChainDeviceByPushToken = `-- name: DeleteChainDeviceByPushToken :execrows
+DELETE FROM devices WHERE push_token = $1 AND session_id IN (
+    SELECT x.id FROM sessions x WHERE x.family_id = (
+        SELECT f.family_id FROM sessions f WHERE f.id = $2 AND f.personnel_id = $3
+    )
+)
+`
+
+type DeleteChainDeviceByPushTokenParams struct {
+	PushToken   string
+	SessionID   int64
+	PersonnelID int64
+}
+
+func (q *Queries) DeleteChainDeviceByPushToken(ctx context.Context, arg DeleteChainDeviceByPushTokenParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteChainDeviceByPushToken, arg.PushToken, arg.SessionID, arg.PersonnelID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteDeviceBinding = `-- name: DeleteDeviceBinding :execrows
+
+DELETE FROM device_bindings WHERE personnel_id = $1
+`
+
+// Device reset (admin) --------------------------------------------------------------------
+func (q *Queries) DeleteDeviceBinding(ctx context.Context, personnelID int64) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteDeviceBinding, personnelID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteDevicesByPushTokenExceptSession = `-- name: DeleteDevicesByPushTokenExceptSession :exec
+
+DELETE FROM devices WHERE push_token = $1 AND session_id <> $2
+`
+
+type DeleteDevicesByPushTokenExceptSessionParams struct {
+	PushToken string
+	SessionID int64
+}
+
+// Push-token devices ---------------------------------------------------------------------
+// A push token belongs to one device: whoever else holds it loses it first.
+func (q *Queries) DeleteDevicesByPushTokenExceptSession(ctx context.Context, arg DeleteDevicesByPushTokenExceptSessionParams) error {
+	_, err := q.db.Exec(ctx, deleteDevicesByPushTokenExceptSession, arg.PushToken, arg.SessionID)
+	return err
+}
+
+const deleteDevicesOfFamily = `-- name: DeleteDevicesOfFamily :exec
+DELETE FROM devices WHERE session_id IN (SELECT id FROM sessions WHERE family_id = $1)
+`
+
+// A device never outlives its login: whatever ends a chain deletes the chain devices.
+func (q *Queries) DeleteDevicesOfFamily(ctx context.Context, familyID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteDevicesOfFamily, familyID)
+	return err
+}
+
+const deleteDevicesOfPersonnel = `-- name: DeleteDevicesOfPersonnel :exec
+DELETE FROM devices WHERE personnel_id = $1
+`
+
+func (q *Queries) DeleteDevicesOfPersonnel(ctx context.Context, personnelID int64) error {
+	_, err := q.db.Exec(ctx, deleteDevicesOfPersonnel, personnelID)
+	return err
+}
+
+const deleteMobileDevices = `-- name: DeleteMobileDevices :exec
+DELETE FROM devices WHERE session_id IN (SELECT s.id FROM sessions s WHERE s.personnel_id = $1 AND s.client = 'MOBILE')
+`
+
+func (q *Queries) DeleteMobileDevices(ctx context.Context, personnelID int64) error {
+	_, err := q.db.Exec(ctx, deleteMobileDevices, personnelID)
+	return err
+}
+
 const deleteSessionsExpiredBefore = `-- name: DeleteSessionsExpiredBefore :execrows
 DELETE FROM sessions WHERE id IN (
     SELECT old.id FROM sessions old WHERE old.expires_at < $1 ORDER BY old.id LIMIT $2
@@ -158,12 +239,61 @@ func (q *Queries) GetDeviceBindingForUpdate(ctx context.Context, personnelID int
 	return i, err
 }
 
+const getLiveSessionOfChain = `-- name: GetLiveSessionOfChain :one
+SELECT live.id
+FROM sessions s
+JOIN sessions live ON live.family_id = s.family_id AND live.revoked_at IS NULL
+WHERE s.id = $1 AND s.personnel_id = $2
+`
+
+type GetLiveSessionOfChainParams struct {
+	SessionID   int64
+	PersonnelID int64
+}
+
+// The live session of the login chain that a session belongs to. The access token of a
+// request can name an older session of its chain (it was issued before a refresh), and the
+// device must hang on the session that is alive.
+func (q *Queries) GetLiveSessionOfChain(ctx context.Context, arg GetLiveSessionOfChainParams) (int64, error) {
+	row := q.db.QueryRow(ctx, getLiveSessionOfChain, arg.SessionID, arg.PersonnelID)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
 const getPersonnel = `-- name: GetPersonnel :one
 SELECT id, organization_id, personel_user_id, nik, client_id, client_name, full_name, email, phone, photo_url, status, synced_at, last_seen_at, created_at, updated_at FROM personnels WHERE id = $1
 `
 
 func (q *Queries) GetPersonnel(ctx context.Context, id int64) (Personnel, error) {
 	row := q.db.QueryRow(ctx, getPersonnel, id)
+	var i Personnel
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.PersonelUserID,
+		&i.Nik,
+		&i.ClientID,
+		&i.ClientName,
+		&i.FullName,
+		&i.Email,
+		&i.Phone,
+		&i.PhotoUrl,
+		&i.Status,
+		&i.SyncedAt,
+		&i.LastSeenAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getPersonnelByNIK = `-- name: GetPersonnelByNIK :one
+SELECT id, organization_id, personel_user_id, nik, client_id, client_name, full_name, email, phone, photo_url, status, synced_at, last_seen_at, created_at, updated_at FROM personnels WHERE nik = $1
+`
+
+func (q *Queries) GetPersonnelByNIK(ctx context.Context, nik pgtype.Text) (Personnel, error) {
+	row := q.db.QueryRow(ctx, getPersonnelByNIK, nik)
 	var i Personnel
 	err := row.Scan(
 		&i.ID,
@@ -247,6 +377,35 @@ func (q *Queries) GetSessionForRefresh(ctx context.Context, refreshTokenHash str
 	return i, err
 }
 
+const listRecentMobileSessionIDs = `-- name: ListRecentMobileSessionIDs :many
+SELECT id FROM sessions WHERE personnel_id = $1 AND client = 'MOBILE' AND created_at >= $2
+`
+
+type ListRecentMobileSessionIDsParams struct {
+	PersonnelID int64
+	Since       pgtype.Timestamptz
+}
+
+func (q *Queries) ListRecentMobileSessionIDs(ctx context.Context, arg ListRecentMobileSessionIDsParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, listRecentMobileSessionIDs, arg.PersonnelID, arg.Since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRecentSessionIDsByFamily = `-- name: ListRecentSessionIDsByFamily :many
 SELECT id FROM sessions WHERE family_id = $1 AND created_at >= $2
 `
@@ -278,6 +437,88 @@ func (q *Queries) ListRecentSessionIDsByFamily(ctx context.Context, arg ListRece
 	return items, nil
 }
 
+const listRecentSessionIDsOfPersonnel = `-- name: ListRecentSessionIDsOfPersonnel :many
+SELECT id FROM sessions WHERE personnel_id = $1 AND created_at >= $2
+`
+
+type ListRecentSessionIDsOfPersonnelParams struct {
+	PersonnelID int64
+	Since       pgtype.Timestamptz
+}
+
+func (q *Queries) ListRecentSessionIDsOfPersonnel(ctx context.Context, arg ListRecentSessionIDsOfPersonnelParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, listRecentSessionIDsOfPersonnel, arg.PersonnelID, arg.Since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listStalePersonnel = `-- name: ListStalePersonnel :many
+
+SELECT id, organization_id, personel_user_id, nik, client_id, client_name, full_name, email, phone, photo_url, status, synced_at, last_seen_at, created_at, updated_at FROM personnels
+WHERE status = 'ACTIVE' AND nik IS NOT NULL AND synced_at < $1 AND id > $2
+ORDER BY id
+LIMIT $3
+`
+
+type ListStalePersonnelParams struct {
+	Cutoff  pgtype.Timestamptz
+	AfterID int64
+	Batch   int32
+}
+
+// People sync -----------------------------------------------------------------------------
+// Active people with a NIK whose cached copy is older than the cutoff, in id order so that a
+// batch can continue after the last id it saw.
+func (q *Queries) ListStalePersonnel(ctx context.Context, arg ListStalePersonnelParams) ([]Personnel, error) {
+	rows, err := q.db.Query(ctx, listStalePersonnel, arg.Cutoff, arg.AfterID, arg.Batch)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Personnel{}
+	for rows.Next() {
+		var i Personnel
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrganizationID,
+			&i.PersonelUserID,
+			&i.Nik,
+			&i.ClientID,
+			&i.ClientName,
+			&i.FullName,
+			&i.Email,
+			&i.Phone,
+			&i.PhotoUrl,
+			&i.Status,
+			&i.SyncedAt,
+			&i.LastSeenAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markPersonnelInactive = `-- name: MarkPersonnelInactive :exec
 UPDATE personnels SET status = 'INACTIVE', synced_at = $1, updated_at = $1 WHERE id = $2
 `
@@ -289,6 +530,22 @@ type MarkPersonnelInactiveParams struct {
 
 func (q *Queries) MarkPersonnelInactive(ctx context.Context, arg MarkPersonnelInactiveParams) error {
 	_, err := q.db.Exec(ctx, markPersonnelInactive, arg.Now, arg.ID)
+	return err
+}
+
+const moveDevice = `-- name: MoveDevice :exec
+UPDATE devices SET session_id = $1, updated_at = $2 WHERE session_id = $3
+`
+
+type MoveDeviceParams struct {
+	NewSessionID int64
+	Now          pgtype.Timestamptz
+	OldSessionID int64
+}
+
+// A device follows its login chain: a refresh moves it to the new session.
+func (q *Queries) MoveDevice(ctx context.Context, arg MoveDeviceParams) error {
+	_, err := q.db.Exec(ctx, moveDevice, arg.NewSessionID, arg.Now, arg.OldSessionID)
 	return err
 }
 
@@ -325,6 +582,59 @@ func (q *Queries) PeekSessionForRefresh(ctx context.Context, refreshTokenHash st
 	return i, err
 }
 
+const refreshPersonnel = `-- name: RefreshPersonnel :exec
+UPDATE personnels SET
+    nik = $1, client_id = $2, client_name = $3,
+    full_name = $4, email = $5, phone = $6,
+    photo_url = $7, status = 'ACTIVE', synced_at = $8, updated_at = $8
+WHERE id = $9
+`
+
+type RefreshPersonnelParams struct {
+	Nik        pgtype.Text
+	ClientID   pgtype.Int8
+	ClientName pgtype.Text
+	FullName   string
+	Email      pgtype.Text
+	Phone      pgtype.Text
+	PhotoUrl   pgtype.Text
+	Now        pgtype.Timestamptz
+	ID         int64
+}
+
+// Refreshes the cached copy from Personalia without counting as activity: last_seen_at (the
+// billing active-head clock) is left alone, unlike UpsertPersonnel which a login or a
+// refresh uses.
+func (q *Queries) RefreshPersonnel(ctx context.Context, arg RefreshPersonnelParams) error {
+	_, err := q.db.Exec(ctx, refreshPersonnel,
+		arg.Nik,
+		arg.ClientID,
+		arg.ClientName,
+		arg.FullName,
+		arg.Email,
+		arg.Phone,
+		arg.PhotoUrl,
+		arg.Now,
+		arg.ID,
+	)
+	return err
+}
+
+const revokeMobileSessions = `-- name: RevokeMobileSessions :exec
+UPDATE sessions SET revoked_at = $1, updated_at = $1
+WHERE personnel_id = $2 AND client = 'MOBILE' AND revoked_at IS NULL
+`
+
+type RevokeMobileSessionsParams struct {
+	Now         pgtype.Timestamptz
+	PersonnelID int64
+}
+
+func (q *Queries) RevokeMobileSessions(ctx context.Context, arg RevokeMobileSessionsParams) error {
+	_, err := q.db.Exec(ctx, revokeMobileSessions, arg.Now, arg.PersonnelID)
+	return err
+}
+
 const revokeSessionFamily = `-- name: RevokeSessionFamily :exec
 UPDATE sessions SET revoked_at = $1, updated_at = $1
 WHERE family_id = $2 AND revoked_at IS NULL
@@ -339,6 +649,21 @@ type RevokeSessionFamilyParams struct {
 // time they were revoked.
 func (q *Queries) RevokeSessionFamily(ctx context.Context, arg RevokeSessionFamilyParams) error {
 	_, err := q.db.Exec(ctx, revokeSessionFamily, arg.Now, arg.FamilyID)
+	return err
+}
+
+const revokeSessionsOfPersonnel = `-- name: RevokeSessionsOfPersonnel :exec
+UPDATE sessions SET revoked_at = $1, updated_at = $1
+WHERE personnel_id = $2 AND revoked_at IS NULL
+`
+
+type RevokeSessionsOfPersonnelParams struct {
+	Now         pgtype.Timestamptz
+	PersonnelID int64
+}
+
+func (q *Queries) RevokeSessionsOfPersonnel(ctx context.Context, arg RevokeSessionsOfPersonnelParams) error {
+	_, err := q.db.Exec(ctx, revokeSessionsOfPersonnel, arg.Now, arg.PersonnelID)
 	return err
 }
 
@@ -371,6 +696,52 @@ type TouchDeviceBindingParams struct {
 func (q *Queries) TouchDeviceBinding(ctx context.Context, arg TouchDeviceBindingParams) error {
 	_, err := q.db.Exec(ctx, touchDeviceBinding, arg.Now, arg.ID)
 	return err
+}
+
+const upsertDevice = `-- name: UpsertDevice :one
+INSERT INTO devices (personnel_id, session_id, platform, push_token, app_version, last_seen_at, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $6, $6)
+ON CONFLICT (session_id) DO UPDATE SET
+    platform     = EXCLUDED.platform,
+    push_token   = EXCLUDED.push_token,
+    app_version  = EXCLUDED.app_version,
+    last_seen_at = EXCLUDED.last_seen_at,
+    updated_at   = EXCLUDED.updated_at
+RETURNING id, organization_id, personnel_id, session_id, platform, push_token, app_version, last_seen_at, created_at, updated_at
+`
+
+type UpsertDeviceParams struct {
+	PersonnelID int64
+	SessionID   int64
+	Platform    DevicePlatform
+	PushToken   string
+	AppVersion  pgtype.Text
+	Now         pgtype.Timestamptz
+}
+
+func (q *Queries) UpsertDevice(ctx context.Context, arg UpsertDeviceParams) (Device, error) {
+	row := q.db.QueryRow(ctx, upsertDevice,
+		arg.PersonnelID,
+		arg.SessionID,
+		arg.Platform,
+		arg.PushToken,
+		arg.AppVersion,
+		arg.Now,
+	)
+	var i Device
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.PersonnelID,
+		&i.SessionID,
+		&i.Platform,
+		&i.PushToken,
+		&i.AppVersion,
+		&i.LastSeenAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const upsertPersonnel = `-- name: UpsertPersonnel :one

@@ -295,6 +295,12 @@ components:
       description: Identitas resource.
       schema: { type: integer, format: int64 }
     # Header parameters (correlation / idempotency)
+    PersonnelIdPath:
+      name: personnel_id
+      in: path
+      required: true
+      description: Identitas lokal orang (personnels.id), bukan id Personalia.
+      schema: { type: integer, format: int64 }
     IdempotencyKeyHeader:
       name: Idempotency-Key
       in: header
@@ -614,6 +620,43 @@ components:
           items: { type: string }
           example: [OWNER, PLATFORM]
         team_role: { type: string, enum: [DANRU, MEMBER], nullable: true, example: DANRU }
+        organization:
+          type: object
+          description: Organisasi (tenant) orang ini, dari Personalia.
+          properties:
+            id: { type: integer, format: int64 }
+            name: { type: string }
+        web_role:
+          type: object
+          nullable: true
+          description: Penugasan peran web (admin) milik SiAPP; null untuk petugas lapangan.
+          properties:
+            role: { type: string, enum: [ORG_ADMIN, PROJECT_ADMIN] }
+            project_ids: { type: array, items: { type: integer, format: int64 } }
+        memberships:
+          type: array
+          description: Keanggotaan regu aktif beserta peran (diisi sejak Fase 02.2; kosong sebelumnya).
+          items: { type: object, additionalProperties: true }
+    WebRoleAssignment:
+      type: object
+      properties:
+        personnel_id: { type: integer, format: int64 }
+        full_name: { type: string }
+        nik: { type: string, description: Disamarkan; hanya 4 digit terakhir. }
+        role: { type: string, enum: [ORG_ADMIN, PROJECT_ADMIN] }
+        project_ids: { type: array, items: { type: integer, format: int64 } }
+        granted_by_personnel_id: { type: integer, format: int64, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    WebRoleInput:
+      type: object
+      required: [role]
+      properties:
+        role: { type: string, enum: [ORG_ADMIN, PROJECT_ADMIN] }
+        project_ids:
+          type: array
+          items: { type: integer, format: int64 }
+          description: Wajib dan tidak kosong untuk PROJECT_ADMIN; harus kosong untuk ORG_ADMIN.
     OAuthTokenResult:
       type: object
       properties:
@@ -2081,8 +2124,9 @@ components:
       type: object
       required: [firebase_token, platform]
       properties:
-        firebase_token: { type: string, description: "FCM token (tertaut personnels.firebase_token)." }
-        platform: { type: string, enum: [android, ios] }
+        firebase_token: { type: string, maxLength: 4096, description: "Push token perangkat ini. Satu token hanya milik satu perangkat; mendaftar ulang memperbarui baris yang sama." }
+        platform: { type: string, enum: [android, ios, web] }
+        app_version: { type: string, maxLength: 64, example: "1.4.2" }
     NotificationTokenDelete:
       type: object
       required: [firebase_token]
@@ -2262,6 +2306,80 @@ paths:
                   - { $ref: '#/components/schemas/SuccessEnvelope' }
                   - properties: { data: { $ref: '#/components/schemas/MeResult' } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /admin/web-roles:
+    get:
+      operationId: getAdminWebRoles
+      tags: [Auth]
+      summary: Daftar penugasan peran web di organisasi ini (hanya ORG_ADMIN)
+      description: |
+        Peran web (admin) adalah data SiAPP sendiri: Personalia menyatakan siapa seseorang,
+        SiAPP menyatakan apa yang boleh dilakukannya di sini. Menggantikan /admin/web-users
+        yang dimiliki Personalia (D5).
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/ListEnvelope' }
+                  - properties: { data: { type: array, items: { $ref: '#/components/schemas/WebRoleAssignment' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /admin/web-roles/{personnel_id}:
+    parameters: [ { $ref: '#/components/parameters/PersonnelIdPath' } ]
+    put:
+      operationId: putAdminWebRole
+      tags: [Auth]
+      summary: Beri atau ubah peran web seseorang (hanya ORG_ADMIN)
+      description: |
+        Admin tidak dapat menyempitkan penugasannya sendiri (409 CONFLICT), supaya admin
+        terakhir tidak mengunci semua orang.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/WebRoleInput' } } } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { $ref: '#/components/schemas/WebRoleAssignment' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      operationId: deleteAdminWebRole
+      tags: [Auth]
+      summary: Cabut peran web seseorang (hanya ORG_ADMIN)
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessEnvelope' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/personnel/{personnel_id}/device-binding:
+    parameters: [ { $ref: '#/components/parameters/PersonnelIdPath' } ]
+    delete:
+      operationId: deleteAdminPersonnelDeviceBinding
+      tags: [Auth]
+      summary: Reset ikatan HP seseorang (satu orang = satu HP)
+      description: |
+        Reset HR di panel Personalia hanya membebaskan aplikasi Personalia; ikatan HP SiAPP
+        adalah catatan SiAPP sendiri dan direset di sini. Dalam satu transaksi ikatan dihapus
+        dan sesi MOBILE orang itu dicabut (token aksesnya mati seketika). ORG_ADMIN, atau
+        PROJECT_ADMIN untuk orang yang ditempatkan di salah satu proyeknya. Orang tanpa
+        ikatan: tidak terjadi apa-apa, tetap 200.
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessEnvelope' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /auth/logout:
     post:
       operationId: postAuthLogout

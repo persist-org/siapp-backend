@@ -27,7 +27,7 @@ const (
 func (e *env) refresh(token string) reply {
 	e.t.Helper()
 	res := e.client.Do(http.MethodPost, refreshPath, map[string]any{"refresh_token": token})
-	e.bodies = append(e.bodies, string(res.Body))
+	e.record(string(res.Body))
 	return reply{Status: res.Status, Header: res.Header, Raw: res.Body}
 }
 

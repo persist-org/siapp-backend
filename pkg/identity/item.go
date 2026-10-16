@@ -1,10 +1,10 @@
 package identity
 
 import (
-	"strings"
 	"time"
 
 	"siapp/internal/db"
+	"siapp/pkg/platform/pii"
 )
 
 // Client names, as in the contract's LoginRequest.client.
@@ -61,21 +61,8 @@ func personFrom(p db.Personnel) Person {
 	}
 }
 
-// MaskNIK hides all but the last 4 characters (`************1234`). ⚠ NIK is PII with the
-// highest sensitivity (persist AC-W23-6): every response masks it except where a phase says
-// otherwise, and unmasking is audited. A value of 4 characters or fewer is masked entirely,
-// because showing it would show the whole number.
-func MaskNIK(nik string) string {
-	runes := []rune(nik)
-	if len(runes) == 0 {
-		return ""
-	}
-	keep := 0
-	if len(runes) > 4 {
-		keep = 4
-	}
-	return strings.Repeat("*", len(runes)-keep) + string(runes[len(runes)-keep:])
-}
+// MaskNIK hides all but the last 4 characters of a NIK (`************1234`); see pii.MaskNIK.
+func MaskNIK(nik string) string { return pii.MaskNIK(nik) }
 
 // sessionTTL is how long a session lives from login or from each refresh.
 func sessionTTL(rememberMe bool) time.Duration {

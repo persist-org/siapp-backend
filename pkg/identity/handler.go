@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"siapp/internal/apigen"
+	"siapp/pkg/access"
 	"siapp/pkg/platform/apperr"
 	"siapp/pkg/platform/auth"
 	"siapp/pkg/platform/httpx"
@@ -23,11 +24,18 @@ type Handler struct {
 	clientIP func(*http.Request) string
 	// limiter counts failed logins.
 	limiter *httpx.FailureLimiter
+	// idempotent is the optional Idempotency-Key middleware of the routes the contract marks
+	// idempotent: with a key the response is stored and replayed, without one the route runs
+	// as usual. nil means no middleware.
+	idempotent func(http.Handler) http.Handler
 }
 
-// NewHandler returns the identity Handler. clientIP extracts the caller's address.
-func NewHandler(usecase *Usecase, clientIP func(*http.Request) string, limiter *httpx.FailureLimiter) *Handler {
-	return &Handler{usecase: usecase, clientIP: clientIP, limiter: limiter}
+// NewHandler returns the identity Handler. clientIP extracts the caller address.
+func NewHandler(usecase *Usecase, clientIP func(*http.Request) string, limiter *httpx.FailureLimiter, idempotent func(http.Handler) http.Handler) *Handler {
+	if idempotent == nil {
+		idempotent = func(next http.Handler) http.Handler { return next }
+	}
+	return &Handler{usecase: usecase, clientIP: clientIP, limiter: limiter, idempotent: idempotent}
 }
 
 // Mount adds the identity routes. Every route that must work without a token is also in
@@ -36,6 +44,115 @@ func (h *Handler) Mount(r chi.Router) {
 	r.Post("/api/v1/auth/login", h.login)
 	r.Post("/api/v1/auth/refresh", h.refresh)
 	r.Post("/api/v1/auth/logout", h.logout)
+	r.Get("/api/v1/auth/me", h.me)
+	r.With(h.idempotent).Post("/api/v1/notifications/token", h.registerDevice)
+	r.Delete("/api/v1/notifications/token", h.removeDevice)
+}
+
+// MountAdmin adds the identity routes of the /api/v1/admin group, behind access.RequireAdmin
+// (cmd/api mounts it once on the group). The paths are relative to the group.
+func (h *Handler) MountAdmin(r chi.Router) {
+	r.Delete("/personnel/{personnel_id}/device-binding", h.resetDevice)
+}
+
+// me serves the profile and menu data. See Usecase.Me.
+func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
+	p, ok := auth.From(r.Context())
+	if !ok {
+		httpx.Error(w, r, apperr.ErrUnauthenticated)
+		return
+	}
+	me, err := h.usecase.Me(r.Context(), p)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	user := toUser(me.Person)
+	result := apigen.MeResult{User: &user, Memberships: &[]map[string]any{}}
+	result.Organization = &struct {
+		Id   *int64  `json:"id,omitempty"`   //nolint:revive // must match the generated anonymous type
+		Name *string `json:"name,omitempty"` //nolint:revive // must match the generated anonymous type
+	}{Id: &me.Person.OrganizationID, Name: &me.OrganizationName}
+	roles := []string{}
+	if me.WebRole != nil {
+		role := apigen.MeResultWebRoleRole(me.WebRole.Role)
+		result.WebRole = &struct {
+			ProjectIds *[]int64                    `json:"project_ids,omitempty"` //nolint:revive // must match the generated anonymous type
+			Role       *apigen.MeResultWebRoleRole `json:"role,omitempty"`
+		}{ProjectIds: &me.WebRole.ProjectIDs, Role: &role}
+		roles = append(roles, me.WebRole.Role)
+	}
+	result.Roles = &roles
+	httpx.OK(w, r, http.StatusOK, result)
+}
+
+// registerDevice records the push token of the app install. See Usecase.RegisterDevice.
+func (h *Handler) registerDevice(w http.ResponseWriter, r *http.Request) {
+	p, ok := auth.From(r.Context())
+	if !ok {
+		httpx.Error(w, r, apperr.ErrUnauthenticated)
+		return
+	}
+	var req apigen.NotificationTokenInput
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	in := DeviceInput{FirebaseToken: req.FirebaseToken, Platform: string(req.Platform), AppVersion: deref(req.AppVersion)}
+	if err := httpx.Validate(&in); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	if err := h.usecase.RegisterDevice(r.Context(), p, in); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.OK(w, r, http.StatusOK, nil)
+}
+
+func (h *Handler) removeDevice(w http.ResponseWriter, r *http.Request) {
+	p, ok := auth.From(r.Context())
+	if !ok {
+		httpx.Error(w, r, apperr.ErrUnauthenticated)
+		return
+	}
+	var req apigen.NotificationTokenDelete
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	// The platform is not part of a delete; any valid value passes the shared rules.
+	in := DeviceInput{FirebaseToken: req.FirebaseToken, Platform: "android"}
+	if err := httpx.Validate(&in); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	if err := h.usecase.RemoveDevice(r.Context(), p, in.FirebaseToken); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.OK(w, r, http.StatusOK, nil)
+}
+
+// resetDevice frees a person phone slot. See Usecase.ResetDeviceBinding.
+func (h *Handler) resetDevice(w http.ResponseWriter, r *http.Request) {
+	p, okP := auth.From(r.Context())
+	scope, okS := access.ScopeFrom(r.Context())
+	if !okP || !okS {
+		httpx.Error(w, r, apperr.ErrUnauthenticated)
+		return
+	}
+	target, err := access.PersonnelIDParam(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	if err := h.usecase.ResetDeviceBinding(r.Context(), p, scope, target); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.OK(w, r, http.StatusOK, nil)
 }
 
 // refresh is public: it authenticates with the refresh token in the body, and the access
@@ -174,12 +291,23 @@ func loginFailureRules(ip, email string) []httpx.FailureRule {
 
 // toLoginResult maps a started session to the contract's LoginResult.
 func toLoginResult(res LoginResult) apigen.LoginResult {
-	p := res.Person
 	tokenType := "Bearer"
 	expiresIn := int(auth.AccessTokenTTL.Seconds())
-	// The contract's Personnel has no full-name field, only first/middle/last. Personalia
-	// keeps one name, so it goes in first_name: splitting it would guess wrong for names
-	// with more than two parts.
+	user := toUser(res.Person)
+	return apigen.LoginResult{
+		AccessToken:  &res.AccessToken,
+		RefreshToken: &res.RefreshToken,
+		TokenType:    &tokenType,
+		ExpiresIn:    &expiresIn,
+		User:         &user,
+	}
+}
+
+// toUser maps a person to the contract Personnel, as login and /auth/me show them.
+func toUser(p Person) apigen.Personnel {
+	// The contract Personnel has no full-name field, only first/middle/last. Personalia keeps
+	// one name, so it goes in first_name: splitting it would guess wrong for names with more
+	// than two parts.
 	user := apigen.Personnel{
 		Id:             &p.ID,
 		OrganizationId: &p.OrganizationID,
@@ -190,13 +318,7 @@ func toLoginResult(res LoginResult) apigen.LoginResult {
 	setIfNotEmpty(&user.Email, p.Email)
 	setIfNotEmpty(&user.Phone, p.Phone)
 	setIfNotEmpty(&user.ProfilePhoto, p.PhotoURL)
-	return apigen.LoginResult{
-		AccessToken:  &res.AccessToken,
-		RefreshToken: &res.RefreshToken,
-		TokenType:    &tokenType,
-		ExpiresIn:    &expiresIn,
-		User:         &user,
-	}
+	return user
 }
 
 func setIfNotEmpty(dst **string, v string) {

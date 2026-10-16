@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"siapp/internal/db"
+	"siapp/pkg/access"
 	"siapp/pkg/platform/apperr"
 	"siapp/pkg/platform/auth"
 	"siapp/pkg/platform/clock"
@@ -36,12 +37,13 @@ type Usecase struct {
 	revocations *auth.Revocations
 	clock       clock.Clock
 	logger      *slog.Logger
+	placements  PlacementLookup
 	repo        repo
 }
 
 // NewUsecase returns the identity Usecase.
 func NewUsecase(pool *pgxpool.Pool, p personelClient, tokens *auth.Tokens, revocations *auth.Revocations, c clock.Clock, logger *slog.Logger) *Usecase {
-	return &Usecase{pool: pool, personel: p, tokens: tokens, revocations: revocations, clock: c, logger: logger}
+	return &Usecase{pool: pool, personel: p, tokens: tokens, revocations: revocations, clock: c, logger: logger, placements: noPlacements{}}
 }
 
 // Login is the single path that starts a session.
@@ -101,6 +103,18 @@ func (u *Usecase) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 		person, err := u.repo.upsertPersonnel(ctx, q, id, now)
 		if err != nil {
 			return err
+		}
+
+		// ⚠ Web login gate. WEB logins bind no phone (a browser has no stable device id), so
+		// without this gate field staff could sign in on the web and get around the one-phone
+		// rule. Only a person with a web role may use the web; everyone else is refused here,
+		// before any session exists. The transaction rolls back, so nothing is left behind.
+		if in.Client == ClientWeb {
+			if _, isAdmin, err := access.AdminScopeOf(ctx, q, person.ID); err != nil {
+				return err
+			} else if !isAdmin {
+				return access.ErrNotAdmin
+			}
 		}
 
 		client := db.SessionClientWEB

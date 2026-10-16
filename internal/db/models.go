@@ -12,6 +12,49 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type DevicePlatform string
+
+const (
+	DevicePlatformANDROID DevicePlatform = "ANDROID"
+	DevicePlatformIOS     DevicePlatform = "IOS"
+	DevicePlatformWEB     DevicePlatform = "WEB"
+)
+
+func (e *DevicePlatform) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = DevicePlatform(s)
+	case string:
+		*e = DevicePlatform(s)
+	default:
+		return fmt.Errorf("unsupported scan type for DevicePlatform: %T", src)
+	}
+	return nil
+}
+
+type NullDevicePlatform struct {
+	DevicePlatform DevicePlatform
+	Valid          bool // Valid is true if DevicePlatform is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullDevicePlatform) Scan(value interface{}) error {
+	if value == nil {
+		ns.DevicePlatform, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.DevicePlatform.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullDevicePlatform) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.DevicePlatform), nil
+}
+
 type OrganizationStatus string
 
 const (
@@ -138,6 +181,48 @@ func (ns NullSessionClient) Value() (driver.Value, error) {
 	return string(ns.SessionClient), nil
 }
 
+type WebRole string
+
+const (
+	WebRoleORGADMIN     WebRole = "ORG_ADMIN"
+	WebRolePROJECTADMIN WebRole = "PROJECT_ADMIN"
+)
+
+func (e *WebRole) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = WebRole(s)
+	case string:
+		*e = WebRole(s)
+	default:
+		return fmt.Errorf("unsupported scan type for WebRole: %T", src)
+	}
+	return nil
+}
+
+type NullWebRole struct {
+	WebRole WebRole
+	Valid   bool // Valid is true if WebRole is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullWebRole) Scan(value interface{}) error {
+	if value == nil {
+		ns.WebRole, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.WebRole.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullWebRole) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.WebRole), nil
+}
+
 type AuditLog struct {
 	ID               int64
 	OrganizationID   int64
@@ -147,6 +232,19 @@ type AuditLog struct {
 	EntityID         int64
 	Metadata         json.RawMessage
 	CreatedAt        pgtype.Timestamptz
+}
+
+type Device struct {
+	ID             int64
+	OrganizationID int64
+	PersonnelID    int64
+	SessionID      int64
+	Platform       DevicePlatform
+	PushToken      string
+	AppVersion     pgtype.Text
+	LastSeenAt     pgtype.Timestamptz
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
 }
 
 type DeviceBinding struct {
@@ -217,4 +315,15 @@ type Session struct {
 	LastUsedAt       pgtype.Timestamptz
 	CreatedAt        pgtype.Timestamptz
 	UpdatedAt        pgtype.Timestamptz
+}
+
+type WebRoleAssignment struct {
+	ID                   int64
+	OrganizationID       int64
+	PersonnelID          int64
+	Role                 WebRole
+	ProjectIds           []int64
+	GrantedByPersonnelID pgtype.Int8
+	CreatedAt            pgtype.Timestamptz
+	UpdatedAt            pgtype.Timestamptz
 }

@@ -63,7 +63,7 @@ func (repo) rotateSession(ctx context.Context, q *db.Queries, oldID, newID int64
 	return nil
 }
 
-// endFamily revokes every live session of a login chain and returns the ids of those whose
+// endFamily revokes every live session of a login chain, deletes its devices, and returns the ids of those whose
 // access tokens can still be alive, for the caller to put on the revocation list once the
 // transaction has committed.
 func (repo) endFamily(ctx context.Context, q *db.Queries, family pgtype.UUID, now time.Time) ([]int64, error) {
@@ -75,6 +75,12 @@ func (repo) endFamily(ctx context.Context, q *db.Queries, family pgtype.UUID, no
 	}
 	if err := q.RevokeSessionFamily(ctx, db.RevokeSessionFamilyParams{FamilyID: family, Now: ts(now)}); err != nil {
 		return nil, fmt.Errorf("revoke session family: %w", err)
+	}
+	// A device never outlives its login: a revoked session is not a deleted one, so the push
+	// token of the ended chain is removed explicitly, and a stolen chain stops receiving
+	// notifications.
+	if err := q.DeleteDevicesOfFamily(ctx, family); err != nil {
+		return nil, fmt.Errorf("delete devices of family: %w", err)
 	}
 	return ids, nil
 }

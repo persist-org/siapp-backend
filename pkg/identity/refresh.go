@@ -171,6 +171,12 @@ func (u *Usecase) Refresh(ctx context.Context, in RefreshInput) (LoginResult, er
 		if err := u.repo.rotateSession(ctx, q, row.ID, next.ID, now); err != nil {
 			return err
 		}
+		// A device follows its login chain: the app does not have to register its push token
+		// again after every refresh. (After createSession: the device row points at the new
+		// session.)
+		if err := u.repo.moveDevice(ctx, q, row.ID, next.ID, now); err != nil {
+			return err
+		}
 		accessToken, _, err := u.tokens.NewAccessToken(person.ID, organizationID, next.ID)
 		if err != nil {
 			return err

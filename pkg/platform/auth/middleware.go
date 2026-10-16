@@ -82,6 +82,13 @@ func From(ctx context.Context) (p Principal, ok bool) {
 	return p, ok
 }
 
+// Identity returns the organization and the person of an authenticated request, in the form
+// the idempotency middleware wants (idem.Config.Identity). ok is false on a public route.
+func Identity(r *http.Request) (organizationID, personnelID int64, ok bool) {
+	p, ok := From(r.Context())
+	return p.OrganizationID, p.PersonnelID, ok
+}
+
 // Require is the authentication middleware. It is mounted once, on the whole router.
 //
 // ⚠ It is default-deny. A request is let through without a token only when its method and

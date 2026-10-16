@@ -40,6 +40,9 @@ var shared struct {
 	app    *pgxpool.Pool // connects as siapp_app: RLS applies
 	owner  *pgxpool.Pool // connects as the database owner: for DDL and truncation only
 	appDSN string
+	// ownerDSN is the test database as its owner, for code that runs as the owner role (the
+	// seed command's grant-admin) and builds its own pool.
+	ownerDSN string
 }
 
 var nextOrgID atomic.Int64
@@ -106,7 +109,7 @@ func runWithDatabase(m *testing.M) (int, error) {
 	defer app.Close()
 
 	shared.mu.Lock()
-	shared.owner, shared.app, shared.appDSN = owner, app, appDSN
+	shared.owner, shared.app, shared.appDSN, shared.ownerDSN = owner, app, appDSN, ownerDSN
 	shared.mu.Unlock()
 
 	return m.Run(), nil
@@ -136,6 +139,16 @@ func AppURL(t testing.TB) string {
 	shared.mu.Lock()
 	defer shared.mu.Unlock()
 	return shared.appDSN
+}
+
+// OwnerURL returns the connection URL of the test database as its owner. Use it only for
+// code that is meant to run as the owner role.
+func OwnerURL(t testing.TB) string {
+	t.Helper()
+	pools(t)
+	shared.mu.Lock()
+	defer shared.mu.Unlock()
+	return shared.ownerDSN
 }
 
 func pools(t testing.TB) (app, owner *pgxpool.Pool) {

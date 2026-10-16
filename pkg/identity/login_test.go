@@ -17,12 +17,15 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/require"
 
+	"siapp/pkg/access"
 	"siapp/pkg/identity"
 	"siapp/pkg/platform/apperr"
 	"siapp/pkg/platform/auth"
 	"siapp/pkg/platform/clock"
 	"siapp/pkg/platform/database"
 	"siapp/pkg/platform/httpx"
+	"siapp/pkg/platform/idem"
+	"siapp/pkg/platform/personel"
 	"siapp/pkg/platform/personel/personeltest"
 	"siapp/pkg/platform/testkit"
 )
@@ -64,7 +67,14 @@ type env struct {
 	logs   *syncBuffer
 	// revocations is the list the server checks tokens against, shared with the usecase.
 	revocations *auth.Revocations
+	usecase     *identity.Usecase
+	personel    *personel.Client
+	// autoAdmin gives a person who signs in on the web a web role first, because web login
+	// needs one (Phase 01.3). A test of the gate itself turns it off.
+	autoAdmin bool
 	// bodies collects every response body the helpers saw, for the "nothing leaks" test.
+	// Requests may run in parallel goroutines, so it is guarded.
+	bodyMu sync.Mutex
 	bodies []string
 }
 
@@ -86,14 +96,24 @@ func newEnv(t *testing.T, clientIPHeader string) *env {
 	revocations := testkit.NewRevocations(t, logger)
 	usecase := identity.NewUsecase(testkit.Pool(t), personelClient, testkit.Tokens(t), revocations, clock.System{}, logger)
 	failures := httpx.NewFailureLimiter(testkit.Redis(t), testkit.RandomPrefix(t), logger)
-	handler := identity.NewHandler(usecase, httpx.ClientIPFunc(clientIPHeader), failures)
+	idempotency := idem.New(idem.Config{Pool: testkit.Pool(t), Identity: auth.Identity})
+	handler := identity.NewHandler(usecase, httpx.ClientIPFunc(clientIPHeader), failures, idempotency.Middleware(false))
+	roles := access.NewHandler(access.NewWebRoles(testkit.Pool(t), clock.System{}))
 
 	srv := testkit.NewServer(t, testkit.Deps{Logger: logger, Revocations: revocations, Mount: func(r chi.Router) {
 		handler.Mount(r)
+		r.Route("/api/v1/admin", func(admin chi.Router) {
+			admin.Use(access.RequireAdmin(testkit.Pool(t)))
+			handler.MountAdmin(admin)
+			roles.MountAdmin(admin)
+		})
 		// A protected route of the test, to prove that a token does or does not pass.
 		r.Get(whoamiPath, func(w http.ResponseWriter, r *http.Request) { httpx.OK(w, r, http.StatusOK, nil) })
 	}})
-	return &env{t: t, fake: fake, srv: srv.URL, client: testkit.NewClient(t, srv), logs: logs, revocations: revocations}
+	return &env{
+		t: t, fake: fake, srv: srv.URL, client: testkit.NewClient(t, srv), logs: logs, revocations: revocations,
+		usecase: usecase, personel: personelClient, autoAdmin: true,
+	}
 }
 
 func mobile(email, device string) map[string]any {
@@ -172,10 +192,17 @@ func (r reply) err(t *testing.T) errorBody {
 
 // login sends a request that the contract allows, and checks the response against the
 // contract too.
+func (e *env) record(body string) {
+	e.bodyMu.Lock()
+	defer e.bodyMu.Unlock()
+	e.bodies = append(e.bodies, body)
+}
+
 func (e *env) login(body map[string]any) reply {
 	e.t.Helper()
+	e.prepareLogin(body)
 	res := e.client.Do(http.MethodPost, loginPath, body)
-	e.bodies = append(e.bodies, string(res.Body))
+	e.record(string(res.Body))
 	return reply{Status: res.Status, Header: res.Header, Raw: res.Body}
 }
 
@@ -188,6 +215,9 @@ func (e *env) post(body any, headers map[string]string) reply {
 
 func (e *env) postTo(path string, body any, headers map[string]string) reply {
 	e.t.Helper()
+	if path == loginPath {
+		e.prepareLogin(body)
+	}
 	raw, err := json.Marshal(body)
 	require.NoError(e.t, err)
 	return e.postRaw(path, raw, headers)
@@ -207,11 +237,52 @@ func (e *env) postRaw(path string, raw []byte, headers map[string]string) reply 
 	defer func() { _ = res.Body.Close() }()
 	out, err := io.ReadAll(res.Body)
 	require.NoError(e.t, err)
-	e.bodies = append(e.bodies, string(out))
+	e.record(string(out))
 	if res.StatusCode >= 400 {
 		testkit.ValidateSchema(e.t, "ErrorEnvelope", out)
 	}
 	return reply{Status: res.StatusCode, Header: res.Header, Raw: out}
+}
+
+// prepareLogin gives the person of a web login with the right password a web role, so that
+// the tests of everything else can keep signing in on the web. A request that cannot succeed
+// anyway (wrong password, unknown email, a body that is not a login) is left alone, so what
+// the failed login does or does not write is still tested as it is.
+func (e *env) prepareLogin(body any) {
+	e.t.Helper()
+	m, ok := body.(map[string]any)
+	if !ok || !e.autoAdmin || m["client"] != "WEB" || m["password"] != personeltest.Password {
+		return
+	}
+	email, _ := m["identifier"].(string)
+	e.makeAdmin(strings.ToLower(strings.TrimSpace(email)))
+}
+
+// makeAdmin makes the fixture with this email an ORG_ADMIN of their organization, writing the
+// rows directly: no login, no call to Personalia. It returns the person local id, or 0 for an
+// email that is not a fixture.
+func (e *env) makeAdmin(email string) int64 {
+	e.t.Helper()
+	id, ok := e.fake.Identity(email)
+	if !ok || id.OrganizationID == 0 {
+		return 0
+	}
+	_, err := testkit.Pool(e.t).Exec(e.t.Context(),
+		"INSERT INTO organizations (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING", id.OrganizationID, id.OrganizationName)
+	require.NoError(e.t, err)
+	var personnelID int64
+	inTenant(e.t, id.OrganizationID, func(tx pgx.Tx) {
+		require.NoError(e.t, tx.QueryRow(e.t.Context(), `
+			INSERT INTO personnels (personel_user_id, nik, full_name, email, status)
+			VALUES ($1, NULLIF($2, ''), $3, $4, 'ACTIVE')
+			ON CONFLICT (organization_id, personel_user_id) DO UPDATE SET updated_at = personnels.updated_at
+			RETURNING id`, id.PersonelUserID, id.NIK, id.FullName, id.Email).Scan(&personnelID))
+		_, err := tx.Exec(e.t.Context(), `
+			INSERT INTO web_role_assignments (personnel_id, role) VALUES ($1, 'ORG_ADMIN')
+			ON CONFLICT (organization_id, personnel_id) DO NOTHING`, personnelID)
+		require.NoError(e.t, err)
+	})
+	return personnelID
 }
 
 // inTenant runs fn in a transaction scoped to org, the way the application reads tenant data.
@@ -710,7 +781,10 @@ func TestSecretsNeverAppearInResponsesOrLogs(t *testing.T) {
 	e.login(mobile(personeltest.EmailAnggota2Satu, phoneB))
 	e.fake.Up()
 
-	everything := strings.Join(e.bodies, "\n") + "\n" + e.logs.String()
+	e.bodyMu.Lock()
+	joined := strings.Join(e.bodies, "\n")
+	e.bodyMu.Unlock()
+	everything := joined + "\n" + e.logs.String()
 	require.NotEmpty(t, e.logs.String(), "the access log ran, so the check below means something")
 	for name, secret := range map[string]string{
 		"the password":         personeltest.Password,

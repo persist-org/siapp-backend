@@ -123,3 +123,32 @@ func TestPublicRoutesMatchTheContract(t *testing.T) {
 		require.True(t, auth.IsPublic(method, path), "the contract marks %s `security: []` but auth.PublicRoutes lacks it", key)
 	}
 }
+
+// Guard test: every route under /api/v1/admin refuses a person who is not an admin with 403
+// NOT_ADMIN. access.RequireAdmin is mounted once on the group, so a route that a later module
+// adds there is covered without being touched; this test fails if one ever ends up outside it.
+func TestEveryAdminRouteRequiresAnAdmin(t *testing.T) {
+	router := productionRouter(t)
+	// A genuine token of a person with no web role.
+	token := testkit.Token(t, 900101, 42)
+
+	adminRoutes := 0
+	for _, r := range walk(t, router) {
+		if !strings.HasPrefix(r.route, adminPrefix+"/") {
+			continue
+		}
+		adminRoutes++
+		path := pathParam.ReplaceAllString(r.route, "1")
+
+		require.Equal(t, http.StatusUnauthorized, status(router, r.method, path),
+			"%s must refuse a request without a token", r.key())
+
+		req := httptest.NewRequestWithContext(t.Context(), r.method, path, nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		require.Equal(t, http.StatusForbidden, rec.Code, "%s must refuse a person who is not an admin", r.key())
+		require.Contains(t, rec.Body.String(), "NOT_ADMIN", r.key())
+	}
+	require.GreaterOrEqual(t, adminRoutes, 4, "the walk found the admin routes: web roles and the device reset")
+}

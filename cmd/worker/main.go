@@ -13,6 +13,7 @@ import (
 
 	"github.com/hibiken/asynq"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 
 	// The scheduler's cron expressions are in UTC, see below; the embedded timezone database
 	// keeps time.LoadLocation working in the distroless image like in cmd/api.
@@ -20,10 +21,12 @@ import (
 
 	"siapp/pkg/identity"
 	"siapp/pkg/platform/audit"
+	"siapp/pkg/platform/auth"
 	"siapp/pkg/platform/clock"
 	"siapp/pkg/platform/config"
 	"siapp/pkg/platform/database"
 	"siapp/pkg/platform/idem"
+	"siapp/pkg/platform/personel"
 )
 
 const workerConcurrency = 5
@@ -58,14 +61,34 @@ func run() error {
 		return fmt.Errorf("REDIS_URL cannot be parsed, check its format")
 	}
 
+	// The resync reads Personalia and ends the sessions of people who left, so it needs the
+	// Personel client and the revocation list (which lives in the same Redis as the queue).
+	personelClient, err := personel.New(personel.Config{
+		BaseURL: cfg.PersonelBaseURL, Key: cfg.PersonelIntegrationKey, Logger: logger,
+	})
+	if err != nil {
+		return fmt.Errorf("personel client: %w", err)
+	}
+	redisClientOpts, err := redis.ParseURL(cfg.RedisURL)
+	if err != nil {
+		return fmt.Errorf("REDIS_URL cannot be parsed, check its format")
+	}
+	rdb := redis.NewClient(redisClientOpts)
+	defer func() { _ = rdb.Close() }()
+	resyncer := identity.NewResyncer(pool, personelClient, auth.NewRevocations(rdb, "siapp:", logger), clock.System{}, logger)
+
 	srv := asynq.NewServer(redisOpt, asynq.Config{Concurrency: workerConcurrency})
 	mux := asynq.NewServeMux()
 	identity.RegisterJobs(mux, identity.NewCleaner(pool, clock.System{}), logger)
+	identity.RegisterResyncJob(mux, resyncer, logger)
 	registerPlatformJobs(mux, pool, logger)
 
 	// ⚠ The scheduler runs in UTC, so the cron expressions below read the same on every host.
 	scheduler := asynq.NewScheduler(redisOpt, &asynq.SchedulerOpts{Location: time.UTC})
 	if err := identity.RegisterSchedule(scheduler); err != nil {
+		return err
+	}
+	if err := identity.RegisterResyncSchedule(scheduler); err != nil {
 		return err
 	}
 	if err := registerPlatformSchedule(scheduler); err != nil {

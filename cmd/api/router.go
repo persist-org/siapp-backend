@@ -8,10 +8,12 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
+	"siapp/pkg/access"
 	"siapp/pkg/identity"
 	"siapp/pkg/platform/auth"
 	"siapp/pkg/platform/clock"
 	"siapp/pkg/platform/httpx"
+	"siapp/pkg/platform/idem"
 	"siapp/pkg/platform/personel"
 )
 
@@ -31,8 +33,13 @@ type deps struct {
 	ClientIP    func(*http.Request) string
 }
 
+// adminPrefix is the group every web admin route lives under. access.RequireAdmin guards the
+// whole group, once.
+const adminPrefix = "/api/v1/admin"
+
 // newRouter wires the modules onto the router. Every module a later phase adds is mounted
-// here, so TestEveryRouteRequiresAuthentication covers it without being touched.
+// here, so the guard tests cover it without being touched: a public route needs a line in
+// auth.PublicRoutes, an admin route goes in the admin group below.
 func newRouter(d deps) *chi.Mux {
 	revocations := auth.NewRevocations(d.Redis, d.RedisPrefix, d.Logger)
 	router := httpx.NewRouter(httpx.RouterConfig{
@@ -43,8 +50,21 @@ func newRouter(d deps) *chi.Mux {
 	})
 
 	failures := httpx.NewFailureLimiter(d.Redis, d.RedisPrefix, d.Logger)
+	idempotency := idem.New(idem.Config{Pool: d.Pool, Identity: auth.Identity})
+
 	identityUsecase := identity.NewUsecase(d.Pool, d.Personel, d.Tokens, revocations, d.Clock, d.Logger)
-	identity.NewHandler(identityUsecase, d.ClientIP, failures).Mount(router)
+	identityHandler := identity.NewHandler(identityUsecase, d.ClientIP, failures, idempotency.Middleware(false))
+	identityHandler.Mount(router)
+
+	accessHandler := access.NewHandler(access.NewWebRoles(d.Pool, d.Clock))
+
+	// ⚠ The admin group: access.RequireAdmin is mounted ONCE here, so every route a module
+	// adds under /api/v1/admin is protected without anyone having to remember it.
+	router.Route(adminPrefix, func(admin chi.Router) {
+		admin.Use(access.RequireAdmin(d.Pool))
+		identityHandler.MountAdmin(admin)
+		accessHandler.MountAdmin(admin)
+	})
 
 	return router
 }
