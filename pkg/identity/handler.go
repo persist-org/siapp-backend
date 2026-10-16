@@ -1,9 +1,11 @@
 package identity
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 
@@ -32,7 +34,71 @@ func NewHandler(usecase *Usecase, clientIP func(*http.Request) string, limiter *
 // auth.PublicRoutes.
 func (h *Handler) Mount(r chi.Router) {
 	r.Post("/api/v1/auth/login", h.login)
+	r.Post("/api/v1/auth/refresh", h.refresh)
+	r.Post("/api/v1/auth/logout", h.logout)
 }
+
+// refresh is public: it authenticates with the refresh token in the body, and the access
+// token is usually expired by the time it is needed. A refresh token is 256 bits of
+// randomness, so unlike a password there is nothing to guess and no failure limit is needed.
+//
+// For a WEB session the Next.js BFF, not the browser, holds the refresh token (in an httpOnly
+// cookie, DL-52) and calls this endpoint server to server; nothing differs for the API.
+func (h *Handler) refresh(w http.ResponseWriter, r *http.Request) {
+	var req apigen.RefreshRequest
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	in := RefreshInput{RefreshToken: req.RefreshToken, IP: h.clientIP(r), UserAgent: r.UserAgent()}
+	if err := httpx.Validate(&in); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	result, err := h.usecase.Refresh(r.Context(), in)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	httpx.OK(w, r, http.StatusOK, toLoginResult(result))
+}
+
+// logout ends the caller's login chain. The body is optional: a client may send the
+// firebase_token of the phone, which Phase 01.3 uses to delete that push-token device; until
+// then it is accepted and ignored.
+func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
+	p, ok := auth.From(r.Context())
+	if !ok {
+		// Unreachable behind auth.Require; refuse rather than act without knowing who asks.
+		httpx.Error(w, r, apperr.ErrUnauthenticated)
+		return
+	}
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxLogoutBody))
+	if err != nil {
+		httpx.Error(w, r, apperr.ErrPayloadTooLarge)
+		return
+	}
+	if len(bytes.TrimSpace(body)) > 0 {
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		var req struct {
+			FirebaseToken string `json:"firebase_token" validate:"max=4096"`
+		}
+		if err := httpx.Decode(r, &req); err != nil {
+			httpx.Error(w, r, err)
+			return
+		}
+	}
+
+	if err := h.usecase.Logout(r.Context(), p); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.OK(w, r, http.StatusOK, nil)
+}
+
+const maxLogoutBody = 1 << 20
 
 // login checks two failure limits before Personalia is asked, and counts a failure against
 // both afterwards.

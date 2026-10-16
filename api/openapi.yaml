@@ -2184,7 +2184,12 @@ paths:
     post:
       operationId: postAuthRefresh
       tags: [Auth]
-      summary: Tukar refresh → access token baru
+      summary: Tukar refresh → access token baru (refresh token berotasi, hanya berlaku sekali)
+      description: |
+        Token lama langsung mati dan token baru diterbitkan. Memakai ulang token yang sudah dipakai
+        mematikan seluruh rantai sesi (AUTH_REFRESH_REUSED). Kegagalan 401: AUTH_TOKEN_INVALID,
+        AUTH_REFRESH_REUSED, AUTH_DEVICE_CHANGED (HP tidak lagi terikat); semuanya berarti kembali
+        ke layar login. 403 AUTH_ACCOUNT_DISABLED: karyawan sudah tidak aktif di Personalia.
       security: []
       requestBody:
         required: true
@@ -2201,6 +2206,8 @@ paths:
                   - { $ref: '#/components/schemas/SuccessEnvelope' }
                   - properties: { data: { $ref: '#/components/schemas/LoginResult' } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /auth/forgot-password:
     post:
       x-owner: personel
@@ -2259,7 +2266,10 @@ paths:
     post:
       operationId: postAuthLogout
       tags: [Auth]
-      summary: Invalidate refresh token + hapus FCM token
+      summary: Akhiri sesi ini (seluruh rantai refresh) + hapus FCM token
+      description: |
+        Mematikan refresh token dan access token sesi ini seketika. Tidak melepas ikatan HP
+        (itu catatan admin dan bertahan setelah logout).
       requestBody:
         required: false
         content:

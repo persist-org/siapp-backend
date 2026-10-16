@@ -37,11 +37,14 @@ type Route struct {
 //
 // Adding an entry here also needs `security: []` on the operation in api/openapi.yaml,
 // except for platform routes the contract does not describe (the health probe); a guard
-// test in cmd/api checks that the two agree. Later phases add their entries: the refresh
-// endpoint (01.2) and the Personel webhook receiver (05.3).
+// test in cmd/api checks that the two agree. Later phases add their entries: the Personel
+// webhook receiver (05.3).
 var PublicRoutes = []Route{
 	{http.MethodGet, "/api/v1/health"},
 	{http.MethodPost, "/api/v1/auth/login"},
+	// Refresh authenticates with the refresh token in its body; the access token has usually
+	// expired by the time it is needed.
+	{http.MethodPost, "/api/v1/auth/refresh"},
 }
 
 // IsPublic reports whether method and path are exactly on the allowlist.
@@ -90,9 +93,13 @@ func From(ctx context.Context) (p Principal, ok bool) {
 //     map out which routes exist.
 //
 // Access tokens are stateless: a token is verified by signature and expiry, with no
-// database lookup. Phase 01.2 adds the revocation check that cuts a token off the moment
-// its session ends.
-func Require(tokens *Tokens) func(http.Handler) http.Handler {
+// database lookup. To cut a token off the moment its session ends (logout, a stolen chain
+// detected, a disabled person), its session id is also looked up in revocations, one fast
+// Redis read. That lookup fails open: see Revocations.
+func Require(tokens *Tokens, revocations *Revocations) func(http.Handler) http.Handler {
+	if revocations == nil {
+		panic("auth: Require needs Revocations; a router without them would keep ended sessions alive")
+	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if IsPublic(r.Method, r.URL.Path) {
@@ -101,6 +108,10 @@ func Require(tokens *Tokens) func(http.Handler) http.Handler {
 			}
 
 			claims, err := authenticate(tokens, r)
+			// Cheapest check first: Redis is only asked about a token that is otherwise good.
+			if err == nil && revocations.IsRevoked(r.Context(), claims.SessionID) {
+				err = ErrInvalidToken
+			}
 			if err != nil {
 				w.Header().Set("WWW-Authenticate", `Bearer realm="siapp"`)
 				if errors.Is(err, ErrExpiredToken) {

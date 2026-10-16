@@ -28,9 +28,9 @@ func Tokens(t testing.TB) *auth.Tokens {
 }
 
 // Token returns a valid access token for a person of an organization, for tests of routes
-// behind authentication. Nothing checks the session id (revocation arrives in Phase 01.2),
-// so the person and organization need not exist in the database; create them with NewOrg
-// when the handler under test reads tenant data.
+// behind authentication. Its session id is 1 and nothing checks that the session exists, so
+// the person and organization need not exist in the database; create them with NewOrg when
+// the handler under test reads tenant data. A test of logout or revocation logs in for real.
 func Token(t testing.TB, organizationID, personnelID int64) string {
 	t.Helper()
 	token, _, err := Tokens(t).NewAccessToken(personnelID, organizationID, 1)
@@ -45,6 +45,18 @@ type Deps struct {
 	Mount func(r chi.Router)
 	// Logger receives access logs; nil discards them.
 	Logger *slog.Logger
+	// Revocations is the revocation list the middleware checks. A test that ends sessions
+	// passes the same one to the code under test; nil makes a private one.
+	Revocations *auth.Revocations
+}
+
+// NewRevocations returns a revocation list on the test Redis with a key prefix of its own.
+func NewRevocations(t testing.TB, logger *slog.Logger) *auth.Revocations {
+	t.Helper()
+	if logger == nil {
+		logger = slog.New(slog.NewJSONHandler(io.Discard, nil))
+	}
+	return auth.NewRevocations(Redis(t), RandomPrefix(t), logger)
 }
 
 // NewServer builds the real router (same middleware stack as cmd/api) on an httptest
@@ -58,10 +70,14 @@ func NewServer(t testing.TB, deps Deps) *httptest.Server {
 	if logger == nil {
 		logger = slog.New(slog.NewJSONHandler(io.Discard, nil))
 	}
+	revocations := deps.Revocations
+	if revocations == nil {
+		revocations = NewRevocations(t, logger)
+	}
 	router := httpx.NewRouter(httpx.RouterConfig{
 		Logger:       logger,
 		DB:           Pool(t),
-		Authenticate: auth.Require(Tokens(t)),
+		Authenticate: auth.Require(Tokens(t), revocations),
 	})
 	if deps.Mount != nil {
 		deps.Mount(router)

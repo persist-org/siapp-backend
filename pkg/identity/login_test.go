@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/require"
 
@@ -30,6 +31,7 @@ func TestMain(m *testing.M) { os.Exit(testkit.NewDatabase(m)) }
 
 const (
 	loginPath    = "/auth/login"
+	whoamiPath   = "/api/v1/test/whoami"
 	wrongPass    = "wrong-Pass-9876"
 	phoneA       = "device-token-phone-A-0001"
 	phoneB       = "device-token-phone-B-0002"
@@ -60,6 +62,8 @@ type env struct {
 	srv    string
 	client *testkit.Client
 	logs   *syncBuffer
+	// revocations is the list the server checks tokens against, shared with the usecase.
+	revocations *auth.Revocations
 	// bodies collects every response body the helpers saw, for the "nothing leaks" test.
 	bodies []string
 }
@@ -79,12 +83,17 @@ func newEnv(t *testing.T, clientIPHeader string) *env {
 	previous := slog.Default()
 	slog.SetDefault(logger)
 	t.Cleanup(func() { slog.SetDefault(previous) })
-	usecase := identity.NewUsecase(testkit.Pool(t), personelClient, testkit.Tokens(t), clock.System{})
+	revocations := testkit.NewRevocations(t, logger)
+	usecase := identity.NewUsecase(testkit.Pool(t), personelClient, testkit.Tokens(t), revocations, clock.System{}, logger)
 	failures := httpx.NewFailureLimiter(testkit.Redis(t), testkit.RandomPrefix(t), logger)
 	handler := identity.NewHandler(usecase, httpx.ClientIPFunc(clientIPHeader), failures)
 
-	srv := testkit.NewServer(t, testkit.Deps{Logger: logger, Mount: handler.Mount})
-	return &env{t: t, fake: fake, srv: srv.URL, client: testkit.NewClient(t, srv), logs: logs}
+	srv := testkit.NewServer(t, testkit.Deps{Logger: logger, Revocations: revocations, Mount: func(r chi.Router) {
+		handler.Mount(r)
+		// A protected route of the test, to prove that a token does or does not pass.
+		r.Get(whoamiPath, func(w http.ResponseWriter, r *http.Request) { httpx.OK(w, r, http.StatusOK, nil) })
+	}})
+	return &env{t: t, fake: fake, srv: srv.URL, client: testkit.NewClient(t, srv), logs: logs, revocations: revocations}
 }
 
 func mobile(email, device string) map[string]any {
@@ -174,9 +183,20 @@ func (e *env) login(body map[string]any) reply {
 // validation is what answers. The answer must still be a contract error envelope.
 func (e *env) post(body any, headers map[string]string) reply {
 	e.t.Helper()
+	return e.postTo(loginPath, body, headers)
+}
+
+func (e *env) postTo(path string, body any, headers map[string]string) reply {
+	e.t.Helper()
 	raw, err := json.Marshal(body)
 	require.NoError(e.t, err)
-	req, err := http.NewRequestWithContext(e.t.Context(), http.MethodPost, e.srv+"/api/v1"+loginPath, bytes.NewReader(raw))
+	return e.postRaw(path, raw, headers)
+}
+
+// postRaw sends the bytes as they are, for a request with no body at all.
+func (e *env) postRaw(path string, raw []byte, headers map[string]string) reply {
+	e.t.Helper()
+	req, err := http.NewRequestWithContext(e.t.Context(), http.MethodPost, e.srv+"/api/v1"+path, bytes.NewReader(raw))
 	require.NoError(e.t, err)
 	req.Header.Set("Content-Type", "application/json")
 	for k, v := range headers {

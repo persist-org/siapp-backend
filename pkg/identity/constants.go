@@ -21,6 +21,18 @@ const (
 	loginFailuresPerIPIdentifier = 10
 	loginFailureWindow           = time.Minute
 
+	// personelResyncAfter is how old the cached copy of a person may get before a refresh
+	// asks Personalia again. See Usecase.Refresh for the trade-off.
+	personelResyncAfter = 12 * time.Hour
+
+	// Session cleanup. sessionRetention keeps recently dead sessions so that replaying one
+	// of their refresh tokens is still recognised as reuse (AUTH_REFRESH_REUSED) and not just
+	// as an unknown token. Past it a replay reads as unknown, which is safe: the token is
+	// dead either way.
+	sessionRetention = 30 * 24 * time.Hour
+	cleanupBatchSize = 1000
+	cleanupTimeout   = 10 * time.Minute
+
 	maxUserAgentLen = 255
 	maxIPLen        = 64
 )

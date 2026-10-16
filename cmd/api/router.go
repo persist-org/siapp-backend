@@ -34,15 +34,16 @@ type deps struct {
 // newRouter wires the modules onto the router. Every module a later phase adds is mounted
 // here, so TestEveryRouteRequiresAuthentication covers it without being touched.
 func newRouter(d deps) *chi.Mux {
+	revocations := auth.NewRevocations(d.Redis, d.RedisPrefix, d.Logger)
 	router := httpx.NewRouter(httpx.RouterConfig{
 		Logger:       d.Logger,
 		CORSOrigins:  d.CORSOrigins,
 		DB:           d.Pool,
-		Authenticate: auth.Require(d.Tokens),
+		Authenticate: auth.Require(d.Tokens, revocations),
 	})
 
 	failures := httpx.NewFailureLimiter(d.Redis, d.RedisPrefix, d.Logger)
-	identityUsecase := identity.NewUsecase(d.Pool, d.Personel, d.Tokens, d.Clock)
+	identityUsecase := identity.NewUsecase(d.Pool, d.Personel, d.Tokens, revocations, d.Clock, d.Logger)
 	identity.NewHandler(identityUsecase, d.ClientIP, failures).Mount(router)
 
 	return router

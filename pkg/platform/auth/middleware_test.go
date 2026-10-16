@@ -15,6 +15,7 @@ import (
 	"siapp/pkg/platform/auth"
 	"siapp/pkg/platform/clock"
 	"siapp/pkg/platform/httpx"
+	"siapp/pkg/platform/testkit"
 )
 
 // newServer is the real router with the real middleware and two routes: a protected one that
@@ -23,9 +24,10 @@ func newServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	tokens, err := auth.NewTokens([]byte(testSecret), clock.System{})
 	require.NoError(t, err)
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 	router := httpx.NewRouter(httpx.RouterConfig{
-		Logger:       slog.New(slog.NewJSONHandler(io.Discard, nil)),
-		Authenticate: auth.Require(tokens),
+		Logger:       logger,
+		Authenticate: auth.Require(tokens, auth.NewRevocations(testkit.Redis(t), testkit.RandomPrefix(t), logger)),
 	})
 	router.Get("/api/v1/whoami", func(w http.ResponseWriter, r *http.Request) {
 		p, ok := auth.From(r.Context())
@@ -167,7 +169,8 @@ func TestPublicRoutes(t *testing.T) {
 	require.True(t, auth.IsPublic(http.MethodGet, "/api/v1/health"))
 	require.True(t, auth.IsPublic(http.MethodPost, "/api/v1/auth/login"))
 	require.False(t, auth.IsPublic(http.MethodGet, "/api/v1/auth/login"))
-	require.False(t, auth.IsPublic(http.MethodPost, "/api/v1/auth/refresh"), "refresh is public from Phase 01.2")
+	require.True(t, auth.IsPublic(http.MethodPost, "/api/v1/auth/refresh"))
+	require.False(t, auth.IsPublic(http.MethodPost, "/api/v1/auth/logout"), "logout needs a token")
 	require.False(t, auth.IsPublic(http.MethodGet, "/api/v1/auth/me"))
 }
 

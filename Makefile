@@ -42,7 +42,7 @@ psql-app:
 run:
 	go run ./cmd/api
 
-# Background jobs (session cleanup, ...). Needs Redis. cmd/worker arrives in Phase 01.2.
+# Background jobs (session cleanup, idempotency cleanup, audit partitions). Needs Redis.
 worker:
 	go run ./cmd/worker
 

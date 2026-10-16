@@ -7,6 +7,7 @@ import (
 	"crypto/subtle"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,23 +21,27 @@ import (
 	"siapp/pkg/platform/personel"
 )
 
-// personelAuth is the part of the Personel client login needs (seam S1).
-type personelAuth interface {
+// personelClient is the part of the Personel client that identity needs: the login (seam S1)
+// and the employee lookup that refresh uses to re-validate a person (seam S4).
+type personelClient interface {
 	Login(ctx context.Context, in personel.LoginInput) (personel.Identity, error)
+	EmployeesByNIKs(ctx context.Context, orgID int64, niks []string) ([]personel.Identity, error)
 }
 
 // Usecase holds the identity rules.
 type Usecase struct {
-	pool     *pgxpool.Pool
-	personel personelAuth
-	tokens   *auth.Tokens
-	clock    clock.Clock
-	repo     repo
+	pool        *pgxpool.Pool
+	personel    personelClient
+	tokens      *auth.Tokens
+	revocations *auth.Revocations
+	clock       clock.Clock
+	logger      *slog.Logger
+	repo        repo
 }
 
 // NewUsecase returns the identity Usecase.
-func NewUsecase(pool *pgxpool.Pool, p personelAuth, tokens *auth.Tokens, c clock.Clock) *Usecase {
-	return &Usecase{pool: pool, personel: p, tokens: tokens, clock: c}
+func NewUsecase(pool *pgxpool.Pool, p personelClient, tokens *auth.Tokens, revocations *auth.Revocations, c clock.Clock, logger *slog.Logger) *Usecase {
+	return &Usecase{pool: pool, personel: p, tokens: tokens, revocations: revocations, clock: c, logger: logger}
 }
 
 // Login is the single path that starts a session.

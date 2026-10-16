@@ -98,6 +98,46 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 	return i, err
 }
 
+const deleteSessionsExpiredBefore = `-- name: DeleteSessionsExpiredBefore :execrows
+DELETE FROM sessions WHERE id IN (
+    SELECT old.id FROM sessions old WHERE old.expires_at < $1 ORDER BY old.id LIMIT $2
+)
+`
+
+type DeleteSessionsExpiredBeforeParams struct {
+	Cutoff pgtype.Timestamptz
+	Batch  int32
+}
+
+func (q *Queries) DeleteSessionsExpiredBefore(ctx context.Context, arg DeleteSessionsExpiredBeforeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteSessionsExpiredBefore, arg.Cutoff, arg.Batch)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteSessionsRevokedBefore = `-- name: DeleteSessionsRevokedBefore :execrows
+DELETE FROM sessions WHERE id IN (
+    SELECT old.id FROM sessions old WHERE old.revoked_at < $1 ORDER BY old.id LIMIT $2
+)
+`
+
+type DeleteSessionsRevokedBeforeParams struct {
+	Cutoff pgtype.Timestamptz
+	Batch  int32
+}
+
+// Deleted in batches: one huge DELETE would hold locks on a table that every login and
+// refresh writes to.
+func (q *Queries) DeleteSessionsRevokedBefore(ctx context.Context, arg DeleteSessionsRevokedBeforeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteSessionsRevokedBefore, arg.Cutoff, arg.Batch)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getDeviceBindingForUpdate = `-- name: GetDeviceBindingForUpdate :one
 SELECT id, organization_id, personnel_id, device_token_hash, bound_at, last_seen_at, created_at, updated_at FROM device_bindings WHERE personnel_id = $1 FOR UPDATE
 `
@@ -116,6 +156,207 @@ func (q *Queries) GetDeviceBindingForUpdate(ctx context.Context, personnelID int
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const getPersonnel = `-- name: GetPersonnel :one
+SELECT id, organization_id, personel_user_id, nik, client_id, client_name, full_name, email, phone, photo_url, status, synced_at, last_seen_at, created_at, updated_at FROM personnels WHERE id = $1
+`
+
+func (q *Queries) GetPersonnel(ctx context.Context, id int64) (Personnel, error) {
+	row := q.db.QueryRow(ctx, getPersonnel, id)
+	var i Personnel
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.PersonelUserID,
+		&i.Nik,
+		&i.ClientID,
+		&i.ClientName,
+		&i.FullName,
+		&i.Email,
+		&i.Phone,
+		&i.PhotoUrl,
+		&i.Status,
+		&i.SyncedAt,
+		&i.LastSeenAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getSessionFamily = `-- name: GetSessionFamily :one
+SELECT family_id FROM sessions WHERE id = $1 AND personnel_id = $2
+`
+
+type GetSessionFamilyParams struct {
+	ID          int64
+	PersonnelID int64
+}
+
+// The chain a session belongs to, only if it is the person's own.
+func (q *Queries) GetSessionFamily(ctx context.Context, arg GetSessionFamilyParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, getSessionFamily, arg.ID, arg.PersonnelID)
+	var family_id pgtype.UUID
+	err := row.Scan(&family_id)
+	return family_id, err
+}
+
+const getSessionForRefresh = `-- name: GetSessionForRefresh :one
+SELECT s.id, s.personnel_id, s.family_id, s.device_token_hash, s.remember_me, s.client,
+       s.expires_at, s.revoked_at,
+       p.personel_user_id, p.status AS personnel_status
+FROM sessions s
+JOIN personnels p ON p.id = s.personnel_id
+WHERE s.refresh_token_hash = $1
+FOR UPDATE OF s
+`
+
+type GetSessionForRefreshRow struct {
+	ID              int64
+	PersonnelID     int64
+	FamilyID        pgtype.UUID
+	DeviceTokenHash pgtype.Text
+	RememberMe      bool
+	Client          SessionClient
+	ExpiresAt       pgtype.Timestamptz
+	RevokedAt       pgtype.Timestamptz
+	PersonelUserID  int64
+	PersonnelStatus PersonnelStatus
+}
+
+// ⚠ FOR UPDATE OF s: two refreshes with the same token must not both succeed. With a plain
+// read both would see "not revoked" and both would create a new session, leaving two live
+// chains from one token. With the lock the second waits for the first to commit, then reads
+// the row as revoked and is treated as reuse.
+func (q *Queries) GetSessionForRefresh(ctx context.Context, refreshTokenHash string) (GetSessionForRefreshRow, error) {
+	row := q.db.QueryRow(ctx, getSessionForRefresh, refreshTokenHash)
+	var i GetSessionForRefreshRow
+	err := row.Scan(
+		&i.ID,
+		&i.PersonnelID,
+		&i.FamilyID,
+		&i.DeviceTokenHash,
+		&i.RememberMe,
+		&i.Client,
+		&i.ExpiresAt,
+		&i.RevokedAt,
+		&i.PersonelUserID,
+		&i.PersonnelStatus,
+	)
+	return i, err
+}
+
+const listRecentSessionIDsByFamily = `-- name: ListRecentSessionIDsByFamily :many
+SELECT id FROM sessions WHERE family_id = $1 AND created_at >= $2
+`
+
+type ListRecentSessionIDsByFamilyParams struct {
+	FamilyID pgtype.UUID
+	Since    pgtype.Timestamptz
+}
+
+// The sessions of a chain whose access tokens can still be alive (created within the last
+// access-token lifetime), so that they can be put on the revocation list.
+func (q *Queries) ListRecentSessionIDsByFamily(ctx context.Context, arg ListRecentSessionIDsByFamilyParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, listRecentSessionIDsByFamily, arg.FamilyID, arg.Since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const markPersonnelInactive = `-- name: MarkPersonnelInactive :exec
+UPDATE personnels SET status = 'INACTIVE', synced_at = $1, updated_at = $1 WHERE id = $2
+`
+
+type MarkPersonnelInactiveParams struct {
+	Now pgtype.Timestamptz
+	ID  int64
+}
+
+func (q *Queries) MarkPersonnelInactive(ctx context.Context, arg MarkPersonnelInactiveParams) error {
+	_, err := q.db.Exec(ctx, markPersonnelInactive, arg.Now, arg.ID)
+	return err
+}
+
+const peekSessionForRefresh = `-- name: PeekSessionForRefresh :one
+SELECT s.revoked_at, s.expires_at, p.personel_user_id, p.nik, p.status AS personnel_status, p.synced_at
+FROM sessions s
+JOIN personnels p ON p.id = s.personnel_id
+WHERE s.refresh_token_hash = $1
+`
+
+type PeekSessionForRefreshRow struct {
+	RevokedAt       pgtype.Timestamptz
+	ExpiresAt       pgtype.Timestamptz
+	PersonelUserID  int64
+	Nik             pgtype.Text
+	PersonnelStatus PersonnelStatus
+	SyncedAt        pgtype.Timestamptz
+}
+
+// Refresh reads the session without a lock first, only to decide whether Personalia has to
+// be asked (which must not happen while a row lock is held). Everything it learns here is
+// read again under the lock by GetSessionForRefresh.
+func (q *Queries) PeekSessionForRefresh(ctx context.Context, refreshTokenHash string) (PeekSessionForRefreshRow, error) {
+	row := q.db.QueryRow(ctx, peekSessionForRefresh, refreshTokenHash)
+	var i PeekSessionForRefreshRow
+	err := row.Scan(
+		&i.RevokedAt,
+		&i.ExpiresAt,
+		&i.PersonelUserID,
+		&i.Nik,
+		&i.PersonnelStatus,
+		&i.SyncedAt,
+	)
+	return i, err
+}
+
+const revokeSessionFamily = `-- name: RevokeSessionFamily :exec
+UPDATE sessions SET revoked_at = $1, updated_at = $1
+WHERE family_id = $2 AND revoked_at IS NULL
+`
+
+type RevokeSessionFamilyParams struct {
+	Now      pgtype.Timestamptz
+	FamilyID pgtype.UUID
+}
+
+// Ends every live session of a login chain. Sessions that were already revoked keep the
+// time they were revoked.
+func (q *Queries) RevokeSessionFamily(ctx context.Context, arg RevokeSessionFamilyParams) error {
+	_, err := q.db.Exec(ctx, revokeSessionFamily, arg.Now, arg.FamilyID)
+	return err
+}
+
+const rotateSession = `-- name: RotateSession :exec
+UPDATE sessions
+SET revoked_at = $1, replaced_by_id = $2, updated_at = $1
+WHERE id = $3
+`
+
+type RotateSessionParams struct {
+	Now          pgtype.Timestamptz
+	ReplacedByID pgtype.Int8
+	ID           int64
+}
+
+func (q *Queries) RotateSession(ctx context.Context, arg RotateSessionParams) error {
+	_, err := q.db.Exec(ctx, rotateSession, arg.Now, arg.ReplacedByID, arg.ID)
+	return err
 }
 
 const touchDeviceBinding = `-- name: TouchDeviceBinding :exec
