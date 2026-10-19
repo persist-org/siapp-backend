@@ -3,6 +3,8 @@ package config
 import (
 	"log/slog"
 	"maps"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -12,6 +14,10 @@ func validEnv() map[string]string {
 	return map[string]string{
 		"DATABASE_URL": "postgres://siapp_app:siapp_app@localhost:5432/siapp?sslmode=disable",
 		"REDIS_URL":    "redis://localhost:6379/0",
+		// 36 bytes: over the 32-byte minimum.
+		"JWT_SECRET":               "test-secret-test-secret-test-secret",
+		"PERSONEL_BASE_URL":        "http://localhost:8081/api/v3/integrations/siapp",
+		"PERSONEL_INTEGRATION_KEY": "test-integration-key",
 	}
 }
 
@@ -73,14 +79,24 @@ func TestParseErrors(t *testing.T) {
 			wantMsgs: []string{"PERSONEL_BASE_URL must be a URL like http://"},
 		},
 		{
-			name:     "PERSONEL_BASE_URL without a key",
-			override: map[string]string{"PERSONEL_BASE_URL": "http://localhost:8081/api/v3/integrations/siapp"},
-			wantMsgs: []string{"PERSONEL_BASE_URL and PERSONEL_INTEGRATION_KEY must be set together"},
+			name:     "missing PERSONEL_BASE_URL",
+			drop:     []string{"PERSONEL_BASE_URL"},
+			wantMsgs: []string{`"PERSONEL_BASE_URL"`},
 		},
 		{
-			name:     "PERSONEL_INTEGRATION_KEY without a URL",
-			override: map[string]string{"PERSONEL_INTEGRATION_KEY": "k"},
-			wantMsgs: []string{"must be set together"},
+			name:     "missing PERSONEL_INTEGRATION_KEY",
+			drop:     []string{"PERSONEL_INTEGRATION_KEY"},
+			wantMsgs: []string{`"PERSONEL_INTEGRATION_KEY"`},
+		},
+		{
+			name:     "missing JWT_SECRET",
+			drop:     []string{"JWT_SECRET"},
+			wantMsgs: []string{`"JWT_SECRET"`},
+		},
+		{
+			name:     "JWT_SECRET too short",
+			override: map[string]string{"JWT_SECRET": "short"},
+			wantMsgs: []string{"JWT_SECRET must be at least 32 bytes"},
 		},
 		{
 			name:     "all problems reported together",
@@ -135,7 +151,6 @@ func TestParseCORSOrigins(t *testing.T) {
 
 func TestParsePersonel(t *testing.T) {
 	environ := validEnv()
-	environ["PERSONEL_BASE_URL"] = "http://localhost:8081/api/v3/integrations/siapp"
 	environ["PERSONEL_INTEGRATION_KEY"] = "s3cret-key"
 
 	cfg, err := Parse(environ)
@@ -152,4 +167,97 @@ func TestParseNeverEchoesTheIntegrationKey(t *testing.T) {
 	_, err := Parse(environ)
 	require.Error(t, err)
 	require.NotContains(t, err.Error(), "s3cret-key")
+}
+
+// ⚠ A secret copied from the repository must not reach production: anyone who read the
+// repository could sign access tokens for any person of any organization.
+func TestProductionRefusesAPlaceholderOrWeakJWTSecret(t *testing.T) {
+	exampleValue := readExampleJWTSecret(t)
+
+	for name, secret := range map[string]string{
+		"the value in .env.example":  exampleValue,
+		"another change-me value":    "CHANGE-ME-please-to-something-long-enough",
+		"a replace-with placeholder": "replace-with-a-long-random-secret-value-ok",
+		"one repeated character":     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"a short repeated pattern":   "12341234123412341234123412341234",
+	} {
+		t.Run(name, func(t *testing.T) {
+			environ := validEnv()
+			environ["APP_ENV"] = EnvProduction
+			environ["JWT_SECRET"] = secret
+
+			_, err := Parse(environ)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "JWT_SECRET looks like a placeholder")
+			require.NotContains(t, err.Error(), secret, "the secret is never echoed")
+		})
+	}
+}
+
+func TestProductionReportsAMissingJWTSecretOnce(t *testing.T) {
+	environ := validEnv()
+	environ["APP_ENV"] = EnvProduction
+	delete(environ, "JWT_SECRET")
+
+	_, err := Parse(environ)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), `"JWT_SECRET"`)
+	require.NotContains(t, err.Error(), "looks like a placeholder")
+}
+
+func TestProductionAcceptsAGeneratedJWTSecret(t *testing.T) {
+	for name, secret := range map[string]string{
+		"base64, as openssl rand -base64 48": "q8Vz3mN0rT1yLw7KfX2pH9cJ4dS6bG5uE0aZ8iO1nM3vR7tY",
+		"hex, as openssl rand -hex 32":       "9f2c4e7a1b0d8e6f3a5c7b9d1e2f4a6c8b0d2e4f6a8c0e2a4b6d8f0a2c4e6b8d",
+	} {
+		t.Run(name, func(t *testing.T) {
+			environ := validEnv()
+			environ["APP_ENV"] = EnvProduction
+			environ["JWT_SECRET"] = secret
+			_, err := Parse(environ)
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestDevelopmentKeepsWorkingWithTheExampleJWTSecret(t *testing.T) {
+	environ := validEnv()
+	environ["APP_ENV"] = EnvDevelopment
+	environ["JWT_SECRET"] = readExampleJWTSecret(t)
+	_, err := Parse(environ)
+	require.NoError(t, err)
+}
+
+// readExampleJWTSecret reads the JWT_SECRET of .env.example, so that the test follows the
+// file if its example value ever changes.
+func readExampleJWTSecret(t *testing.T) string {
+	t.Helper()
+	raw, err := os.ReadFile("../../../.env.example")
+	require.NoError(t, err)
+	for _, line := range strings.Split(string(raw), "\n") {
+		if value, ok := strings.CutPrefix(strings.TrimSpace(line), "JWT_SECRET="); ok {
+			require.NotEmpty(t, value)
+			return value
+		}
+	}
+	t.Fatal("no JWT_SECRET in .env.example")
+	return ""
+}
+
+func TestParseNeverEchoesTheJWTSecret(t *testing.T) {
+	environ := validEnv()
+	environ["JWT_SECRET"] = "too-short-secret"
+
+	_, err := Parse(environ)
+	require.Error(t, err)
+	require.NotContains(t, err.Error(), "too-short-secret")
+}
+
+func TestParseClientIPHeader(t *testing.T) {
+	environ := validEnv()
+	environ["CLIENT_IP_HEADER"] = "X-Forwarded-For"
+
+	cfg, err := Parse(environ)
+	require.NoError(t, err)
+	require.Equal(t, "X-Forwarded-For", cfg.ClientIPHeader)
 }

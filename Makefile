@@ -2,7 +2,7 @@
 -include .env
 export
 
-.PHONY: contract test-personel-live up up-app up-cctv down reset-db logs ps psql psql-app run worker migrate generate lint test check
+.PHONY: contract test-personel-live up up-app up-cctv down reset-db logs ps psql psql-app run worker migrate seed grant-admin generate lint test check
 
 # postgres, redis, minio
 up:
@@ -42,13 +42,24 @@ psql-app:
 run:
 	go run ./cmd/api
 
-# Background jobs (session cleanup, ...). Needs Redis. cmd/worker arrives in Phase 01.2.
+# Background jobs (session cleanup, idempotency cleanup, audit partitions). Needs Redis.
 worker:
 	go run ./cmd/worker
 
 # Apply migrations from the host, as the owner (MIGRATE_DSN). Also: go run ./cmd/migrate down|status
 migrate:
 	go run ./cmd/migrate up
+
+# Development seed. For identity it only prints who can log in: people come from Personalia.
+seed:
+	go run ./cmd/seed
+
+# Make a person the first ORG_ADMIN of an organization (needs kpi-personalia-api running):
+#   make grant-admin ORG=900101 NIK=SIAPPA0001
+# It goes through make so that .env is loaded; `go run ./cmd/seed grant-admin` alone is not.
+grant-admin:
+	@test -n "$(ORG)" -a -n "$(NIK)" || { echo "usage: make grant-admin ORG=<organization id> NIK=<nik>"; exit 1; }
+	go run ./cmd/seed grant-admin --org $(ORG) --nik $(NIK)
 
 # Where the PERSIST contract lives (set CONTRACT_SRC in .env to override).
 CONTRACT_SRC ?= ../persist-ecosystem/contracts/openapi.yaml

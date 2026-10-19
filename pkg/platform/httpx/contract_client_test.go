@@ -15,12 +15,13 @@ import (
 type loginRequest struct {
 	Identifier string `json:"identifier" validate:"required"`
 	Password   string `json:"password" validate:"required"`
+	Client     string `json:"client"`
 }
 
 // The contract client checks the request and the response of a real contract operation.
-// POST /auth/login is stood in by a stub here (the real one arrives in Phase 01.1): the
-// point is that the client's checks work, and that the envelopes the stub returns are
-// the ones the contract says login answers with.
+// POST /auth/login is stood in by a stub here, not the real identity module: the point is
+// that the client's checks work, and that the envelopes the stub returns are the ones the
+// contract says login answers with.
 func TestContractClient(t *testing.T) {
 	srv := testkit.NewServer(t, testkit.Deps{Mount: func(r chi.Router) {
 		r.Post("/api/v1/auth/login", func(w http.ResponseWriter, r *http.Request) {
@@ -35,12 +36,12 @@ func TestContractClient(t *testing.T) {
 	client := testkit.NewClient(t, srv)
 
 	t.Run("a valid request and a documented error pass", func(t *testing.T) {
-		res := client.Do(http.MethodPost, "/auth/login", map[string]any{"identifier": "user01", "password": "x"})
+		res := client.Do(http.MethodPost, "/auth/login", map[string]any{"identifier": "user01", "password": "x", "client": "WEB"})
 		require.Equal(t, http.StatusUnauthorized, res.Status)
 	})
 
 	t.Run("a validation error matches the contract's 422", func(t *testing.T) {
-		res := client.Do(http.MethodPost, "/auth/login", map[string]any{"identifier": "user01", "password": ""})
+		res := client.Do(http.MethodPost, "/auth/login", map[string]any{"identifier": "user01", "password": "", "client": "WEB"})
 		require.Equal(t, http.StatusUnprocessableEntity, res.Status)
 	})
 }
@@ -58,7 +59,7 @@ func TestContractClientRejectsDrift(t *testing.T) {
 	rec := &recordingTB{TB: t}
 	func() {
 		defer func() { _ = recover() }()
-		testkit.NewClient(rec, srv).Do(http.MethodPost, "/auth/login", map[string]any{"identifier": "a", "password": "b"})
+		testkit.NewClient(rec, srv).Do(http.MethodPost, "/auth/login", map[string]any{"identifier": "a", "password": "b", "client": "WEB"})
 	}()
 	require.True(t, rec.failed, "an undocumented status must fail the test")
 
