@@ -194,6 +194,17 @@ func TestProductionRefusesAPlaceholderOrWeakJWTSecret(t *testing.T) {
 	}
 }
 
+func TestProductionReportsAMissingJWTSecretOnce(t *testing.T) {
+	environ := validEnv()
+	environ["APP_ENV"] = EnvProduction
+	delete(environ, "JWT_SECRET")
+
+	_, err := Parse(environ)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), `"JWT_SECRET"`)
+	require.NotContains(t, err.Error(), "looks like a placeholder")
+}
+
 func TestProductionAcceptsAGeneratedJWTSecret(t *testing.T) {
 	for name, secret := range map[string]string{
 		"base64, as openssl rand -base64 48": "q8Vz3mN0rT1yLw7KfX2pH9cJ4dS6bG5uE0aZ8iO1nM3vR7tY",

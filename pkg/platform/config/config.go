@@ -134,9 +134,12 @@ func Parse(environ map[string]string) (Config, error) {
 	problems = append(problems, checkURL("REDIS_URL", cfg.RedisURL, redisSchemes)...)
 	problems = append(problems, checkURL("PERSONEL_BASE_URL", cfg.PersonelBaseURL, httpSchemes)...)
 	// The value is never echoed in a problem: it is a secret.
-	if cfg.JWTSecret != "" && len(cfg.JWTSecret) < minJWTSecretBytes {
+	switch {
+	case cfg.JWTSecret == "":
+		// Already reported above as missing; judging an absent value would only repeat it.
+	case len(cfg.JWTSecret) < minJWTSecretBytes:
 		problems = append(problems, fmt.Sprintf("JWT_SECRET must be at least %d bytes (generate one with: openssl rand -base64 48)", minJWTSecretBytes))
-	} else if cfg.AppEnv == EnvProduction && weakSecret(cfg.JWTSecret) {
+	case cfg.AppEnv == EnvProduction && weakSecret(cfg.JWTSecret):
 		problems = append(problems, "JWT_SECRET looks like a placeholder or a low-entropy value, which is refused in production (generate one with: openssl rand -base64 48)")
 	}
 
