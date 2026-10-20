@@ -294,13 +294,67 @@ components:
       required: true
       description: Identitas resource.
       schema: { type: integer, format: int64 }
+    # Header parameters (correlation / idempotency)
     RegionCodePath:
       name: code
       in: path
       required: true
       description: Kode koordinator wilayah (contoh OS1).
-      schema: { type: string, pattern: '^OS[1-9][0-9]*$' }
-    # Header parameters (correlation / idempotency)
+      schema: { type: string, pattern: '^OS[1-9][0-9]*$', example: OS1 }
+    BranchCodePath:
+      name: code
+      in: path
+      required: true
+      description: Kode kantor cabang (contoh 1K).
+      schema: { type: string, pattern: '^[1-9][0-9]*[KIP]$', example: "1K" }
+    ClientCodePath:
+      name: code
+      in: path
+      required: true
+      description: Kode klien (contoh 1K-IBMI).
+      schema: { type: string, example: "1K-IBMI" }
+    ProjectCodePath:
+      name: code
+      in: path
+      required: true
+      description: Kode proyek (contoh 1K-IBMI-S).
+      schema: { type: string, example: "1K-IBMI-S" }
+    TeamCodePath:
+      name: code
+      in: path
+      required: true
+      description: Kode regu (contoh 1K-IBMI-S1).
+      schema: { type: string, example: "1K-IBMI-S1" }
+    RegionCodeQuery:
+      name: region_code
+      in: query
+      required: false
+      description: Opsional. Hanya baris di koordinator wilayah ini.
+      schema: { type: string, example: OS1 }
+    BranchCodeQuery:
+      name: branch_code
+      in: query
+      required: false
+      description: Opsional. Hanya baris di kantor cabang ini.
+      schema: { type: string, example: "1K" }
+    ClientCodeQuery:
+      name: client_code
+      in: query
+      required: false
+      description: Opsional. Hanya baris milik klien ini.
+      schema: { type: string, example: "1K-IBMI" }
+    ProjectCodeQuery:
+      name: project_code
+      in: query
+      required: false
+      description: Opsional. Hanya baris di proyek ini.
+      schema: { type: string, example: "1K-IBMI-S" }
+    BusinessLineQuery:
+      name: business_line
+      in: query
+      required: false
+      description: Opsional. Hanya proyek bidang usaha ini; nilai lain 422.
+      schema: { $ref: '#/components/schemas/BusinessLine' }
     PersonnelIdPath:
       name: personnel_id
       in: path
@@ -718,6 +772,8 @@ components:
 
     # ---------- 2. regions (Koordinator Wilayah) ----------
     # Dimiliki SiAPP sejak D17. Kode adalah identitasnya (tanpa id angka, D19).
+    # Skema respons tidak memakai `required`: setiap field selalu dikirim, kecuali field
+    # nullable yang dihilangkan bila kosong.
     Region:
       type: object
       properties:
@@ -728,196 +784,245 @@ components:
         updated_at: { type: string, format: date-time }
     RegionInput:
       type: object
+      additionalProperties: false
       required: [code, description]
       properties:
-        code: { type: string, example: OS1, pattern: '^OS[1-9][0-9]*$', description: Tidak dapat diubah setelah dibuat. }
-        description: { type: string }
-        is_active: { type: boolean, default: true }
+        code:
+          type: string
+          example: OS1
+          pattern: '^OS[1-9][0-9]*$'
+          description: "WAJIB. OS diikuti angka tanpa nol di depan. Tidak dapat diubah setelah dibuat. Kode yang pernah dipakai, juga oleh wilayah yang dihapus, tidak dapat dipakai lagi (409 CODE_TAKEN)."
+        description: { type: string, minLength: 1, maxLength: 200, example: Outsourcing 1, description: "WAJIB. Nama wilayah; tidak boleh hanya spasi." }
+        is_active: { type: boolean, default: true, description: "Opsional. Bawaan true." }
     RegionUpdate:
       type: object
-      description: Hanya description dan is_active. Kode tidak dapat diubah (422 bila dikirim).
+      additionalProperties: false
+      description: |
+        Semua field opsional; field yang tidak dikirim tidak berubah. Body kosong `{}` sah dan
+        tidak mengubah apa pun. `code` tidak dapat dikirim (422, field tidak dikenal).
       properties:
-        description: { type: string }
+        description: { type: string, minLength: 1, maxLength: 200, description: "Tidak boleh hanya spasi." }
         is_active: { type: boolean }
 
     # ---------- 3. branches ----------
+    # Kantor cabang. Kode = {nomor wilayah}{huruf PT}: 1K ada di bawah OS1 (D19). Klien mengirim
+    # region_code dan company_letter; server yang membentuk kode. Kode tidak dapat diubah.
     Branch:
       type: object
       properties:
-        id: { type: integer, format: int64 }
-        organization_id: { type: integer, format: int64 }
-        branch_code: { type: string, example: "1K" }
-        region_id: { type: integer, format: int64 }
+        code: { type: string, example: "1K", pattern: '^[1-9][0-9]*[KIP]$' }
+        region_code: { type: string, example: OS1, pattern: '^OS[1-9][0-9]*$' }
+        company_letter: { $ref: '#/components/schemas/CompanyLetter' }
         manager_name: { type: string, nullable: true }
         city: { type: string, nullable: true }
-        province: { type: string, nullable: true }
-        province_id: { type: integer, format: int64, nullable: true }
-        city_id: { type: integer, format: int64, nullable: true }
         phone: { type: string, nullable: true, example: "08xxxxxxxxxx" }
-        fax: { type: string, nullable: true }
-        office_email: { type: string, nullable: true }
-        address: { type: string, nullable: true }
-        map_address: { type: string, nullable: true }
-        latitude: { type: number, format: double, nullable: true, example: -6.2 }
-        longitude: { type: number, format: double, nullable: true, example: 106.8 }
-        postal_code: { type: string, nullable: true }
-        description: { type: string, nullable: true }
-        is_active: { type: boolean }
-        created_at: { type: string, format: date-time }
-        updated_at: { type: string, format: date-time }
-    BranchInput:
-      type: object
-      required: [branch_code, region_id]
-      properties:
-        branch_code: { type: string }
-        region_id: { type: integer, format: int64 }
-        manager_name: { type: string }
-        city: { type: string }
-        province: { type: string }
-        province_id: { type: integer, format: int64 }
-        city_id: { type: integer, format: int64 }
-        phone: { type: string }
-        fax: { type: string }
-        office_email: { type: string }
-        address: { type: string }
-        map_address: { type: string }
-        latitude: { type: number, format: double }
-        longitude: { type: number, format: double }
-        postal_code: { type: string }
-        description: { type: string }
-        is_active: { type: boolean, default: true }
-
-    # ---------- 4. clients ----------
-    Client:
-      type: object
-      properties:
-        id: { type: integer, format: int64 }
-        organization_id: { type: integer, format: int64 }
-        client_code: { type: string, example: "1K-IBMI" }
-        branch_id: { type: integer, format: int64 }
-        manager_name: { type: string, nullable: true }
-        director_name: { type: string, nullable: true }
-        phone: { type: string, nullable: true }
         fax: { type: string, nullable: true }
         email: { type: string, nullable: true }
         address: { type: string, nullable: true }
-        map_address: { type: string, nullable: true }
-        latitude: { type: number, format: double, nullable: true, example: -6.2 }
-        longitude: { type: number, format: double, nullable: true, example: 106.8 }
-        province_id: { type: integer, format: int64, nullable: true }
-        city_id: { type: integer, format: int64, nullable: true }
-        postal_code: { type: string, nullable: true }
-        client_type_id: { type: integer, format: int64, nullable: true }
-        client_group_id: { type: integer, format: int64, nullable: true }
-        description: { type: string, nullable: true }
+        zip_code: { type: string, nullable: true }
+        description: { type: string, example: Jakarta, description: Nama kantor cabang. }
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    CompanyLetter:
+      type: string
+      enum: [K, I, P]
+      description: "PT pemberi kerja dalam grup: K = PT Kharisma Potensia Indonesia (KPI), I = PT Insan Daya Sentosa (IDS), P = PT Potensial Cipta Daya (PCD)."
+    BranchInput:
+      type: object
+      additionalProperties: false
+      required: [region_code, company_letter, description]
+      properties:
+        region_code: { type: string, example: OS1, pattern: '^OS[1-9][0-9]*$', description: "WAJIB. Harus koordinator wilayah yang ada (404 REGION_NOT_FOUND). Tidak dapat diubah." }
+        company_letter: { allOf: [ { $ref: '#/components/schemas/CompanyLetter' } ], description: "WAJIB. Selain K, I, P ditolak (422 BRANCH_LETTER_INVALID). Tidak dapat diubah." }
+        description: { type: string, minLength: 1, maxLength: 200, example: Jakarta, description: "WAJIB. Nama kantor cabang; tidak boleh hanya spasi." }
+        manager_name: { type: string, maxLength: 200, description: Opsional. }
+        city: { type: string, maxLength: 100, description: Opsional. }
+        phone: { type: string, maxLength: 50, description: Opsional. }
+        fax: { type: string, maxLength: 50, description: Opsional. }
+        email: { type: string, maxLength: 200, description: Opsional. }
+        address: { type: string, maxLength: 500, description: Opsional. }
+        zip_code: { type: string, maxLength: 20, description: Opsional. }
+        is_active: { type: boolean, default: true, description: "Opsional. Bawaan true." }
+    BranchUpdate:
+      type: object
+      additionalProperties: false
+      description: |
+        Semua field opsional; field yang tidak dikirim tidak berubah. Body kosong `{}` sah.
+        `code`, `region_code`, dan `company_letter` tidak dapat dikirim (422, field tidak dikenal):
+        kode dibentuk dari ketiganya.
+      properties:
+        description: { type: string, minLength: 1, maxLength: 200, description: "Tidak boleh hanya spasi." }
+        manager_name: { type: string, maxLength: 200 }
+        city: { type: string, maxLength: 100 }
+        phone: { type: string, maxLength: 50 }
+        fax: { type: string, maxLength: 50 }
+        email: { type: string, maxLength: 200 }
+        address: { type: string, maxLength: 500 }
+        zip_code: { type: string, maxLength: 20 }
+        is_active: { type: boolean }
+
+    # ---------- 4. clients ----------
+    # Klien. Kode = {kode cabang}-{company_prefix}, misalnya 1K-IBMI (D19).
+    Client:
+      type: object
+      properties:
+        code: { type: string, example: "1K-IBMI" }
+        branch_code: { type: string, example: "1K" }
+        description: { type: string, description: Nama klien. }
+        company_code: { type: string, nullable: true, description: Diisi manual, tidak dibentuk server. }
+        company_prefix: { type: string, example: IBMI, pattern: '^[A-Z0-9]{2,10}$' }
+        company_bidang_usaha: { type: string, nullable: true }
+        director_name: { type: string, nullable: true }
+        city: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+        fax: { type: string, nullable: true }
+        address: { type: string, nullable: true }
+        zip_code: { type: string, nullable: true }
+        email: { type: string, nullable: true }
         is_active: { type: boolean }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
     ClientInput:
       type: object
-      required: [client_code, branch_id]
+      additionalProperties: false
+      required: [branch_code, company_prefix, description]
       properties:
-        client_code: { type: string }
-        branch_id: { type: integer, format: int64 }
-        manager_name: { type: string }
-        director_name: { type: string }
-        phone: { type: string }
-        fax: { type: string }
-        email: { type: string }
-        address: { type: string }
-        map_address: { type: string }
-        latitude: { type: number, format: double }
-        longitude: { type: number, format: double }
-        province_id: { type: integer, format: int64 }
-        city_id: { type: integer, format: int64 }
-        postal_code: { type: string }
-        client_type_id: { type: integer, format: int64 }
-        client_group_id: { type: integer, format: int64 }
-        description: { type: string }
-        is_active: { type: boolean, default: true }
+        branch_code: { type: string, example: "1K", description: "WAJIB. Harus kantor cabang yang ada (404 BRANCH_NOT_FOUND). Tidak dapat diubah." }
+        company_prefix: { type: string, example: IBMI, pattern: '^[A-Z0-9]{2,10}$', description: "WAJIB. 2 sampai 10 huruf besar atau angka; selain itu 422 CLIENT_PREFIX_INVALID. Tidak dapat diubah." }
+        description: { type: string, minLength: 1, maxLength: 200, example: PT IBM Indonesia, description: "WAJIB. Nama klien; tidak boleh hanya spasi." }
+        company_code: { type: string, maxLength: 50, description: "Opsional. Diisi manual." }
+        company_bidang_usaha: { type: string, maxLength: 200, description: Opsional. }
+        director_name: { type: string, maxLength: 200, description: Opsional. }
+        city: { type: string, maxLength: 100, description: Opsional. }
+        phone: { type: string, maxLength: 50, description: Opsional. }
+        fax: { type: string, maxLength: 50, description: Opsional. }
+        address: { type: string, maxLength: 500, description: Opsional. }
+        zip_code: { type: string, maxLength: 20, description: Opsional. }
+        email: { type: string, maxLength: 200, description: Opsional. }
+        is_active: { type: boolean, default: true, description: "Opsional. Bawaan true." }
+    ClientUpdate:
+      type: object
+      additionalProperties: false
+      description: |
+        Semua field opsional; field yang tidak dikirim tidak berubah. Body kosong `{}` sah.
+        `code`, `branch_code`, dan `company_prefix` tidak dapat dikirim (422, field tidak dikenal).
+      properties:
+        description: { type: string, minLength: 1, maxLength: 200, description: "Tidak boleh hanya spasi." }
+        company_code: { type: string, maxLength: 50 }
+        company_bidang_usaha: { type: string, maxLength: 200 }
+        director_name: { type: string, maxLength: 200 }
+        city: { type: string, maxLength: 100 }
+        phone: { type: string, maxLength: 50 }
+        fax: { type: string, maxLength: 50 }
+        address: { type: string, maxLength: 500 }
+        zip_code: { type: string, maxLength: 20 }
+        email: { type: string, maxLength: 200 }
+        is_active: { type: boolean }
 
     # ---------- 5. projects ----------
+    # Proyek. Kode = {kode klien}-{S|C}: S security, C cleaning (D19). Satu proyek punya satu
+    # alamat, zona waktu, dan titik GPS (D20). Tanpa koordinat, proyek belum dikonfigurasi dan
+    # fitur yang memakainya menjawab PROJECT_NOT_CONFIGURED.
+    BusinessLine:
+      type: string
+      enum: [security, cleaning]
+      description: "Bidang usaha proyek (DL-20). security membentuk kode berakhiran S, cleaning berakhiran C; satu klien paling banyak satu proyek per bidang."
+    ProjectTimezone:
+      type: string
+      enum: [Asia/Jakarta, Asia/Makassar, Asia/Jayapura]
+      description: "Zona waktu IANA proyek: WIB = Asia/Jakarta, WITA = Asia/Makassar, WIT = Asia/Jayapura."
+    EmergencyContact:
+      type: object
+      required: [type, name, phone]
+      properties:
+        type: { type: string, minLength: 1, maxLength: 50, example: Polisi, description: "Jenis kejadian, misalnya Polisi, RS, Pemadam." }
+        name: { type: string, minLength: 1, maxLength: 200 }
+        phone: { type: string, minLength: 1, maxLength: 50, example: "08xxxxxxxxxx" }
     Project:
       type: object
       properties:
-        id: { type: integer, format: int64 }
-        organization_id: { type: integer, format: int64 }
-        project_code: { type: string, example: "1K-IBMI-S" }
-        client_id: { type: integer, format: int64 }
-        branch_id: { type: integer, format: int64, nullable: true }
-        business_line: { type: string, enum: [security, cleaning] }
+        code: { type: string, example: "1K-IBMI-S" }
+        client_code: { type: string, example: "1K-IBMI" }
+        description: { type: string, description: Nama proyek. }
+        company_code: { type: string, nullable: true }
+        company_prefix: { type: string, nullable: true }
+        company_bidang_usaha: { type: string, nullable: true }
+        business_line: { $ref: '#/components/schemas/BusinessLine' }
+        city: { type: string, nullable: true }
         address: { type: string, nullable: true }
         phone: { type: string, nullable: true }
         email: { type: string, nullable: true }
-        timezone: { type: string, enum: [WIB, WITA, WIT] }
-        iana_tz: { type: string, example: Asia/Jakarta }
-        province_id: { type: integer, format: int64, nullable: true }
-        city_id: { type: integer, format: int64, nullable: true }
-        map_address: { type: string, nullable: true }
+        timezone: { $ref: '#/components/schemas/ProjectTimezone' }
         latitude: { type: number, format: double, nullable: true, example: -6.2 }
         longitude: { type: number, format: double, nullable: true, example: 106.8 }
-        status_gps_tracking: { type: boolean, description: "Aktifkan tracking GPS personil (DL-48)." }
-        is_patrol_limited_by_interval: { type: boolean, description: "Batasi scan patroli per interval (DL-48)." }
-        patrol_interval_in_minutes: { type: integer, nullable: true, minimum: 1 }
-        contract_start: { type: string, format: date, nullable: true }
-        contract_end: { type: string, format: date, nullable: true }
-        chief_security: { type: string, nullable: true }
-        manager_name: { type: string, nullable: true }
-        shift_config: { type: object, nullable: true, additionalProperties: true }
-        salary: { allOf: [ { $ref: '#/components/schemas/Money' } ], nullable: true }
+        configured: { type: boolean, description: "false bila koordinat belum diisi (PROJECT_NOT_CONFIGURED)." }
+        attendance_radius_meters: { type: integer, minimum: 1, example: 150 }
+        strict_attendance_geofence: { type: boolean }
+        gps_tracking_enabled: { type: boolean, description: "Aktifkan tracking GPS personil (DL-48)." }
+        patrol_interval_minutes: { type: integer, nullable: true, minimum: 1, description: "null = tidak dibatasi (DL-48)." }
         emergency_contacts:
           type: array
-          nullable: true
           description: 'Telp 3 tipe kejadian (Polisi/RS/Pemadam) — DL-14/manual 2.17.'
-          items:
-            type: object
-            required: [type, name, phone]
-            properties:
-              type: { type: string, example: Polisi }
-              name: { type: string }
-              phone: { type: string, example: "08xxxxxxxxxx" }
-        description: { type: string, nullable: true }
+          items: { $ref: '#/components/schemas/EmergencyContact' }
         is_active: { type: boolean }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
     ProjectInput:
       type: object
-      required: [project_code, client_id, business_line]
+      additionalProperties: false
+      required: [client_code, business_line, description, timezone]
       properties:
-        project_code: { type: string }
-        client_id: { type: integer, format: int64 }
-        branch_id: { type: integer, format: int64 }
-        business_line: { type: string, enum: [security, cleaning] }
-        address: { type: string }
-        phone: { type: string }
-        email: { type: string }
-        timezone: { type: string, enum: [WIB, WITA, WIT], default: WIB }
-        iana_tz: { type: string, default: Asia/Jakarta }
-        province_id: { type: integer, format: int64 }
-        city_id: { type: integer, format: int64 }
-        map_address: { type: string }
-        latitude: { type: number, format: double }
-        longitude: { type: number, format: double }
-        status_gps_tracking: { type: boolean, default: false }
-        is_patrol_limited_by_interval: { type: boolean, default: false }
-        patrol_interval_in_minutes: { type: integer, minimum: 1 }
-        contract_start: { type: string, format: date }
-        contract_end: { type: string, format: date }
-        chief_security: { type: string }
-        manager_name: { type: string }
-        shift_config: { type: object, additionalProperties: true }
-        salary: { $ref: '#/components/schemas/Money' }
+        client_code: { type: string, example: "1K-IBMI", description: "WAJIB. Harus klien yang ada (404 CLIENT_NOT_FOUND). Tidak dapat diubah." }
+        business_line: { allOf: [ { $ref: '#/components/schemas/BusinessLine' } ], description: "WAJIB. Menentukan akhiran kode. Klien yang sudah punya proyek untuk bidang itu: 409 CODE_TAKEN. Tidak dapat diubah." }
+        description: { type: string, minLength: 1, maxLength: 200, example: Pengamanan Gedung A, description: "WAJIB. Nama proyek; tidak boleh hanya spasi." }
+        timezone: { allOf: [ { $ref: '#/components/schemas/ProjectTimezone' } ], description: "WAJIB. Tidak ada nilai bawaan agar zona waktu tidak keliru diam-diam." }
+        company_code: { type: string, maxLength: 50, description: Opsional. }
+        company_prefix: { type: string, pattern: '^[A-Z0-9]{2,10}$', description: "Opsional. Bila dikirim harus 2 sampai 10 huruf besar atau angka (422 CLIENT_PREFIX_INVALID)." }
+        company_bidang_usaha: { type: string, maxLength: 200, description: Opsional. }
+        city: { type: string, maxLength: 100, description: Opsional. }
+        address: { type: string, maxLength: 500, description: Opsional. }
+        phone: { type: string, maxLength: 50, description: Opsional. }
+        email: { type: string, maxLength: 200, description: Opsional. }
+        latitude: { type: number, format: double, minimum: -90, maximum: 90, description: "Opsional, tetapi harus dikirim bersama longitude (422 bila hanya satu). Tanpa keduanya proyek belum dikonfigurasi." }
+        longitude: { type: number, format: double, minimum: -180, maximum: 180, description: "Opsional, tetapi harus dikirim bersama latitude." }
+        attendance_radius_meters: { type: integer, minimum: 1, default: 150, description: "Opsional. Radius geofence absensi (meter). Bawaan 150." }
+        strict_attendance_geofence: { type: boolean, default: false, description: "Opsional. Bawaan false." }
+        gps_tracking_enabled: { type: boolean, default: true, description: "Opsional. Bawaan true." }
+        patrol_interval_minutes: { type: integer, minimum: 1, description: "Opsional. Tidak dikirim = tidak dibatasi." }
         emergency_contacts:
           type: array
-          items:
-            type: object
-            required: [type, name, phone]
-            properties:
-              type: { type: string }
-              name: { type: string }
-              phone: { type: string }
-        description: { type: string }
-        is_active: { type: boolean, default: true }
+          description: "Opsional. Bawaan daftar kosong."
+          items: { $ref: '#/components/schemas/EmergencyContact' }
+        is_active: { type: boolean, default: true, description: "Opsional. Bawaan true." }
+    ProjectUpdate:
+      type: object
+      additionalProperties: false
+      description: |
+        Semua field opsional; field yang tidak dikirim tidak berubah. Body kosong `{}` sah.
+        `code`, `client_code`, dan `business_line` tidak dapat dikirim (422, field tidak dikenal).
+        Nilai yang sudah diisi (koordinat, interval patroli) dapat diganti tetapi tidak dikosongkan.
+        `emergency_contacts` dikirim = menggantikan seluruh daftar; `[]` mengosongkan; tidak dikirim = tetap.
+        Hasil akhir latitude dan longitude harus lengkap berpasangan (422 bila tidak).
+      properties:
+        description: { type: string, minLength: 1, maxLength: 200, description: "Tidak boleh hanya spasi." }
+        timezone: { $ref: '#/components/schemas/ProjectTimezone' }
+        company_code: { type: string, maxLength: 50 }
+        company_bidang_usaha: { type: string, maxLength: 200 }
+        city: { type: string, maxLength: 100 }
+        address: { type: string, maxLength: 500 }
+        phone: { type: string, maxLength: 50 }
+        email: { type: string, maxLength: 200 }
+        latitude: { type: number, format: double, minimum: -90, maximum: 90 }
+        longitude: { type: number, format: double, minimum: -180, maximum: 180 }
+        attendance_radius_meters: { type: integer, minimum: 1 }
+        strict_attendance_geofence: { type: boolean }
+        gps_tracking_enabled: { type: boolean }
+        patrol_interval_minutes: { type: integer, minimum: 1 }
+        emergency_contacts:
+          type: array
+          items: { $ref: '#/components/schemas/EmergencyContact' }
+        is_active: { type: boolean }
     ActivationInput:
       type: object
       required: [is_active]
@@ -925,43 +1030,73 @@ components:
         is_active: { type: boolean }
 
     # ---------- 6. teams ----------
+    # Regu. Kode = {kode proyek}{n}: n dari 1 per proyek dan tidak pernah dipakai ulang (D19).
+    # Regu tidak punya geofence sendiri (D20): lokasinya lokasi proyek.
     Team:
       type: object
       properties:
-        id: { type: integer, format: int64 }
-        organization_id: { type: integer, format: int64 }
-        name: { type: string, example: "1K-IBMI-S1" }
-        project_id: { type: integer, format: int64 }
+        code: { type: string, example: "1K-IBMI-S1" }
+        project_code: { type: string, example: "1K-IBMI-S" }
+        description: { type: string, description: Nama regu. }
         phone: { type: string, nullable: true }
-        shift: { type: string, nullable: true }
-        min_personnel: { type: integer, minimum: 0 }
-        status_validate_shift: { type: boolean, description: "Validasi shift saat absensi (DL-48)." }
-        is_not_accepting_attendance_after_tolerate_time: { type: boolean, description: "Tolak absensi setelah waktu toleransi (DL-48)." }
-        status_geofencing: { type: boolean, description: "Aktifkan geofencing lokasi regu (DL-48)." }
-        latitude: { type: number, format: double, nullable: true, example: -6.2 }
-        longitude: { type: number, format: double, nullable: true, example: 106.8 }
-        radius: { type: integer, nullable: true, minimum: 1, description: "Radius geofence (meter)." }
-        description: { type: string, nullable: true }
+        min_personnel: { type: integer, minimum: 0, description: "Regu kekurangan personil bila anggota aktif kurang dari ini (DL-02)." }
+        notes: { type: string, nullable: true }
+        validate_shift: { type: boolean, description: "Validasi shift saat absensi (DL-48)." }
+        reject_attendance_after_tolerance: { type: boolean, description: "Tolak absensi setelah waktu toleransi (DL-48)." }
+        relationship_officer_personnel_id: { type: integer, format: int64, nullable: true }
         is_active: { type: boolean }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
     TeamInput:
       type: object
-      required: [name, project_id]
+      additionalProperties: false
+      required: [project_code, description]
       properties:
-        name: { type: string }
-        project_id: { type: integer, format: int64 }
-        phone: { type: string }
-        shift: { type: string }
-        min_personnel: { type: integer, minimum: 0, default: 0 }
-        status_validate_shift: { type: boolean, default: false }
-        is_not_accepting_attendance_after_tolerate_time: { type: boolean, default: false }
-        status_geofencing: { type: boolean, default: false }
-        latitude: { type: number, format: double }
-        longitude: { type: number, format: double }
-        radius: { type: integer, minimum: 1 }
-        description: { type: string }
-        is_active: { type: boolean, default: true }
+        project_code: { type: string, example: "1K-IBMI-S", description: "WAJIB. Harus proyek yang ada (404 PROJECT_NOT_FOUND). Tidak dapat diubah. Nomor regu diambil dari penghitung proyek dan tidak pernah dipakai ulang." }
+        description: { type: string, minLength: 1, maxLength: 200, example: Regu Pagi, description: "WAJIB. Nama regu; tidak boleh hanya spasi." }
+        phone: { type: string, maxLength: 50, description: Opsional. }
+        min_personnel: { type: integer, minimum: 0, maximum: 10000, default: 0, description: "Opsional. Bawaan 0." }
+        notes: { type: string, maxLength: 1000, description: Opsional. }
+        validate_shift: { type: boolean, default: true, description: "Opsional. Bawaan true." }
+        reject_attendance_after_tolerance: { type: boolean, default: false, description: "Opsional. Bawaan false." }
+        relationship_officer_personnel_id: { type: integer, format: int64, minimum: 1, description: "Opsional. Harus personil di organisasi ini (422 bila tidak)." }
+        is_active: { type: boolean, default: true, description: "Opsional. Bawaan true." }
+    TeamUpdate:
+      type: object
+      additionalProperties: false
+      description: |
+        Semua field opsional; field yang tidak dikirim tidak berubah. Body kosong `{}` sah.
+        `code` dan `project_code` tidak dapat dikirim (422, field tidak dikenal).
+      properties:
+        description: { type: string, minLength: 1, maxLength: 200, description: "Tidak boleh hanya spasi." }
+        phone: { type: string, maxLength: 50 }
+        min_personnel: { type: integer, minimum: 0, maximum: 10000 }
+        notes: { type: string, maxLength: 1000 }
+        validate_shift: { type: boolean }
+        reject_attendance_after_tolerance: { type: boolean }
+        relationship_officer_personnel_id: { type: integer, format: int64, minimum: 1 }
+        is_active: { type: boolean }
+
+    # ---------- error reasons of the organization module ----------
+    # Dikirim di error.details.reason. Satu reason yang sudah rilis tidak pernah diganti namanya.
+    OrganizationErrorReason:
+      type: string
+      description: |
+        - `NOT_ADMIN`: 403 FORBIDDEN. Pemanggil tidak punya web role (staf lapangan).
+        - `ACCESS_ORG_ADMIN_ONLY`: 403 ROLE_DENIED. REGION_ADMIN mencoba aksi yang hanya boleh ORG_ADMIN.
+        - `ACCESS_OUTSIDE_ADMIN_SCOPE`: 403 SCOPE_DENIED. REGION_ADMIN menyentuh data di luar wilayahnya.
+        - `REGION_NOT_FOUND`: 404 NOT_FOUND. Koordinator wilayah tidak ada atau sudah dihapus.
+        - `BRANCH_NOT_FOUND`: 404 NOT_FOUND. Kantor cabang tidak ada atau sudah dihapus.
+        - `CLIENT_NOT_FOUND`: 404 NOT_FOUND. Klien tidak ada atau sudah dihapus.
+        - `PROJECT_NOT_FOUND`: 404 NOT_FOUND. Proyek tidak ada atau sudah dihapus.
+        - `TEAM_NOT_FOUND`: 404 NOT_FOUND. Regu tidak ada atau sudah dihapus.
+        - `CODE_TAKEN`: 409 DUPLICATE. Kode sudah dipakai, termasuk oleh baris yang sudah dihapus (D19).
+        - `HAS_ACTIVE_CHILDREN`: 409 CONFLICT. Masih ada data aktif di bawahnya (atau admin wilayah yang menunjuknya).
+        - `BRANCH_LETTER_INVALID`: 422 VALIDATION_ERROR. Huruf PT cabang bukan K, I, atau P.
+        - `BRANCH_REGION_MISMATCH`: 422 VALIDATION_ERROR. Nomor kode cabang tidak sama dengan nomor wilayahnya (hanya import, 02.4).
+        - `CLIENT_PREFIX_INVALID`: 422 VALIDATION_ERROR. Prefix klien bukan 2 sampai 10 huruf besar atau angka.
+        - `PROJECT_NOT_CONFIGURED`: 422 UNPROCESSABLE. Koordinat proyek belum diisi; fitur yang memerlukan lokasi menolaknya.
+      enum: [NOT_ADMIN, ACCESS_ORG_ADMIN_ONLY, ACCESS_OUTSIDE_ADMIN_SCOPE, REGION_NOT_FOUND, BRANCH_NOT_FOUND, CLIENT_NOT_FOUND, PROJECT_NOT_FOUND, TEAM_NOT_FOUND, CODE_TAKEN, HAS_ACTIVE_CHILDREN, BRANCH_LETTER_INVALID, BRANCH_REGION_MISMATCH, CLIENT_PREFIX_INVALID, PROJECT_NOT_CONFIGURED]
 
     # ---------- 7. team_members ----------
     TeamMember:
@@ -3313,9 +3448,10 @@ paths:
     get:
       operationId: getAdminRegions
       tags: [Organization]
-      summary: Daftar koordinator wilayah
+      summary: "Daftar koordinator wilayah"
       description: |
-        ORG_ADMIN melihat semuanya. REGION_ADMIN hanya melihat koordinator wilayahnya sendiri.
+        ORG_ADMIN melihat semuanya. REGION_ADMIN hanya melihat wilayahnya sendiri. Urutan: nomor wilayah (OS2 sebelum OS10). Pencarian `q` mencocokkan kode dan deskripsi.
+      x-roles: [ORG_ADMIN, REGION_ADMIN]
       parameters:
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/LimitParam'
@@ -3323,22 +3459,53 @@ paths:
         - $ref: '#/components/parameters/IsActiveParam'
       responses:
         '200':
-          description: OK
+          description: "OK"
           content:
             application/json:
               schema:
                 allOf:
                   - { $ref: '#/components/schemas/ListEnvelope' }
                   - properties: { data: { type: array, items: { $ref: '#/components/schemas/Region' } } }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "Tanpa web role (FORBIDDEN), atau di luar wewenang (ROLE_DENIED / SCOPE_DENIED)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+        '422':
+          description: "VALIDATION_ERROR: parameter query tidak valid (is_active bukan true/false, page atau limit di luar batas, q lebih dari 100 karakter, business_line di luar enum)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                badIsActive:
+                  summary: "is_active=maybe"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: is_active, code: INVALID, message: "Harus true atau false." } ] }, meta: { request_id: req_abc123 } }
+                badLimit:
+                  summary: "limit=1000"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: limit, code: INVALID, message: "Maksimum 100." } ] }, meta: { request_id: req_abc123 } }
     post:
       operationId: postAdminRegions
       tags: [Organization]
-      summary: Buat koordinator wilayah (hanya ORG_ADMIN)
-      description: 409 DUPLICATE bila kode sudah dipakai.
-      parameters:
-        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      summary: "Buat koordinator wilayah"
+      description: |
+        Hanya ORG_ADMIN. Kode dikirim klien (OS diikuti angka) dan tidak dapat diubah. 409 CODE_TAKEN bila kode sudah dipakai, juga oleh wilayah yang dihapus.
+      x-roles: [ORG_ADMIN]
       requestBody:
         required: true
         content:
@@ -3346,41 +3513,130 @@ paths:
             schema: { $ref: '#/components/schemas/RegionInput' }
       responses:
         '201':
-          description: Created
+          description: "Created"
           content:
             application/json:
               schema:
                 allOf:
                   - { $ref: '#/components/schemas/SuccessEnvelope' }
                   - properties: { data: { $ref: '#/components/schemas/Region' } }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '422': { $ref: '#/components/responses/ValidationError' }
+        '400':
+          description: "BAD_REQUEST: body kosong atau bukan JSON yang valid. 413 PAYLOAD_TOO_LARGE bila body terlalu besar."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                empty:
+                  summary: Body kosong
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Body wajib diisi." }, meta: { request_id: req_abc123 } }
+                notJson:
+                  summary: Bukan JSON
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Body bukan JSON yang valid." }, meta: { request_id: req_abc123 } }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "Tanpa web role (FORBIDDEN), atau di luar wewenang (ROLE_DENIED / SCOPE_DENIED)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+                ACCESS_ORG_ADMIN_ONLY:
+                  summary: "REGION_ADMIN pada aksi khusus ORG_ADMIN"
+                  value: { success: false, error: { code: ROLE_DENIED, message: "Hanya admin organisasi yang dapat melakukan ini.", details: { reason: ACCESS_ORG_ADMIN_ONLY } }, meta: { request_id: req_abc123 } }
+        '409':
+          description: "DUPLICATE: kode sudah dipakai."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                CODE_TAKEN:
+                  value: { success: false, error: { code: DUPLICATE, message: "Kode sudah dipakai.", details: { reason: CODE_TAKEN } }, meta: { request_id: req_abc123 } }
+        '422':
+          description: "VALIDATION_ERROR: kode atau deskripsi tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                badCode:
+                  summary: "Kode salah bentuk (os1, OS01, OS0, XX1, 1K)"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: code, code: INVALID, message: "Harus berformat OS diikuti angka tanpa nol di depan, misalnya OS1." } ] }, meta: { request_id: req_abc123 } }
+                blankDescription:
+                  summary: "Deskripsi kosong atau hanya spasi"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: description, code: INVALID, message: "Tidak boleh kosong." } ] }, meta: { request_id: req_abc123 } }
+                unknownField:
+                  summary: "Field yang tidak boleh dikirim (kode atau kolom pembentuk kode)"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: code, code: INVALID, message: "Field tidak dikenal." } ] }, meta: { request_id: req_abc123 } }
   /admin/regions/{code}:
     parameters:
       - $ref: '#/components/parameters/RegionCodePath'
     get:
       operationId: getAdminRegionsByCode
       tags: [Organization]
-      summary: Detail koordinator wilayah
-      description: REGION_ADMIN di luar wilayahnya mendapat 403 SCOPE_DENIED.
+      summary: "Detail koordinator wilayah"
+      description: |
+        REGION_ADMIN di luar wilayahnya mendapat 403 SCOPE_DENIED, juga untuk kode yang tidak ada.
+      x-roles: [ORG_ADMIN, REGION_ADMIN]
       responses:
         '200':
-          description: OK
+          description: "OK"
           content:
             application/json:
               schema:
                 allOf:
                   - { $ref: '#/components/schemas/SuccessEnvelope' }
                   - properties: { data: { $ref: '#/components/schemas/Region' } }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "Tanpa web role (FORBIDDEN), atau di luar wewenang (ROLE_DENIED / SCOPE_DENIED)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+                ACCESS_OUTSIDE_ADMIN_SCOPE:
+                  summary: "REGION_ADMIN di luar wilayahnya (dijawab sebelum database ditanya, juga untuk kode yang tidak ada)"
+                  value: { success: false, error: { code: SCOPE_DENIED, message: "Data ini berada di luar wilayah yang Anda kelola.", details: { reason: ACCESS_OUTSIDE_ADMIN_SCOPE } }, meta: { request_id: req_abc123 } }
+        '404':
+          description: "Baris tidak ada, sudah dihapus, atau milik organisasi lain (anti-enumerasi)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                REGION_NOT_FOUND:
+                  value: { success: false, error: { code: NOT_FOUND, message: "Koordinator wilayah tidak ditemukan.", details: { reason: REGION_NOT_FOUND } }, meta: { request_id: req_abc123 } }
     patch:
       operationId: patchAdminRegionsByCode
       tags: [Organization]
-      summary: Ubah koordinator wilayah (hanya ORG_ADMIN)
+      summary: "Ubah koordinator wilayah"
+      description: |
+        Hanya ORG_ADMIN. Hanya `description` dan `is_active` yang dapat diubah.
+      x-roles: [ORG_ADMIN]
       requestBody:
         required: true
         content:
@@ -3388,34 +3644,128 @@ paths:
             schema: { $ref: '#/components/schemas/RegionUpdate' }
       responses:
         '200':
-          description: OK
+          description: "OK"
           content:
             application/json:
               schema:
                 allOf:
                   - { $ref: '#/components/schemas/SuccessEnvelope' }
                   - properties: { data: { $ref: '#/components/schemas/Region' } }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '422': { $ref: '#/components/responses/ValidationError' }
+        '400':
+          description: "BAD_REQUEST: body kosong atau bukan JSON yang valid. 413 PAYLOAD_TOO_LARGE bila body terlalu besar."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                empty:
+                  summary: Body kosong
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Body wajib diisi." }, meta: { request_id: req_abc123 } }
+                notJson:
+                  summary: Bukan JSON
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Body bukan JSON yang valid." }, meta: { request_id: req_abc123 } }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "Tanpa web role (FORBIDDEN), atau di luar wewenang (ROLE_DENIED / SCOPE_DENIED)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+                ACCESS_ORG_ADMIN_ONLY:
+                  summary: "REGION_ADMIN pada aksi khusus ORG_ADMIN"
+                  value: { success: false, error: { code: ROLE_DENIED, message: "Hanya admin organisasi yang dapat melakukan ini.", details: { reason: ACCESS_ORG_ADMIN_ONLY } }, meta: { request_id: req_abc123 } }
+        '404':
+          description: "Baris tidak ada, sudah dihapus, atau milik organisasi lain (anti-enumerasi)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                REGION_NOT_FOUND:
+                  value: { success: false, error: { code: NOT_FOUND, message: "Koordinator wilayah tidak ditemukan.", details: { reason: REGION_NOT_FOUND } }, meta: { request_id: req_abc123 } }
+        '422':
+          description: "VALIDATION_ERROR: field tidak dikenal (termasuk kode dan kolom pembentuk kode), tipe salah, atau nilai di luar batas."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unknownField:
+                  summary: "Field yang tidak boleh dikirim (kode atau kolom pembentuk kode)"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: code, code: INVALID, message: "Field tidak dikenal." } ] }, meta: { request_id: req_abc123 } }
+                wrongType:
+                  summary: "Tipe salah, misalnya \"true\" sebagai teks"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: is_active, code: INVALID, message: "Harus bertipe boolean." } ] }, meta: { request_id: req_abc123 } }
+                blankDescription:
+                  summary: "Deskripsi kosong atau hanya spasi"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: description, code: INVALID, message: "Tidak boleh kosong." } ] }, meta: { request_id: req_abc123 } }
     delete:
       operationId: deleteAdminRegionsByCode
       tags: [Organization]
-      summary: Hapus koordinator wilayah (hanya ORG_ADMIN)
+      summary: "Hapus koordinator wilayah"
       description: |
-        Penghapusan lunak. 409 HAS_ACTIVE_CHILDREN selama masih ada kantor cabang aktif, atau
-        selama masih ada REGION_ADMIN yang menunjuk wilayah ini.
+        Hanya ORG_ADMIN. Penghapusan lunak: baris dan kodenya tetap ada sehingga kode tidak dipakai lagi.
+        409 HAS_ACTIVE_CHILDREN selama masih ada admin wilayah yang menunjuknya atau kantor cabang aktif di bawahnya.
+      x-roles: [ORG_ADMIN]
       responses:
         '200':
-          description: OK
+          description: OK (data null)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/SuccessEnvelope' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "Tanpa web role (FORBIDDEN), atau di luar wewenang (ROLE_DENIED / SCOPE_DENIED)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+                ACCESS_ORG_ADMIN_ONLY:
+                  summary: "REGION_ADMIN pada aksi khusus ORG_ADMIN"
+                  value: { success: false, error: { code: ROLE_DENIED, message: "Hanya admin organisasi yang dapat melakukan ini.", details: { reason: ACCESS_ORG_ADMIN_ONLY } }, meta: { request_id: req_abc123 } }
+        '404':
+          description: "Baris tidak ada, sudah dihapus, atau milik organisasi lain (anti-enumerasi)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                REGION_NOT_FOUND:
+                  value: { success: false, error: { code: NOT_FOUND, message: "Koordinator wilayah tidak ditemukan.", details: { reason: REGION_NOT_FOUND } }, meta: { request_id: req_abc123 } }
+        '409':
+          description: "CONFLICT: masih ada data aktif di bawahnya."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                adminPointsAtIt:
+                  value: { success: false, error: { code: CONFLICT, message: "Masih ada admin wilayah yang menunjuk koordinator wilayah ini.", details: { reason: HAS_ACTIVE_CHILDREN } }, meta: { request_id: req_abc123 } }
+                activeBranches:
+                  value: { success: false, error: { code: CONFLICT, message: "Masih ada kantor cabang aktif di koordinator wilayah ini.", details: { reason: HAS_ACTIVE_CHILDREN } }, meta: { request_id: req_abc123 } }
   /admin/client-types:
     get:
       operationId: getAdminClientTypes
@@ -4020,43 +4370,68 @@ paths:
   # ============ CORE ORG ENTITIES (CRUD) ============
   /admin/branches:
     get:
-      x-owner: personel
       operationId: getAdminBranches
       tags: [Organization]
-      summary: List Branch
-      security:
-        - bearerSession: []
-        - oauth2ClientCredentials: [organization:read]
-        - apiKey: []
+      summary: "Daftar kantor cabang"
+      description: |
+        ORG_ADMIN melihat semuanya. REGION_ADMIN hanya melihat wilayahnya sendiri (nomor di depan kode). Urutan: nomor lalu huruf (1K, 1P, 2K). `q` mencocokkan kode dan deskripsi.
+      x-roles: [ORG_ADMIN, REGION_ADMIN]
       parameters:
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/LimitParam'
-        - $ref: '#/components/parameters/SortParam'
         - $ref: '#/components/parameters/QParam'
         - $ref: '#/components/parameters/IsActiveParam'
-        - $ref: '#/components/parameters/BranchIdParam'
+        - $ref: '#/components/parameters/RegionCodeQuery'
       responses:
         '200':
-          description: OK
+          description: "OK"
           content:
             application/json:
               schema:
                 allOf:
                   - { $ref: '#/components/schemas/ListEnvelope' }
                   - properties: { data: { type: array, items: { $ref: '#/components/schemas/Branch' } } }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "Tanpa web role (FORBIDDEN), atau di luar wewenang (ROLE_DENIED / SCOPE_DENIED)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+        '422':
+          description: "VALIDATION_ERROR: parameter query tidak valid (is_active bukan true/false, page atau limit di luar batas, q lebih dari 100 karakter, business_line di luar enum)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                badIsActive:
+                  summary: "is_active=maybe"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: is_active, code: INVALID, message: "Harus true atau false." } ] }, meta: { request_id: req_abc123 } }
+                badLimit:
+                  summary: "limit=1000"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: limit, code: INVALID, message: "Maksimum 100." } ] }, meta: { request_id: req_abc123 } }
     post:
-      x-owner: personel
       operationId: postAdminBranches
       tags: [Organization]
-      summary: Buat Branch
-      security:
-        - bearerSession: []
-        - oauth2ClientCredentials: [organization:write]
-        - apiKey: []
-      parameters:
-        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      summary: "Buat kantor cabang"
+      description: |
+        Server membentuk kode dari `region_code` dan `company_letter` (OS1 + K = 1K).
+        REGION_ADMIN hanya dapat membuat di wilayahnya sendiri (403 SCOPE_DENIED).
+      x-roles: [ORG_ADMIN, REGION_ADMIN]
       requestBody:
         required: true
         content:
@@ -4064,124 +4439,328 @@ paths:
             schema: { $ref: '#/components/schemas/BranchInput' }
       responses:
         '201':
-          description: Created
+          description: "Created"
           content:
             application/json:
               schema:
                 allOf:
                   - { $ref: '#/components/schemas/SuccessEnvelope' }
                   - properties: { data: { $ref: '#/components/schemas/Branch' } }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '422': { $ref: '#/components/responses/ValidationError' }
-  /admin/branches/{id}:
+        '400':
+          description: "BAD_REQUEST: body kosong atau bukan JSON yang valid. 413 PAYLOAD_TOO_LARGE bila body terlalu besar."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                empty:
+                  summary: Body kosong
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Body wajib diisi." }, meta: { request_id: req_abc123 } }
+                notJson:
+                  summary: Bukan JSON
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Body bukan JSON yang valid." }, meta: { request_id: req_abc123 } }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "Tanpa web role (FORBIDDEN), atau di luar wewenang (ROLE_DENIED / SCOPE_DENIED)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+                ACCESS_OUTSIDE_ADMIN_SCOPE:
+                  summary: "REGION_ADMIN di luar wilayahnya (dijawab sebelum database ditanya, juga untuk kode yang tidak ada)"
+                  value: { success: false, error: { code: SCOPE_DENIED, message: "Data ini berada di luar wilayah yang Anda kelola.", details: { reason: ACCESS_OUTSIDE_ADMIN_SCOPE } }, meta: { request_id: req_abc123 } }
+        '404':
+          description: "Baris tidak ada, sudah dihapus, atau milik organisasi lain (anti-enumerasi)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                REGION_NOT_FOUND:
+                  value: { success: false, error: { code: NOT_FOUND, message: "Koordinator wilayah tidak ditemukan.", details: { reason: REGION_NOT_FOUND } }, meta: { request_id: req_abc123 } }
+        '409':
+          description: "DUPLICATE: kode sudah dipakai."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                CODE_TAKEN:
+                  value: { success: false, error: { code: DUPLICATE, message: "Kode sudah dipakai.", details: { reason: CODE_TAKEN } }, meta: { request_id: req_abc123 } }
+        '422':
+          description: "VALIDATION_ERROR: huruf PT bukan K/I/P, region_code salah bentuk, atau deskripsi kosong."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                BRANCH_LETTER_INVALID:
+                  summary: "company_letter = X"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Huruf PT cabang harus K, I, atau P.", details: { reason: BRANCH_LETTER_INVALID } }, meta: { request_id: req_abc123 } }
+                badRegion:
+                  summary: "region_code salah bentuk"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: region_code, code: INVALID, message: "Harus berformat OS diikuti angka tanpa nol di depan, misalnya OS1." } ] }, meta: { request_id: req_abc123 } }
+                blankDescription:
+                  summary: "Deskripsi kosong atau hanya spasi"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: description, code: INVALID, message: "Tidak boleh kosong." } ] }, meta: { request_id: req_abc123 } }
+  /admin/branches/{code}:
     parameters:
-      - $ref: '#/components/parameters/IdPath'
+      - $ref: '#/components/parameters/BranchCodePath'
     get:
-      x-owner: personel
-      operationId: getAdminBranchesById
+      operationId: getAdminBranchesByCode
       tags: [Organization]
-      summary: Detail Branch
-      security:
-        - bearerSession: []
-        - oauth2ClientCredentials: [organization:read]
-        - apiKey: []
+      summary: "Detail kantor cabang"
+      description: |
+        REGION_ADMIN di luar wilayahnya mendapat 403 SCOPE_DENIED, juga untuk kode yang tidak ada.
+      x-roles: [ORG_ADMIN, REGION_ADMIN]
       responses:
         '200':
-          description: OK
+          description: "OK"
           content:
             application/json:
               schema:
                 allOf:
                   - { $ref: '#/components/schemas/SuccessEnvelope' }
                   - properties: { data: { $ref: '#/components/schemas/Branch' } }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { $ref: '#/components/responses/NotFound' }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "Tanpa web role (FORBIDDEN), atau di luar wewenang (ROLE_DENIED / SCOPE_DENIED)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+                ACCESS_OUTSIDE_ADMIN_SCOPE:
+                  summary: "REGION_ADMIN di luar wilayahnya (dijawab sebelum database ditanya, juga untuk kode yang tidak ada)"
+                  value: { success: false, error: { code: SCOPE_DENIED, message: "Data ini berada di luar wilayah yang Anda kelola.", details: { reason: ACCESS_OUTSIDE_ADMIN_SCOPE } }, meta: { request_id: req_abc123 } }
+        '404':
+          description: "Baris tidak ada, sudah dihapus, atau milik organisasi lain (anti-enumerasi)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                BRANCH_NOT_FOUND:
+                  value: { success: false, error: { code: NOT_FOUND, message: "Kantor cabang tidak ditemukan.", details: { reason: BRANCH_NOT_FOUND } }, meta: { request_id: req_abc123 } }
     patch:
-      x-owner: personel
-      operationId: patchAdminBranchesById
+      operationId: patchAdminBranchesByCode
       tags: [Organization]
-      summary: Ubah Branch
-      security:
-        - bearerSession: []
-        - oauth2ClientCredentials: [organization:write]
-        - apiKey: []
+      summary: "Ubah kantor cabang"
+      description: |
+        Kode, wilayah, dan huruf PT tidak dapat diubah. REGION_ADMIN hanya dapat mengubah cabang di wilayahnya.
+      x-roles: [ORG_ADMIN, REGION_ADMIN]
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/BranchInput' }
+            schema: { $ref: '#/components/schemas/BranchUpdate' }
       responses:
         '200':
-          description: OK
+          description: "OK"
           content:
             application/json:
               schema:
                 allOf:
                   - { $ref: '#/components/schemas/SuccessEnvelope' }
                   - properties: { data: { $ref: '#/components/schemas/Branch' } }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '422': { $ref: '#/components/responses/ValidationError' }
+        '400':
+          description: "BAD_REQUEST: body kosong atau bukan JSON yang valid. 413 PAYLOAD_TOO_LARGE bila body terlalu besar."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                empty:
+                  summary: Body kosong
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Body wajib diisi." }, meta: { request_id: req_abc123 } }
+                notJson:
+                  summary: Bukan JSON
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Body bukan JSON yang valid." }, meta: { request_id: req_abc123 } }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "Tanpa web role (FORBIDDEN), atau di luar wewenang (ROLE_DENIED / SCOPE_DENIED)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+                ACCESS_OUTSIDE_ADMIN_SCOPE:
+                  summary: "REGION_ADMIN di luar wilayahnya (dijawab sebelum database ditanya, juga untuk kode yang tidak ada)"
+                  value: { success: false, error: { code: SCOPE_DENIED, message: "Data ini berada di luar wilayah yang Anda kelola.", details: { reason: ACCESS_OUTSIDE_ADMIN_SCOPE } }, meta: { request_id: req_abc123 } }
+        '404':
+          description: "Baris tidak ada, sudah dihapus, atau milik organisasi lain (anti-enumerasi)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                BRANCH_NOT_FOUND:
+                  value: { success: false, error: { code: NOT_FOUND, message: "Kantor cabang tidak ditemukan.", details: { reason: BRANCH_NOT_FOUND } }, meta: { request_id: req_abc123 } }
+        '422':
+          description: "VALIDATION_ERROR: field tidak dikenal (termasuk kode dan kolom pembentuk kode), tipe salah, atau nilai di luar batas."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unknownField:
+                  summary: "Field yang tidak boleh dikirim (kode atau kolom pembentuk kode)"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: code, code: INVALID, message: "Field tidak dikenal." } ] }, meta: { request_id: req_abc123 } }
+                wrongType:
+                  summary: "Tipe salah, misalnya \"true\" sebagai teks"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: is_active, code: INVALID, message: "Harus bertipe boolean." } ] }, meta: { request_id: req_abc123 } }
+                blankDescription:
+                  summary: "Deskripsi kosong atau hanya spasi"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: description, code: INVALID, message: "Tidak boleh kosong." } ] }, meta: { request_id: req_abc123 } }
     delete:
-      x-owner: personel
-      operationId: deleteAdminBranchesById
+      operationId: deleteAdminBranchesByCode
       tags: [Organization]
-      summary: Hapus/non-aktifkan Branch
-      security:
-        - bearerSession: []
-        - oauth2ClientCredentials: [organization:write]
-        - apiKey: []
+      summary: "Hapus kantor cabang"
+      description: |
+        Penghapusan lunak: baris dan kodenya tetap ada. 409 HAS_ACTIVE_CHILDREN selama masih ada klien aktif.
+      x-roles: [ORG_ADMIN, REGION_ADMIN]
       responses:
         '200':
-          description: OK
+          description: OK (data null)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/SuccessEnvelope' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "Tanpa web role (FORBIDDEN), atau di luar wewenang (ROLE_DENIED / SCOPE_DENIED)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+                ACCESS_OUTSIDE_ADMIN_SCOPE:
+                  summary: "REGION_ADMIN di luar wilayahnya (dijawab sebelum database ditanya, juga untuk kode yang tidak ada)"
+                  value: { success: false, error: { code: SCOPE_DENIED, message: "Data ini berada di luar wilayah yang Anda kelola.", details: { reason: ACCESS_OUTSIDE_ADMIN_SCOPE } }, meta: { request_id: req_abc123 } }
+        '404':
+          description: "Baris tidak ada, sudah dihapus, atau milik organisasi lain (anti-enumerasi)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                BRANCH_NOT_FOUND:
+                  value: { success: false, error: { code: NOT_FOUND, message: "Kantor cabang tidak ditemukan.", details: { reason: BRANCH_NOT_FOUND } }, meta: { request_id: req_abc123 } }
+        '409':
+          description: "CONFLICT: masih ada data aktif di bawahnya."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                HAS_ACTIVE_CHILDREN:
+                  value: { success: false, error: { code: CONFLICT, message: "Masih ada klien aktif di kantor cabang ini.", details: { reason: HAS_ACTIVE_CHILDREN } }, meta: { request_id: req_abc123 } }
   /admin/clients:
     get:
-      x-owner: personel
       operationId: getAdminClients
       tags: [Organization]
-      summary: List Client
-      security:
-        - bearerSession: []
-        - oauth2ClientCredentials: [organization:read]
-        - apiKey: []
+      summary: "Daftar klien"
+      description: |
+        ORG_ADMIN melihat semuanya. REGION_ADMIN hanya melihat wilayahnya sendiri (nomor di depan kode). `q` mencocokkan kode dan deskripsi.
+      x-roles: [ORG_ADMIN, REGION_ADMIN]
       parameters:
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/LimitParam'
-        - $ref: '#/components/parameters/SortParam'
         - $ref: '#/components/parameters/QParam'
         - $ref: '#/components/parameters/IsActiveParam'
-        - $ref: '#/components/parameters/BranchIdParam'
+        - $ref: '#/components/parameters/BranchCodeQuery'
       responses:
         '200':
-          description: OK
+          description: "OK"
           content:
             application/json:
               schema:
                 allOf:
                   - { $ref: '#/components/schemas/ListEnvelope' }
                   - properties: { data: { type: array, items: { $ref: '#/components/schemas/Client' } } }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "Tanpa web role (FORBIDDEN), atau di luar wewenang (ROLE_DENIED / SCOPE_DENIED)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+        '422':
+          description: "VALIDATION_ERROR: parameter query tidak valid (is_active bukan true/false, page atau limit di luar batas, q lebih dari 100 karakter, business_line di luar enum)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                badIsActive:
+                  summary: "is_active=maybe"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: is_active, code: INVALID, message: "Harus true atau false." } ] }, meta: { request_id: req_abc123 } }
+                badLimit:
+                  summary: "limit=1000"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: limit, code: INVALID, message: "Maksimum 100." } ] }, meta: { request_id: req_abc123 } }
     post:
-      x-owner: personel
       operationId: postAdminClients
       tags: [Organization]
-      summary: Buat Client
-      security:
-        - bearerSession: []
-        - oauth2ClientCredentials: [organization:write]
-        - apiKey: []
-      parameters:
-        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      summary: "Buat klien"
+      description: |
+        Server membentuk kode dari `branch_code` dan `company_prefix` (1K + IBMI = 1K-IBMI).
+        REGION_ADMIN hanya dapat membuat di wilayahnya sendiri (403 SCOPE_DENIED).
+      x-roles: [ORG_ADMIN, REGION_ADMIN]
       requestBody:
         required: true
         content:
@@ -4189,124 +4768,326 @@ paths:
             schema: { $ref: '#/components/schemas/ClientInput' }
       responses:
         '201':
-          description: Created
+          description: "Created"
           content:
             application/json:
               schema:
                 allOf:
                   - { $ref: '#/components/schemas/SuccessEnvelope' }
                   - properties: { data: { $ref: '#/components/schemas/Client' } }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '422': { $ref: '#/components/responses/ValidationError' }
-  /admin/clients/{id}:
+        '400':
+          description: "BAD_REQUEST: body kosong atau bukan JSON yang valid. 413 PAYLOAD_TOO_LARGE bila body terlalu besar."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                empty:
+                  summary: Body kosong
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Body wajib diisi." }, meta: { request_id: req_abc123 } }
+                notJson:
+                  summary: Bukan JSON
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Body bukan JSON yang valid." }, meta: { request_id: req_abc123 } }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "Tanpa web role (FORBIDDEN), atau di luar wewenang (ROLE_DENIED / SCOPE_DENIED)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+                ACCESS_OUTSIDE_ADMIN_SCOPE:
+                  summary: "REGION_ADMIN di luar wilayahnya (dijawab sebelum database ditanya, juga untuk kode yang tidak ada)"
+                  value: { success: false, error: { code: SCOPE_DENIED, message: "Data ini berada di luar wilayah yang Anda kelola.", details: { reason: ACCESS_OUTSIDE_ADMIN_SCOPE } }, meta: { request_id: req_abc123 } }
+        '404':
+          description: "Baris tidak ada, sudah dihapus, atau milik organisasi lain (anti-enumerasi)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                BRANCH_NOT_FOUND:
+                  value: { success: false, error: { code: NOT_FOUND, message: "Kantor cabang tidak ditemukan.", details: { reason: BRANCH_NOT_FOUND } }, meta: { request_id: req_abc123 } }
+        '409':
+          description: "DUPLICATE: kode sudah dipakai."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                CODE_TAKEN:
+                  value: { success: false, error: { code: DUPLICATE, message: "Kode sudah dipakai.", details: { reason: CODE_TAKEN } }, meta: { request_id: req_abc123 } }
+        '422':
+          description: "VALIDATION_ERROR: prefix tidak valid atau deskripsi kosong."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                CLIENT_PREFIX_INVALID:
+                  summary: "ibmi, A, ABCDEFGHIJK, IB-MI, IB MI"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Prefix klien harus 2 sampai 10 huruf besar atau angka.", details: { reason: CLIENT_PREFIX_INVALID } }, meta: { request_id: req_abc123 } }
+                blankDescription:
+                  summary: "Deskripsi kosong atau hanya spasi"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: description, code: INVALID, message: "Tidak boleh kosong." } ] }, meta: { request_id: req_abc123 } }
+  /admin/clients/{code}:
     parameters:
-      - $ref: '#/components/parameters/IdPath'
+      - $ref: '#/components/parameters/ClientCodePath'
     get:
-      x-owner: personel
-      operationId: getAdminClientsById
+      operationId: getAdminClientsByCode
       tags: [Organization]
-      summary: Detail Client
-      security:
-        - bearerSession: []
-        - oauth2ClientCredentials: [organization:read]
-        - apiKey: []
+      summary: "Detail klien"
+      description: |
+        REGION_ADMIN di luar wilayahnya mendapat 403 SCOPE_DENIED, juga untuk kode yang tidak ada.
+      x-roles: [ORG_ADMIN, REGION_ADMIN]
       responses:
         '200':
-          description: OK
+          description: "OK"
           content:
             application/json:
               schema:
                 allOf:
                   - { $ref: '#/components/schemas/SuccessEnvelope' }
                   - properties: { data: { $ref: '#/components/schemas/Client' } }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { $ref: '#/components/responses/NotFound' }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "Tanpa web role (FORBIDDEN), atau di luar wewenang (ROLE_DENIED / SCOPE_DENIED)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+                ACCESS_OUTSIDE_ADMIN_SCOPE:
+                  summary: "REGION_ADMIN di luar wilayahnya (dijawab sebelum database ditanya, juga untuk kode yang tidak ada)"
+                  value: { success: false, error: { code: SCOPE_DENIED, message: "Data ini berada di luar wilayah yang Anda kelola.", details: { reason: ACCESS_OUTSIDE_ADMIN_SCOPE } }, meta: { request_id: req_abc123 } }
+        '404':
+          description: "Baris tidak ada, sudah dihapus, atau milik organisasi lain (anti-enumerasi)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                CLIENT_NOT_FOUND:
+                  value: { success: false, error: { code: NOT_FOUND, message: "Klien tidak ditemukan.", details: { reason: CLIENT_NOT_FOUND } }, meta: { request_id: req_abc123 } }
     patch:
-      x-owner: personel
-      operationId: patchAdminClientsById
+      operationId: patchAdminClientsByCode
       tags: [Organization]
-      summary: Ubah Client
-      security:
-        - bearerSession: []
-        - oauth2ClientCredentials: [organization:write]
-        - apiKey: []
+      summary: "Ubah klien"
+      description: |
+        Kode, cabang, dan prefix tidak dapat diubah.
+      x-roles: [ORG_ADMIN, REGION_ADMIN]
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/ClientInput' }
+            schema: { $ref: '#/components/schemas/ClientUpdate' }
       responses:
         '200':
-          description: OK
+          description: "OK"
           content:
             application/json:
               schema:
                 allOf:
                   - { $ref: '#/components/schemas/SuccessEnvelope' }
                   - properties: { data: { $ref: '#/components/schemas/Client' } }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '422': { $ref: '#/components/responses/ValidationError' }
+        '400':
+          description: "BAD_REQUEST: body kosong atau bukan JSON yang valid. 413 PAYLOAD_TOO_LARGE bila body terlalu besar."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                empty:
+                  summary: Body kosong
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Body wajib diisi." }, meta: { request_id: req_abc123 } }
+                notJson:
+                  summary: Bukan JSON
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Body bukan JSON yang valid." }, meta: { request_id: req_abc123 } }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "Tanpa web role (FORBIDDEN), atau di luar wewenang (ROLE_DENIED / SCOPE_DENIED)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+                ACCESS_OUTSIDE_ADMIN_SCOPE:
+                  summary: "REGION_ADMIN di luar wilayahnya (dijawab sebelum database ditanya, juga untuk kode yang tidak ada)"
+                  value: { success: false, error: { code: SCOPE_DENIED, message: "Data ini berada di luar wilayah yang Anda kelola.", details: { reason: ACCESS_OUTSIDE_ADMIN_SCOPE } }, meta: { request_id: req_abc123 } }
+        '404':
+          description: "Baris tidak ada, sudah dihapus, atau milik organisasi lain (anti-enumerasi)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                CLIENT_NOT_FOUND:
+                  value: { success: false, error: { code: NOT_FOUND, message: "Klien tidak ditemukan.", details: { reason: CLIENT_NOT_FOUND } }, meta: { request_id: req_abc123 } }
+        '422':
+          description: "VALIDATION_ERROR: field tidak dikenal (termasuk kode dan kolom pembentuk kode), tipe salah, atau nilai di luar batas."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unknownField:
+                  summary: "Field yang tidak boleh dikirim (kode atau kolom pembentuk kode)"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: code, code: INVALID, message: "Field tidak dikenal." } ] }, meta: { request_id: req_abc123 } }
+                wrongType:
+                  summary: "Tipe salah, misalnya \"true\" sebagai teks"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: is_active, code: INVALID, message: "Harus bertipe boolean." } ] }, meta: { request_id: req_abc123 } }
+                blankDescription:
+                  summary: "Deskripsi kosong atau hanya spasi"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: description, code: INVALID, message: "Tidak boleh kosong." } ] }, meta: { request_id: req_abc123 } }
     delete:
-      x-owner: personel
-      operationId: deleteAdminClientsById
+      operationId: deleteAdminClientsByCode
       tags: [Organization]
-      summary: Hapus/non-aktifkan Client
-      security:
-        - bearerSession: []
-        - oauth2ClientCredentials: [organization:write]
-        - apiKey: []
+      summary: "Hapus klien"
+      description: |
+        Penghapusan lunak. 409 HAS_ACTIVE_CHILDREN selama masih ada proyek aktif.
+      x-roles: [ORG_ADMIN, REGION_ADMIN]
       responses:
         '200':
-          description: OK
+          description: OK (data null)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/SuccessEnvelope' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "Tanpa web role (FORBIDDEN), atau di luar wewenang (ROLE_DENIED / SCOPE_DENIED)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+                ACCESS_OUTSIDE_ADMIN_SCOPE:
+                  summary: "REGION_ADMIN di luar wilayahnya (dijawab sebelum database ditanya, juga untuk kode yang tidak ada)"
+                  value: { success: false, error: { code: SCOPE_DENIED, message: "Data ini berada di luar wilayah yang Anda kelola.", details: { reason: ACCESS_OUTSIDE_ADMIN_SCOPE } }, meta: { request_id: req_abc123 } }
+        '404':
+          description: "Baris tidak ada, sudah dihapus, atau milik organisasi lain (anti-enumerasi)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                CLIENT_NOT_FOUND:
+                  value: { success: false, error: { code: NOT_FOUND, message: "Klien tidak ditemukan.", details: { reason: CLIENT_NOT_FOUND } }, meta: { request_id: req_abc123 } }
+        '409':
+          description: "CONFLICT: masih ada data aktif di bawahnya."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                HAS_ACTIVE_CHILDREN:
+                  value: { success: false, error: { code: CONFLICT, message: "Masih ada proyek aktif di klien ini.", details: { reason: HAS_ACTIVE_CHILDREN } }, meta: { request_id: req_abc123 } }
   /admin/projects:
     get:
       operationId: getAdminProjects
       tags: [Organization]
-      summary: List Project
-      security:
-        - bearerSession: []
-        - oauth2ClientCredentials: [organization:read]
-        - apiKey: []
+      summary: "Daftar proyek"
+      description: |
+        ORG_ADMIN melihat semuanya. REGION_ADMIN hanya melihat wilayahnya sendiri (nomor di depan kode). `q` mencocokkan kode dan deskripsi.
+      x-roles: [ORG_ADMIN, REGION_ADMIN]
       parameters:
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/LimitParam'
-        - $ref: '#/components/parameters/SortParam'
         - $ref: '#/components/parameters/QParam'
         - $ref: '#/components/parameters/IsActiveParam'
-        - $ref: '#/components/parameters/ClientIdParam'
-        - $ref: '#/components/parameters/BranchIdParam'
-        - $ref: '#/components/parameters/BusinessLineParam'
+        - $ref: '#/components/parameters/ClientCodeQuery'
+        - $ref: '#/components/parameters/BusinessLineQuery'
       responses:
         '200':
-          description: OK
+          description: "OK"
           content:
             application/json:
               schema:
                 allOf:
                   - { $ref: '#/components/schemas/ListEnvelope' }
                   - properties: { data: { type: array, items: { $ref: '#/components/schemas/Project' } } }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "Tanpa web role (FORBIDDEN), atau di luar wewenang (ROLE_DENIED / SCOPE_DENIED)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+        '422':
+          description: "VALIDATION_ERROR: parameter query tidak valid (is_active bukan true/false, page atau limit di luar batas, q lebih dari 100 karakter, business_line di luar enum)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                badIsActive:
+                  summary: "is_active=maybe"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: is_active, code: INVALID, message: "Harus true atau false." } ] }, meta: { request_id: req_abc123 } }
+                badLimit:
+                  summary: "limit=1000"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: limit, code: INVALID, message: "Maksimum 100." } ] }, meta: { request_id: req_abc123 } }
     post:
       operationId: postAdminProjects
       tags: [Organization]
-      summary: Buat Project
-      security:
-        - bearerSession: []
-        - oauth2ClientCredentials: [organization:write]
-        - apiKey: []
-      parameters:
-        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      summary: "Buat proyek"
+      description: |
+        Server membentuk kode dari `client_code` dan `business_line` (1K-IBMI + security = 1K-IBMI-S).
+        Satu klien paling banyak satu proyek per bidang usaha (409 CODE_TAKEN). Tanpa latitude dan longitude proyek belum dikonfigurasi (`configured: false`).
+      x-roles: [ORG_ADMIN, REGION_ADMIN]
       requestBody:
         required: true
         content:
@@ -4314,119 +5095,334 @@ paths:
             schema: { $ref: '#/components/schemas/ProjectInput' }
       responses:
         '201':
-          description: Created
+          description: "Created"
           content:
             application/json:
               schema:
                 allOf:
                   - { $ref: '#/components/schemas/SuccessEnvelope' }
                   - properties: { data: { $ref: '#/components/schemas/Project' } }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '422': { $ref: '#/components/responses/ValidationError' }
-  /admin/projects/{id}:
+        '400':
+          description: "BAD_REQUEST: body kosong atau bukan JSON yang valid. 413 PAYLOAD_TOO_LARGE bila body terlalu besar."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                empty:
+                  summary: Body kosong
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Body wajib diisi." }, meta: { request_id: req_abc123 } }
+                notJson:
+                  summary: Bukan JSON
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Body bukan JSON yang valid." }, meta: { request_id: req_abc123 } }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "Tanpa web role (FORBIDDEN), atau di luar wewenang (ROLE_DENIED / SCOPE_DENIED)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+                ACCESS_OUTSIDE_ADMIN_SCOPE:
+                  summary: "REGION_ADMIN di luar wilayahnya (dijawab sebelum database ditanya, juga untuk kode yang tidak ada)"
+                  value: { success: false, error: { code: SCOPE_DENIED, message: "Data ini berada di luar wilayah yang Anda kelola.", details: { reason: ACCESS_OUTSIDE_ADMIN_SCOPE } }, meta: { request_id: req_abc123 } }
+        '404':
+          description: "Baris tidak ada, sudah dihapus, atau milik organisasi lain (anti-enumerasi)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                CLIENT_NOT_FOUND:
+                  value: { success: false, error: { code: NOT_FOUND, message: "Klien tidak ditemukan.", details: { reason: CLIENT_NOT_FOUND } }, meta: { request_id: req_abc123 } }
+        '409':
+          description: "DUPLICATE: kode sudah dipakai."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                CODE_TAKEN:
+                  value: { success: false, error: { code: DUPLICATE, message: "Kode sudah dipakai.", details: { reason: CODE_TAKEN } }, meta: { request_id: req_abc123 } }
+        '422':
+          description: "VALIDATION_ERROR: bidang usaha, zona waktu, titik GPS, radius, kontak, atau prefix tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                badTimezone:
+                  summary: "timezone di luar tiga zona Indonesia"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: timezone, code: INVALID, message: "Harus salah satu dari Asia/Jakarta, Asia/Makassar, Asia/Jayapura." } ] }, meta: { request_id: req_abc123 } }
+                halfPoint:
+                  summary: "latitude tanpa longitude (atau sebaliknya)"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: latitude, code: INVALID, message: "Latitude dan longitude harus diisi bersama." } ] }, meta: { request_id: req_abc123 } }
+                badBusinessLine:
+                  summary: "business_line di luar enum"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: business_line, code: INVALID, message: "Harus security atau cleaning." } ] }, meta: { request_id: req_abc123 } }
+                CLIENT_PREFIX_INVALID:
+                  summary: "company_prefix salah bentuk"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Prefix klien harus 2 sampai 10 huruf besar atau angka.", details: { reason: CLIENT_PREFIX_INVALID } }, meta: { request_id: req_abc123 } }
+                blankDescription:
+                  summary: "Deskripsi kosong atau hanya spasi"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: description, code: INVALID, message: "Tidak boleh kosong." } ] }, meta: { request_id: req_abc123 } }
+  /admin/projects/{code}:
     parameters:
-      - $ref: '#/components/parameters/IdPath'
+      - $ref: '#/components/parameters/ProjectCodePath'
     get:
-      operationId: getAdminProjectsById
+      operationId: getAdminProjectsByCode
       tags: [Organization]
-      summary: Detail Project
-      security:
-        - bearerSession: []
-        - oauth2ClientCredentials: [organization:read]
-        - apiKey: []
+      summary: "Detail proyek"
+      description: |
+        REGION_ADMIN di luar wilayahnya mendapat 403 SCOPE_DENIED, juga untuk kode yang tidak ada.
+      x-roles: [ORG_ADMIN, REGION_ADMIN]
       responses:
         '200':
-          description: OK
+          description: "OK"
           content:
             application/json:
               schema:
                 allOf:
                   - { $ref: '#/components/schemas/SuccessEnvelope' }
                   - properties: { data: { $ref: '#/components/schemas/Project' } }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { $ref: '#/components/responses/NotFound' }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "Tanpa web role (FORBIDDEN), atau di luar wewenang (ROLE_DENIED / SCOPE_DENIED)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+                ACCESS_OUTSIDE_ADMIN_SCOPE:
+                  summary: "REGION_ADMIN di luar wilayahnya (dijawab sebelum database ditanya, juga untuk kode yang tidak ada)"
+                  value: { success: false, error: { code: SCOPE_DENIED, message: "Data ini berada di luar wilayah yang Anda kelola.", details: { reason: ACCESS_OUTSIDE_ADMIN_SCOPE } }, meta: { request_id: req_abc123 } }
+        '404':
+          description: "Baris tidak ada, sudah dihapus, atau milik organisasi lain (anti-enumerasi)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                PROJECT_NOT_FOUND:
+                  value: { success: false, error: { code: NOT_FOUND, message: "Proyek tidak ditemukan.", details: { reason: PROJECT_NOT_FOUND } }, meta: { request_id: req_abc123 } }
     patch:
-      operationId: patchAdminProjectsById
+      operationId: patchAdminProjectsByCode
       tags: [Organization]
-      summary: Ubah Project
-      security:
-        - bearerSession: []
-        - oauth2ClientCredentials: [organization:write]
-        - apiKey: []
+      summary: "Ubah proyek"
+      description: |
+        Kode, klien, dan bidang usaha tidak dapat diubah. Nilai yang sudah diisi dapat diganti tetapi tidak dikosongkan.
+      x-roles: [ORG_ADMIN, REGION_ADMIN]
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/ProjectInput' }
+            schema: { $ref: '#/components/schemas/ProjectUpdate' }
       responses:
         '200':
-          description: OK
+          description: "OK"
           content:
             application/json:
               schema:
                 allOf:
                   - { $ref: '#/components/schemas/SuccessEnvelope' }
                   - properties: { data: { $ref: '#/components/schemas/Project' } }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '422': { $ref: '#/components/responses/ValidationError' }
+        '400':
+          description: "BAD_REQUEST: body kosong atau bukan JSON yang valid. 413 PAYLOAD_TOO_LARGE bila body terlalu besar."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                empty:
+                  summary: Body kosong
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Body wajib diisi." }, meta: { request_id: req_abc123 } }
+                notJson:
+                  summary: Bukan JSON
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Body bukan JSON yang valid." }, meta: { request_id: req_abc123 } }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "Tanpa web role (FORBIDDEN), atau di luar wewenang (ROLE_DENIED / SCOPE_DENIED)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+                ACCESS_OUTSIDE_ADMIN_SCOPE:
+                  summary: "REGION_ADMIN di luar wilayahnya (dijawab sebelum database ditanya, juga untuk kode yang tidak ada)"
+                  value: { success: false, error: { code: SCOPE_DENIED, message: "Data ini berada di luar wilayah yang Anda kelola.", details: { reason: ACCESS_OUTSIDE_ADMIN_SCOPE } }, meta: { request_id: req_abc123 } }
+        '404':
+          description: "Baris tidak ada, sudah dihapus, atau milik organisasi lain (anti-enumerasi)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                PROJECT_NOT_FOUND:
+                  value: { success: false, error: { code: NOT_FOUND, message: "Proyek tidak ditemukan.", details: { reason: PROJECT_NOT_FOUND } }, meta: { request_id: req_abc123 } }
+        '422':
+          description: "VALIDATION_ERROR: field tidak dikenal (termasuk kode dan kolom pembentuk kode), tipe salah, atau nilai di luar batas."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unknownField:
+                  summary: "Field yang tidak boleh dikirim (kode atau kolom pembentuk kode)"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: code, code: INVALID, message: "Field tidak dikenal." } ] }, meta: { request_id: req_abc123 } }
+                wrongType:
+                  summary: "Tipe salah, misalnya \"true\" sebagai teks"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: is_active, code: INVALID, message: "Harus bertipe boolean." } ] }, meta: { request_id: req_abc123 } }
+                blankDescription:
+                  summary: "Deskripsi kosong atau hanya spasi"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: description, code: INVALID, message: "Tidak boleh kosong." } ] }, meta: { request_id: req_abc123 } }
     delete:
-      operationId: deleteAdminProjectsById
+      operationId: deleteAdminProjectsByCode
       tags: [Organization]
-      summary: Hapus/non-aktifkan Project
-      security:
-        - bearerSession: []
-        - oauth2ClientCredentials: [organization:write]
-        - apiKey: []
+      summary: "Hapus proyek"
+      description: |
+        Penghapusan lunak. 409 HAS_ACTIVE_CHILDREN selama masih ada regu aktif.
+      x-roles: [ORG_ADMIN, REGION_ADMIN]
       responses:
         '200':
-          description: OK
+          description: OK (data null)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/SuccessEnvelope' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "Tanpa web role (FORBIDDEN), atau di luar wewenang (ROLE_DENIED / SCOPE_DENIED)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+                ACCESS_OUTSIDE_ADMIN_SCOPE:
+                  summary: "REGION_ADMIN di luar wilayahnya (dijawab sebelum database ditanya, juga untuk kode yang tidak ada)"
+                  value: { success: false, error: { code: SCOPE_DENIED, message: "Data ini berada di luar wilayah yang Anda kelola.", details: { reason: ACCESS_OUTSIDE_ADMIN_SCOPE } }, meta: { request_id: req_abc123 } }
+        '404':
+          description: "Baris tidak ada, sudah dihapus, atau milik organisasi lain (anti-enumerasi)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                PROJECT_NOT_FOUND:
+                  value: { success: false, error: { code: NOT_FOUND, message: "Proyek tidak ditemukan.", details: { reason: PROJECT_NOT_FOUND } }, meta: { request_id: req_abc123 } }
+        '409':
+          description: "CONFLICT: masih ada data aktif di bawahnya."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                HAS_ACTIVE_CHILDREN:
+                  value: { success: false, error: { code: CONFLICT, message: "Masih ada regu aktif di proyek ini.", details: { reason: HAS_ACTIVE_CHILDREN } }, meta: { request_id: req_abc123 } }
   /admin/teams:
     get:
       operationId: getAdminTeams
       tags: [Organization]
-      summary: List Team
-      security:
-        - bearerSession: []
-        - oauth2ClientCredentials: [organization:read]
-        - apiKey: []
+      summary: "Daftar regu"
+      description: |
+        ORG_ADMIN melihat semuanya. REGION_ADMIN hanya melihat wilayahnya sendiri (nomor di depan kode). Urutan: proyek, lalu nomor (S2 sebelum S10). `q` mencocokkan kode dan deskripsi.
+      x-roles: [ORG_ADMIN, REGION_ADMIN]
       parameters:
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/LimitParam'
-        - $ref: '#/components/parameters/SortParam'
         - $ref: '#/components/parameters/QParam'
         - $ref: '#/components/parameters/IsActiveParam'
-        - $ref: '#/components/parameters/ProjectIdParam'
+        - $ref: '#/components/parameters/ProjectCodeQuery'
       responses:
         '200':
-          description: OK
+          description: "OK"
           content:
             application/json:
               schema:
                 allOf:
                   - { $ref: '#/components/schemas/ListEnvelope' }
                   - properties: { data: { type: array, items: { $ref: '#/components/schemas/Team' } } }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "Tanpa web role (FORBIDDEN), atau di luar wewenang (ROLE_DENIED / SCOPE_DENIED)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+        '422':
+          description: "VALIDATION_ERROR: parameter query tidak valid (is_active bukan true/false, page atau limit di luar batas, q lebih dari 100 karakter, business_line di luar enum)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                badIsActive:
+                  summary: "is_active=maybe"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: is_active, code: INVALID, message: "Harus true atau false." } ] }, meta: { request_id: req_abc123 } }
+                badLimit:
+                  summary: "limit=1000"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: limit, code: INVALID, message: "Maksimum 100." } ] }, meta: { request_id: req_abc123 } }
     post:
       operationId: postAdminTeams
       tags: [Organization]
-      summary: Buat Team
-      security:
-        - bearerSession: []
-        - oauth2ClientCredentials: [organization:write]
-        - apiKey: []
-      parameters:
-        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      summary: "Buat regu"
+      description: |
+        Server membentuk kode dari `project_code` dan nomor berikutnya milik proyek (1K-IBMI-S1, S2, ...).
+        Nomor tidak pernah dipakai ulang, juga setelah regunya dihapus; create yang gagal tidak menghabiskan nomor.
+      x-roles: [ORG_ADMIN, REGION_ADMIN]
       requestBody:
         required: true
         content:
@@ -4434,82 +5430,262 @@ paths:
             schema: { $ref: '#/components/schemas/TeamInput' }
       responses:
         '201':
-          description: Created
+          description: "Created"
           content:
             application/json:
               schema:
                 allOf:
                   - { $ref: '#/components/schemas/SuccessEnvelope' }
                   - properties: { data: { $ref: '#/components/schemas/Team' } }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '422': { $ref: '#/components/responses/ValidationError' }
-  /admin/teams/{id}:
+        '400':
+          description: "BAD_REQUEST: body kosong atau bukan JSON yang valid. 413 PAYLOAD_TOO_LARGE bila body terlalu besar."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                empty:
+                  summary: Body kosong
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Body wajib diisi." }, meta: { request_id: req_abc123 } }
+                notJson:
+                  summary: Bukan JSON
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Body bukan JSON yang valid." }, meta: { request_id: req_abc123 } }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "Tanpa web role (FORBIDDEN), atau di luar wewenang (ROLE_DENIED / SCOPE_DENIED)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+                ACCESS_OUTSIDE_ADMIN_SCOPE:
+                  summary: "REGION_ADMIN di luar wilayahnya (dijawab sebelum database ditanya, juga untuk kode yang tidak ada)"
+                  value: { success: false, error: { code: SCOPE_DENIED, message: "Data ini berada di luar wilayah yang Anda kelola.", details: { reason: ACCESS_OUTSIDE_ADMIN_SCOPE } }, meta: { request_id: req_abc123 } }
+        '404':
+          description: "Baris tidak ada, sudah dihapus, atau milik organisasi lain (anti-enumerasi)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                PROJECT_NOT_FOUND:
+                  value: { success: false, error: { code: NOT_FOUND, message: "Proyek tidak ditemukan.", details: { reason: PROJECT_NOT_FOUND } }, meta: { request_id: req_abc123 } }
+        '409':
+          description: "DUPLICATE: kode sudah dipakai."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                CODE_TAKEN:
+                  value: { success: false, error: { code: DUPLICATE, message: "Kode sudah dipakai.", details: { reason: CODE_TAKEN } }, meta: { request_id: req_abc123 } }
+        '422':
+          description: "VALIDATION_ERROR: deskripsi kosong, angka di luar batas, atau relationship officer bukan personil organisasi ini."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                badOfficer:
+                  summary: "Personil milik organisasi lain atau tidak ada"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: relationship_officer_personnel_id, code: INVALID, message: "Personil tidak ditemukan." } ] }, meta: { request_id: req_abc123 } }
+                blankDescription:
+                  summary: "Deskripsi kosong atau hanya spasi"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: description, code: INVALID, message: "Tidak boleh kosong." } ] }, meta: { request_id: req_abc123 } }
+  /admin/teams/{code}:
     parameters:
-      - $ref: '#/components/parameters/IdPath'
+      - $ref: '#/components/parameters/TeamCodePath'
     get:
-      operationId: getAdminTeamsById
+      operationId: getAdminTeamsByCode
       tags: [Organization]
-      summary: Detail Team
-      security:
-        - bearerSession: []
-        - oauth2ClientCredentials: [organization:read]
-        - apiKey: []
+      summary: "Detail regu"
+      description: |
+        REGION_ADMIN di luar wilayahnya mendapat 403 SCOPE_DENIED, juga untuk kode yang tidak ada.
+      x-roles: [ORG_ADMIN, REGION_ADMIN]
       responses:
         '200':
-          description: OK
+          description: "OK"
           content:
             application/json:
               schema:
                 allOf:
                   - { $ref: '#/components/schemas/SuccessEnvelope' }
                   - properties: { data: { $ref: '#/components/schemas/Team' } }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { $ref: '#/components/responses/NotFound' }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "Tanpa web role (FORBIDDEN), atau di luar wewenang (ROLE_DENIED / SCOPE_DENIED)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+                ACCESS_OUTSIDE_ADMIN_SCOPE:
+                  summary: "REGION_ADMIN di luar wilayahnya (dijawab sebelum database ditanya, juga untuk kode yang tidak ada)"
+                  value: { success: false, error: { code: SCOPE_DENIED, message: "Data ini berada di luar wilayah yang Anda kelola.", details: { reason: ACCESS_OUTSIDE_ADMIN_SCOPE } }, meta: { request_id: req_abc123 } }
+        '404':
+          description: "Baris tidak ada, sudah dihapus, atau milik organisasi lain (anti-enumerasi)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                TEAM_NOT_FOUND:
+                  value: { success: false, error: { code: NOT_FOUND, message: "Regu tidak ditemukan.", details: { reason: TEAM_NOT_FOUND } }, meta: { request_id: req_abc123 } }
     patch:
-      operationId: patchAdminTeamsById
+      operationId: patchAdminTeamsByCode
       tags: [Organization]
-      summary: Ubah Team
-      security:
-        - bearerSession: []
-        - oauth2ClientCredentials: [organization:write]
-        - apiKey: []
+      summary: "Ubah regu"
+      description: |
+        Kode dan proyek tidak dapat diubah.
+      x-roles: [ORG_ADMIN, REGION_ADMIN]
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/TeamInput' }
+            schema: { $ref: '#/components/schemas/TeamUpdate' }
       responses:
         '200':
-          description: OK
+          description: "OK"
           content:
             application/json:
               schema:
                 allOf:
                   - { $ref: '#/components/schemas/SuccessEnvelope' }
                   - properties: { data: { $ref: '#/components/schemas/Team' } }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '422': { $ref: '#/components/responses/ValidationError' }
+        '400':
+          description: "BAD_REQUEST: body kosong atau bukan JSON yang valid. 413 PAYLOAD_TOO_LARGE bila body terlalu besar."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                empty:
+                  summary: Body kosong
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Body wajib diisi." }, meta: { request_id: req_abc123 } }
+                notJson:
+                  summary: Bukan JSON
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Body bukan JSON yang valid." }, meta: { request_id: req_abc123 } }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "Tanpa web role (FORBIDDEN), atau di luar wewenang (ROLE_DENIED / SCOPE_DENIED)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+                ACCESS_OUTSIDE_ADMIN_SCOPE:
+                  summary: "REGION_ADMIN di luar wilayahnya (dijawab sebelum database ditanya, juga untuk kode yang tidak ada)"
+                  value: { success: false, error: { code: SCOPE_DENIED, message: "Data ini berada di luar wilayah yang Anda kelola.", details: { reason: ACCESS_OUTSIDE_ADMIN_SCOPE } }, meta: { request_id: req_abc123 } }
+        '404':
+          description: "Baris tidak ada, sudah dihapus, atau milik organisasi lain (anti-enumerasi)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                TEAM_NOT_FOUND:
+                  value: { success: false, error: { code: NOT_FOUND, message: "Regu tidak ditemukan.", details: { reason: TEAM_NOT_FOUND } }, meta: { request_id: req_abc123 } }
+        '422':
+          description: "VALIDATION_ERROR: field tidak dikenal (termasuk kode dan kolom pembentuk kode), tipe salah, atau nilai di luar batas."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unknownField:
+                  summary: "Field yang tidak boleh dikirim (kode atau kolom pembentuk kode)"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: code, code: INVALID, message: "Field tidak dikenal." } ] }, meta: { request_id: req_abc123 } }
+                wrongType:
+                  summary: "Tipe salah, misalnya \"true\" sebagai teks"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: is_active, code: INVALID, message: "Harus bertipe boolean." } ] }, meta: { request_id: req_abc123 } }
+                blankDescription:
+                  summary: "Deskripsi kosong atau hanya spasi"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: description, code: INVALID, message: "Tidak boleh kosong." } ] }, meta: { request_id: req_abc123 } }
     delete:
-      operationId: deleteAdminTeamsById
+      operationId: deleteAdminTeamsByCode
       tags: [Organization]
-      summary: Hapus/non-aktifkan Team
-      security:
-        - bearerSession: []
-        - oauth2ClientCredentials: [organization:write]
-        - apiKey: []
+      summary: "Hapus regu"
+      description: |
+        Penghapusan lunak; nomor regu tidak dipakai ulang. Tidak pernah 409 pada fase ini.
+      x-roles: [ORG_ADMIN, REGION_ADMIN]
       responses:
         '200':
-          description: OK
+          description: OK (data null)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/SuccessEnvelope' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "Tanpa web role (FORBIDDEN), atau di luar wewenang (ROLE_DENIED / SCOPE_DENIED)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+                ACCESS_OUTSIDE_ADMIN_SCOPE:
+                  summary: "REGION_ADMIN di luar wilayahnya (dijawab sebelum database ditanya, juga untuk kode yang tidak ada)"
+                  value: { success: false, error: { code: SCOPE_DENIED, message: "Data ini berada di luar wilayah yang Anda kelola.", details: { reason: ACCESS_OUTSIDE_ADMIN_SCOPE } }, meta: { request_id: req_abc123 } }
+        '404':
+          description: "Baris tidak ada, sudah dihapus, atau milik organisasi lain (anti-enumerasi)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                TEAM_NOT_FOUND:
+                  value: { success: false, error: { code: NOT_FOUND, message: "Regu tidak ditemukan.", details: { reason: TEAM_NOT_FOUND } }, meta: { request_id: req_abc123 } }
+        '409':
+          description: "CONFLICT: masih ada data aktif di bawahnya."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                HAS_ACTIVE_CHILDREN:
+                  summary: "Tidak terjadi pada fase 02.2; disiapkan untuk keanggotaan regu (02.3)"
+                  value: { success: false, error: { code: CONFLICT, message: "Masih ada data aktif di bawahnya. Pindahkan atau hapus terlebih dahulu.", details: { reason: HAS_ACTIVE_CHILDREN } }, meta: { request_id: req_abc123 } }
   /admin/personnels:
     get:
       x-owner: personel
@@ -5082,63 +6258,6 @@ paths:
   # projects.emergency_contacts.
 
   # ============ ORG: import/export & sub-actions ============
-  /admin/branches/import:
-    post:
-      x-owner: personel
-      operationId: postAdminBranchesImport
-      tags: [Organization]
-      summary: Import Cabang (Excel, toleran)
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              properties: { file: { type: string, format: binary } }
-      responses:
-        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessEnvelope' } } } }
-        '422': { $ref: '#/components/responses/ValidationError' }
-  /admin/branches/export:
-    get:
-      x-owner: personel
-      operationId: getAdminBranchesExport
-      tags: [Organization]
-      summary: Export Cabang
-      parameters:
-        - name: format
-          in: query
-          schema: { type: string, enum: [xlsx, pdf], default: xlsx }
-      responses:
-        '200':
-          description: File biner
-          content:
-            application/octet-stream: { schema: { type: string, format: binary } }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-  /admin/clients/import:
-    post:
-      x-owner: personel
-      operationId: postAdminClientsImport
-      tags: [Organization]
-      summary: Import Klien (Excel, toleran)
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema: { type: object, properties: { file: { type: string, format: binary } } }
-      responses:
-        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessEnvelope' } } } }
-        '422': { $ref: '#/components/responses/ValidationError' }
-  /admin/clients/export:
-    get:
-      x-owner: personel
-      operationId: getAdminClientsExport
-      tags: [Organization]
-      summary: Export Klien
-      parameters:
-        - { name: format, in: query, schema: { type: string, enum: [xlsx, pdf], default: xlsx } }
-      responses:
-        '200': { description: File biner, content: { application/octet-stream: { schema: { type: string, format: binary } } } }
-        '401': { $ref: '#/components/responses/Unauthorized' }
   /admin/personnels/import:
     post:
       x-owner: personel
@@ -5164,22 +6283,6 @@ paths:
       responses:
         '200': { description: File biner, content: { application/octet-stream: { schema: { type: string, format: binary } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
-  /admin/projects/{id}/deactivate:
-    parameters:
-      - $ref: '#/components/parameters/IdPath'
-    post:
-      operationId: postAdminProjectsByIdDeactivate
-      tags: [Organization]
-      summary: Non-aktif/aktifkan kembali proyek
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/ActivationInput' }
-      responses:
-        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/Project' } } } ] } } } }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { $ref: '#/components/responses/NotFound' }
   /admin/personnels/{id}/documents:
     parameters:
       - $ref: '#/components/parameters/IdPath'

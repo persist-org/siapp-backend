@@ -11,6 +11,18 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countActiveBranchesOfRegion = `-- name: CountActiveBranchesOfRegion :one
+SELECT count(*) FROM branches WHERE region_code = $1 AND deleted_at IS NULL AND active
+`
+
+// A region cannot be deleted while an active kantor cabang sits under it.
+func (q *Queries) CountActiveBranchesOfRegion(ctx context.Context, regionCode string) (int64, error) {
+	row := q.db.QueryRow(ctx, countActiveBranchesOfRegion, regionCode)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countRegions = `-- name: CountRegions :one
 SELECT count(*) FROM regions
 WHERE deleted_at IS NULL
@@ -36,8 +48,7 @@ const countWebRolesOfRegion = `-- name: CountWebRolesOfRegion :one
 SELECT count(*) FROM web_role_assignments WHERE region_code = $1
 `
 
-// A region cannot be deleted while a REGION_ADMIN points at it. Phase 02.2 adds the same
-// check for active kantor cabang.
+// A region cannot be deleted while a REGION_ADMIN points at it.
 func (q *Queries) CountWebRolesOfRegion(ctx context.Context, regionCode pgtype.Text) (int64, error) {
 	row := q.db.QueryRow(ctx, countWebRolesOfRegion, regionCode)
 	var count int64

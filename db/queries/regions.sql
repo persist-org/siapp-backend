@@ -46,7 +46,10 @@ RETURNING *;
 UPDATE regions SET deleted_at = @now, active = false, updated_at = @now
 WHERE code = @code AND deleted_at IS NULL;
 
--- A region cannot be deleted while a REGION_ADMIN points at it. Phase 02.2 adds the same
--- check for active kantor cabang.
+-- A region cannot be deleted while a REGION_ADMIN points at it.
 -- name: CountWebRolesOfRegion :one
 SELECT count(*) FROM web_role_assignments WHERE region_code = $1;
+
+-- A region cannot be deleted while an active kantor cabang sits under it.
+-- name: CountActiveBranchesOfRegion :one
+SELECT count(*) FROM branches WHERE region_code = $1 AND deleted_at IS NULL AND active;

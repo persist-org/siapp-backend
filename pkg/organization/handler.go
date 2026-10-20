@@ -5,21 +5,46 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"siapp/internal/apigen"
 	"siapp/pkg/access"
 	"siapp/pkg/platform/apperr"
 	"siapp/pkg/platform/auth"
+	"siapp/pkg/platform/clock"
 	"siapp/pkg/platform/httpx"
 )
 
+// Usecases is every organization usecase, built over one pool and clock.
+type Usecases struct {
+	Regions  *Regions
+	Branches *Branches
+	Clients  *Clients
+	Projects *Projects
+	Teams    *Teams
+}
+
+// NewUsecases returns the organization usecases.
+func NewUsecases(pool *pgxpool.Pool, c clock.Clock) Usecases {
+	return Usecases{
+		Regions: NewRegions(pool, c), Branches: NewBranches(pool, c), Clients: NewClients(pool, c),
+		Projects: NewProjects(pool, c), Teams: NewTeams(pool, c),
+	}
+}
+
 // Handler serves the organization endpoints under /api/v1/admin.
 type Handler struct {
-	regions *Regions
+	regions  *Regions
+	branches *Branches
+	clients  *Clients
+	projects *Projects
+	teams    *Teams
 }
 
 // NewHandler returns the organization Handler.
-func NewHandler(regions *Regions) *Handler { return &Handler{regions: regions} }
+func NewHandler(u Usecases) *Handler {
+	return &Handler{regions: u.Regions, branches: u.Branches, clients: u.Clients, projects: u.Projects, teams: u.Teams}
+}
 
 // MountAdmin adds the routes to the /api/v1/admin group, behind access.RequireAdmin (cmd/api
 // mounts it once on the group). The paths are relative to the group.
@@ -29,6 +54,7 @@ func (h *Handler) MountAdmin(r chi.Router) {
 	r.Get("/regions/{code}", h.getRegion)
 	r.Patch("/regions/{code}", h.updateRegion)
 	r.Delete("/regions/{code}", h.deleteRegion)
+	h.mountHierarchy(r)
 }
 
 // caller returns who is asking and what they may reach. Both are set by auth.Require and

@@ -12,6 +12,48 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type BusinessLine string
+
+const (
+	BusinessLineSecurity BusinessLine = "security"
+	BusinessLineCleaning BusinessLine = "cleaning"
+)
+
+func (e *BusinessLine) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = BusinessLine(s)
+	case string:
+		*e = BusinessLine(s)
+	default:
+		return fmt.Errorf("unsupported scan type for BusinessLine: %T", src)
+	}
+	return nil
+}
+
+type NullBusinessLine struct {
+	BusinessLine BusinessLine
+	Valid        bool // Valid is true if BusinessLine is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullBusinessLine) Scan(value interface{}) error {
+	if value == nil {
+		ns.BusinessLine, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.BusinessLine.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullBusinessLine) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.BusinessLine), nil
+}
+
 type DevicePlatform string
 
 const (
@@ -282,6 +324,48 @@ type AuditLog struct {
 	EntityCode       pgtype.Text
 }
 
+type Branch struct {
+	OrganizationID int64
+	Code           string
+	RegionCode     string
+	CompanyLetter  string
+	ManagerName    pgtype.Text
+	City           pgtype.Text
+	Phone          pgtype.Text
+	Fax            pgtype.Text
+	Email          pgtype.Text
+	Address        pgtype.Text
+	ZipCode        pgtype.Text
+	Description    string
+	Active         bool
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+	DeletedAt      pgtype.Timestamptz
+}
+
+type Client struct {
+	OrganizationID     int64
+	Code               string
+	BranchCode         string
+	Description        string
+	CompanyCode        pgtype.Text
+	CompanyPrefix      string
+	CompanyBidangUsaha pgtype.Text
+	DirectorName       pgtype.Text
+	City               pgtype.Text
+	Phone              pgtype.Text
+	Fax                pgtype.Text
+	Address            pgtype.Text
+	ZipCode            pgtype.Text
+	Email              pgtype.Text
+	Active             bool
+	CreatedBy          pgtype.Int8
+	ModifyBy           pgtype.Int8
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
+	DeletedAt          pgtype.Timestamptz
+}
+
 type Device struct {
 	ID             int64
 	OrganizationID int64
@@ -348,6 +432,36 @@ type Personnel struct {
 	CompanyName    pgtype.Text
 }
 
+type Project struct {
+	OrganizationID           int64
+	Code                     string
+	ClientCode               string
+	Description              string
+	CompanyCode              pgtype.Text
+	CompanyPrefix            pgtype.Text
+	CompanyBidangUsaha       pgtype.Text
+	BusinessLine             BusinessLine
+	City                     pgtype.Text
+	Address                  pgtype.Text
+	Phone                    pgtype.Text
+	Email                    pgtype.Text
+	Timezone                 string
+	Latitude                 *float64
+	Longitude                *float64
+	AttendanceRadiusMeters   int32
+	StrictAttendanceGeofence bool
+	GpsTrackingEnabled       bool
+	PatrolIntervalMinutes    pgtype.Int4
+	EmergencyContacts        json.RawMessage
+	NextTeamNumber           int32
+	Active                   bool
+	CreatedBy                pgtype.Int8
+	ModifyBy                 pgtype.Int8
+	CreatedAt                pgtype.Timestamptz
+	UpdatedAt                pgtype.Timestamptz
+	DeletedAt                pgtype.Timestamptz
+}
+
 type Region struct {
 	OrganizationID int64
 	Code           string
@@ -376,6 +490,23 @@ type Session struct {
 	CreatedAt        pgtype.Timestamptz
 	UpdatedAt        pgtype.Timestamptz
 	RevokeReason     NullSessionRevokeReason
+}
+
+type Team struct {
+	OrganizationID                 int64
+	Code                           string
+	ProjectCode                    string
+	Description                    string
+	Phone                          pgtype.Text
+	MinPersonnel                   int32
+	Notes                          pgtype.Text
+	ValidateShift                  bool
+	RejectAttendanceAfterTolerance bool
+	RelationshipOfficerPersonnelID pgtype.Int8
+	Active                         bool
+	CreatedAt                      pgtype.Timestamptz
+	UpdatedAt                      pgtype.Timestamptz
+	DeletedAt                      pgtype.Timestamptz
 }
 
 type WebRoleAssignment struct {

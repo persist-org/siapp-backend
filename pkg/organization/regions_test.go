@@ -35,7 +35,7 @@ func newEnv(t *testing.T) *env {
 	t.Helper()
 	testkit.Reset(t)
 	pool := testkit.Pool(t)
-	regions := organization.NewHandler(organization.NewRegions(pool, clock.System{}))
+	regions := organization.NewHandler(organization.NewUsecases(pool, clock.System{}))
 	roles := access.NewHandler(access.NewWebRoles(pool, clock.System{}))
 	srv := testkit.NewServer(t, testkit.Deps{Mount: func(r chi.Router) {
 		r.Route("/api/v1/admin", func(admin chi.Router) {

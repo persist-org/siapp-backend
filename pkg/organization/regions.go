@@ -26,9 +26,6 @@ import (
 // leading zero. The regions table has the same CHECK.
 var regionCodePattern = regexp.MustCompile(`^OS[1-9][0-9]*$`)
 
-// maxDescriptionLen bounds a description (the region's name).
-const maxDescriptionLen = 200
-
 // Region is one koordinator wilayah. Its description is its name ("Outsourcing 1").
 type Region struct {
 	Code        string
@@ -201,8 +198,7 @@ func (r *Regions) Update(ctx context.Context, actor auth.Principal, scope access
 // may.
 //
 // ⚠ A region that a REGION_ADMIN is scoped to cannot be deleted: that admin would be left
-// with a scope that matches nothing. Phase 02.2 adds the same refusal for active kantor
-// cabang below it.
+// with a scope that matches nothing. Nor can one with an active kantor cabang below it.
 func (r *Regions) Delete(ctx context.Context, actor auth.Principal, scope access.AdminScope, code string) error {
 	if !scope.All {
 		return access.ErrOrgAdminOnly
@@ -221,6 +217,13 @@ func (r *Regions) Delete(ctx context.Context, actor auth.Principal, scope access
 		}
 		if admins > 0 {
 			return ErrHasActiveChildren.WithMessage("Masih ada admin wilayah yang menunjuk koordinator wilayah ini.")
+		}
+		branches, err := q.CountActiveBranchesOfRegion(ctx, code)
+		if err != nil {
+			return fmt.Errorf("count branches of region: %w", err)
+		}
+		if branches > 0 {
+			return ErrHasActiveChildren.WithMessage("Masih ada kantor cabang aktif di koordinator wilayah ini.")
 		}
 		if _, err := q.SoftDeleteRegion(ctx, db.SoftDeleteRegionParams{Code: code, Now: ts(r.clock.Now())}); err != nil {
 			return fmt.Errorf("delete region: %w", err)

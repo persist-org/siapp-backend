@@ -90,6 +90,45 @@ func (e AttendanceTimezone) Valid() bool {
 	}
 }
 
+// Defines values for BusinessLine.
+const (
+	BusinessLineCleaning BusinessLine = "cleaning"
+	BusinessLineSecurity BusinessLine = "security"
+)
+
+// Valid indicates whether the value is a known member of the BusinessLine enum.
+func (e BusinessLine) Valid() bool {
+	switch e {
+	case BusinessLineCleaning:
+		return true
+	case BusinessLineSecurity:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CompanyLetter.
+const (
+	I CompanyLetter = "I"
+	K CompanyLetter = "K"
+	P CompanyLetter = "P"
+)
+
+// Valid indicates whether the value is a known member of the CompanyLetter enum.
+func (e CompanyLetter) Valid() bool {
+	switch e {
+	case I:
+		return true
+	case K:
+		return true
+	case P:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ErrorCode.
 const (
 	BADREQUEST        ErrorCode = "BAD_REQUEST"
@@ -459,6 +498,60 @@ func (e OrganizationCreateEnabledBusinessLines) Valid() bool {
 	}
 }
 
+// Defines values for OrganizationErrorReason.
+const (
+	ACCESSORGADMINONLY      OrganizationErrorReason = "ACCESS_ORG_ADMIN_ONLY"
+	ACCESSOUTSIDEADMINSCOPE OrganizationErrorReason = "ACCESS_OUTSIDE_ADMIN_SCOPE"
+	BRANCHLETTERINVALID     OrganizationErrorReason = "BRANCH_LETTER_INVALID"
+	BRANCHNOTFOUND          OrganizationErrorReason = "BRANCH_NOT_FOUND"
+	BRANCHREGIONMISMATCH    OrganizationErrorReason = "BRANCH_REGION_MISMATCH"
+	CLIENTNOTFOUND          OrganizationErrorReason = "CLIENT_NOT_FOUND"
+	CLIENTPREFIXINVALID     OrganizationErrorReason = "CLIENT_PREFIX_INVALID"
+	CODETAKEN               OrganizationErrorReason = "CODE_TAKEN"
+	HASACTIVECHILDREN       OrganizationErrorReason = "HAS_ACTIVE_CHILDREN"
+	NOTADMIN                OrganizationErrorReason = "NOT_ADMIN"
+	PROJECTNOTCONFIGURED    OrganizationErrorReason = "PROJECT_NOT_CONFIGURED"
+	PROJECTNOTFOUND         OrganizationErrorReason = "PROJECT_NOT_FOUND"
+	REGIONNOTFOUND          OrganizationErrorReason = "REGION_NOT_FOUND"
+	TEAMNOTFOUND            OrganizationErrorReason = "TEAM_NOT_FOUND"
+)
+
+// Valid indicates whether the value is a known member of the OrganizationErrorReason enum.
+func (e OrganizationErrorReason) Valid() bool {
+	switch e {
+	case ACCESSORGADMINONLY:
+		return true
+	case ACCESSOUTSIDEADMINSCOPE:
+		return true
+	case BRANCHLETTERINVALID:
+		return true
+	case BRANCHNOTFOUND:
+		return true
+	case BRANCHREGIONMISMATCH:
+		return true
+	case CLIENTNOTFOUND:
+		return true
+	case CLIENTPREFIXINVALID:
+		return true
+	case CODETAKEN:
+		return true
+	case HASACTIVECHILDREN:
+		return true
+	case NOTADMIN:
+		return true
+	case PROJECTNOTCONFIGURED:
+		return true
+	case PROJECTNOTFOUND:
+		return true
+	case REGIONNOTFOUND:
+		return true
+	case TEAMNOTFOUND:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for OrganizationSettingsDefaultTimezone.
 const (
 	OrganizationSettingsDefaultTimezoneWIB  OrganizationSettingsDefaultTimezone = "WIB"
@@ -663,78 +756,21 @@ func (e PositionInputLevel) Valid() bool {
 	}
 }
 
-// Defines values for ProjectBusinessLine.
-const (
-	ProjectBusinessLineCleaning ProjectBusinessLine = "cleaning"
-	ProjectBusinessLineSecurity ProjectBusinessLine = "security"
-)
-
-// Valid indicates whether the value is a known member of the ProjectBusinessLine enum.
-func (e ProjectBusinessLine) Valid() bool {
-	switch e {
-	case ProjectBusinessLineCleaning:
-		return true
-	case ProjectBusinessLineSecurity:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for ProjectTimezone.
 const (
-	ProjectTimezoneWIB  ProjectTimezone = "WIB"
-	ProjectTimezoneWIT  ProjectTimezone = "WIT"
-	ProjectTimezoneWITA ProjectTimezone = "WITA"
+	AsiaJakarta  ProjectTimezone = "Asia/Jakarta"
+	AsiaJayapura ProjectTimezone = "Asia/Jayapura"
+	AsiaMakassar ProjectTimezone = "Asia/Makassar"
 )
 
 // Valid indicates whether the value is a known member of the ProjectTimezone enum.
 func (e ProjectTimezone) Valid() bool {
 	switch e {
-	case ProjectTimezoneWIB:
+	case AsiaJakarta:
 		return true
-	case ProjectTimezoneWIT:
+	case AsiaJayapura:
 		return true
-	case ProjectTimezoneWITA:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for ProjectInputBusinessLine.
-const (
-	ProjectInputBusinessLineCleaning ProjectInputBusinessLine = "cleaning"
-	ProjectInputBusinessLineSecurity ProjectInputBusinessLine = "security"
-)
-
-// Valid indicates whether the value is a known member of the ProjectInputBusinessLine enum.
-func (e ProjectInputBusinessLine) Valid() bool {
-	switch e {
-	case ProjectInputBusinessLineCleaning:
-		return true
-	case ProjectInputBusinessLineSecurity:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for ProjectInputTimezone.
-const (
-	ProjectInputTimezoneWIB  ProjectInputTimezone = "WIB"
-	ProjectInputTimezoneWIT  ProjectInputTimezone = "WIT"
-	ProjectInputTimezoneWITA ProjectInputTimezone = "WITA"
-)
-
-// Valid indicates whether the value is a known member of the ProjectInputTimezone enum.
-func (e ProjectInputTimezone) Valid() bool {
-	switch e {
-	case ProjectInputTimezoneWIB:
-		return true
-	case ProjectInputTimezoneWIT:
-		return true
-	case ProjectInputTimezoneWITA:
+	case AsiaMakassar:
 		return true
 	default:
 		return false
@@ -1281,48 +1317,30 @@ func (e PostAdminBranches201JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
-// Defines values for GetAdminBranchesExportParamsFormat.
+// Defines values for GetAdminBranchesByCode200JSONResponseBodySuccess.
 const (
-	GetAdminBranchesExportParamsFormatPdf  GetAdminBranchesExportParamsFormat = "pdf"
-	GetAdminBranchesExportParamsFormatXlsx GetAdminBranchesExportParamsFormat = "xlsx"
+	GetAdminBranchesByCode200JSONResponseBodySuccessTrue GetAdminBranchesByCode200JSONResponseBodySuccess = true
 )
 
-// Valid indicates whether the value is a known member of the GetAdminBranchesExportParamsFormat enum.
-func (e GetAdminBranchesExportParamsFormat) Valid() bool {
+// Valid indicates whether the value is a known member of the GetAdminBranchesByCode200JSONResponseBodySuccess enum.
+func (e GetAdminBranchesByCode200JSONResponseBodySuccess) Valid() bool {
 	switch e {
-	case GetAdminBranchesExportParamsFormatPdf:
-		return true
-	case GetAdminBranchesExportParamsFormatXlsx:
+	case GetAdminBranchesByCode200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
 	}
 }
 
-// Defines values for GetAdminBranchesById200JSONResponseBodySuccess.
+// Defines values for PatchAdminBranchesByCode200JSONResponseBodySuccess.
 const (
-	GetAdminBranchesById200JSONResponseBodySuccessTrue GetAdminBranchesById200JSONResponseBodySuccess = true
+	PatchAdminBranchesByCode200JSONResponseBodySuccessTrue PatchAdminBranchesByCode200JSONResponseBodySuccess = true
 )
 
-// Valid indicates whether the value is a known member of the GetAdminBranchesById200JSONResponseBodySuccess enum.
-func (e GetAdminBranchesById200JSONResponseBodySuccess) Valid() bool {
+// Valid indicates whether the value is a known member of the PatchAdminBranchesByCode200JSONResponseBodySuccess enum.
+func (e PatchAdminBranchesByCode200JSONResponseBodySuccess) Valid() bool {
 	switch e {
-	case GetAdminBranchesById200JSONResponseBodySuccessTrue:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PatchAdminBranchesById200JSONResponseBodySuccess.
-const (
-	PatchAdminBranchesById200JSONResponseBodySuccessTrue PatchAdminBranchesById200JSONResponseBodySuccess = true
-)
-
-// Valid indicates whether the value is a known member of the PatchAdminBranchesById200JSONResponseBodySuccess enum.
-func (e PatchAdminBranchesById200JSONResponseBodySuccess) Valid() bool {
-	switch e {
-	case PatchAdminBranchesById200JSONResponseBodySuccessTrue:
+	case PatchAdminBranchesByCode200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
@@ -1569,48 +1587,30 @@ func (e PostAdminClients201JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
-// Defines values for GetAdminClientsExportParamsFormat.
+// Defines values for GetAdminClientsByCode200JSONResponseBodySuccess.
 const (
-	GetAdminClientsExportParamsFormatPdf  GetAdminClientsExportParamsFormat = "pdf"
-	GetAdminClientsExportParamsFormatXlsx GetAdminClientsExportParamsFormat = "xlsx"
+	GetAdminClientsByCode200JSONResponseBodySuccessTrue GetAdminClientsByCode200JSONResponseBodySuccess = true
 )
 
-// Valid indicates whether the value is a known member of the GetAdminClientsExportParamsFormat enum.
-func (e GetAdminClientsExportParamsFormat) Valid() bool {
+// Valid indicates whether the value is a known member of the GetAdminClientsByCode200JSONResponseBodySuccess enum.
+func (e GetAdminClientsByCode200JSONResponseBodySuccess) Valid() bool {
 	switch e {
-	case GetAdminClientsExportParamsFormatPdf:
-		return true
-	case GetAdminClientsExportParamsFormatXlsx:
+	case GetAdminClientsByCode200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
 	}
 }
 
-// Defines values for GetAdminClientsById200JSONResponseBodySuccess.
+// Defines values for PatchAdminClientsByCode200JSONResponseBodySuccess.
 const (
-	GetAdminClientsById200JSONResponseBodySuccessTrue GetAdminClientsById200JSONResponseBodySuccess = true
+	PatchAdminClientsByCode200JSONResponseBodySuccessTrue PatchAdminClientsByCode200JSONResponseBodySuccess = true
 )
 
-// Valid indicates whether the value is a known member of the GetAdminClientsById200JSONResponseBodySuccess enum.
-func (e GetAdminClientsById200JSONResponseBodySuccess) Valid() bool {
+// Valid indicates whether the value is a known member of the PatchAdminClientsByCode200JSONResponseBodySuccess enum.
+func (e PatchAdminClientsByCode200JSONResponseBodySuccess) Valid() bool {
 	switch e {
-	case GetAdminClientsById200JSONResponseBodySuccessTrue:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PatchAdminClientsById200JSONResponseBodySuccess.
-const (
-	PatchAdminClientsById200JSONResponseBodySuccessTrue PatchAdminClientsById200JSONResponseBodySuccess = true
-)
-
-// Valid indicates whether the value is a known member of the PatchAdminClientsById200JSONResponseBodySuccess enum.
-func (e PatchAdminClientsById200JSONResponseBodySuccess) Valid() bool {
-	switch e {
-	case PatchAdminClientsById200JSONResponseBodySuccessTrue:
+	case PatchAdminClientsByCode200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
@@ -2151,24 +2151,6 @@ func (e PatchAdminPositionsById200JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
-// Defines values for GetAdminProjectsParamsBusinessLine.
-const (
-	GetAdminProjectsParamsBusinessLineCleaning GetAdminProjectsParamsBusinessLine = "cleaning"
-	GetAdminProjectsParamsBusinessLineSecurity GetAdminProjectsParamsBusinessLine = "security"
-)
-
-// Valid indicates whether the value is a known member of the GetAdminProjectsParamsBusinessLine enum.
-func (e GetAdminProjectsParamsBusinessLine) Valid() bool {
-	switch e {
-	case GetAdminProjectsParamsBusinessLineCleaning:
-		return true
-	case GetAdminProjectsParamsBusinessLineSecurity:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for GetAdminProjects200JSONResponseBodySuccess.
 const (
 	GetAdminProjects200JSONResponseBodySuccessTrue GetAdminProjects200JSONResponseBodySuccess = true
@@ -2199,45 +2181,30 @@ func (e PostAdminProjects201JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
-// Defines values for GetAdminProjectsById200JSONResponseBodySuccess.
+// Defines values for GetAdminProjectsByCode200JSONResponseBodySuccess.
 const (
-	GetAdminProjectsById200JSONResponseBodySuccessTrue GetAdminProjectsById200JSONResponseBodySuccess = true
+	GetAdminProjectsByCode200JSONResponseBodySuccessTrue GetAdminProjectsByCode200JSONResponseBodySuccess = true
 )
 
-// Valid indicates whether the value is a known member of the GetAdminProjectsById200JSONResponseBodySuccess enum.
-func (e GetAdminProjectsById200JSONResponseBodySuccess) Valid() bool {
+// Valid indicates whether the value is a known member of the GetAdminProjectsByCode200JSONResponseBodySuccess enum.
+func (e GetAdminProjectsByCode200JSONResponseBodySuccess) Valid() bool {
 	switch e {
-	case GetAdminProjectsById200JSONResponseBodySuccessTrue:
+	case GetAdminProjectsByCode200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
 	}
 }
 
-// Defines values for PatchAdminProjectsById200JSONResponseBodySuccess.
+// Defines values for PatchAdminProjectsByCode200JSONResponseBodySuccess.
 const (
-	PatchAdminProjectsById200JSONResponseBodySuccessTrue PatchAdminProjectsById200JSONResponseBodySuccess = true
+	PatchAdminProjectsByCode200JSONResponseBodySuccessTrue PatchAdminProjectsByCode200JSONResponseBodySuccess = true
 )
 
-// Valid indicates whether the value is a known member of the PatchAdminProjectsById200JSONResponseBodySuccess enum.
-func (e PatchAdminProjectsById200JSONResponseBodySuccess) Valid() bool {
+// Valid indicates whether the value is a known member of the PatchAdminProjectsByCode200JSONResponseBodySuccess enum.
+func (e PatchAdminProjectsByCode200JSONResponseBodySuccess) Valid() bool {
 	switch e {
-	case PatchAdminProjectsById200JSONResponseBodySuccessTrue:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PostAdminProjectsByIdDeactivate200JSONResponseBodySuccess.
-const (
-	PostAdminProjectsByIdDeactivate200JSONResponseBodySuccessTrue PostAdminProjectsByIdDeactivate200JSONResponseBodySuccess = true
-)
-
-// Valid indicates whether the value is a known member of the PostAdminProjectsByIdDeactivate200JSONResponseBodySuccess enum.
-func (e PostAdminProjectsByIdDeactivate200JSONResponseBodySuccess) Valid() bool {
-	switch e {
-	case PostAdminProjectsByIdDeactivate200JSONResponseBodySuccessTrue:
+	case PatchAdminProjectsByCode200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
@@ -2607,30 +2574,30 @@ func (e PostAdminTeams201JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
-// Defines values for GetAdminTeamsById200JSONResponseBodySuccess.
+// Defines values for GetAdminTeamsByCode200JSONResponseBodySuccess.
 const (
-	GetAdminTeamsById200JSONResponseBodySuccessTrue GetAdminTeamsById200JSONResponseBodySuccess = true
+	GetAdminTeamsByCode200JSONResponseBodySuccessTrue GetAdminTeamsByCode200JSONResponseBodySuccess = true
 )
 
-// Valid indicates whether the value is a known member of the GetAdminTeamsById200JSONResponseBodySuccess enum.
-func (e GetAdminTeamsById200JSONResponseBodySuccess) Valid() bool {
+// Valid indicates whether the value is a known member of the GetAdminTeamsByCode200JSONResponseBodySuccess enum.
+func (e GetAdminTeamsByCode200JSONResponseBodySuccess) Valid() bool {
 	switch e {
-	case GetAdminTeamsById200JSONResponseBodySuccessTrue:
+	case GetAdminTeamsByCode200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
 	}
 }
 
-// Defines values for PatchAdminTeamsById200JSONResponseBodySuccess.
+// Defines values for PatchAdminTeamsByCode200JSONResponseBodySuccess.
 const (
-	PatchAdminTeamsById200JSONResponseBodySuccessTrue PatchAdminTeamsById200JSONResponseBodySuccess = true
+	PatchAdminTeamsByCode200JSONResponseBodySuccessTrue PatchAdminTeamsByCode200JSONResponseBodySuccess = true
 )
 
-// Valid indicates whether the value is a known member of the PatchAdminTeamsById200JSONResponseBodySuccess enum.
-func (e PatchAdminTeamsById200JSONResponseBodySuccess) Valid() bool {
+// Valid indicates whether the value is a known member of the PatchAdminTeamsByCode200JSONResponseBodySuccess enum.
+func (e PatchAdminTeamsByCode200JSONResponseBodySuccess) Valid() bool {
 	switch e {
-	case PatchAdminTeamsById200JSONResponseBodySuccessTrue:
+	case PatchAdminTeamsByCode200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
@@ -5162,49 +5129,81 @@ type AttendanceQrCheckOut struct {
 
 // Branch defines model for Branch.
 type Branch struct {
-	Address        *string    `json:"address,omitempty"`
-	BranchCode     *string    `json:"branch_code,omitempty"`
-	City           *string    `json:"city,omitempty"`
-	CityId         *int64     `json:"city_id,omitempty"`
-	CreatedAt      *time.Time `json:"created_at,omitempty"`
-	Description    *string    `json:"description,omitempty"`
-	Fax            *string    `json:"fax,omitempty"`
-	Id             *int64     `json:"id,omitempty"`
-	IsActive       *bool      `json:"is_active,omitempty"`
-	Latitude       *float64   `json:"latitude,omitempty"`
-	Longitude      *float64   `json:"longitude,omitempty"`
-	ManagerName    *string    `json:"manager_name,omitempty"`
-	MapAddress     *string    `json:"map_address,omitempty"`
-	OfficeEmail    *string    `json:"office_email,omitempty"`
-	OrganizationId *int64     `json:"organization_id,omitempty"`
-	Phone          *string    `json:"phone,omitempty"`
-	PostalCode     *string    `json:"postal_code,omitempty"`
-	Province       *string    `json:"province,omitempty"`
-	ProvinceId     *int64     `json:"province_id,omitempty"`
-	RegionId       *int64     `json:"region_id,omitempty"`
-	UpdatedAt      *time.Time `json:"updated_at,omitempty"`
+	Address *string `json:"address,omitempty"`
+	City    *string `json:"city,omitempty"`
+	Code    *string `json:"code,omitempty"`
+
+	// CompanyLetter PT pemberi kerja dalam grup: K = PT Kharisma Potensia Indonesia (KPI), I = PT Insan Daya Sentosa (IDS), P = PT Potensial Cipta Daya (PCD).
+	CompanyLetter *CompanyLetter `json:"company_letter,omitempty"`
+	CreatedAt     *time.Time     `json:"created_at,omitempty"`
+
+	// Description Nama kantor cabang.
+	Description *string    `json:"description,omitempty"`
+	Email       *string    `json:"email,omitempty"`
+	Fax         *string    `json:"fax,omitempty"`
+	IsActive    *bool      `json:"is_active,omitempty"`
+	ManagerName *string    `json:"manager_name,omitempty"`
+	Phone       *string    `json:"phone,omitempty"`
+	RegionCode  *string    `json:"region_code,omitempty"`
+	UpdatedAt   *time.Time `json:"updated_at,omitempty"`
+	ZipCode     *string    `json:"zip_code,omitempty"`
 }
 
 // BranchInput defines model for BranchInput.
 type BranchInput struct {
-	Address     *string  `json:"address,omitempty"`
-	BranchCode  string   `json:"branch_code"`
-	City        *string  `json:"city,omitempty"`
-	CityId      *int64   `json:"city_id,omitempty"`
-	Description *string  `json:"description,omitempty"`
-	Fax         *string  `json:"fax,omitempty"`
-	IsActive    *bool    `json:"is_active,omitempty"`
-	Latitude    *float64 `json:"latitude,omitempty"`
-	Longitude   *float64 `json:"longitude,omitempty"`
-	ManagerName *string  `json:"manager_name,omitempty"`
-	MapAddress  *string  `json:"map_address,omitempty"`
-	OfficeEmail *string  `json:"office_email,omitempty"`
-	Phone       *string  `json:"phone,omitempty"`
-	PostalCode  *string  `json:"postal_code,omitempty"`
-	Province    *string  `json:"province,omitempty"`
-	ProvinceId  *int64   `json:"province_id,omitempty"`
-	RegionId    int64    `json:"region_id"`
+	// Address Opsional.
+	Address *string `json:"address,omitempty"`
+
+	// City Opsional.
+	City *string `json:"city,omitempty"`
+
+	// CompanyLetter WAJIB. Selain K, I, P ditolak (422 BRANCH_LETTER_INVALID). Tidak dapat diubah.
+	CompanyLetter CompanyLetter `json:"company_letter"`
+
+	// Description WAJIB. Nama kantor cabang; tidak boleh hanya spasi.
+	Description string `json:"description"`
+
+	// Email Opsional.
+	Email *string `json:"email,omitempty"`
+
+	// Fax Opsional.
+	Fax *string `json:"fax,omitempty"`
+
+	// IsActive Opsional. Bawaan true.
+	IsActive *bool `json:"is_active,omitempty"`
+
+	// ManagerName Opsional.
+	ManagerName *string `json:"manager_name,omitempty"`
+
+	// Phone Opsional.
+	Phone *string `json:"phone,omitempty"`
+
+	// RegionCode WAJIB. Harus koordinator wilayah yang ada (404 REGION_NOT_FOUND). Tidak dapat diubah.
+	RegionCode string `json:"region_code"`
+
+	// ZipCode Opsional.
+	ZipCode *string `json:"zip_code,omitempty"`
 }
+
+// BranchUpdate Semua field opsional; field yang tidak dikirim tidak berubah. Body kosong `{}` sah.
+// `code`, `region_code`, dan `company_letter` tidak dapat dikirim (422, field tidak dikenal):
+// kode dibentuk dari ketiganya.
+type BranchUpdate struct {
+	Address *string `json:"address,omitempty"`
+	City    *string `json:"city,omitempty"`
+
+	// Description Tidak boleh hanya spasi.
+	Description *string `json:"description,omitempty"`
+	Email       *string `json:"email,omitempty"`
+	Fax         *string `json:"fax,omitempty"`
+	IsActive    *bool   `json:"is_active,omitempty"`
+	ManagerName *string `json:"manager_name,omitempty"`
+	Phone       *string `json:"phone,omitempty"`
+	ZipCode     *string `json:"zip_code,omitempty"`
+}
+
+// BusinessLine Bidang usaha proyek (DL-20). security membentuk kode berakhiran S, cleaning berakhiran C; satu klien paling banyak satu proyek per bidang.
+type BusinessLine string
 
 // Cctv defines model for Cctv.
 type Cctv struct {
@@ -5274,28 +5273,26 @@ type City struct {
 
 // Client defines model for Client.
 type Client struct {
-	Address        *string    `json:"address,omitempty"`
-	BranchId       *int64     `json:"branch_id,omitempty"`
-	CityId         *int64     `json:"city_id,omitempty"`
-	ClientCode     *string    `json:"client_code,omitempty"`
-	ClientGroupId  *int64     `json:"client_group_id,omitempty"`
-	ClientTypeId   *int64     `json:"client_type_id,omitempty"`
-	CreatedAt      *time.Time `json:"created_at,omitempty"`
-	Description    *string    `json:"description,omitempty"`
-	DirectorName   *string    `json:"director_name,omitempty"`
-	Email          *string    `json:"email,omitempty"`
-	Fax            *string    `json:"fax,omitempty"`
-	Id             *int64     `json:"id,omitempty"`
-	IsActive       *bool      `json:"is_active,omitempty"`
-	Latitude       *float64   `json:"latitude,omitempty"`
-	Longitude      *float64   `json:"longitude,omitempty"`
-	ManagerName    *string    `json:"manager_name,omitempty"`
-	MapAddress     *string    `json:"map_address,omitempty"`
-	OrganizationId *int64     `json:"organization_id,omitempty"`
-	Phone          *string    `json:"phone,omitempty"`
-	PostalCode     *string    `json:"postal_code,omitempty"`
-	ProvinceId     *int64     `json:"province_id,omitempty"`
-	UpdatedAt      *time.Time `json:"updated_at,omitempty"`
+	Address            *string `json:"address,omitempty"`
+	BranchCode         *string `json:"branch_code,omitempty"`
+	City               *string `json:"city,omitempty"`
+	Code               *string `json:"code,omitempty"`
+	CompanyBidangUsaha *string `json:"company_bidang_usaha,omitempty"`
+
+	// CompanyCode Diisi manual
+	CompanyCode   *string    `json:"company_code,omitempty"`
+	CompanyPrefix *string    `json:"company_prefix,omitempty"`
+	CreatedAt     *time.Time `json:"created_at,omitempty"`
+
+	// Description Nama klien.
+	Description  *string    `json:"description,omitempty"`
+	DirectorName *string    `json:"director_name,omitempty"`
+	Email        *string    `json:"email,omitempty"`
+	Fax          *string    `json:"fax,omitempty"`
+	IsActive     *bool      `json:"is_active,omitempty"`
+	Phone        *string    `json:"phone,omitempty"`
+	UpdatedAt    *time.Time `json:"updated_at,omitempty"`
+	ZipCode      *string    `json:"zip_code,omitempty"`
 }
 
 // ClientGroup Master umum (qualifications, client_types, client_groups, stakeholder_types, panic_types, report_categories, instruction_categories, permission_categories).
@@ -5303,28 +5300,66 @@ type ClientGroup = CodedMaster
 
 // ClientInput defines model for ClientInput.
 type ClientInput struct {
-	Address       *string  `json:"address,omitempty"`
-	BranchId      int64    `json:"branch_id"`
-	CityId        *int64   `json:"city_id,omitempty"`
-	ClientCode    string   `json:"client_code"`
-	ClientGroupId *int64   `json:"client_group_id,omitempty"`
-	ClientTypeId  *int64   `json:"client_type_id,omitempty"`
-	Description   *string  `json:"description,omitempty"`
-	DirectorName  *string  `json:"director_name,omitempty"`
-	Email         *string  `json:"email,omitempty"`
-	Fax           *string  `json:"fax,omitempty"`
-	IsActive      *bool    `json:"is_active,omitempty"`
-	Latitude      *float64 `json:"latitude,omitempty"`
-	Longitude     *float64 `json:"longitude,omitempty"`
-	ManagerName   *string  `json:"manager_name,omitempty"`
-	MapAddress    *string  `json:"map_address,omitempty"`
-	Phone         *string  `json:"phone,omitempty"`
-	PostalCode    *string  `json:"postal_code,omitempty"`
-	ProvinceId    *int64   `json:"province_id,omitempty"`
+	// Address Opsional.
+	Address *string `json:"address,omitempty"`
+
+	// BranchCode WAJIB. Harus kantor cabang yang ada (404 BRANCH_NOT_FOUND). Tidak dapat diubah.
+	BranchCode string `json:"branch_code"`
+
+	// City Opsional.
+	City *string `json:"city,omitempty"`
+
+	// CompanyBidangUsaha Opsional.
+	CompanyBidangUsaha *string `json:"company_bidang_usaha,omitempty"`
+
+	// CompanyCode Opsional. Diisi manual.
+	CompanyCode *string `json:"company_code,omitempty"`
+
+	// CompanyPrefix WAJIB. 2 sampai 10 huruf besar atau angka; selain itu 422 CLIENT_PREFIX_INVALID. Tidak dapat diubah.
+	CompanyPrefix string `json:"company_prefix"`
+
+	// Description WAJIB. Nama klien; tidak boleh hanya spasi.
+	Description string `json:"description"`
+
+	// DirectorName Opsional.
+	DirectorName *string `json:"director_name,omitempty"`
+
+	// Email Opsional.
+	Email *string `json:"email,omitempty"`
+
+	// Fax Opsional.
+	Fax *string `json:"fax,omitempty"`
+
+	// IsActive Opsional. Bawaan true.
+	IsActive *bool `json:"is_active,omitempty"`
+
+	// Phone Opsional.
+	Phone *string `json:"phone,omitempty"`
+
+	// ZipCode Opsional.
+	ZipCode *string `json:"zip_code,omitempty"`
 }
 
 // ClientType Master umum (qualifications, client_types, client_groups, stakeholder_types, panic_types, report_categories, instruction_categories, permission_categories).
 type ClientType = CodedMaster
+
+// ClientUpdate Semua field opsional; field yang tidak dikirim tidak berubah. Body kosong `{}` sah.
+// `code`, `branch_code`, dan `company_prefix` tidak dapat dikirim (422, field tidak dikenal).
+type ClientUpdate struct {
+	Address            *string `json:"address,omitempty"`
+	City               *string `json:"city,omitempty"`
+	CompanyBidangUsaha *string `json:"company_bidang_usaha,omitempty"`
+	CompanyCode        *string `json:"company_code,omitempty"`
+
+	// Description Tidak boleh hanya spasi.
+	Description  *string `json:"description,omitempty"`
+	DirectorName *string `json:"director_name,omitempty"`
+	Email        *string `json:"email,omitempty"`
+	Fax          *string `json:"fax,omitempty"`
+	IsActive     *bool   `json:"is_active,omitempty"`
+	Phone        *string `json:"phone,omitempty"`
+	ZipCode      *string `json:"zip_code,omitempty"`
+}
 
 // CodedMaster Master umum (qualifications, client_types, client_groups, stakeholder_types, panic_types, report_categories, instruction_categories, permission_categories).
 type CodedMaster struct {
@@ -5345,6 +5380,9 @@ type CodedMasterInput struct {
 	IsActive    *bool   `json:"is_active,omitempty"`
 	Name        string  `json:"name"`
 }
+
+// CompanyLetter PT pemberi kerja dalam grup: K = PT Kharisma Potensia Indonesia (KPI), I = PT Insan Daya Sentosa (IDS), P = PT Potensial Cipta Daya (PCD).
+type CompanyLetter string
 
 // Coordinate defines model for Coordinate.
 type Coordinate struct {
@@ -5439,6 +5477,15 @@ type EMemoResponseCreate struct {
 type EMemoUpdate struct {
 	Body    *string `json:"body,omitempty"`
 	Subject *string `json:"subject,omitempty"`
+}
+
+// EmergencyContact defines model for EmergencyContact.
+type EmergencyContact struct {
+	Name  string `json:"name"`
+	Phone string `json:"phone"`
+
+	// Type Jenis kejadian, misalnya Polisi, RS, Pemadam.
+	Type string `json:"type"`
 }
 
 // ErrorCode Kode error UPPERCASE machine-readable permukaan /api/v1/*.
@@ -5873,6 +5920,22 @@ type OrganizationCreate struct {
 // OrganizationCreateEnabledBusinessLines defines model for OrganizationCreate.EnabledBusinessLines.
 type OrganizationCreateEnabledBusinessLines string
 
+// OrganizationErrorReason - `NOT_ADMIN`: 403 FORBIDDEN. Pemanggil tidak punya web role (staf lapangan).
+// - `ACCESS_ORG_ADMIN_ONLY`: 403 ROLE_DENIED. REGION_ADMIN mencoba aksi yang hanya boleh ORG_ADMIN.
+// - `ACCESS_OUTSIDE_ADMIN_SCOPE`: 403 SCOPE_DENIED. REGION_ADMIN menyentuh data di luar wilayahnya.
+// - `REGION_NOT_FOUND`: 404 NOT_FOUND. Koordinator wilayah tidak ada atau sudah dihapus.
+// - `BRANCH_NOT_FOUND`: 404 NOT_FOUND. Kantor cabang tidak ada atau sudah dihapus.
+// - `CLIENT_NOT_FOUND`: 404 NOT_FOUND. Klien tidak ada atau sudah dihapus.
+// - `PROJECT_NOT_FOUND`: 404 NOT_FOUND. Proyek tidak ada atau sudah dihapus.
+// - `TEAM_NOT_FOUND`: 404 NOT_FOUND. Regu tidak ada atau sudah dihapus.
+// - `CODE_TAKEN`: 409 DUPLICATE. Kode sudah dipakai, termasuk oleh baris yang sudah dihapus (D19).
+// - `HAS_ACTIVE_CHILDREN`: 409 CONFLICT. Masih ada data aktif di bawahnya (atau admin wilayah yang menunjuknya).
+// - `BRANCH_LETTER_INVALID`: 422 VALIDATION_ERROR. Huruf PT cabang bukan K, I, atau P.
+// - `BRANCH_REGION_MISMATCH`: 422 VALIDATION_ERROR. Nomor kode cabang tidak sama dengan nomor wilayahnya (hanya import, 02.4).
+// - `CLIENT_PREFIX_INVALID`: 422 VALIDATION_ERROR. Prefix klien bukan 2 sampai 10 huruf besar atau angka.
+// - `PROJECT_NOT_CONFIGURED`: 422 UNPROCESSABLE. Koordinat proyek belum diisi; fitur yang memerlukan lokasi menolaknya.
+type OrganizationErrorReason string
+
 // OrganizationProfileUpdate Update profil + branding organisasi (WEB-37).
 type OrganizationProfileUpdate struct {
 	Branding *struct {
@@ -6250,95 +6313,135 @@ type PositionInputLevel string
 
 // Project defines model for Project.
 type Project struct {
-	Address       *string              `json:"address,omitempty"`
-	BranchId      *int64               `json:"branch_id,omitempty"`
-	BusinessLine  *ProjectBusinessLine `json:"business_line,omitempty"`
-	ChiefSecurity *string              `json:"chief_security,omitempty"`
-	CityId        *int64               `json:"city_id,omitempty"`
-	ClientId      *int64               `json:"client_id,omitempty"`
-	ContractEnd   *openapi_types.Date  `json:"contract_end,omitempty"`
-	ContractStart *openapi_types.Date  `json:"contract_start,omitempty"`
-	CreatedAt     *time.Time           `json:"created_at,omitempty"`
-	Description   *string              `json:"description,omitempty"`
-	Email         *string              `json:"email,omitempty"`
+	Address                *string `json:"address,omitempty"`
+	AttendanceRadiusMeters *int    `json:"attendance_radius_meters,omitempty"`
+
+	// BusinessLine Bidang usaha proyek (DL-20). security membentuk kode berakhiran S, cleaning berakhiran C; satu klien paling banyak satu proyek per bidang.
+	BusinessLine       *BusinessLine `json:"business_line,omitempty"`
+	City               *string       `json:"city,omitempty"`
+	ClientCode         *string       `json:"client_code,omitempty"`
+	Code               *string       `json:"code,omitempty"`
+	CompanyBidangUsaha *string       `json:"company_bidang_usaha,omitempty"`
+	CompanyCode        *string       `json:"company_code,omitempty"`
+	CompanyPrefix      *string       `json:"company_prefix,omitempty"`
+
+	// Configured false bila koordinat belum diisi (PROJECT_NOT_CONFIGURED).
+	Configured *bool      `json:"configured,omitempty"`
+	CreatedAt  *time.Time `json:"created_at,omitempty"`
+
+	// Description Nama proyek.
+	Description *string `json:"description,omitempty"`
+	Email       *string `json:"email,omitempty"`
 
 	// EmergencyContacts Telp 3 tipe kejadian (Polisi/RS/Pemadam) — DL-14/manual 2.17.
-	EmergencyContacts *[]struct {
-		Name  string `json:"name"`
-		Phone string `json:"phone"`
-		Type  string `json:"type"`
-	} `json:"emergency_contacts,omitempty"`
-	IanaTz   *string `json:"iana_tz,omitempty"`
-	Id       *int64  `json:"id,omitempty"`
-	IsActive *bool   `json:"is_active,omitempty"`
+	EmergencyContacts *[]EmergencyContact `json:"emergency_contacts,omitempty"`
 
-	// IsPatrolLimitedByInterval Batasi scan patroli per interval (DL-48).
-	IsPatrolLimitedByInterval *bool                   `json:"is_patrol_limited_by_interval,omitempty"`
-	Latitude                  *float64                `json:"latitude,omitempty"`
-	Longitude                 *float64                `json:"longitude,omitempty"`
-	ManagerName               *string                 `json:"manager_name,omitempty"`
-	MapAddress                *string                 `json:"map_address,omitempty"`
-	OrganizationId            *int64                  `json:"organization_id,omitempty"`
-	PatrolIntervalInMinutes   *int                    `json:"patrol_interval_in_minutes,omitempty"`
-	Phone                     *string                 `json:"phone,omitempty"`
-	ProjectCode               *string                 `json:"project_code,omitempty"`
-	ProvinceId                *int64                  `json:"province_id,omitempty"`
-	Salary                    *Money                  `json:"salary,omitempty"`
-	ShiftConfig               *map[string]interface{} `json:"shift_config,omitempty"`
+	// GpsTrackingEnabled Aktifkan tracking GPS personil (DL-48).
+	GpsTrackingEnabled *bool    `json:"gps_tracking_enabled,omitempty"`
+	IsActive           *bool    `json:"is_active,omitempty"`
+	Latitude           *float64 `json:"latitude,omitempty"`
+	Longitude          *float64 `json:"longitude,omitempty"`
 
-	// StatusGpsTracking Aktifkan tracking GPS personil (DL-48).
-	StatusGpsTracking *bool            `json:"status_gps_tracking,omitempty"`
-	Timezone          *ProjectTimezone `json:"timezone,omitempty"`
-	UpdatedAt         *time.Time       `json:"updated_at,omitempty"`
+	// PatrolIntervalMinutes null = tidak dibatasi (DL-48).
+	PatrolIntervalMinutes    *int    `json:"patrol_interval_minutes,omitempty"`
+	Phone                    *string `json:"phone,omitempty"`
+	StrictAttendanceGeofence *bool   `json:"strict_attendance_geofence,omitempty"`
+
+	// Timezone Zona waktu IANA proyek: WIB = Asia/Jakarta, WITA = Asia/Makassar, WIT = Asia/Jayapura.
+	Timezone  *ProjectTimezone `json:"timezone,omitempty"`
+	UpdatedAt *time.Time       `json:"updated_at,omitempty"`
 }
-
-// ProjectBusinessLine defines model for Project.BusinessLine.
-type ProjectBusinessLine string
-
-// ProjectTimezone defines model for Project.Timezone.
-type ProjectTimezone string
 
 // ProjectInput defines model for ProjectInput.
 type ProjectInput struct {
-	Address           *string                  `json:"address,omitempty"`
-	BranchId          *int64                   `json:"branch_id,omitempty"`
-	BusinessLine      ProjectInputBusinessLine `json:"business_line"`
-	ChiefSecurity     *string                  `json:"chief_security,omitempty"`
-	CityId            *int64                   `json:"city_id,omitempty"`
-	ClientId          int64                    `json:"client_id"`
-	ContractEnd       *openapi_types.Date      `json:"contract_end,omitempty"`
-	ContractStart     *openapi_types.Date      `json:"contract_start,omitempty"`
-	Description       *string                  `json:"description,omitempty"`
-	Email             *string                  `json:"email,omitempty"`
-	EmergencyContacts *[]struct {
-		Name  string `json:"name"`
-		Phone string `json:"phone"`
-		Type  string `json:"type"`
-	} `json:"emergency_contacts,omitempty"`
-	IanaTz                    *string  `json:"iana_tz,omitempty"`
-	IsActive                  *bool    `json:"is_active,omitempty"`
-	IsPatrolLimitedByInterval *bool    `json:"is_patrol_limited_by_interval,omitempty"`
-	Latitude                  *float64 `json:"latitude,omitempty"`
-	Longitude                 *float64 `json:"longitude,omitempty"`
-	ManagerName               *string  `json:"manager_name,omitempty"`
-	MapAddress                *string  `json:"map_address,omitempty"`
-	PatrolIntervalInMinutes   *int     `json:"patrol_interval_in_minutes,omitempty"`
-	Phone                     *string  `json:"phone,omitempty"`
-	ProjectCode               string   `json:"project_code"`
-	ProvinceId                *int64   `json:"province_id,omitempty"`
+	// Address Opsional.
+	Address *string `json:"address,omitempty"`
 
-	// Salary Nominal sebagai string desimal (DL-38) — jangan float.
-	Salary            *Money                  `json:"salary,omitempty"`
-	ShiftConfig       *map[string]interface{} `json:"shift_config,omitempty"`
-	StatusGpsTracking *bool                   `json:"status_gps_tracking,omitempty"`
-	Timezone          *ProjectInputTimezone   `json:"timezone,omitempty"`
+	// AttendanceRadiusMeters Opsional. Radius geofence absensi (meter). Bawaan 150.
+	AttendanceRadiusMeters *int `json:"attendance_radius_meters,omitempty"`
+
+	// BusinessLine WAJIB. Menentukan akhiran kode. Klien yang sudah punya proyek untuk bidang itu: 409 CODE_TAKEN. Tidak dapat diubah.
+	BusinessLine BusinessLine `json:"business_line"`
+
+	// City Opsional.
+	City *string `json:"city,omitempty"`
+
+	// ClientCode WAJIB. Harus klien yang ada (404 CLIENT_NOT_FOUND). Tidak dapat diubah.
+	ClientCode string `json:"client_code"`
+
+	// CompanyBidangUsaha Opsional.
+	CompanyBidangUsaha *string `json:"company_bidang_usaha,omitempty"`
+
+	// CompanyCode Opsional.
+	CompanyCode *string `json:"company_code,omitempty"`
+
+	// CompanyPrefix Opsional. Bila dikirim harus 2 sampai 10 huruf besar atau angka (422 CLIENT_PREFIX_INVALID).
+	CompanyPrefix *string `json:"company_prefix,omitempty"`
+
+	// Description WAJIB. Nama proyek; tidak boleh hanya spasi.
+	Description string `json:"description"`
+
+	// Email Opsional.
+	Email *string `json:"email,omitempty"`
+
+	// EmergencyContacts Opsional. Bawaan daftar kosong.
+	EmergencyContacts *[]EmergencyContact `json:"emergency_contacts,omitempty"`
+
+	// GpsTrackingEnabled Opsional. Bawaan true.
+	GpsTrackingEnabled *bool `json:"gps_tracking_enabled,omitempty"`
+
+	// IsActive Opsional. Bawaan true.
+	IsActive *bool `json:"is_active,omitempty"`
+
+	// Latitude Opsional, tetapi harus dikirim bersama longitude (422 bila hanya satu). Tanpa keduanya proyek belum dikonfigurasi.
+	Latitude *float64 `json:"latitude,omitempty"`
+
+	// Longitude Opsional, tetapi harus dikirim bersama latitude.
+	Longitude *float64 `json:"longitude,omitempty"`
+
+	// PatrolIntervalMinutes Opsional. Tidak dikirim = tidak dibatasi.
+	PatrolIntervalMinutes *int `json:"patrol_interval_minutes,omitempty"`
+
+	// Phone Opsional.
+	Phone *string `json:"phone,omitempty"`
+
+	// StrictAttendanceGeofence Opsional. Bawaan false.
+	StrictAttendanceGeofence *bool `json:"strict_attendance_geofence,omitempty"`
+
+	// Timezone WAJIB. Tidak ada nilai bawaan agar zona waktu tidak keliru diam-diam.
+	Timezone ProjectTimezone `json:"timezone"`
 }
 
-// ProjectInputBusinessLine defines model for ProjectInput.BusinessLine.
-type ProjectInputBusinessLine string
+// ProjectTimezone Zona waktu IANA proyek: WIB = Asia/Jakarta, WITA = Asia/Makassar, WIT = Asia/Jayapura.
+type ProjectTimezone string
 
-// ProjectInputTimezone defines model for ProjectInput.Timezone.
-type ProjectInputTimezone string
+// ProjectUpdate Semua field opsional; field yang tidak dikirim tidak berubah. Body kosong `{}` sah.
+// `code`, `client_code`, dan `business_line` tidak dapat dikirim (422, field tidak dikenal).
+// Nilai yang sudah diisi (koordinat, interval patroli) dapat diganti tetapi tidak dikosongkan.
+// `emergency_contacts` dikirim = menggantikan seluruh daftar; `[]` mengosongkan; tidak dikirim = tetap.
+// Hasil akhir latitude dan longitude harus lengkap berpasangan (422 bila tidak).
+type ProjectUpdate struct {
+	Address                *string `json:"address,omitempty"`
+	AttendanceRadiusMeters *int    `json:"attendance_radius_meters,omitempty"`
+	City                   *string `json:"city,omitempty"`
+	CompanyBidangUsaha     *string `json:"company_bidang_usaha,omitempty"`
+	CompanyCode            *string `json:"company_code,omitempty"`
+
+	// Description Tidak boleh hanya spasi.
+	Description              *string             `json:"description,omitempty"`
+	Email                    *string             `json:"email,omitempty"`
+	EmergencyContacts        *[]EmergencyContact `json:"emergency_contacts,omitempty"`
+	GpsTrackingEnabled       *bool               `json:"gps_tracking_enabled,omitempty"`
+	IsActive                 *bool               `json:"is_active,omitempty"`
+	Latitude                 *float64            `json:"latitude,omitempty"`
+	Longitude                *float64            `json:"longitude,omitempty"`
+	PatrolIntervalMinutes    *int                `json:"patrol_interval_minutes,omitempty"`
+	Phone                    *string             `json:"phone,omitempty"`
+	StrictAttendanceGeofence *bool               `json:"strict_attendance_geofence,omitempty"`
+
+	// Timezone Zona waktu IANA proyek: WIB = Asia/Jakarta, WITA = Asia/Makassar, WIT = Asia/Jayapura.
+	Timezone *ProjectTimezone `json:"timezone,omitempty"`
+}
 
 // Province Master global provinsi (read-only, lintas-tenant).
 type Province struct {
@@ -6419,14 +6522,20 @@ type Region struct {
 
 // RegionInput defines model for RegionInput.
 type RegionInput struct {
-	// Code Tidak dapat diubah setelah dibuat.
-	Code        string `json:"code"`
+	// Code WAJIB. OS diikuti angka tanpa nol di depan. Tidak dapat diubah setelah dibuat. Kode yang pernah dipakai, juga oleh wilayah yang dihapus, tidak dapat dipakai lagi (409 CODE_TAKEN).
+	Code string `json:"code"`
+
+	// Description WAJIB. Nama wilayah; tidak boleh hanya spasi.
 	Description string `json:"description"`
-	IsActive    *bool  `json:"is_active,omitempty"`
+
+	// IsActive Opsional. Bawaan true.
+	IsActive *bool `json:"is_active,omitempty"`
 }
 
-// RegionUpdate Hanya description dan is_active. Kode tidak dapat diubah (422 bila dikirim).
+// RegionUpdate Semua field opsional; field yang tidak dikirim tidak berubah. Body kosong `{}` sah dan
+// tidak mengubah apa pun. `code` tidak dapat dikirim (422, field tidak dikenal).
 type RegionUpdate struct {
+	// Description Tidak boleh hanya spasi.
 	Description *string `json:"description,omitempty"`
 	IsActive    *bool   `json:"is_active,omitempty"`
 }
@@ -6614,48 +6723,56 @@ type SuspendInput struct {
 
 // Team defines model for Team.
 type Team struct {
-	CreatedAt   *time.Time `json:"created_at,omitempty"`
-	Description *string    `json:"description,omitempty"`
-	Id          *int64     `json:"id,omitempty"`
-	IsActive    *bool      `json:"is_active,omitempty"`
+	Code      *string    `json:"code,omitempty"`
+	CreatedAt *time.Time `json:"created_at,omitempty"`
 
-	// IsNotAcceptingAttendanceAfterTolerateTime Tolak absensi setelah waktu toleransi (DL-48).
-	IsNotAcceptingAttendanceAfterTolerateTime *bool    `json:"is_not_accepting_attendance_after_tolerate_time,omitempty"`
-	Latitude                                  *float64 `json:"latitude,omitempty"`
-	Longitude                                 *float64 `json:"longitude,omitempty"`
-	MinPersonnel                              *int     `json:"min_personnel,omitempty"`
-	Name                                      *string  `json:"name,omitempty"`
-	OrganizationId                            *int64   `json:"organization_id,omitempty"`
-	Phone                                     *string  `json:"phone,omitempty"`
-	ProjectId                                 *int64   `json:"project_id,omitempty"`
+	// Description Nama regu.
+	Description *string `json:"description,omitempty"`
+	IsActive    *bool   `json:"is_active,omitempty"`
 
-	// Radius Radius geofence (meter).
-	Radius *int    `json:"radius,omitempty"`
-	Shift  *string `json:"shift,omitempty"`
+	// MinPersonnel Regu kekurangan personil bila anggota aktif kurang dari ini (DL-02).
+	MinPersonnel *int    `json:"min_personnel,omitempty"`
+	Notes        *string `json:"notes,omitempty"`
+	Phone        *string `json:"phone,omitempty"`
+	ProjectCode  *string `json:"project_code,omitempty"`
 
-	// StatusGeofencing Aktifkan geofencing lokasi regu (DL-48).
-	StatusGeofencing *bool `json:"status_geofencing,omitempty"`
+	// RejectAttendanceAfterTolerance Tolak absensi setelah waktu toleransi (DL-48).
+	RejectAttendanceAfterTolerance *bool      `json:"reject_attendance_after_tolerance,omitempty"`
+	RelationshipOfficerPersonnelId *int64     `json:"relationship_officer_personnel_id,omitempty"`
+	UpdatedAt                      *time.Time `json:"updated_at,omitempty"`
 
-	// StatusValidateShift Validasi shift saat absensi (DL-48).
-	StatusValidateShift *bool      `json:"status_validate_shift,omitempty"`
-	UpdatedAt           *time.Time `json:"updated_at,omitempty"`
+	// ValidateShift Validasi shift saat absensi (DL-48).
+	ValidateShift *bool `json:"validate_shift,omitempty"`
 }
 
 // TeamInput defines model for TeamInput.
 type TeamInput struct {
-	Description                               *string  `json:"description,omitempty"`
-	IsActive                                  *bool    `json:"is_active,omitempty"`
-	IsNotAcceptingAttendanceAfterTolerateTime *bool    `json:"is_not_accepting_attendance_after_tolerate_time,omitempty"`
-	Latitude                                  *float64 `json:"latitude,omitempty"`
-	Longitude                                 *float64 `json:"longitude,omitempty"`
-	MinPersonnel                              *int     `json:"min_personnel,omitempty"`
-	Name                                      string   `json:"name"`
-	Phone                                     *string  `json:"phone,omitempty"`
-	ProjectId                                 int64    `json:"project_id"`
-	Radius                                    *int     `json:"radius,omitempty"`
-	Shift                                     *string  `json:"shift,omitempty"`
-	StatusGeofencing                          *bool    `json:"status_geofencing,omitempty"`
-	StatusValidateShift                       *bool    `json:"status_validate_shift,omitempty"`
+	// Description WAJIB. Nama regu; tidak boleh hanya spasi.
+	Description string `json:"description"`
+
+	// IsActive Opsional. Bawaan true.
+	IsActive *bool `json:"is_active,omitempty"`
+
+	// MinPersonnel Opsional. Bawaan 0.
+	MinPersonnel *int `json:"min_personnel,omitempty"`
+
+	// Notes Opsional.
+	Notes *string `json:"notes,omitempty"`
+
+	// Phone Opsional.
+	Phone *string `json:"phone,omitempty"`
+
+	// ProjectCode WAJIB. Harus proyek yang ada (404 PROJECT_NOT_FOUND). Tidak dapat diubah. Nomor regu diambil dari penghitung proyek dan tidak pernah dipakai ulang.
+	ProjectCode string `json:"project_code"`
+
+	// RejectAttendanceAfterTolerance Opsional. Bawaan false.
+	RejectAttendanceAfterTolerance *bool `json:"reject_attendance_after_tolerance,omitempty"`
+
+	// RelationshipOfficerPersonnelId Opsional. Harus personil di organisasi ini (422 bila tidak).
+	RelationshipOfficerPersonnelId *int64 `json:"relationship_officer_personnel_id,omitempty"`
+
+	// ValidateShift Opsional. Bawaan true.
+	ValidateShift *bool `json:"validate_shift,omitempty"`
 }
 
 // TeamMember defines model for TeamMember.
@@ -6681,6 +6798,20 @@ type TeamMemberInput struct {
 
 // TeamMemberInputRole defines model for TeamMemberInput.Role.
 type TeamMemberInputRole string
+
+// TeamUpdate Semua field opsional; field yang tidak dikirim tidak berubah. Body kosong `{}` sah.
+// `code` dan `project_code` tidak dapat dikirim (422, field tidak dikenal).
+type TeamUpdate struct {
+	// Description Tidak boleh hanya spasi.
+	Description                    *string `json:"description,omitempty"`
+	IsActive                       *bool   `json:"is_active,omitempty"`
+	MinPersonnel                   *int    `json:"min_personnel,omitempty"`
+	Notes                          *string `json:"notes,omitempty"`
+	Phone                          *string `json:"phone,omitempty"`
+	RejectAttendanceAfterTolerance *bool   `json:"reject_attendance_after_tolerance,omitempty"`
+	RelationshipOfficerPersonnelId *int64  `json:"relationship_officer_personnel_id,omitempty"`
+	ValidateShift                  *bool   `json:"validate_shift,omitempty"`
+}
 
 // Tombstone Record terhapus untuk cache lokal delta-sync (DL-34).
 type Tombstone struct {
@@ -6813,11 +6944,26 @@ type ZoneCheckInInput struct {
 	Lng float64 `json:"lng"`
 }
 
+// BranchCodePath defines model for BranchCodePath.
+type BranchCodePath = string
+
+// BranchCodeQuery defines model for BranchCodeQuery.
+type BranchCodeQuery = string
+
 // BranchIdParam defines model for BranchIdParam.
 type BranchIdParam = int64
 
 // BusinessLineParam defines model for BusinessLineParam.
 type BusinessLineParam string
+
+// BusinessLineQuery Bidang usaha proyek (DL-20). security membentuk kode berakhiran S, cleaning berakhiran C; satu klien paling banyak satu proyek per bidang.
+type BusinessLineQuery = BusinessLine
+
+// ClientCodePath defines model for ClientCodePath.
+type ClientCodePath = string
+
+// ClientCodeQuery defines model for ClientCodeQuery.
+type ClientCodeQuery = string
 
 // ClientIdParam defines model for ClientIdParam.
 type ClientIdParam = int64
@@ -6852,6 +6998,12 @@ type PageParam = int
 // PersonnelIdPath defines model for PersonnelIdPath.
 type PersonnelIdPath = int64
 
+// ProjectCodePath defines model for ProjectCodePath.
+type ProjectCodePath = string
+
+// ProjectCodeQuery defines model for ProjectCodeQuery.
+type ProjectCodeQuery = string
+
 // ProjectIdParam defines model for ProjectIdParam.
 type ProjectIdParam = int64
 
@@ -6861,6 +7013,9 @@ type QParam = string
 // RegionCodePath defines model for RegionCodePath.
 type RegionCodePath = string
 
+// RegionCodeQuery defines model for RegionCodeQuery.
+type RegionCodeQuery = string
+
 // SinceParam defines model for SinceParam.
 type SinceParam = time.Time
 
@@ -6869,6 +7024,9 @@ type SortParam = string
 
 // StatusParam defines model for StatusParam.
 type StatusParam = string
+
+// TeamCodePath defines model for TeamCodePath.
+type TeamCodePath = string
 
 // TeamIdParam defines model for TeamIdParam.
 type TeamIdParam = int64
@@ -7022,51 +7180,27 @@ type GetAdminBranchesParams struct {
 	// Limit Item per halaman (maks 100).
 	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Sort Sortir per-resource, mis. `created_at:desc`.
-	Sort *SortParam `form:"sort,omitempty" json:"sort,omitempty"`
-
 	// Q Pencarian teks case-insensitive (nama/kode/subjek).
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
 	// IsActive Filter status aktif.
 	IsActive *IsActiveParam `form:"is_active,omitempty" json:"is_active,omitempty"`
 
-	// BranchId Filter scope cabang.
-	BranchId *BranchIdParam `form:"branch_id,omitempty" json:"branch_id,omitempty"`
+	// RegionCode Opsional. Hanya baris di koordinator wilayah ini.
+	RegionCode *RegionCodeQuery `form:"region_code,omitempty" json:"region_code,omitempty"`
 }
 
 // GetAdminBranches200JSONResponseBodySuccess defines parameters for GetAdminBranches.
 type GetAdminBranches200JSONResponseBodySuccess bool
 
-// PostAdminBranchesParams defines parameters for PostAdminBranches.
-type PostAdminBranchesParams struct {
-	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
-	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
-	// 409 CONFLICT.
-	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
-}
-
 // PostAdminBranches201JSONResponseBodySuccess defines parameters for PostAdminBranches.
 type PostAdminBranches201JSONResponseBodySuccess bool
 
-// GetAdminBranchesExportParams defines parameters for GetAdminBranchesExport.
-type GetAdminBranchesExportParams struct {
-	Format *GetAdminBranchesExportParamsFormat `form:"format,omitempty" json:"format,omitempty"`
-}
+// GetAdminBranchesByCode200JSONResponseBodySuccess defines parameters for GetAdminBranchesByCode.
+type GetAdminBranchesByCode200JSONResponseBodySuccess bool
 
-// GetAdminBranchesExportParamsFormat defines parameters for GetAdminBranchesExport.
-type GetAdminBranchesExportParamsFormat string
-
-// PostAdminBranchesImportMultipartBody defines parameters for PostAdminBranchesImport.
-type PostAdminBranchesImportMultipartBody struct {
-	File *openapi_types.File `json:"file,omitempty"`
-}
-
-// GetAdminBranchesById200JSONResponseBodySuccess defines parameters for GetAdminBranchesById.
-type GetAdminBranchesById200JSONResponseBodySuccess bool
-
-// PatchAdminBranchesById200JSONResponseBodySuccess defines parameters for PatchAdminBranchesById.
-type PatchAdminBranchesById200JSONResponseBodySuccess bool
+// PatchAdminBranchesByCode200JSONResponseBodySuccess defines parameters for PatchAdminBranchesByCode.
+type PatchAdminBranchesByCode200JSONResponseBodySuccess bool
 
 // GetAdminCctvsParams defines parameters for GetAdminCctvs.
 type GetAdminCctvsParams struct {
@@ -7208,51 +7342,27 @@ type GetAdminClientsParams struct {
 	// Limit Item per halaman (maks 100).
 	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Sort Sortir per-resource, mis. `created_at:desc`.
-	Sort *SortParam `form:"sort,omitempty" json:"sort,omitempty"`
-
 	// Q Pencarian teks case-insensitive (nama/kode/subjek).
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
 	// IsActive Filter status aktif.
 	IsActive *IsActiveParam `form:"is_active,omitempty" json:"is_active,omitempty"`
 
-	// BranchId Filter scope cabang.
-	BranchId *BranchIdParam `form:"branch_id,omitempty" json:"branch_id,omitempty"`
+	// BranchCode Opsional. Hanya baris di kantor cabang ini.
+	BranchCode *BranchCodeQuery `form:"branch_code,omitempty" json:"branch_code,omitempty"`
 }
 
 // GetAdminClients200JSONResponseBodySuccess defines parameters for GetAdminClients.
 type GetAdminClients200JSONResponseBodySuccess bool
 
-// PostAdminClientsParams defines parameters for PostAdminClients.
-type PostAdminClientsParams struct {
-	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
-	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
-	// 409 CONFLICT.
-	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
-}
-
 // PostAdminClients201JSONResponseBodySuccess defines parameters for PostAdminClients.
 type PostAdminClients201JSONResponseBodySuccess bool
 
-// GetAdminClientsExportParams defines parameters for GetAdminClientsExport.
-type GetAdminClientsExportParams struct {
-	Format *GetAdminClientsExportParamsFormat `form:"format,omitempty" json:"format,omitempty"`
-}
+// GetAdminClientsByCode200JSONResponseBodySuccess defines parameters for GetAdminClientsByCode.
+type GetAdminClientsByCode200JSONResponseBodySuccess bool
 
-// GetAdminClientsExportParamsFormat defines parameters for GetAdminClientsExport.
-type GetAdminClientsExportParamsFormat string
-
-// PostAdminClientsImportMultipartBody defines parameters for PostAdminClientsImport.
-type PostAdminClientsImportMultipartBody struct {
-	File *openapi_types.File `json:"file,omitempty"`
-}
-
-// GetAdminClientsById200JSONResponseBodySuccess defines parameters for GetAdminClientsById.
-type GetAdminClientsById200JSONResponseBodySuccess bool
-
-// PatchAdminClientsById200JSONResponseBodySuccess defines parameters for PatchAdminClientsById.
-type PatchAdminClientsById200JSONResponseBodySuccess bool
+// PatchAdminClientsByCode200JSONResponseBodySuccess defines parameters for PatchAdminClientsByCode.
+type PatchAdminClientsByCode200JSONResponseBodySuccess bool
 
 // GetAdminInstructionCategoriesParams defines parameters for GetAdminInstructionCategories.
 type GetAdminInstructionCategoriesParams struct {
@@ -7617,50 +7727,30 @@ type GetAdminProjectsParams struct {
 	// Limit Item per halaman (maks 100).
 	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Sort Sortir per-resource, mis. `created_at:desc`.
-	Sort *SortParam `form:"sort,omitempty" json:"sort,omitempty"`
-
 	// Q Pencarian teks case-insensitive (nama/kode/subjek).
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
 	// IsActive Filter status aktif.
 	IsActive *IsActiveParam `form:"is_active,omitempty" json:"is_active,omitempty"`
 
-	// ClientId Filter scope klien.
-	ClientId *ClientIdParam `form:"client_id,omitempty" json:"client_id,omitempty"`
+	// ClientCode Opsional. Hanya baris milik klien ini.
+	ClientCode *ClientCodeQuery `form:"client_code,omitempty" json:"client_code,omitempty"`
 
-	// BranchId Filter scope cabang.
-	BranchId *BranchIdParam `form:"branch_id,omitempty" json:"branch_id,omitempty"`
-
-	// BusinessLine Vertikal per-proyek.
-	BusinessLine *GetAdminProjectsParamsBusinessLine `form:"business_line,omitempty" json:"business_line,omitempty"`
+	// BusinessLine Opsional. Hanya proyek bidang usaha ini; nilai lain 422.
+	BusinessLine *BusinessLineQuery `form:"business_line,omitempty" json:"business_line,omitempty"`
 }
-
-// GetAdminProjectsParamsBusinessLine defines parameters for GetAdminProjects.
-type GetAdminProjectsParamsBusinessLine string
 
 // GetAdminProjects200JSONResponseBodySuccess defines parameters for GetAdminProjects.
 type GetAdminProjects200JSONResponseBodySuccess bool
 
-// PostAdminProjectsParams defines parameters for PostAdminProjects.
-type PostAdminProjectsParams struct {
-	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
-	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
-	// 409 CONFLICT.
-	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
-}
-
 // PostAdminProjects201JSONResponseBodySuccess defines parameters for PostAdminProjects.
 type PostAdminProjects201JSONResponseBodySuccess bool
 
-// GetAdminProjectsById200JSONResponseBodySuccess defines parameters for GetAdminProjectsById.
-type GetAdminProjectsById200JSONResponseBodySuccess bool
+// GetAdminProjectsByCode200JSONResponseBodySuccess defines parameters for GetAdminProjectsByCode.
+type GetAdminProjectsByCode200JSONResponseBodySuccess bool
 
-// PatchAdminProjectsById200JSONResponseBodySuccess defines parameters for PatchAdminProjectsById.
-type PatchAdminProjectsById200JSONResponseBodySuccess bool
-
-// PostAdminProjectsByIdDeactivate200JSONResponseBodySuccess defines parameters for PostAdminProjectsByIdDeactivate.
-type PostAdminProjectsByIdDeactivate200JSONResponseBodySuccess bool
+// PatchAdminProjectsByCode200JSONResponseBodySuccess defines parameters for PatchAdminProjectsByCode.
+type PatchAdminProjectsByCode200JSONResponseBodySuccess bool
 
 // GetAdminQualificationsParams defines parameters for GetAdminQualifications.
 type GetAdminQualificationsParams struct {
@@ -7717,14 +7807,6 @@ type GetAdminRegionsParams struct {
 
 // GetAdminRegions200JSONResponseBodySuccess defines parameters for GetAdminRegions.
 type GetAdminRegions200JSONResponseBodySuccess bool
-
-// PostAdminRegionsParams defines parameters for PostAdminRegions.
-type PostAdminRegionsParams struct {
-	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
-	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
-	// 409 CONFLICT.
-	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
-}
 
 // PostAdminRegions201JSONResponseBodySuccess defines parameters for PostAdminRegions.
 type PostAdminRegions201JSONResponseBodySuccess bool
@@ -7890,38 +7972,27 @@ type GetAdminTeamsParams struct {
 	// Limit Item per halaman (maks 100).
 	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Sort Sortir per-resource, mis. `created_at:desc`.
-	Sort *SortParam `form:"sort,omitempty" json:"sort,omitempty"`
-
 	// Q Pencarian teks case-insensitive (nama/kode/subjek).
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
 	// IsActive Filter status aktif.
 	IsActive *IsActiveParam `form:"is_active,omitempty" json:"is_active,omitempty"`
 
-	// ProjectId Filter scope proyek.
-	ProjectId *ProjectIdParam `form:"project_id,omitempty" json:"project_id,omitempty"`
+	// ProjectCode Opsional. Hanya baris di proyek ini.
+	ProjectCode *ProjectCodeQuery `form:"project_code,omitempty" json:"project_code,omitempty"`
 }
 
 // GetAdminTeams200JSONResponseBodySuccess defines parameters for GetAdminTeams.
 type GetAdminTeams200JSONResponseBodySuccess bool
 
-// PostAdminTeamsParams defines parameters for PostAdminTeams.
-type PostAdminTeamsParams struct {
-	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
-	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
-	// 409 CONFLICT.
-	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
-}
-
 // PostAdminTeams201JSONResponseBodySuccess defines parameters for PostAdminTeams.
 type PostAdminTeams201JSONResponseBodySuccess bool
 
-// GetAdminTeamsById200JSONResponseBodySuccess defines parameters for GetAdminTeamsById.
-type GetAdminTeamsById200JSONResponseBodySuccess bool
+// GetAdminTeamsByCode200JSONResponseBodySuccess defines parameters for GetAdminTeamsByCode.
+type GetAdminTeamsByCode200JSONResponseBodySuccess bool
 
-// PatchAdminTeamsById200JSONResponseBodySuccess defines parameters for PatchAdminTeamsById.
-type PatchAdminTeamsById200JSONResponseBodySuccess bool
+// PatchAdminTeamsByCode200JSONResponseBodySuccess defines parameters for PatchAdminTeamsByCode.
+type PatchAdminTeamsByCode200JSONResponseBodySuccess bool
 
 // GetAdminTeamsByIdMembers200JSONResponseBodySuccess defines parameters for GetAdminTeamsByIdMembers.
 type GetAdminTeamsByIdMembers200JSONResponseBodySuccess bool
@@ -9416,11 +9487,8 @@ type PatchAdminAttendancesByIdJSONRequestBody = AttendanceCorrection
 // PostAdminBranchesJSONRequestBody defines body for PostAdminBranches for application/json ContentType.
 type PostAdminBranchesJSONRequestBody = BranchInput
 
-// PostAdminBranchesImportMultipartRequestBody defines body for PostAdminBranchesImport for multipart/form-data ContentType.
-type PostAdminBranchesImportMultipartRequestBody PostAdminBranchesImportMultipartBody
-
-// PatchAdminBranchesByIdJSONRequestBody defines body for PatchAdminBranchesById for application/json ContentType.
-type PatchAdminBranchesByIdJSONRequestBody = BranchInput
+// PatchAdminBranchesByCodeJSONRequestBody defines body for PatchAdminBranchesByCode for application/json ContentType.
+type PatchAdminBranchesByCodeJSONRequestBody = BranchUpdate
 
 // PostAdminCctvsJSONRequestBody defines body for PostAdminCctvs for application/json ContentType.
 type PostAdminCctvsJSONRequestBody = CctvInput
@@ -9446,11 +9514,8 @@ type PatchAdminClientTypesByIdJSONRequestBody = CodedMasterInput
 // PostAdminClientsJSONRequestBody defines body for PostAdminClients for application/json ContentType.
 type PostAdminClientsJSONRequestBody = ClientInput
 
-// PostAdminClientsImportMultipartRequestBody defines body for PostAdminClientsImport for multipart/form-data ContentType.
-type PostAdminClientsImportMultipartRequestBody PostAdminClientsImportMultipartBody
-
-// PatchAdminClientsByIdJSONRequestBody defines body for PatchAdminClientsById for application/json ContentType.
-type PatchAdminClientsByIdJSONRequestBody = ClientInput
+// PatchAdminClientsByCodeJSONRequestBody defines body for PatchAdminClientsByCode for application/json ContentType.
+type PatchAdminClientsByCodeJSONRequestBody = ClientUpdate
 
 // PostAdminInstructionCategoriesJSONRequestBody defines body for PostAdminInstructionCategories for application/json ContentType.
 type PostAdminInstructionCategoriesJSONRequestBody = CodedMasterInput
@@ -9506,11 +9571,8 @@ type PatchAdminPositionsByIdJSONRequestBody = PositionInput
 // PostAdminProjectsJSONRequestBody defines body for PostAdminProjects for application/json ContentType.
 type PostAdminProjectsJSONRequestBody = ProjectInput
 
-// PatchAdminProjectsByIdJSONRequestBody defines body for PatchAdminProjectsById for application/json ContentType.
-type PatchAdminProjectsByIdJSONRequestBody = ProjectInput
-
-// PostAdminProjectsByIdDeactivateJSONRequestBody defines body for PostAdminProjectsByIdDeactivate for application/json ContentType.
-type PostAdminProjectsByIdDeactivateJSONRequestBody = ActivationInput
+// PatchAdminProjectsByCodeJSONRequestBody defines body for PatchAdminProjectsByCode for application/json ContentType.
+type PatchAdminProjectsByCodeJSONRequestBody = ProjectUpdate
 
 // PostAdminQualificationsJSONRequestBody defines body for PostAdminQualifications for application/json ContentType.
 type PostAdminQualificationsJSONRequestBody = CodedMasterInput
@@ -9545,8 +9607,8 @@ type PatchAdminStakeholderTypesByIdJSONRequestBody = CodedMasterInput
 // PostAdminTeamsJSONRequestBody defines body for PostAdminTeams for application/json ContentType.
 type PostAdminTeamsJSONRequestBody = TeamInput
 
-// PatchAdminTeamsByIdJSONRequestBody defines body for PatchAdminTeamsById for application/json ContentType.
-type PatchAdminTeamsByIdJSONRequestBody = TeamInput
+// PatchAdminTeamsByCodeJSONRequestBody defines body for PatchAdminTeamsByCode for application/json ContentType.
+type PatchAdminTeamsByCodeJSONRequestBody = TeamUpdate
 
 // PostAdminTeamsByIdMembersJSONRequestBody defines body for PostAdminTeamsByIdMembers for application/json ContentType.
 type PostAdminTeamsByIdMembersJSONRequestBody = TeamMemberInput
