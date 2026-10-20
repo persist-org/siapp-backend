@@ -74,7 +74,10 @@ func run() error {
 	personelClient, err := personel.New(personel.Config{
 		BaseURL: cfg.PersonelBaseURL,
 		Key:     cfg.PersonelIntegrationKey,
-		Logger:  logger,
+		Group: personel.Group{
+			CompanyIDs: cfg.GroupCompanyIDs, OrganizationID: cfg.GroupOrganizationID, OrganizationName: cfg.GroupOrganizationName,
+		},
+		Logger: logger,
 	})
 	if err != nil {
 		return fmt.Errorf("personel client: %w", err)

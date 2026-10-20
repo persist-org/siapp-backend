@@ -60,6 +60,15 @@ type Config struct {
 	PersonelBaseURL string `env:"PERSONEL_BASE_URL,required,notEmpty"`
 	// PersonelIntegrationKey is the shared secret sent as X-Integration-Key. Never logged.
 	PersonelIntegrationKey string `env:"PERSONEL_INTEGRATION_KEY,required,notEmpty"`
+
+	// GroupCompanyIDs are the Personalia company ids (m_companies.id) of the PTs that make up
+	// the group: KPI, IDS and PCD (D17). Their people all belong to ONE organization; anyone
+	// employed by another company cannot sign in.
+	GroupCompanyIDs []int64 `env:"GROUP_COMPANY_IDS,required,notEmpty" envSeparator:","`
+	// GroupOrganizationID is the id of that one organization (organizations.id).
+	GroupOrganizationID int64 `env:"GROUP_ORGANIZATION_ID" envDefault:"1"`
+	// GroupOrganizationName is its display name.
+	GroupOrganizationName string `env:"GROUP_ORGANIZATION_NAME" envDefault:"KPI Group"`
 }
 
 // minJWTSecretBytes mirrors auth.MinSecretBytes. It is repeated here, not imported, so that
@@ -133,6 +142,7 @@ func Parse(environ map[string]string) (Config, error) {
 	problems = append(problems, checkURL("MIGRATE_DSN", cfg.MigrateDSN, postgresSchemes)...)
 	problems = append(problems, checkURL("REDIS_URL", cfg.RedisURL, redisSchemes)...)
 	problems = append(problems, checkURL("PERSONEL_BASE_URL", cfg.PersonelBaseURL, httpSchemes)...)
+	problems = append(problems, checkGroup(cfg)...)
 	// The value is never echoed in a problem: it is a secret.
 	switch {
 	case cfg.JWTSecret == "":
@@ -156,6 +166,27 @@ func Parse(environ map[string]string) (Config, error) {
 		return Config{}, fmt.Errorf("invalid configuration:\n  - %s", strings.Join(problems, "\n  - "))
 	}
 	return cfg, nil
+}
+
+// checkGroup judges the group settings. A missing GROUP_COMPANY_IDS is already reported by
+// the parser, so an empty list says nothing more here.
+func checkGroup(cfg Config) []string {
+	var problems []string
+	for i, id := range cfg.GroupCompanyIDs {
+		switch {
+		case id <= 0:
+			problems = append(problems, fmt.Sprintf("GROUP_COMPANY_IDS must list positive company ids, got %d", id))
+		case slices.Contains(cfg.GroupCompanyIDs[:i], id):
+			problems = append(problems, fmt.Sprintf("GROUP_COMPANY_IDS lists company %d twice", id))
+		}
+	}
+	if cfg.GroupOrganizationID <= 0 {
+		problems = append(problems, "GROUP_ORGANIZATION_ID must be a positive number")
+	}
+	if strings.TrimSpace(cfg.GroupOrganizationName) == "" {
+		problems = append(problems, "GROUP_ORGANIZATION_NAME must not be empty")
+	}
+	return problems
 }
 
 // checkURL catches the most common mistake early (a MySQL DSN or a bare host:port left

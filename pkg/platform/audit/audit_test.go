@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/require"
 
 	"siapp/internal/db"
@@ -32,7 +33,7 @@ func entries(t *testing.T, org int64) []db.AuditLog {
 	t.Helper()
 	var out []db.AuditLog
 	require.NoError(t, database.WithTenant(t.Context(), testkit.Pool(t), org, func(q *db.Queries) (err error) {
-		out, err = q.ListAuditLogsByEntity(t.Context(), db.ListAuditLogsByEntityParams{EntityType: "absence", EntityID: 7, Limit: 10})
+		out, err = q.ListAuditLogsByEntity(t.Context(), db.ListAuditLogsByEntityParams{EntityType: "absence", EntityID: pgtype.Int8{Int64: 7, Valid: true}, Limit: 10})
 		return err
 	}))
 	return out
@@ -214,4 +215,29 @@ func TestEnsurePartitions(t *testing.T) {
 			"SELECT tableoid::regclass::text FROM audit_logs").Scan(&tableName))
 		require.Equal(t, "audit_logs_"+inMonth.Format("2006_01"), tableName)
 	})
+}
+
+// The hierarchy's rows have a code, not a number (D19), so an audit row can name its entity
+// by code instead.
+func TestRecordAnEntityByCode(t *testing.T) {
+	testkit.Reset(t)
+	org := testkit.NewOrg(t)
+
+	record(t, org, audit.Entry{
+		ActorPersonnelID: ptr(int64(15)), Action: "region.create", EntityType: "region", EntityCode: "OS1",
+		Metadata: map[string]any{"after": map[string]any{"description": "Outsourcing 1"}},
+	})
+
+	var got []db.AuditLog
+	require.NoError(t, database.WithTenant(t.Context(), testkit.Pool(t), org, func(q *db.Queries) (err error) {
+		got, err = q.ListAuditLogsByCode(t.Context(), db.ListAuditLogsByCodeParams{
+			EntityType: "region", EntityCode: pgtype.Text{String: "OS1", Valid: true}, Limit: 10,
+		})
+		return err
+	}))
+	require.Len(t, got, 1)
+	require.Equal(t, "region.create", got[0].Action)
+	require.False(t, got[0].EntityID.Valid, "a coded entity has no number")
+	require.Equal(t, "OS1", got[0].EntityCode.String)
+	require.Empty(t, entries(t, org), "and it is not found by number")
 }

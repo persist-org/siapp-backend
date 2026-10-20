@@ -100,7 +100,7 @@ type webRoleData struct {
 	FullName             string  `json:"full_name"`
 	NIK                  string  `json:"nik"`
 	Role                 string  `json:"role"`
-	ProjectIDs           []int64 `json:"project_ids"`
+	RegionCode           *string `json:"region_code"`
 	GrantedByPersonnelID *int64  `json:"granted_by_personnel_id"`
 }
 
@@ -163,12 +163,13 @@ func TestWebRoleManagement(t *testing.T) {
 	member := e.fieldSession(personeltest.EmailAnggota1Satu, phoneA)
 	memberID := member.User.ID
 	rolePath := func(id int64) string { return "/admin/web-roles/" + itoa(id) }
+	addRegion(t, satu, "OS1", "Outsourcing 1")
 
-	t.Run("an ORG_ADMIN grants a PROJECT_ADMIN, project ids sorted and de-duplicated", func(t *testing.T) {
-		res := e.api(admin, http.MethodPut, rolePath(memberID), map[string]any{"role": "PROJECT_ADMIN", "project_ids": []int64{5, 3, 5}})
+	t.Run("an ORG_ADMIN grants a REGION_ADMIN of one koordinator wilayah", func(t *testing.T) {
+		res := e.api(admin, http.MethodPut, rolePath(memberID), map[string]any{"role": "REGION_ADMIN", "region_code": "OS1"})
 		got := dataOf[webRoleData](t, res)
-		require.Equal(t, "PROJECT_ADMIN", got.Role)
-		require.Equal(t, []int64{3, 5}, got.ProjectIDs)
+		require.Equal(t, "REGION_ADMIN", got.Role)
+		require.Equal(t, "OS1", *got.RegionCode)
 		require.Equal(t, memberID, got.PersonnelID)
 		require.Equal(t, adminID, *got.GrantedByPersonnelID)
 		require.Equal(t, identity.MaskNIK(personeltest.NIKAnggota1Satu), got.NIK, "the NIK is masked")
@@ -191,11 +192,14 @@ func TestWebRoleManagement(t *testing.T) {
 
 	t.Run("the shapes of the roles are enforced", func(t *testing.T) {
 		for name, body := range map[string]map[string]any{
-			"a PROJECT_ADMIN with no projects":   {"role": "PROJECT_ADMIN"},
-			"a PROJECT_ADMIN with an empty list": {"role": "PROJECT_ADMIN", "project_ids": []int64{}},
-			"an ORG_ADMIN with projects":         {"role": "ORG_ADMIN", "project_ids": []int64{4}},
-			"an unknown role":                    {"role": "ROOT"},
-			"a project id of zero":               {"role": "PROJECT_ADMIN", "project_ids": []int64{0}},
+			"a REGION_ADMIN with no region":       {"role": "REGION_ADMIN"},
+			"a REGION_ADMIN with an empty region": {"role": "REGION_ADMIN", "region_code": ""},
+			"an ORG_ADMIN with a region":          {"role": "ORG_ADMIN", "region_code": "OS1"},
+			"an unknown role":                     {"role": "ROOT"},
+			"the old PROJECT_ADMIN role":          {"role": "PROJECT_ADMIN"},
+			"a region code in the wrong shape":    {"role": "REGION_ADMIN", "region_code": "os1"},
+			"a region that does not exist":        {"role": "REGION_ADMIN", "region_code": "OS9"},
+			"the old project list":                {"role": "ORG_ADMIN", "project_ids": []int64{4}},
 		} {
 			// Sent raw: the contract client would refuse some of these before the server sees them.
 			put := e.send(http.MethodPut, rolePath(memberID), admin, body)
@@ -214,7 +218,7 @@ func TestWebRoleManagement(t *testing.T) {
 		require.Equal(t, http.StatusConflict, del.Status)
 		require.Equal(t, access.ReasonOwnRoleLocked, del.err(t).reason())
 
-		narrow := e.api(admin, http.MethodPut, rolePath(adminID), map[string]any{"role": "PROJECT_ADMIN", "project_ids": []int64{1}})
+		narrow := e.api(admin, http.MethodPut, rolePath(adminID), map[string]any{"role": "REGION_ADMIN", "region_code": "OS1"})
 		require.Equal(t, http.StatusConflict, narrow.Status)
 
 		// ORG_ADMIN again changes nothing and is allowed.
@@ -223,20 +227,20 @@ func TestWebRoleManagement(t *testing.T) {
 		require.Equal(t, "ORG_ADMIN", scalar[string](t, satu, "SELECT role::text FROM web_role_assignments WHERE personnel_id = $1", adminID))
 	})
 
-	t.Run("a PROJECT_ADMIN cannot manage roles", func(t *testing.T) {
-		projectAdmin := e.login(web(personeltest.EmailAnggota1Satu)).data(t) // has the role granted above
-		res := e.api(projectAdmin.AccessToken, http.MethodGet, "/admin/web-roles", nil)
+	t.Run("a REGION_ADMIN cannot manage roles", func(t *testing.T) {
+		regionAdmin := e.login(web(personeltest.EmailAnggota1Satu)).data(t) // has the role granted above
+		res := e.api(regionAdmin.AccessToken, http.MethodGet, "/admin/web-roles", nil)
 		require.Equal(t, http.StatusForbidden, res.Status)
 		require.Equal(t, "ROLE_DENIED", res.err(t).Code)
 		require.Equal(t, access.ReasonOrgAdminOnly, res.err(t).reason())
 		require.Equal(t, http.StatusForbidden,
-			e.api(projectAdmin.AccessToken, http.MethodPut, rolePath(adminID), map[string]any{"role": "ORG_ADMIN"}).Status)
+			e.api(regionAdmin.AccessToken, http.MethodPut, rolePath(adminID), map[string]any{"role": "ORG_ADMIN"}).Status)
 	})
 
 	t.Run("revoking a role takes effect at once, and a second revoke finds nothing", func(t *testing.T) {
-		projectAdmin := e.login(web(personeltest.EmailAnggota1Satu)).data(t)
+		regionAdmin := e.login(web(personeltest.EmailAnggota1Satu)).data(t)
 		require.Equal(t, http.StatusOK, e.api(admin, http.MethodDelete, rolePath(memberID), nil).Status)
-		require.Equal(t, http.StatusForbidden, e.api(projectAdmin.AccessToken, http.MethodGet, "/admin/web-roles", nil).Status)
+		require.Equal(t, http.StatusForbidden, e.api(regionAdmin.AccessToken, http.MethodGet, "/admin/web-roles", nil).Status)
 		require.Equal(t, http.StatusNotFound, e.api(admin, http.MethodDelete, rolePath(memberID), nil).Status)
 	})
 
@@ -259,11 +263,17 @@ func TestWebRolesStayInsideTheirOrganization(t *testing.T) {
 	require.Equal(t, 0, scalar[int](t, satu, "SELECT count(*) FROM web_role_assignments WHERE personnel_id = $1", inSatu.User.ID))
 }
 
-// fakePlacements stands in for module 02 until Phase 02.2: who is placed where.
-type fakePlacements map[int64][]int64
+// fakeRegions stands in for module 02 until Phase 02.3: under which regions a person serves.
+type fakeRegions map[int64][]string
 
-func (f fakePlacements) ProjectIDsOf(_ context.Context, _ *db.Queries, personnelID int64) ([]int64, error) {
+func (f fakeRegions) RegionCodesOf(_ context.Context, _ *db.Queries, personnelID int64) ([]string, error) {
 	return f[personnelID], nil
+}
+
+// addRegion inserts a koordinator wilayah, which a REGION_ADMIN needs to point at.
+func addRegion(t *testing.T, org int64, code, description string) {
+	t.Helper()
+	execTenant(t, org, "INSERT INTO regions (code, description) VALUES ($1, $2)", code, description)
 }
 
 func TestDeviceReset(t *testing.T) {
@@ -322,28 +332,30 @@ func TestDeviceResetLeavesWebSessionsAlone(t *testing.T) {
 	require.Equal(t, http.StatusOK, e.api(admin, http.MethodGet, "/admin/web-roles", nil).Status, "only MOBILE sessions are revoked")
 }
 
-func TestAProjectAdminResetsOnlyTheirOwnProjectsPeople(t *testing.T) {
+func TestARegionAdminResetsOnlyTheirOwnRegionsPeople(t *testing.T) {
 	e := newEnv(t, "")
 	phone := e.fieldSession(personeltest.EmailAnggota2Satu, phoneA)
-	// A person who is a PROJECT_ADMIN of project 7.
-	projectAdminID := e.makeAdmin(personeltest.EmailDanruSatu)
-	execTenant(t, satu, "UPDATE web_role_assignments SET role = 'PROJECT_ADMIN', project_ids = '{7}' WHERE personnel_id = $1", projectAdminID)
+	// A person who is the REGION_ADMIN of OS1.
+	addRegion(t, satu, "OS1", "Outsourcing 1")
+	addRegion(t, satu, "OS2", "Outsourcing 2")
+	regionAdminID := e.makeAdmin(personeltest.EmailDanruSatu)
+	execTenant(t, satu, "UPDATE web_role_assignments SET role = 'REGION_ADMIN', region_code = 'OS1' WHERE personnel_id = $1", regionAdminID)
 	admin := e.login(web(personeltest.EmailDanruSatu)).data(t).AccessToken
 	resetPath := "/admin/personnel/" + itoa(phone.User.ID) + "/device-binding"
 
-	// Until module 02 places people anywhere, nobody is in a PROJECT_ADMIN scope: fail closed.
+	// Until module 02 puts people in regu, nobody is in a REGION_ADMIN's scope: fail closed.
 	res := e.api(admin, http.MethodDelete, resetPath, nil)
 	require.Equal(t, http.StatusForbidden, res.Status)
 	require.Equal(t, "SCOPE_DENIED", res.err(t).Code)
-	require.Equal(t, access.ReasonOutsideProject, res.err(t).reason())
+	require.Equal(t, access.ReasonOutsideScope, res.err(t).reason())
 	require.Equal(t, 1, countRows(t, satu, "device_bindings"), "nothing changed")
 
-	// Placed at another project: still outside.
-	e.usecase.UsePlacements(fakePlacements{phone.User.ID: {9}})
+	// Serving under another region: still outside.
+	e.usecase.UseRegionLookup(fakeRegions{phone.User.ID: {"OS2"}})
 	require.Equal(t, http.StatusForbidden, e.api(admin, http.MethodDelete, resetPath, nil).Status)
 
-	// Placed at one of their projects: allowed.
-	e.usecase.UsePlacements(fakePlacements{phone.User.ID: {9, 7}})
+	// Serving under one of the person's own region too: allowed.
+	e.usecase.UseRegionLookup(fakeRegions{phone.User.ID: {"OS2", "OS1"}})
 	require.Equal(t, http.StatusOK, e.api(admin, http.MethodDelete, resetPath, nil).Status)
 	require.Equal(t, 0, countRows(t, satu, "device_bindings"))
 }
@@ -372,7 +384,7 @@ type meData struct {
 	} `json:"organization"`
 	WebRole *struct {
 		Role       string  `json:"role"`
-		ProjectIDs []int64 `json:"project_ids"`
+		RegionCode *string `json:"region_code"`
 	} `json:"web_role"`
 	Roles       []string `json:"roles"`
 	Memberships []any    `json:"memberships"`
@@ -407,17 +419,18 @@ func TestMe(t *testing.T) {
 		me := dataOf[meData](t, e.api(e.adminToken(personeltest.EmailDanruSatu), http.MethodGet, "/auth/me", nil))
 		require.NotNil(t, me.WebRole)
 		require.Equal(t, "ORG_ADMIN", me.WebRole.Role)
-		require.Empty(t, me.WebRole.ProjectIDs)
+		require.Nil(t, me.WebRole.RegionCode, "an ORG_ADMIN has no region")
 		require.Equal(t, []string{"ORG_ADMIN"}, me.Roles)
 	})
 
-	t.Run("a PROJECT_ADMIN lists their projects", func(t *testing.T) {
+	t.Run("a REGION_ADMIN shows their koordinator wilayah", func(t *testing.T) {
+		addRegion(t, satu, "OS3", "Outsourcing 3")
 		id := e.makeAdmin(personeltest.EmailSupervisorSatu)
-		execTenant(t, satu, "UPDATE web_role_assignments SET role = 'PROJECT_ADMIN', project_ids = '{4,2}' WHERE personnel_id = $1", id)
+		execTenant(t, satu, "UPDATE web_role_assignments SET role = 'REGION_ADMIN', region_code = 'OS3' WHERE personnel_id = $1", id)
 		token := e.login(web(personeltest.EmailSupervisorSatu)).data(t).AccessToken
 		me := dataOf[meData](t, e.api(token, http.MethodGet, "/auth/me", nil))
-		require.Equal(t, "PROJECT_ADMIN", me.WebRole.Role)
-		require.Equal(t, []int64{4, 2}, me.WebRole.ProjectIDs)
+		require.Equal(t, "REGION_ADMIN", me.WebRole.Role)
+		require.Equal(t, "OS3", *me.WebRole.RegionCode)
 	})
 
 	t.Run("it needs a token, and a token of a person who is gone is refused", func(t *testing.T) {

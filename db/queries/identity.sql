@@ -12,15 +12,18 @@
 -- counted as active.
 -- name: UpsertPersonnel :one
 INSERT INTO personnels (
-    personel_user_id, nik, client_id, client_name, full_name, email, phone, photo_url,
+    personel_user_id, nik, company_id, company_name, client_id, client_name, full_name, email, phone, photo_url,
     status, synced_at, last_seen_at, created_at, updated_at
 ) VALUES (
-    @personel_user_id, sqlc.narg('nik'), sqlc.narg('client_id'), sqlc.narg('client_name'),
+    @personel_user_id, sqlc.narg('nik'), sqlc.narg('company_id'), sqlc.narg('company_name'),
+    sqlc.narg('client_id'), sqlc.narg('client_name'),
     @full_name, sqlc.narg('email'), sqlc.narg('phone'), sqlc.narg('photo_url'),
     @status, @now, sqlc.narg('seen_at'), @now, @now
 )
 ON CONFLICT (organization_id, personel_user_id) DO UPDATE SET
     nik          = EXCLUDED.nik,
+    company_id   = EXCLUDED.company_id,
+    company_name = EXCLUDED.company_name,
     client_id    = EXCLUDED.client_id,
     client_name  = EXCLUDED.client_name,
     full_name    = EXCLUDED.full_name,
@@ -223,7 +226,8 @@ DELETE FROM devices WHERE personnel_id = $1;
 -- refresh uses.
 -- name: RefreshPersonnel :exec
 UPDATE personnels SET
-    nik = sqlc.narg('nik'), client_id = sqlc.narg('client_id'), client_name = sqlc.narg('client_name'),
+    nik = sqlc.narg('nik'), company_id = sqlc.narg('company_id'), company_name = sqlc.narg('company_name'),
+    client_id = sqlc.narg('client_id'), client_name = sqlc.narg('client_name'),
     full_name = @full_name, email = sqlc.narg('email'), phone = sqlc.narg('phone'),
     photo_url = sqlc.narg('photo_url'), status = 'ACTIVE', synced_at = @now, updated_at = @now
 WHERE id = @id;

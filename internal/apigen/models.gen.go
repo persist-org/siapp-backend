@@ -296,8 +296,8 @@ func (e MeResultTeamRole) Valid() bool {
 
 // Defines values for MeResultWebRoleRole.
 const (
-	MeResultWebRoleRoleORGADMIN     MeResultWebRoleRole = "ORG_ADMIN"
-	MeResultWebRoleRolePROJECTADMIN MeResultWebRoleRole = "PROJECT_ADMIN"
+	MeResultWebRoleRoleORGADMIN    MeResultWebRoleRole = "ORG_ADMIN"
+	MeResultWebRoleRoleREGIONADMIN MeResultWebRoleRole = "REGION_ADMIN"
 )
 
 // Valid indicates whether the value is a known member of the MeResultWebRoleRole enum.
@@ -305,7 +305,7 @@ func (e MeResultWebRoleRole) Valid() bool {
 	switch e {
 	case MeResultWebRoleRoleORGADMIN:
 		return true
-	case MeResultWebRoleRolePROJECTADMIN:
+	case MeResultWebRoleRoleREGIONADMIN:
 		return true
 	default:
 		return false
@@ -920,8 +920,8 @@ func (e TeamMemberInputRole) Valid() bool {
 
 // Defines values for WebRoleAssignmentRole.
 const (
-	WebRoleAssignmentRoleORGADMIN     WebRoleAssignmentRole = "ORG_ADMIN"
-	WebRoleAssignmentRolePROJECTADMIN WebRoleAssignmentRole = "PROJECT_ADMIN"
+	WebRoleAssignmentRoleORGADMIN    WebRoleAssignmentRole = "ORG_ADMIN"
+	WebRoleAssignmentRoleREGIONADMIN WebRoleAssignmentRole = "REGION_ADMIN"
 )
 
 // Valid indicates whether the value is a known member of the WebRoleAssignmentRole enum.
@@ -929,7 +929,7 @@ func (e WebRoleAssignmentRole) Valid() bool {
 	switch e {
 	case WebRoleAssignmentRoleORGADMIN:
 		return true
-	case WebRoleAssignmentRolePROJECTADMIN:
+	case WebRoleAssignmentRoleREGIONADMIN:
 		return true
 	default:
 		return false
@@ -938,8 +938,8 @@ func (e WebRoleAssignmentRole) Valid() bool {
 
 // Defines values for WebRoleInputRole.
 const (
-	WebRoleInputRoleORGADMIN     WebRoleInputRole = "ORG_ADMIN"
-	WebRoleInputRolePROJECTADMIN WebRoleInputRole = "PROJECT_ADMIN"
+	WebRoleInputRoleORGADMIN    WebRoleInputRole = "ORG_ADMIN"
+	WebRoleInputRoleREGIONADMIN WebRoleInputRole = "REGION_ADMIN"
 )
 
 // Valid indicates whether the value is a known member of the WebRoleInputRole enum.
@@ -947,7 +947,7 @@ func (e WebRoleInputRole) Valid() bool {
 	switch e {
 	case WebRoleInputRoleORGADMIN:
 		return true
-	case WebRoleInputRolePROJECTADMIN:
+	case WebRoleInputRoleREGIONADMIN:
 		return true
 	default:
 		return false
@@ -2334,30 +2334,30 @@ func (e PostAdminRegions201JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
-// Defines values for GetAdminRegionsById200JSONResponseBodySuccess.
+// Defines values for GetAdminRegionsByCode200JSONResponseBodySuccess.
 const (
-	GetAdminRegionsById200JSONResponseBodySuccessTrue GetAdminRegionsById200JSONResponseBodySuccess = true
+	GetAdminRegionsByCode200JSONResponseBodySuccessTrue GetAdminRegionsByCode200JSONResponseBodySuccess = true
 )
 
-// Valid indicates whether the value is a known member of the GetAdminRegionsById200JSONResponseBodySuccess enum.
-func (e GetAdminRegionsById200JSONResponseBodySuccess) Valid() bool {
+// Valid indicates whether the value is a known member of the GetAdminRegionsByCode200JSONResponseBodySuccess enum.
+func (e GetAdminRegionsByCode200JSONResponseBodySuccess) Valid() bool {
 	switch e {
-	case GetAdminRegionsById200JSONResponseBodySuccessTrue:
+	case GetAdminRegionsByCode200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
 	}
 }
 
-// Defines values for PatchAdminRegionsById200JSONResponseBodySuccess.
+// Defines values for PatchAdminRegionsByCode200JSONResponseBodySuccess.
 const (
-	PatchAdminRegionsById200JSONResponseBodySuccessTrue PatchAdminRegionsById200JSONResponseBodySuccess = true
+	PatchAdminRegionsByCode200JSONResponseBodySuccessTrue PatchAdminRegionsByCode200JSONResponseBodySuccess = true
 )
 
-// Valid indicates whether the value is a known member of the PatchAdminRegionsById200JSONResponseBodySuccess enum.
-func (e PatchAdminRegionsById200JSONResponseBodySuccess) Valid() bool {
+// Valid indicates whether the value is a known member of the PatchAdminRegionsByCode200JSONResponseBodySuccess enum.
+func (e PatchAdminRegionsByCode200JSONResponseBodySuccess) Valid() bool {
 	switch e {
-	case PatchAdminRegionsById200JSONResponseBodySuccessTrue:
+	case PatchAdminRegionsByCode200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
@@ -5718,7 +5718,7 @@ type MeResult struct {
 	// Memberships Keanggotaan regu aktif beserta peran (diisi sejak Fase 02.2; kosong sebelumnya).
 	Memberships *[]map[string]interface{} `json:"memberships,omitempty"`
 
-	// Organization Organisasi (tenant) orang ini, dari Personalia.
+	// Organization Organisasi (tenant) orang ini. Satu organisasi untuk seluruh grup (KPI, IDS, PCD); PT orang itu hanya informasi tampilan (D17).
 	Organization *struct {
 		Id   *int64  `json:"id,omitempty"`
 		Name *string `json:"name,omitempty"`
@@ -5729,7 +5729,8 @@ type MeResult struct {
 
 	// WebRole Penugasan peran web (admin) milik SiAPP; null untuk petugas lapangan.
 	WebRole *struct {
-		ProjectIds *[]int64             `json:"project_ids,omitempty"`
+		// RegionCode Koordinator wilayah milik REGION_ADMIN; null untuk ORG_ADMIN.
+		RegionCode *string              `json:"region_code,omitempty"`
 		Role       *MeResultWebRoleRole `json:"role,omitempty"`
 	} `json:"web_role,omitempty"`
 }
@@ -6407,20 +6408,27 @@ type RefreshRequest struct {
 
 // Region defines model for Region.
 type Region struct {
-	CreatedAt      *time.Time `json:"created_at,omitempty"`
-	Description    *string    `json:"description,omitempty"`
-	Id             *int64     `json:"id,omitempty"`
-	IsActive       *bool      `json:"is_active,omitempty"`
-	Name           *string    `json:"name,omitempty"`
-	OrganizationId *int64     `json:"organization_id,omitempty"`
-	UpdatedAt      *time.Time `json:"updated_at,omitempty"`
+	Code      *string    `json:"code,omitempty"`
+	CreatedAt *time.Time `json:"created_at,omitempty"`
+
+	// Description Nama koordinator wilayah.
+	Description *string    `json:"description,omitempty"`
+	IsActive    *bool      `json:"is_active,omitempty"`
+	UpdatedAt   *time.Time `json:"updated_at,omitempty"`
 }
 
 // RegionInput defines model for RegionInput.
 type RegionInput struct {
+	// Code Tidak dapat diubah setelah dibuat.
+	Code        string `json:"code"`
+	Description string `json:"description"`
+	IsActive    *bool  `json:"is_active,omitempty"`
+}
+
+// RegionUpdate Hanya description dan is_active. Kode tidak dapat diubah (422 bila dikirim).
+type RegionUpdate struct {
 	Description *string `json:"description,omitempty"`
 	IsActive    *bool   `json:"is_active,omitempty"`
-	Name        string  `json:"name"`
 }
 
 // RejectionNote defines model for RejectionNote.
@@ -6694,7 +6702,7 @@ type WebRoleAssignment struct {
 	// Nik Disamarkan; hanya 4 digit terakhir.
 	Nik         *string                `json:"nik,omitempty"`
 	PersonnelId *int64                 `json:"personnel_id,omitempty"`
-	ProjectIds  *[]int64               `json:"project_ids,omitempty"`
+	RegionCode  *string                `json:"region_code,omitempty"`
 	Role        *WebRoleAssignmentRole `json:"role,omitempty"`
 	UpdatedAt   *time.Time             `json:"updated_at,omitempty"`
 }
@@ -6704,8 +6712,8 @@ type WebRoleAssignmentRole string
 
 // WebRoleInput defines model for WebRoleInput.
 type WebRoleInput struct {
-	// ProjectIds Wajib dan tidak kosong untuk PROJECT_ADMIN; harus kosong untuk ORG_ADMIN.
-	ProjectIds *[]int64         `json:"project_ids,omitempty"`
+	// RegionCode Wajib untuk REGION_ADMIN (harus koordinator wilayah yang ada); harus kosong untuk ORG_ADMIN.
+	RegionCode *string          `json:"region_code,omitempty"`
 	Role       WebRoleInputRole `json:"role"`
 }
 
@@ -6849,6 +6857,9 @@ type ProjectIdParam = int64
 
 // QParam defines model for QParam.
 type QParam = string
+
+// RegionCodePath defines model for RegionCodePath.
+type RegionCodePath = string
 
 // SinceParam defines model for SinceParam.
 type SinceParam = time.Time
@@ -7697,9 +7708,6 @@ type GetAdminRegionsParams struct {
 	// Limit Item per halaman (maks 100).
 	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Sort Sortir per-resource, mis. `created_at:desc`.
-	Sort *SortParam `form:"sort,omitempty" json:"sort,omitempty"`
-
 	// Q Pencarian teks case-insensitive (nama/kode/subjek).
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
@@ -7721,11 +7729,11 @@ type PostAdminRegionsParams struct {
 // PostAdminRegions201JSONResponseBodySuccess defines parameters for PostAdminRegions.
 type PostAdminRegions201JSONResponseBodySuccess bool
 
-// GetAdminRegionsById200JSONResponseBodySuccess defines parameters for GetAdminRegionsById.
-type GetAdminRegionsById200JSONResponseBodySuccess bool
+// GetAdminRegionsByCode200JSONResponseBodySuccess defines parameters for GetAdminRegionsByCode.
+type GetAdminRegionsByCode200JSONResponseBodySuccess bool
 
-// PatchAdminRegionsById200JSONResponseBodySuccess defines parameters for PatchAdminRegionsById.
-type PatchAdminRegionsById200JSONResponseBodySuccess bool
+// PatchAdminRegionsByCode200JSONResponseBodySuccess defines parameters for PatchAdminRegionsByCode.
+type PatchAdminRegionsByCode200JSONResponseBodySuccess bool
 
 // GetAdminReportCategoriesParams defines parameters for GetAdminReportCategories.
 type GetAdminReportCategoriesParams struct {
@@ -9513,8 +9521,8 @@ type PatchAdminQualificationsByIdJSONRequestBody = CodedMasterInput
 // PostAdminRegionsJSONRequestBody defines body for PostAdminRegions for application/json ContentType.
 type PostAdminRegionsJSONRequestBody = RegionInput
 
-// PatchAdminRegionsByIdJSONRequestBody defines body for PatchAdminRegionsById for application/json ContentType.
-type PatchAdminRegionsByIdJSONRequestBody = RegionInput
+// PatchAdminRegionsByCodeJSONRequestBody defines body for PatchAdminRegionsByCode for application/json ContentType.
+type PatchAdminRegionsByCodeJSONRequestBody = RegionUpdate
 
 // PostAdminReportCategoriesJSONRequestBody defines body for PostAdminReportCategories for application/json ContentType.
 type PostAdminReportCategoriesJSONRequestBody = CodedMasterInput

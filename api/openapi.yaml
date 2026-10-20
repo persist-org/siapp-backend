@@ -294,6 +294,12 @@ components:
       required: true
       description: Identitas resource.
       schema: { type: integer, format: int64 }
+    RegionCodePath:
+      name: code
+      in: path
+      required: true
+      description: Kode koordinator wilayah (contoh OS1).
+      schema: { type: string, pattern: '^OS[1-9][0-9]*$' }
     # Header parameters (correlation / idempotency)
     PersonnelIdPath:
       name: personnel_id
@@ -622,7 +628,7 @@ components:
         team_role: { type: string, enum: [DANRU, MEMBER], nullable: true, example: DANRU }
         organization:
           type: object
-          description: Organisasi (tenant) orang ini, dari Personalia.
+          description: Organisasi (tenant) orang ini. Satu organisasi untuk seluruh grup (KPI, IDS, PCD); PT orang itu hanya informasi tampilan (D17).
           properties:
             id: { type: integer, format: int64 }
             name: { type: string }
@@ -631,8 +637,8 @@ components:
           nullable: true
           description: Penugasan peran web (admin) milik SiAPP; null untuk petugas lapangan.
           properties:
-            role: { type: string, enum: [ORG_ADMIN, PROJECT_ADMIN] }
-            project_ids: { type: array, items: { type: integer, format: int64 } }
+            role: { type: string, enum: [ORG_ADMIN, REGION_ADMIN] }
+            region_code: { type: string, nullable: true, example: OS1, description: Koordinator wilayah milik REGION_ADMIN; null untuk ORG_ADMIN. }
         memberships:
           type: array
           description: Keanggotaan regu aktif beserta peran (diisi sejak Fase 02.2; kosong sebelumnya).
@@ -643,8 +649,8 @@ components:
         personnel_id: { type: integer, format: int64 }
         full_name: { type: string }
         nik: { type: string, description: Disamarkan; hanya 4 digit terakhir. }
-        role: { type: string, enum: [ORG_ADMIN, PROJECT_ADMIN] }
-        project_ids: { type: array, items: { type: integer, format: int64 } }
+        role: { type: string, enum: [ORG_ADMIN, REGION_ADMIN] }
+        region_code: { type: string, nullable: true, example: OS1 }
         granted_by_personnel_id: { type: integer, format: int64, nullable: true }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
@@ -652,11 +658,11 @@ components:
       type: object
       required: [role]
       properties:
-        role: { type: string, enum: [ORG_ADMIN, PROJECT_ADMIN] }
-        project_ids:
-          type: array
-          items: { type: integer, format: int64 }
-          description: Wajib dan tidak kosong untuk PROJECT_ADMIN; harus kosong untuk ORG_ADMIN.
+        role: { type: string, enum: [ORG_ADMIN, REGION_ADMIN] }
+        region_code:
+          type: string
+          pattern: '^OS[1-9][0-9]*$'
+          description: Wajib untuk REGION_ADMIN (harus koordinator wilayah yang ada); harus kosong untuk ORG_ADMIN.
     OAuthTokenResult:
       type: object
       properties:
@@ -710,24 +716,29 @@ components:
         branding: { type: object, additionalProperties: true }
         timezone_default: { type: string }
 
-    # ---------- 2. regions (Wilayah/Korwil) ----------
+    # ---------- 2. regions (Koordinator Wilayah) ----------
+    # Dimiliki SiAPP sejak D17. Kode adalah identitasnya (tanpa id angka, D19).
     Region:
       type: object
       properties:
-        id: { type: integer, format: int64 }
-        organization_id: { type: integer, format: int64 }
-        name: { type: string }
-        description: { type: string, nullable: true }
+        code: { type: string, example: OS1, pattern: '^OS[1-9][0-9]*$' }
+        description: { type: string, example: Outsourcing 1, description: Nama koordinator wilayah. }
         is_active: { type: boolean }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
     RegionInput:
       type: object
-      required: [name]
+      required: [code, description]
       properties:
-        name: { type: string }
+        code: { type: string, example: OS1, pattern: '^OS[1-9][0-9]*$', description: Tidak dapat diubah setelah dibuat. }
         description: { type: string }
         is_active: { type: boolean, default: true }
+    RegionUpdate:
+      type: object
+      description: Hanya description dan is_active. Kode tidak dapat diubah (422 bila dikirim).
+      properties:
+        description: { type: string }
+        is_active: { type: boolean }
 
     # ---------- 3. branches ----------
     Branch:
@@ -2204,6 +2215,9 @@ paths:
       operationId: postAuthLogin
       tags: [Auth]
       summary: Login dengan akun Personalia (email + password)
+      description: |
+        Seluruh karyawan grup (KPI, IDS, PCD) masuk ke satu organisasi (D17). 403
+        AUTH_NOT_IN_GROUP: karyawan itu bekerja untuk PT di luar grup, dan SiAPP tidak melayaninya.
       security: []
       requestBody:
         required: true
@@ -2373,7 +2387,7 @@ paths:
         Reset HR di panel Personalia hanya membebaskan aplikasi Personalia; ikatan HP SiAPP
         adalah catatan SiAPP sendiri dan direset di sini. Dalam satu transaksi ikatan dihapus
         dan sesi MOBILE orang itu dicabut (token aksesnya mati seketika). ORG_ADMIN, atau
-        PROJECT_ADMIN untuk orang yang ditempatkan di salah satu proyeknya. Orang tanpa
+        REGION_ADMIN untuk orang yang tergabung di regu pada koordinator wilayahnya. Orang tanpa
         ikatan: tidak terjadi apa-apa, tetap 200.
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessEnvelope' } } } }
@@ -3297,18 +3311,14 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
   /admin/regions:
     get:
-      x-owner: personel
       operationId: getAdminRegions
-      tags: [Masters]
-      summary: List Region
-      security:
-        - bearerSession: []
-        - oauth2ClientCredentials: [organization:read]
-        - apiKey: []
+      tags: [Organization]
+      summary: Daftar koordinator wilayah
+      description: |
+        ORG_ADMIN melihat semuanya. REGION_ADMIN hanya melihat koordinator wilayahnya sendiri.
       parameters:
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/LimitParam'
-        - $ref: '#/components/parameters/SortParam'
         - $ref: '#/components/parameters/QParam'
         - $ref: '#/components/parameters/IsActiveParam'
       responses:
@@ -3323,14 +3333,10 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
     post:
-      x-owner: personel
       operationId: postAdminRegions
-      tags: [Masters]
-      summary: Buat Region
-      security:
-        - bearerSession: []
-        - oauth2ClientCredentials: [organization:write]
-        - apiKey: []
+      tags: [Organization]
+      summary: Buat koordinator wilayah (hanya ORG_ADMIN)
+      description: 409 DUPLICATE bila kode sudah dipakai.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKeyHeader'
       requestBody:
@@ -3351,18 +3357,14 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
-  /admin/regions/{id}:
+  /admin/regions/{code}:
     parameters:
-      - $ref: '#/components/parameters/IdPath'
+      - $ref: '#/components/parameters/RegionCodePath'
     get:
-      x-owner: personel
-      operationId: getAdminRegionsById
-      tags: [Masters]
-      summary: Detail Region
-      security:
-        - bearerSession: []
-        - oauth2ClientCredentials: [organization:read]
-        - apiKey: []
+      operationId: getAdminRegionsByCode
+      tags: [Organization]
+      summary: Detail koordinator wilayah
+      description: REGION_ADMIN di luar wilayahnya mendapat 403 SCOPE_DENIED.
       responses:
         '200':
           description: OK
@@ -3373,21 +3375,17 @@ paths:
                   - { $ref: '#/components/schemas/SuccessEnvelope' }
                   - properties: { data: { $ref: '#/components/schemas/Region' } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
     patch:
-      x-owner: personel
-      operationId: patchAdminRegionsById
-      tags: [Masters]
-      summary: Ubah Region
-      security:
-        - bearerSession: []
-        - oauth2ClientCredentials: [organization:write]
-        - apiKey: []
+      operationId: patchAdminRegionsByCode
+      tags: [Organization]
+      summary: Ubah koordinator wilayah (hanya ORG_ADMIN)
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/RegionInput' }
+            schema: { $ref: '#/components/schemas/RegionUpdate' }
       responses:
         '200':
           description: OK
@@ -3398,18 +3396,16 @@ paths:
                   - { $ref: '#/components/schemas/SuccessEnvelope' }
                   - properties: { data: { $ref: '#/components/schemas/Region' } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
     delete:
-      x-owner: personel
-      operationId: deleteAdminRegionsById
-      tags: [Masters]
-      summary: Hapus/non-aktifkan Region
-      security:
-        - bearerSession: []
-        - oauth2ClientCredentials: [organization:write]
-        - apiKey: []
+      operationId: deleteAdminRegionsByCode
+      tags: [Organization]
+      summary: Hapus koordinator wilayah (hanya ORG_ADMIN)
+      description: |
+        Penghapusan lunak. 409 HAS_ACTIVE_CHILDREN selama masih ada kantor cabang aktif, atau
+        selama masih ada REGION_ADMIN yang menunjuk wilayah ini.
       responses:
         '200':
           description: OK
@@ -3417,6 +3413,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/SuccessEnvelope' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
   /admin/client-types:

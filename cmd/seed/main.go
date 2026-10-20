@@ -1,7 +1,7 @@
 // Command seed prepares a development environment and bootstraps the first admin.
 //
 //	seed                                      print who can log in (the Personalia dev accounts)
-//	seed grant-admin --org <id> --nik <nik>   make a person the first ORG_ADMIN of an organization
+//	seed grant-admin --nik <nik>              make a person the first ORG_ADMIN of the group
 //
 // For identity it seeds nothing: people come from Persist Personalia, and SiAPP only caches
 // them. Without arguments it prints the accounts of the real kpi-personalia-api seed
@@ -49,11 +49,12 @@ func run(args []string) error {
 	case "grant-admin":
 		return grantAdmin(args[1:])
 	default:
-		return fmt.Errorf("unknown command %q; use: seed | seed grant-admin --org <id> --nik <nik>", args[0])
+		return fmt.Errorf("unknown command %q; use: seed | seed grant-admin --nik <nik>", args[0])
 	}
 }
 
-// grantAdmin makes a person the first ORG_ADMIN of an organization.
+// grantAdmin makes a person the first ORG_ADMIN of the group's organization (D17: KPI, IDS and
+// PCD are one organization, from GROUP_ORGANIZATION_ID).
 //
 // ⚠ This is the ONLY way to create an admin without an existing one: every admin endpoint
 // needs an admin, so the first has to come from outside the API. It runs as the database
@@ -62,17 +63,16 @@ func run(args []string) error {
 // granting admin.
 //
 // A person who has never signed in is fetched from Personalia by NIK first (People.Ensure),
-// so the first admin can be set up before anyone has logged in. A NIK that does not belong
-// to the organization is refused: the lookup is scoped to it.
+// so the first admin can be set up before anyone has logged in. A NIK of a company outside
+// the group is refused: the lookup is scoped to it.
 func grantAdmin(args []string) error {
 	fs := flag.NewFlagSet("grant-admin", flag.ContinueOnError)
-	org := fs.Int64("org", 0, "organization id (Personalia company id)")
 	nik := fs.String("nik", "", "NIK of the person to make ORG_ADMIN")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if *org <= 0 || strings.TrimSpace(*nik) == "" {
-		return fmt.Errorf("usage: seed grant-admin --org <id> --nik <nik>")
+	if strings.TrimSpace(*nik) == "" {
+		return fmt.Errorf("usage: seed grant-admin --nik <nik>")
 	}
 
 	cfg, err := config.Load()
@@ -93,20 +93,24 @@ func grantAdmin(args []string) error {
 		return err
 	}
 	defer pool.Close()
-	client, err := personel.New(personel.Config{BaseURL: cfg.PersonelBaseURL, Key: cfg.PersonelIntegrationKey})
+	org := cfg.GroupOrganizationID
+	client, err := personel.New(personel.Config{
+		BaseURL: cfg.PersonelBaseURL, Key: cfg.PersonelIntegrationKey,
+		Group: personel.Group{CompanyIDs: cfg.GroupCompanyIDs, OrganizationID: org, OrganizationName: cfg.GroupOrganizationName},
+	})
 	if err != nil {
 		return fmt.Errorf("personel client: %w", err)
 	}
 
-	personnelID, err := identity.NewPeople(pool, client, clock.System{}).Ensure(ctx, *org, *nik)
+	personnelID, err := identity.NewPeople(pool, client, clock.System{}).Ensure(ctx, org, *nik)
 	if err != nil {
 		// The NIK is not repeated back: it is personal data, and terminal output ends up in logs.
-		return fmt.Errorf("find the person with that NIK in organization %d: %w", *org, err)
+		return fmt.Errorf("find the person with that NIK in the group: %w", err)
 	}
-	if err := access.GrantFirstAdmin(ctx, pool, clock.System{}, *org, personnelID); err != nil {
+	if err := access.GrantFirstAdmin(ctx, pool, clock.System{}, org, personnelID); err != nil {
 		return err
 	}
-	fmt.Printf("done: personnel %d of organization %d is ORG_ADMIN\n", personnelID, *org)
+	fmt.Printf("done: personnel %d of organization %d is ORG_ADMIN\n", personnelID, org)
 	return nil
 }
 
@@ -115,7 +119,7 @@ func printAccounts() error {
 	fmt.Println("kpi-personalia-api's dev seed (run its `make seed` first). Every password is:")
 	fmt.Printf("\n    %s\n\n", personeltest.Password)
 	fmt.Println("Web login needs a web role: grant the first admin with")
-	fmt.Println("    go run ./cmd/seed grant-admin --org 900101 --nik SIAPPA0001")
+	fmt.Println("    go run ./cmd/seed grant-admin --nik SIAPPA0001")
 	fmt.Println()
 
 	accounts := []struct{ email, nik, note string }{

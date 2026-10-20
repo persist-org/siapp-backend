@@ -231,8 +231,8 @@ func (ns NullSessionRevokeReason) Value() (driver.Value, error) {
 type WebRole string
 
 const (
-	WebRoleORGADMIN     WebRole = "ORG_ADMIN"
-	WebRolePROJECTADMIN WebRole = "PROJECT_ADMIN"
+	WebRoleORGADMIN    WebRole = "ORG_ADMIN"
+	WebRoleREGIONADMIN WebRole = "REGION_ADMIN"
 )
 
 func (e *WebRole) Scan(src interface{}) error {
@@ -276,9 +276,10 @@ type AuditLog struct {
 	ActorPersonnelID pgtype.Int8
 	Action           string
 	EntityType       string
-	EntityID         int64
+	EntityID         pgtype.Int8
 	Metadata         json.RawMessage
 	CreatedAt        pgtype.Timestamptz
+	EntityCode       pgtype.Text
 }
 
 type Device struct {
@@ -343,6 +344,18 @@ type Personnel struct {
 	LastSeenAt     pgtype.Timestamptz
 	CreatedAt      pgtype.Timestamptz
 	UpdatedAt      pgtype.Timestamptz
+	CompanyID      pgtype.Int8
+	CompanyName    pgtype.Text
+}
+
+type Region struct {
+	OrganizationID int64
+	Code           string
+	Description    string
+	Active         bool
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+	DeletedAt      pgtype.Timestamptz
 }
 
 type Session struct {
@@ -370,8 +383,8 @@ type WebRoleAssignment struct {
 	OrganizationID       int64
 	PersonnelID          int64
 	Role                 WebRole
-	ProjectIds           []int64
 	GrantedByPersonnelID pgtype.Int8
 	CreatedAt            pgtype.Timestamptz
 	UpdatedAt            pgtype.Timestamptz
+	RegionCode           pgtype.Text
 }

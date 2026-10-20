@@ -32,7 +32,10 @@ type Entry struct {
 	// Action is "<module>.<entity>.<verb>", e.g. "attendance.absence.create".
 	Action     string
 	EntityType string
+	// EntityID names the entity by number. Entities identified by a code (the hierarchy:
+	// regions, branches, ..., D19) set EntityCode instead and leave this 0.
 	EntityID   int64
+	EntityCode string
 	// Metadata is context for a reviewer: the old and new status, the reason given. It
 	// must never hold a token, a password, a NIK or a camera URL; Record rejects keys that
 	// look like those, but the values are the caller's responsibility.
@@ -65,11 +68,16 @@ func Record(ctx context.Context, q *db.Queries, e Entry) error {
 	if e.ActorPersonnelID != nil {
 		actor = pgtype.Int8{Int64: *e.ActorPersonnelID, Valid: true}
 	}
+	entityID, entityCode := pgtype.Int8{Int64: e.EntityID, Valid: true}, pgtype.Text{}
+	if e.EntityCode != "" {
+		entityID, entityCode = pgtype.Int8{}, pgtype.Text{String: e.EntityCode, Valid: true}
+	}
 	if err := q.InsertAuditLog(ctx, db.InsertAuditLogParams{
 		ActorPersonnelID: actor,
 		Action:           e.Action,
 		EntityType:       e.EntityType,
-		EntityID:         e.EntityID,
+		EntityID:         entityID,
+		EntityCode:       entityCode,
 		Metadata:         metadata,
 	}); err != nil {
 		return fmt.Errorf("audit: insert: %w", err)

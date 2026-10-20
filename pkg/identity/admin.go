@@ -12,25 +12,25 @@ import (
 	"siapp/pkg/platform/database"
 )
 
-// PlacementLookup says at which projects a person is placed. Module 02 (Phase 02.2)
-// implements it from the placement data; until then nobody is placed anywhere, so a
-// PROJECT_ADMIN can reach nobody, which fails closed.
-type PlacementLookup interface {
-	ProjectIDsOf(ctx context.Context, q *db.Queries, personnelID int64) ([]int64, error)
+// RegionLookup says under which koordinator wilayah a person has an active regu membership.
+// Phase 02.3 implements it from team_members; until then nobody belongs to a regu, so a
+// REGION_ADMIN can reach nobody, which fails closed.
+type RegionLookup interface {
+	RegionCodesOf(ctx context.Context, q *db.Queries, personnelID int64) ([]string, error)
 }
 
-type noPlacements struct{}
+type noMemberships struct{}
 
-func (noPlacements) ProjectIDsOf(context.Context, *db.Queries, int64) ([]int64, error) {
+func (noMemberships) RegionCodesOf(context.Context, *db.Queries, int64) ([]string, error) {
 	return nil, nil
 }
 
-// UsePlacements replaces the default (nobody is placed) with the real placement data.
-func (u *Usecase) UsePlacements(p PlacementLookup) { u.placements = p }
+// UseRegionLookup replaces the default (nobody is in a regu) with the real membership data.
+func (u *Usecase) UseRegionLookup(l RegionLookup) { u.regions = l }
 
 // ResetDeviceBinding frees the phone slot of a person: the admin's answer to a lost or
-// replaced phone. An ORG_ADMIN may reset anyone in the organization; a PROJECT_ADMIN only
-// people placed at one of their projects.
+// replaced phone. An ORG_ADMIN may reset anyone in the organization; a REGION_ADMIN only
+// people in a regu under their koordinator wilayah.
 //
 // ⚠ This is SiAPP's own reset, separate from the one in the Personalia admin panel on purpose:
 // HR's reset only frees the Personalia app (the integration login never touches Personalia's
@@ -55,11 +55,11 @@ func (u *Usecase) ResetDeviceBinding(ctx context.Context, actor auth.Principal, 
 			return apperr.ErrNotFound
 		}
 		if !scope.All {
-			projects, err := u.placements.ProjectIDsOf(ctx, q, target)
+			regions, err := u.regions.RegionCodesOf(ctx, q, target)
 			if err != nil {
-				return fmt.Errorf("placements of personnel: %w", err)
+				return fmt.Errorf("regions of personnel: %w", err)
 			}
-			if !scope.AllowsAnyProject(projects) {
+			if !scope.AllowsAnyRegion(regions) {
 				return access.ErrOutsideAdminScope
 			}
 		}

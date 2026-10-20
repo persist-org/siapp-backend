@@ -13,31 +13,34 @@ import (
 )
 
 const insertAuditLog = `-- name: InsertAuditLog :exec
-INSERT INTO audit_logs (actor_personnel_id, action, entity_type, entity_id, metadata)
-VALUES ($5, $1, $2, $3, $4)
+INSERT INTO audit_logs (actor_personnel_id, action, entity_type, entity_id, entity_code, metadata)
+VALUES ($1, $2, $3, $4, $5, $6)
 `
 
 type InsertAuditLogParams struct {
+	ActorPersonnelID pgtype.Int8
 	Action           string
 	EntityType       string
-	EntityID         int64
+	EntityID         pgtype.Int8
+	EntityCode       pgtype.Text
 	Metadata         json.RawMessage
-	ActorPersonnelID pgtype.Int8
 }
 
+// Exactly one of entity_id and entity_code is set (see the audit_logs_entity_check constraint).
 func (q *Queries) InsertAuditLog(ctx context.Context, arg InsertAuditLogParams) error {
 	_, err := q.db.Exec(ctx, insertAuditLog,
+		arg.ActorPersonnelID,
 		arg.Action,
 		arg.EntityType,
 		arg.EntityID,
+		arg.EntityCode,
 		arg.Metadata,
-		arg.ActorPersonnelID,
 	)
 	return err
 }
 
 const listAuditLogsByActor = `-- name: ListAuditLogsByActor :many
-SELECT id, organization_id, actor_personnel_id, action, entity_type, entity_id, metadata, created_at FROM audit_logs
+SELECT id, organization_id, actor_personnel_id, action, entity_type, entity_id, metadata, created_at, entity_code FROM audit_logs
 WHERE actor_personnel_id = $1
 ORDER BY created_at DESC, id DESC
 LIMIT $2
@@ -66,6 +69,50 @@ func (q *Queries) ListAuditLogsByActor(ctx context.Context, arg ListAuditLogsByA
 			&i.EntityID,
 			&i.Metadata,
 			&i.CreatedAt,
+			&i.EntityCode,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAuditLogsByCode = `-- name: ListAuditLogsByCode :many
+SELECT id, organization_id, actor_personnel_id, action, entity_type, entity_id, metadata, created_at, entity_code FROM audit_logs
+WHERE entity_type = $1 AND entity_code = $2
+ORDER BY created_at DESC, id DESC
+LIMIT $3
+`
+
+type ListAuditLogsByCodeParams struct {
+	EntityType string
+	EntityCode pgtype.Text
+	Limit      int32
+}
+
+func (q *Queries) ListAuditLogsByCode(ctx context.Context, arg ListAuditLogsByCodeParams) ([]AuditLog, error) {
+	rows, err := q.db.Query(ctx, listAuditLogsByCode, arg.EntityType, arg.EntityCode, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AuditLog{}
+	for rows.Next() {
+		var i AuditLog
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrganizationID,
+			&i.ActorPersonnelID,
+			&i.Action,
+			&i.EntityType,
+			&i.EntityID,
+			&i.Metadata,
+			&i.CreatedAt,
+			&i.EntityCode,
 		); err != nil {
 			return nil, err
 		}
@@ -78,7 +125,7 @@ func (q *Queries) ListAuditLogsByActor(ctx context.Context, arg ListAuditLogsByA
 }
 
 const listAuditLogsByEntity = `-- name: ListAuditLogsByEntity :many
-SELECT id, organization_id, actor_personnel_id, action, entity_type, entity_id, metadata, created_at FROM audit_logs
+SELECT id, organization_id, actor_personnel_id, action, entity_type, entity_id, metadata, created_at, entity_code FROM audit_logs
 WHERE entity_type = $1 AND entity_id = $2
 ORDER BY created_at DESC, id DESC
 LIMIT $3
@@ -86,7 +133,7 @@ LIMIT $3
 
 type ListAuditLogsByEntityParams struct {
 	EntityType string
-	EntityID   int64
+	EntityID   pgtype.Int8
 	Limit      int32
 }
 
@@ -108,6 +155,7 @@ func (q *Queries) ListAuditLogsByEntity(ctx context.Context, arg ListAuditLogsBy
 			&i.EntityID,
 			&i.Metadata,
 			&i.CreatedAt,
+			&i.EntityCode,
 		); err != nil {
 			return nil, err
 		}

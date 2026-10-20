@@ -45,6 +45,8 @@ func (repo) upsertPersonnel(ctx context.Context, q *db.Queries, id personel.Iden
 	p, err := q.UpsertPersonnel(ctx, db.UpsertPersonnelParams{
 		PersonelUserID: id.PersonelUserID,
 		Nik:            textOrNull(id.NIK),
+		CompanyID:      int8OrNull(id.CompanyID),
+		CompanyName:    textOrNull(id.CompanyName),
 		ClientID:       int8OrNull(id.ClientID),
 		ClientName:     textOrNull(id.ClientName),
 		FullName:       id.FullName,

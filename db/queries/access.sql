@@ -6,7 +6,7 @@ SELECT * FROM web_role_assignments WHERE personnel_id = $1;
 -- The admin list shows who each assignment belongs to, so it reads the name and NIK of the
 -- people cache (identity's table) in the same query. Read-only.
 -- name: ListWebRoles :many
-SELECT w.personnel_id, p.full_name, p.nik, w.role, w.project_ids, w.granted_by_personnel_id,
+SELECT w.personnel_id, p.full_name, p.nik, w.role, w.region_code, w.granted_by_personnel_id,
        w.created_at, w.updated_at
 FROM web_role_assignments w
 JOIN personnels p ON p.id = w.personnel_id
@@ -29,11 +29,11 @@ FOR UPDATE;
 
 -- Grants or changes a role. Callers check that the person exists first (PersonnelNameAndNIK).
 -- name: UpsertWebRole :one
-INSERT INTO web_role_assignments (personnel_id, role, project_ids, granted_by_personnel_id, created_at, updated_at)
-VALUES (@personnel_id, @role, @project_ids, sqlc.narg('granted_by_personnel_id'), @now, @now)
+INSERT INTO web_role_assignments (personnel_id, role, region_code, granted_by_personnel_id, created_at, updated_at)
+VALUES (@personnel_id, @role, sqlc.narg('region_code'), sqlc.narg('granted_by_personnel_id'), @now, @now)
 ON CONFLICT (organization_id, personnel_id) DO UPDATE SET
     role                    = EXCLUDED.role,
-    project_ids             = EXCLUDED.project_ids,
+    region_code             = EXCLUDED.region_code,
     granted_by_personnel_id = EXCLUDED.granted_by_personnel_id,
     updated_at              = EXCLUDED.updated_at
 RETURNING *;

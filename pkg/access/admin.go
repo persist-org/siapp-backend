@@ -27,14 +27,14 @@ func AdminScopeOf(ctx context.Context, q *db.Queries, personnelID int64) (AdminS
 	if err != nil {
 		return AdminScope{}, false, fmt.Errorf("get web role: %w", err)
 	}
-	return scopeOf(row.Role, row.ProjectIds), true, nil
+	return scopeOf(row.Role, row.RegionCode.String), true, nil
 }
 
-func scopeOf(role db.WebRole, projectIDs []int64) AdminScope {
+func scopeOf(role db.WebRole, regionCode string) AdminScope {
 	if role == db.WebRoleORGADMIN {
 		return AdminScope{All: true}
 	}
-	return AdminScope{ProjectIDs: projectIDs}
+	return AdminScope{RegionCode: regionCode}
 }
 
 // RequireAdmin is the middleware of the /api/v1/admin group: it loads the caller's web role

@@ -125,7 +125,8 @@ func (repo) refreshPersonnel(ctx context.Context, q *db.Queries, id int64, p per
 		return err
 	}
 	if err := q.RefreshPersonnel(ctx, db.RefreshPersonnelParams{
-		ID: id, Nik: textOrNull(p.NIK), ClientID: int8OrNull(p.ClientID), ClientName: textOrNull(p.ClientName),
+		ID: id, Nik: textOrNull(p.NIK), CompanyID: int8OrNull(p.CompanyID), CompanyName: textOrNull(p.CompanyName),
+		ClientID: int8OrNull(p.ClientID), ClientName: textOrNull(p.ClientName),
 		FullName: p.FullName, Email: textOrNull(p.Email), Phone: textOrNull(p.Phone), PhotoUrl: textOrNull(p.PhotoURL),
 		Now: ts(now),
 	}); err != nil {

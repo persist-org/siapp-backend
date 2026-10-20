@@ -55,11 +55,11 @@ seed:
 	go run ./cmd/seed
 
 # Make a person the first ORG_ADMIN of an organization (needs kpi-personalia-api running):
-#   make grant-admin ORG=900101 NIK=SIAPPA0001
+#   make grant-admin NIK=SIAPPA0001
 # It goes through make so that .env is loaded; `go run ./cmd/seed grant-admin` alone is not.
 grant-admin:
-	@test -n "$(ORG)" -a -n "$(NIK)" || { echo "usage: make grant-admin ORG=<organization id> NIK=<nik>"; exit 1; }
-	go run ./cmd/seed grant-admin --org $(ORG) --nik $(NIK)
+	@test -n "$(NIK)" || { echo "usage: make grant-admin NIK=<nik>"; exit 1; }
+	go run ./cmd/seed grant-admin --nik $(NIK)
 
 # Where the PERSIST contract lives (set CONTRACT_SRC in .env to override).
 CONTRACT_SRC ?= ../persist-ecosystem/contracts/openapi.yaml

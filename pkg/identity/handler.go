@@ -77,10 +77,14 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 	roles := []string{}
 	if me.WebRole != nil {
 		role := apigen.MeResultWebRoleRole(me.WebRole.Role)
+		var regionCode *string
+		if me.WebRole.RegionCode != "" {
+			regionCode = &me.WebRole.RegionCode
+		}
 		result.WebRole = &struct {
-			ProjectIds *[]int64                    `json:"project_ids,omitempty"` //nolint:revive // must match the generated anonymous type
+			RegionCode *string                     `json:"region_code,omitempty"` //nolint:revive // must match the generated anonymous type
 			Role       *apigen.MeResultWebRoleRole `json:"role,omitempty"`
-		}{ProjectIds: &me.WebRole.ProjectIDs, Role: &role}
+		}{RegionCode: regionCode, Role: &role}
 		roles = append(roles, me.WebRole.Role)
 	}
 	result.Roles = &roles

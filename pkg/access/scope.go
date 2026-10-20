@@ -13,25 +13,35 @@ import (
 
 // Web roles, as stored in web_role_assignments.role.
 const (
-	RoleOrgAdmin     = "ORG_ADMIN"
-	RoleProjectAdmin = "PROJECT_ADMIN"
+	RoleOrgAdmin    = "ORG_ADMIN"
+	RoleRegionAdmin = "REGION_ADMIN"
 )
 
 // AdminScope is what an admin may reach. Admin usecases filter by it: an ORG_ADMIN sees the
-// whole organization (All), a PROJECT_ADMIN only the listed projects.
+// whole organization (All), a REGION_ADMIN only what sits under their koordinator wilayah
+// (RegionCode, such as "OS1"), across all three PTs of the group (D18).
+//
+// Everything below a region (kantor cabang, klien, proyek, regu) is reached through its
+// region, so a usecase for one of those resolves the region of the row and asks AllowsRegion.
 type AdminScope struct {
 	All        bool
-	ProjectIDs []int64
+	RegionCode string
 }
 
-// AllowsAnyProject reports whether the scope covers at least one of the projects. An
-// ORG_ADMIN covers everything, including a person placed at no project at all; a
-// PROJECT_ADMIN covers only people placed at one of their projects.
-func (s AdminScope) AllowsAnyProject(projectIDs []int64) bool {
+// AllowsRegion reports whether the scope covers a koordinator wilayah. An ORG_ADMIN covers
+// every region; a REGION_ADMIN only their own.
+func (s AdminScope) AllowsRegion(code string) bool {
+	return s.All || (s.RegionCode != "" && s.RegionCode == code)
+}
+
+// AllowsAnyRegion reports whether the scope covers at least one of the regions. An ORG_ADMIN
+// covers everything, including a person who belongs to no region at all (they lead no regu
+// yet); a REGION_ADMIN covers only people in a regu under their region.
+func (s AdminScope) AllowsAnyRegion(codes []string) bool {
 	if s.All {
 		return true
 	}
-	return slices.ContainsFunc(projectIDs, func(id int64) bool { return slices.Contains(s.ProjectIDs, id) })
+	return slices.ContainsFunc(codes, s.AllowsRegion)
 }
 
 type scopeKey struct{}

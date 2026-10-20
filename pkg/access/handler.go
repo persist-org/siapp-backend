@@ -88,8 +88,8 @@ func (h *Handler) put(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	in := WebRoleInput{Role: string(req.Role)}
-	if req.ProjectIds != nil {
-		in.ProjectIDs = *req.ProjectIds
+	if req.RegionCode != nil {
+		in.RegionCode = *req.RegionCode
 	}
 	if err := httpx.Validate(&in); err != nil {
 		httpx.Error(w, r, err)
@@ -122,13 +122,12 @@ func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
 
 func toAPI(r WebRole) apigen.WebRoleAssignment {
 	role := apigen.WebRoleAssignmentRole(r.Role)
-	ids := r.ProjectIDs
-	if ids == nil {
-		ids = []int64{}
-	}
 	out := apigen.WebRoleAssignment{
-		PersonnelId: &r.PersonnelID, FullName: &r.FullName, Role: &role, ProjectIds: &ids,
+		PersonnelId: &r.PersonnelID, FullName: &r.FullName, Role: &role,
 		GrantedByPersonnelId: r.GrantedByPersonnelID, CreatedAt: &r.CreatedAt, UpdatedAt: &r.UpdatedAt,
+	}
+	if r.RegionCode != "" {
+		out.RegionCode = &r.RegionCode
 	}
 	if r.NIK != "" {
 		out.Nik = &r.NIK

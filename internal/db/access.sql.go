@@ -36,7 +36,7 @@ func (q *Queries) DeleteWebRole(ctx context.Context, personnelID int64) (int64, 
 
 const getWebRole = `-- name: GetWebRole :one
 
-SELECT id, organization_id, personnel_id, role, project_ids, granted_by_personnel_id, created_at, updated_at FROM web_role_assignments WHERE personnel_id = $1
+SELECT id, organization_id, personnel_id, role, granted_by_personnel_id, created_at, updated_at, region_code FROM web_role_assignments WHERE personnel_id = $1
 `
 
 // Web role assignments (the admin gate). Everything runs inside database.WithTenant.
@@ -48,16 +48,16 @@ func (q *Queries) GetWebRole(ctx context.Context, personnelID int64) (WebRoleAss
 		&i.OrganizationID,
 		&i.PersonnelID,
 		&i.Role,
-		&i.ProjectIds,
 		&i.GrantedByPersonnelID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.RegionCode,
 	)
 	return i, err
 }
 
 const listWebRoles = `-- name: ListWebRoles :many
-SELECT w.personnel_id, p.full_name, p.nik, w.role, w.project_ids, w.granted_by_personnel_id,
+SELECT w.personnel_id, p.full_name, p.nik, w.role, w.region_code, w.granted_by_personnel_id,
        w.created_at, w.updated_at
 FROM web_role_assignments w
 JOIN personnels p ON p.id = w.personnel_id
@@ -75,7 +75,7 @@ type ListWebRolesRow struct {
 	FullName             string
 	Nik                  pgtype.Text
 	Role                 WebRole
-	ProjectIds           []int64
+	RegionCode           pgtype.Text
 	GrantedByPersonnelID pgtype.Int8
 	CreatedAt            pgtype.Timestamptz
 	UpdatedAt            pgtype.Timestamptz
@@ -97,7 +97,7 @@ func (q *Queries) ListWebRoles(ctx context.Context, arg ListWebRolesParams) ([]L
 			&i.FullName,
 			&i.Nik,
 			&i.Role,
-			&i.ProjectIds,
+			&i.RegionCode,
 			&i.GrantedByPersonnelID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -166,20 +166,20 @@ func (q *Queries) PersonnelNameAndNIK(ctx context.Context, id int64) (PersonnelN
 }
 
 const upsertWebRole = `-- name: UpsertWebRole :one
-INSERT INTO web_role_assignments (personnel_id, role, project_ids, granted_by_personnel_id, created_at, updated_at)
+INSERT INTO web_role_assignments (personnel_id, role, region_code, granted_by_personnel_id, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $5)
 ON CONFLICT (organization_id, personnel_id) DO UPDATE SET
     role                    = EXCLUDED.role,
-    project_ids             = EXCLUDED.project_ids,
+    region_code             = EXCLUDED.region_code,
     granted_by_personnel_id = EXCLUDED.granted_by_personnel_id,
     updated_at              = EXCLUDED.updated_at
-RETURNING id, organization_id, personnel_id, role, project_ids, granted_by_personnel_id, created_at, updated_at
+RETURNING id, organization_id, personnel_id, role, granted_by_personnel_id, created_at, updated_at, region_code
 `
 
 type UpsertWebRoleParams struct {
 	PersonnelID          int64
 	Role                 WebRole
-	ProjectIds           []int64
+	RegionCode           pgtype.Text
 	GrantedByPersonnelID pgtype.Int8
 	Now                  pgtype.Timestamptz
 }
@@ -189,7 +189,7 @@ func (q *Queries) UpsertWebRole(ctx context.Context, arg UpsertWebRoleParams) (W
 	row := q.db.QueryRow(ctx, upsertWebRole,
 		arg.PersonnelID,
 		arg.Role,
-		arg.ProjectIds,
+		arg.RegionCode,
 		arg.GrantedByPersonnelID,
 		arg.Now,
 	)
@@ -199,10 +199,10 @@ func (q *Queries) UpsertWebRole(ctx context.Context, arg UpsertWebRoleParams) (W
 		&i.OrganizationID,
 		&i.PersonnelID,
 		&i.Role,
-		&i.ProjectIds,
 		&i.GrantedByPersonnelID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.RegionCode,
 	)
 	return i, err
 }

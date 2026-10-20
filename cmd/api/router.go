@@ -10,6 +10,7 @@ import (
 
 	"siapp/pkg/access"
 	"siapp/pkg/identity"
+	"siapp/pkg/organization"
 	"siapp/pkg/platform/auth"
 	"siapp/pkg/platform/clock"
 	"siapp/pkg/platform/httpx"
@@ -57,6 +58,7 @@ func newRouter(d deps) *chi.Mux {
 	identityHandler.Mount(router)
 
 	accessHandler := access.NewHandler(access.NewWebRoles(d.Pool, d.Clock))
+	organizationHandler := organization.NewHandler(organization.NewRegions(d.Pool, d.Clock))
 
 	// ⚠ The admin group: access.RequireAdmin is mounted ONCE here, so every route a module
 	// adds under /api/v1/admin is protected without anyone having to remember it.
@@ -64,6 +66,7 @@ func newRouter(d deps) *chi.Mux {
 		admin.Use(access.RequireAdmin(d.Pool))
 		identityHandler.MountAdmin(admin)
 		accessHandler.MountAdmin(admin)
+		organizationHandler.MountAdmin(admin)
 	})
 
 	return router

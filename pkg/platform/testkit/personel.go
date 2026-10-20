@@ -28,6 +28,20 @@ func NewPersonel(t testing.TB) (*personeltest.Fake, *personel.Client) {
 // serves, for tests of code that builds its own client from configuration (cmd/seed).
 func NewPersonelWithURL(t testing.TB) (*personeltest.Fake, *personel.Client, string) {
 	t.Helper()
+	return newPersonel(t, personel.Group{})
+}
+
+// NewGroupedPersonel is NewPersonel with a Group: the companies in it share one organization
+// (D17), and everyone else has none. The fixtures' two companies, personeltest.OrgSatu and
+// OrgDua, stand in for two PTs of one group.
+func NewGroupedPersonel(t testing.TB, group personel.Group) (*personeltest.Fake, *personel.Client) {
+	t.Helper()
+	fake, client, _ := newPersonel(t, group)
+	return fake, client
+}
+
+func newPersonel(t testing.TB, group personel.Group) (*personeltest.Fake, *personel.Client, string) {
+	t.Helper()
 	fake := personeltest.New()
 	srv := httptest.NewServer(fake.Handler())
 	t.Cleanup(srv.Close)
@@ -37,6 +51,7 @@ func NewPersonelWithURL(t testing.TB) (*personeltest.Fake, *personel.Client, str
 	client, err := personel.New(personel.Config{
 		BaseURL: baseURL,
 		Key:     fake.Key,
+		Group:   group,
 		Backoff: &noBackoff,
 	})
 	require.NoError(t, err)

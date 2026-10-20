@@ -83,8 +83,16 @@ type env struct {
 // caller's address.
 func newEnv(t *testing.T, clientIPHeader string) *env {
 	t.Helper()
+	return newEnvWithGroup(t, clientIPHeader, personel.Group{})
+}
+
+// newEnvWithGroup is newEnv with a Personel client that maps the group's companies to one
+// organization (D17). Without a group the company is the tenant, which is what most of the
+// tests of this package use to have two tenants to tell apart.
+func newEnvWithGroup(t *testing.T, clientIPHeader string, group personel.Group) *env {
+	t.Helper()
 	testkit.Reset(t)
-	fake, personelClient := testkit.NewPersonel(t)
+	fake, personelClient := testkit.NewGroupedPersonel(t, group)
 
 	logs := &syncBuffer{}
 	logger := slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
