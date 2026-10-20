@@ -509,10 +509,15 @@ const (
 	CLIENTPREFIXINVALID     OrganizationErrorReason = "CLIENT_PREFIX_INVALID"
 	CODETAKEN               OrganizationErrorReason = "CODE_TAKEN"
 	HASACTIVECHILDREN       OrganizationErrorReason = "HAS_ACTIVE_CHILDREN"
+	MEMBERSHIPNOTFOUND      OrganizationErrorReason = "MEMBERSHIP_NOT_FOUND"
+	MEMBERSHIPOVERLAP       OrganizationErrorReason = "MEMBERSHIP_OVERLAP"
 	NOTADMIN                OrganizationErrorReason = "NOT_ADMIN"
+	PERSONNELINACTIVE       OrganizationErrorReason = "PERSONNEL_INACTIVE"
+	PERSONNELNOTFOUND       OrganizationErrorReason = "PERSONNEL_NOT_FOUND"
 	PROJECTNOTCONFIGURED    OrganizationErrorReason = "PROJECT_NOT_CONFIGURED"
 	PROJECTNOTFOUND         OrganizationErrorReason = "PROJECT_NOT_FOUND"
 	REGIONNOTFOUND          OrganizationErrorReason = "REGION_NOT_FOUND"
+	TEAMHASDANRU            OrganizationErrorReason = "TEAM_HAS_DANRU"
 	TEAMNOTFOUND            OrganizationErrorReason = "TEAM_NOT_FOUND"
 )
 
@@ -537,13 +542,23 @@ func (e OrganizationErrorReason) Valid() bool {
 		return true
 	case HASACTIVECHILDREN:
 		return true
+	case MEMBERSHIPNOTFOUND:
+		return true
+	case MEMBERSHIPOVERLAP:
+		return true
 	case NOTADMIN:
+		return true
+	case PERSONNELINACTIVE:
+		return true
+	case PERSONNELNOTFOUND:
 		return true
 	case PROJECTNOTCONFIGURED:
 		return true
 	case PROJECTNOTFOUND:
 		return true
 	case REGIONNOTFOUND:
+		return true
+	case TEAMHASDANRU:
 		return true
 	case TEAMNOTFOUND:
 		return true
@@ -948,6 +963,24 @@ func (e TeamMemberInputRole) Valid() bool {
 	case TeamMemberInputRoleDANRU:
 		return true
 	case TeamMemberInputRoleMEMBER:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TeamRole.
+const (
+	TeamRoleDANRU  TeamRole = "DANRU"
+	TeamRoleMEMBER TeamRole = "MEMBER"
+)
+
+// Valid indicates whether the value is a known member of the TeamRole enum.
+func (e TeamRole) Valid() bool {
+	switch e {
+	case TeamRoleDANRU:
+		return true
+	case TeamRoleMEMBER:
 		return true
 	default:
 		return false
@@ -2544,6 +2577,36 @@ func (e PatchAdminStakeholderTypesById200JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
+// Defines values for PostAdminTeamMembersByIdChangeRole200JSONResponseBodySuccess.
+const (
+	PostAdminTeamMembersByIdChangeRole200JSONResponseBodySuccessTrue PostAdminTeamMembersByIdChangeRole200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostAdminTeamMembersByIdChangeRole200JSONResponseBodySuccess enum.
+func (e PostAdminTeamMembersByIdChangeRole200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostAdminTeamMembersByIdChangeRole200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostAdminTeamMembersByIdMove200JSONResponseBodySuccess.
+const (
+	PostAdminTeamMembersByIdMove200JSONResponseBodySuccessTrue PostAdminTeamMembersByIdMove200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostAdminTeamMembersByIdMove200JSONResponseBodySuccess enum.
+func (e PostAdminTeamMembersByIdMove200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostAdminTeamMembersByIdMove200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetAdminTeams200JSONResponseBodySuccess.
 const (
 	GetAdminTeams200JSONResponseBodySuccessTrue GetAdminTeams200JSONResponseBodySuccess = true
@@ -2604,30 +2667,30 @@ func (e PatchAdminTeamsByCode200JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
-// Defines values for GetAdminTeamsByIdMembers200JSONResponseBodySuccess.
+// Defines values for GetAdminTeamsByCodeMembers200JSONResponseBodySuccess.
 const (
-	GetAdminTeamsByIdMembers200JSONResponseBodySuccessTrue GetAdminTeamsByIdMembers200JSONResponseBodySuccess = true
+	GetAdminTeamsByCodeMembers200JSONResponseBodySuccessTrue GetAdminTeamsByCodeMembers200JSONResponseBodySuccess = true
 )
 
-// Valid indicates whether the value is a known member of the GetAdminTeamsByIdMembers200JSONResponseBodySuccess enum.
-func (e GetAdminTeamsByIdMembers200JSONResponseBodySuccess) Valid() bool {
+// Valid indicates whether the value is a known member of the GetAdminTeamsByCodeMembers200JSONResponseBodySuccess enum.
+func (e GetAdminTeamsByCodeMembers200JSONResponseBodySuccess) Valid() bool {
 	switch e {
-	case GetAdminTeamsByIdMembers200JSONResponseBodySuccessTrue:
+	case GetAdminTeamsByCodeMembers200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
 	}
 }
 
-// Defines values for PostAdminTeamsByIdMembers201JSONResponseBodySuccess.
+// Defines values for PostAdminTeamsByCodeMembers201JSONResponseBodySuccess.
 const (
-	PostAdminTeamsByIdMembers201JSONResponseBodySuccessTrue PostAdminTeamsByIdMembers201JSONResponseBodySuccess = true
+	PostAdminTeamsByCodeMembers201JSONResponseBodySuccessTrue PostAdminTeamsByCodeMembers201JSONResponseBodySuccess = true
 )
 
-// Valid indicates whether the value is a known member of the PostAdminTeamsByIdMembers201JSONResponseBodySuccess enum.
-func (e PostAdminTeamsByIdMembers201JSONResponseBodySuccess) Valid() bool {
+// Valid indicates whether the value is a known member of the PostAdminTeamsByCodeMembers201JSONResponseBodySuccess enum.
+func (e PostAdminTeamsByCodeMembers201JSONResponseBodySuccess) Valid() bool {
 	switch e {
-	case PostAdminTeamsByIdMembers201JSONResponseBodySuccessTrue:
+	case PostAdminTeamsByCodeMembers201JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
@@ -5760,10 +5823,22 @@ type MasterReviewCreate struct {
 // MasterReviewCreateType defines model for MasterReviewCreate.Type.
 type MasterReviewCreateType string
 
+// MeMembership Satu regu tempat orang ini bertugas hari ini (tanggal bisnis di zona waktu proyek regu itu).
+type MeMembership struct {
+	ProjectCode *string `json:"project_code,omitempty"`
+	ProjectName *string `json:"project_name,omitempty"`
+
+	// Role Peran lapangan di regu (DL-04). Satu DANRU per regu per tanggal (BR-RULE-02).
+	Role      *TeamRole           `json:"role,omitempty"`
+	StartDate *openapi_types.Date `json:"start_date,omitempty"`
+	TeamCode  *string             `json:"team_code,omitempty"`
+	TeamName  *string             `json:"team_name,omitempty"`
+}
+
 // MeResult defines model for MeResult.
 type MeResult struct {
-	// Memberships Keanggotaan regu aktif beserta peran (diisi sejak Fase 02.2; kosong sebelumnya).
-	Memberships *[]map[string]interface{} `json:"memberships,omitempty"`
+	// Memberships Regu tempat orang ini bertugas hari ini (kosong bila tidak ada).
+	Memberships *[]MeMembership `json:"memberships,omitempty"`
 
 	// Organization Organisasi (tenant) orang ini. Satu organisasi untuk seluruh grup (KPI, IDS, PCD); PT orang itu hanya informasi tampilan (D17).
 	Organization *struct {
@@ -5934,6 +6009,11 @@ type OrganizationCreateEnabledBusinessLines string
 // - `BRANCH_REGION_MISMATCH`: 422 VALIDATION_ERROR. Nomor kode cabang tidak sama dengan nomor wilayahnya (hanya import, 02.4).
 // - `CLIENT_PREFIX_INVALID`: 422 VALIDATION_ERROR. Prefix klien bukan 2 sampai 10 huruf besar atau angka.
 // - `PROJECT_NOT_CONFIGURED`: 422 UNPROCESSABLE. Koordinat proyek belum diisi; fitur yang memerlukan lokasi menolaknya.
+// - `MEMBERSHIP_NOT_FOUND`: 404 NOT_FOUND. Keanggotaan tidak ada atau sudah berakhir (gerak, ganti peran, dan keluar berlaku untuk keanggotaan yang masih berjalan).
+// - `MEMBERSHIP_OVERLAP`: 409 CONFLICT. Personil sudah menjadi anggota regu yang sama pada sebagian tanggal itu.
+// - `TEAM_HAS_DANRU`: 409 CONFLICT. Regu sudah punya DANRU pada sebagian tanggal itu (satu DANRU per regu per tanggal).
+// - `PERSONNEL_NOT_FOUND`: 404 NOT_FOUND. NIK tidak dikenal Personalia di organisasi ini.
+// - `PERSONNEL_INACTIVE`: 422 VALIDATION_ERROR. Personil nonaktif di Personalia.
 type OrganizationErrorReason string
 
 // OrganizationProfileUpdate Update profil + branding organisasi (WEB-37).
@@ -6799,6 +6879,61 @@ type TeamMemberInput struct {
 // TeamMemberInputRole defines model for TeamMemberInput.Role.
 type TeamMemberInputRole string
 
+// TeamMembership defines model for TeamMembership.
+type TeamMembership struct {
+	CreatedAt *time.Time `json:"created_at,omitempty"`
+
+	// EndDate Inklusif; tidak ada = masih berjalan.
+	EndDate  *openapi_types.Date `json:"end_date,omitempty"`
+	FullName *string             `json:"full_name,omitempty"`
+
+	// Id Dipakai oleh /admin/team-members/{id}/move dan /change-role.
+	Id *int64 `json:"id,omitempty"`
+
+	// Nik NIK dimasker (hanya 4 karakter terakhir).
+	Nik         *string `json:"nik,omitempty"`
+	PersonnelId *int64  `json:"personnel_id,omitempty"`
+
+	// Role Peran lapangan di regu (DL-04). Satu DANRU per regu per tanggal (BR-RULE-02).
+	Role      *TeamRole           `json:"role,omitempty"`
+	StartDate *openapi_types.Date `json:"start_date,omitempty"`
+	TeamCode  *string             `json:"team_code,omitempty"`
+	UpdatedAt *time.Time          `json:"updated_at,omitempty"`
+}
+
+// TeamMembershipChangeRoleInput defines model for TeamMembershipChangeRoleInput.
+type TeamMembershipChangeRoleInput struct {
+	// EffectiveDate WAJIB. Baris lama berakhir sehari sebelumnya, baris baru mulai pada tanggal ini. Harus setelah tanggal mulai keanggotaan (422).
+	EffectiveDate openapi_types.Date `json:"effective_date"`
+
+	// Role WAJIB. Harus berbeda dari peran sekarang (422).
+	Role TeamRole `json:"role"`
+}
+
+// TeamMembershipInput defines model for TeamMembershipInput.
+type TeamMembershipInput struct {
+	// Nik WAJIB. Dicari di Personalia; orang yang belum pernah login tetap dapat ditambahkan (404 PERSONNEL_NOT_FOUND bila NIK tidak dikenal, 422 PERSONNEL_INACTIVE bila nonaktif).
+	Nik string `json:"nik"`
+
+	// Role Peran lapangan di regu (DL-04). Satu DANRU per regu per tanggal (BR-RULE-02).
+	Role TeamRole `json:"role"`
+
+	// StartDate WAJIB. Boleh tanggal depan (keanggotaan terjadwal).
+	StartDate openapi_types.Date `json:"start_date"`
+}
+
+// TeamMembershipMoveInput defines model for TeamMembershipMoveInput.
+type TeamMembershipMoveInput struct {
+	// EffectiveDate WAJIB. Baris lama berakhir sehari sebelumnya, baris baru mulai pada tanggal ini. Harus setelah tanggal mulai keanggotaan (422).
+	EffectiveDate openapi_types.Date `json:"effective_date"`
+
+	// ToTeamCode WAJIB. Regu tujuan; harus ada (404 TEAM_NOT_FOUND) dan berbeda dari regu sekarang (422). Peran dibawa.
+	ToTeamCode string `json:"to_team_code"`
+}
+
+// TeamRole Peran lapangan di regu (DL-04). Satu DANRU per regu per tanggal (BR-RULE-02).
+type TeamRole string
+
 // TeamUpdate Semua field opsional; field yang tidak dikirim tidak berubah. Body kosong `{}` sah.
 // `code` dan `project_code` tidak dapat dikirim (422, field tidak dikenal).
 type TeamUpdate struct {
@@ -6992,8 +7127,14 @@ type IsActiveParam = bool
 // LimitParam defines model for LimitParam.
 type LimitParam = int
 
+// OnDateQuery defines model for OnDateQuery.
+type OnDateQuery = openapi_types.Date
+
 // PageParam defines model for PageParam.
 type PageParam = int
+
+// PersonnelIdOfMemberPath defines model for PersonnelIdOfMemberPath.
+type PersonnelIdOfMemberPath = int64
 
 // PersonnelIdPath defines model for PersonnelIdPath.
 type PersonnelIdPath = int64
@@ -7030,6 +7171,9 @@ type TeamCodePath = string
 
 // TeamIdParam defines model for TeamIdParam.
 type TeamIdParam = int64
+
+// TeamMembershipIdPath defines model for TeamMembershipIdPath.
+type TeamMembershipIdPath = int64
 
 // XRequestIdHeader defines model for XRequestIdHeader.
 type XRequestIdHeader = string
@@ -7964,6 +8108,12 @@ type GetAdminStakeholderTypesById200JSONResponseBodySuccess bool
 // PatchAdminStakeholderTypesById200JSONResponseBodySuccess defines parameters for PatchAdminStakeholderTypesById.
 type PatchAdminStakeholderTypesById200JSONResponseBodySuccess bool
 
+// PostAdminTeamMembersByIdChangeRole200JSONResponseBodySuccess defines parameters for PostAdminTeamMembersByIdChangeRole.
+type PostAdminTeamMembersByIdChangeRole200JSONResponseBodySuccess bool
+
+// PostAdminTeamMembersByIdMove200JSONResponseBodySuccess defines parameters for PostAdminTeamMembersByIdMove.
+type PostAdminTeamMembersByIdMove200JSONResponseBodySuccess bool
+
 // GetAdminTeamsParams defines parameters for GetAdminTeams.
 type GetAdminTeamsParams struct {
 	// Page Nomor halaman (1-indexed).
@@ -7994,11 +8144,23 @@ type GetAdminTeamsByCode200JSONResponseBodySuccess bool
 // PatchAdminTeamsByCode200JSONResponseBodySuccess defines parameters for PatchAdminTeamsByCode.
 type PatchAdminTeamsByCode200JSONResponseBodySuccess bool
 
-// GetAdminTeamsByIdMembers200JSONResponseBodySuccess defines parameters for GetAdminTeamsByIdMembers.
-type GetAdminTeamsByIdMembers200JSONResponseBodySuccess bool
+// GetAdminTeamsByCodeMembersParams defines parameters for GetAdminTeamsByCodeMembers.
+type GetAdminTeamsByCodeMembersParams struct {
+	// Page Nomor halaman (1-indexed).
+	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
-// PostAdminTeamsByIdMembers201JSONResponseBodySuccess defines parameters for PostAdminTeamsByIdMembers.
-type PostAdminTeamsByIdMembers201JSONResponseBodySuccess bool
+	// Limit Item per halaman (maks 100).
+	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// OnDate Opsional. Tanggal bisnis (YYYY-MM-DD). Bawaan: hari ini di zona waktu proyek regu.
+	OnDate *OnDateQuery `form:"on_date,omitempty" json:"on_date,omitempty"`
+}
+
+// GetAdminTeamsByCodeMembers200JSONResponseBodySuccess defines parameters for GetAdminTeamsByCodeMembers.
+type GetAdminTeamsByCodeMembers200JSONResponseBodySuccess bool
+
+// PostAdminTeamsByCodeMembers201JSONResponseBodySuccess defines parameters for PostAdminTeamsByCodeMembers.
+type PostAdminTeamsByCodeMembers201JSONResponseBodySuccess bool
 
 // GetAdminWebRolesParams defines parameters for GetAdminWebRoles.
 type GetAdminWebRolesParams struct {
@@ -9604,14 +9766,20 @@ type PostAdminStakeholderTypesJSONRequestBody = CodedMasterInput
 // PatchAdminStakeholderTypesByIdJSONRequestBody defines body for PatchAdminStakeholderTypesById for application/json ContentType.
 type PatchAdminStakeholderTypesByIdJSONRequestBody = CodedMasterInput
 
+// PostAdminTeamMembersByIdChangeRoleJSONRequestBody defines body for PostAdminTeamMembersByIdChangeRole for application/json ContentType.
+type PostAdminTeamMembersByIdChangeRoleJSONRequestBody = TeamMembershipChangeRoleInput
+
+// PostAdminTeamMembersByIdMoveJSONRequestBody defines body for PostAdminTeamMembersByIdMove for application/json ContentType.
+type PostAdminTeamMembersByIdMoveJSONRequestBody = TeamMembershipMoveInput
+
 // PostAdminTeamsJSONRequestBody defines body for PostAdminTeams for application/json ContentType.
 type PostAdminTeamsJSONRequestBody = TeamInput
 
 // PatchAdminTeamsByCodeJSONRequestBody defines body for PatchAdminTeamsByCode for application/json ContentType.
 type PatchAdminTeamsByCodeJSONRequestBody = TeamUpdate
 
-// PostAdminTeamsByIdMembersJSONRequestBody defines body for PostAdminTeamsByIdMembers for application/json ContentType.
-type PostAdminTeamsByIdMembersJSONRequestBody = TeamMemberInput
+// PostAdminTeamsByCodeMembersJSONRequestBody defines body for PostAdminTeamsByCodeMembers for application/json ContentType.
+type PostAdminTeamsByCodeMembersJSONRequestBody = TeamMembershipInput
 
 // PutAdminWebRoleJSONRequestBody defines body for PutAdminWebRole for application/json ContentType.
 type PutAdminWebRoleJSONRequestBody = WebRoleInput

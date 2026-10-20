@@ -38,12 +38,13 @@ type Usecase struct {
 	clock       clock.Clock
 	logger      *slog.Logger
 	regions     RegionLookup
+	memberships MembershipLookup
 	repo        repo
 }
 
 // NewUsecase returns the identity Usecase.
 func NewUsecase(pool *pgxpool.Pool, p personelClient, tokens *auth.Tokens, revocations *auth.Revocations, c clock.Clock, logger *slog.Logger) *Usecase {
-	return &Usecase{pool: pool, personel: p, tokens: tokens, revocations: revocations, clock: c, logger: logger, regions: noMemberships{}}
+	return &Usecase{pool: pool, personel: p, tokens: tokens, revocations: revocations, clock: c, logger: logger, regions: noMemberships{}, memberships: noMemberships{}}
 }
 
 // Login is the single path that starts a session.

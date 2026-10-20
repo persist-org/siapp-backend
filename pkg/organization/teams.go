@@ -225,7 +225,9 @@ func (t *Teams) Update(ctx context.Context, actor auth.Principal, scope access.A
 // Delete removes a team (a soft delete: the row and its code stay, and its number is never
 // handed out again, D19). A REGION_ADMIN may delete only one under their region.
 //
-// Phase 02.3 adds the team's memberships, and ends the active ones here.
+// The team's memberships end with it: the ones in force end today (the project's today), and
+// the ones that have not started yet go away. The rows of the ones that ended stay, so past
+// attendance and reports still find the regu.
 func (t *Teams) Delete(ctx context.Context, actor auth.Principal, scope access.AdminScope, code string) error {
 	if !scope.AllowsRegion(RegionOfCode(code)) {
 		return access.ErrOutsideAdminScope
@@ -238,10 +240,25 @@ func (t *Teams) Delete(ctx context.Context, actor auth.Principal, scope access.A
 		if err != nil {
 			return fmt.Errorf("get team: %w", err)
 		}
+		today, err := todayOf(ctx, q, before, t.clock.Now())
+		if err != nil {
+			return err
+		}
+		ended, err := q.EndOpenMembershipsOfTeam(ctx, db.EndOpenMembershipsOfTeamParams{TeamCode: code, Today: dateParam(today), Now: ts(t.clock.Now())})
+		if err != nil {
+			return fmt.Errorf("end memberships of team: %w", err)
+		}
+		cancelled, err := q.DeleteFutureMembershipsOfTeam(ctx, db.DeleteFutureMembershipsOfTeamParams{TeamCode: code, Today: dateParam(today)})
+		if err != nil {
+			return fmt.Errorf("delete future memberships of team: %w", err)
+		}
 		if _, err := q.SoftDeleteTeam(ctx, db.SoftDeleteTeamParams{Code: code, Now: ts(t.clock.Now())}); err != nil {
 			return fmt.Errorf("delete team: %w", err)
 		}
-		return recordAudit(ctx, q, actor, "team.delete", "team", code, teamMeta(toTeam(before)), nil)
+		meta := teamMeta(toTeam(before))
+		meta["memberships_ended"] = ended
+		meta["memberships_cancelled"] = cancelled
+		return recordAudit(ctx, q, actor, "team.delete", "team", code, meta, nil)
 	})
 }
 

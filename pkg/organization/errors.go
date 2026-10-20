@@ -6,7 +6,8 @@
 // a number. A code contains its parent's code, so it is never edited after creation. People
 // stay in Personalia: this package only says which regu they serve in.
 //
-// Phase 02.1 starts it with the regions, and 02.2 adds the rest of the hierarchy.
+// Phase 02.1 starts it with the regions, 02.2 adds the rest of the hierarchy and 02.3 the
+// people in each regu.
 package organization
 
 import (
@@ -29,6 +30,11 @@ const (
 	ReasonBranchLetterInvalid  = "BRANCH_LETTER_INVALID"
 	ReasonClientPrefixInvalid  = "CLIENT_PREFIX_INVALID"
 	ReasonProjectNotConfigured = "PROJECT_NOT_CONFIGURED"
+	ReasonMembershipNotFound   = "MEMBERSHIP_NOT_FOUND"
+	ReasonMembershipOverlap    = "MEMBERSHIP_OVERLAP"
+	ReasonTeamHasDanru         = "TEAM_HAS_DANRU"
+	ReasonPersonnelNotFound    = "PERSONNEL_NOT_FOUND"
+	ReasonPersonnelInactive    = "PERSONNEL_INACTIVE"
 )
 
 // ErrRegionNotFound is returned for a koordinator wilayah that does not exist (or was deleted).
@@ -83,3 +89,27 @@ var ErrProjectNotConfigured = apperr.New(http.StatusUnprocessableEntity, apperr.
 func validationError(field, message string) error {
 	return apperr.ErrValidation.WithFields(apperr.FieldError{Field: field, Code: "INVALID", Message: message})
 }
+
+// ErrMembershipNotFound is returned for a membership that does not exist, or that has already
+// ended (a move, a role change or an end applies to a membership still in force).
+var ErrMembershipNotFound = apperr.New(http.StatusNotFound, apperr.CodeNotFound,
+	ReasonMembershipNotFound, "Keanggotaan regu tidak ditemukan atau sudah berakhir.")
+
+// ErrMembershipOverlap is returned when the person already serves in this regu on some of
+// those dates. A person may serve in several regu at once, but not twice in the same one.
+var ErrMembershipOverlap = apperr.New(http.StatusConflict, apperr.CodeConflict,
+	ReasonMembershipOverlap, "Personil sudah menjadi anggota regu ini pada tanggal tersebut.")
+
+// ErrTeamHasDanru is returned when the regu already has a DANRU on some of those dates
+// (BR-RULE-02: one DANRU per regu per date).
+var ErrTeamHasDanru = apperr.New(http.StatusConflict, apperr.CodeConflict,
+	ReasonTeamHasDanru, "Regu ini sudah memiliki DANRU pada tanggal tersebut.")
+
+// ErrPersonnelNotFound is returned for a NIK Personalia does not know in this organization.
+var ErrPersonnelNotFound = apperr.New(http.StatusNotFound, apperr.CodeNotFound,
+	ReasonPersonnelNotFound, "NIK tidak ditemukan di Personalia.")
+
+// ErrPersonnelInactive is returned for a person Personalia reports as inactive: they cannot
+// be put in a regu.
+var ErrPersonnelInactive = apperr.New(http.StatusUnprocessableEntity, apperr.CodeValidation,
+	ReasonPersonnelInactive, "Personil tidak aktif di Personalia dan tidak dapat ditambahkan ke regu.")

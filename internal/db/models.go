@@ -270,6 +270,48 @@ func (ns NullSessionRevokeReason) Value() (driver.Value, error) {
 	return string(ns.SessionRevokeReason), nil
 }
 
+type TeamRole string
+
+const (
+	TeamRoleDANRU  TeamRole = "DANRU"
+	TeamRoleMEMBER TeamRole = "MEMBER"
+)
+
+func (e *TeamRole) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = TeamRole(s)
+	case string:
+		*e = TeamRole(s)
+	default:
+		return fmt.Errorf("unsupported scan type for TeamRole: %T", src)
+	}
+	return nil
+}
+
+type NullTeamRole struct {
+	TeamRole TeamRole
+	Valid    bool // Valid is true if TeamRole is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullTeamRole) Scan(value interface{}) error {
+	if value == nil {
+		ns.TeamRole, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.TeamRole.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullTeamRole) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.TeamRole), nil
+}
+
 type WebRole string
 
 const (
@@ -507,6 +549,18 @@ type Team struct {
 	CreatedAt                      pgtype.Timestamptz
 	UpdatedAt                      pgtype.Timestamptz
 	DeletedAt                      pgtype.Timestamptz
+}
+
+type TeamMember struct {
+	ID             int64
+	OrganizationID int64
+	TeamCode       string
+	PersonnelID    int64
+	Role           TeamRole
+	StartDate      pgtype.Date
+	EndDate        pgtype.Date
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
 }
 
 type WebRoleAssignment struct {

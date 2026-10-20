@@ -22,13 +22,15 @@ type Usecases struct {
 	Clients  *Clients
 	Projects *Projects
 	Teams    *Teams
+	Members  *Members
 }
 
-// NewUsecases returns the organization usecases.
-func NewUsecases(pool *pgxpool.Pool, c clock.Clock) Usecases {
+// NewUsecases returns the organization usecases. people finds a person by NIK for the team
+// members (identity.People); it may be nil where no test or command adds members.
+func NewUsecases(pool *pgxpool.Pool, c clock.Clock, people PeopleResolver) Usecases {
 	return Usecases{
 		Regions: NewRegions(pool, c), Branches: NewBranches(pool, c), Clients: NewClients(pool, c),
-		Projects: NewProjects(pool, c), Teams: NewTeams(pool, c),
+		Projects: NewProjects(pool, c), Teams: NewTeams(pool, c), Members: NewMembers(pool, c, people),
 	}
 }
 
@@ -39,11 +41,12 @@ type Handler struct {
 	clients  *Clients
 	projects *Projects
 	teams    *Teams
+	members  *Members
 }
 
 // NewHandler returns the organization Handler.
 func NewHandler(u Usecases) *Handler {
-	return &Handler{regions: u.Regions, branches: u.Branches, clients: u.Clients, projects: u.Projects, teams: u.Teams}
+	return &Handler{regions: u.Regions, branches: u.Branches, clients: u.Clients, projects: u.Projects, teams: u.Teams, members: u.Members}
 }
 
 // MountAdmin adds the routes to the /api/v1/admin group, behind access.RequireAdmin (cmd/api
@@ -55,6 +58,7 @@ func (h *Handler) MountAdmin(r chi.Router) {
 	r.Patch("/regions/{code}", h.updateRegion)
 	r.Delete("/regions/{code}", h.deleteRegion)
 	h.mountHierarchy(r)
+	h.mountMembers(r)
 }
 
 // caller returns who is asking and what they may reach. Both are set by auth.Require and

@@ -355,6 +355,24 @@ components:
       required: false
       description: Opsional. Hanya proyek bidang usaha ini; nilai lain 422.
       schema: { $ref: '#/components/schemas/BusinessLine' }
+    TeamMembershipIdPath:
+      name: id
+      in: path
+      required: true
+      description: Nomor keanggotaan (id dari TeamMembership).
+      schema: { type: integer, format: int64, minimum: 1 }
+    PersonnelIdOfMemberPath:
+      name: personnel_id
+      in: path
+      required: true
+      description: Nomor personil anggota yang dikeluarkan.
+      schema: { type: integer, format: int64, minimum: 1 }
+    OnDateQuery:
+      name: on_date
+      in: query
+      required: false
+      description: "Opsional. Tanggal bisnis (YYYY-MM-DD). Bawaan: hari ini di zona waktu proyek regu."
+      schema: { type: string, format: date }
     PersonnelIdPath:
       name: personnel_id
       in: path
@@ -695,8 +713,8 @@ components:
             region_code: { type: string, nullable: true, example: OS1, description: Koordinator wilayah milik REGION_ADMIN; null untuk ORG_ADMIN. }
         memberships:
           type: array
-          description: Keanggotaan regu aktif beserta peran (diisi sejak Fase 02.2; kosong sebelumnya).
-          items: { type: object, additionalProperties: true }
+          description: Regu tempat orang ini bertugas hari ini (kosong bila tidak ada).
+          items: { $ref: '#/components/schemas/MeMembership' }
     WebRoleAssignment:
       type: object
       properties:
@@ -1096,7 +1114,66 @@ components:
         - `BRANCH_REGION_MISMATCH`: 422 VALIDATION_ERROR. Nomor kode cabang tidak sama dengan nomor wilayahnya (hanya import, 02.4).
         - `CLIENT_PREFIX_INVALID`: 422 VALIDATION_ERROR. Prefix klien bukan 2 sampai 10 huruf besar atau angka.
         - `PROJECT_NOT_CONFIGURED`: 422 UNPROCESSABLE. Koordinat proyek belum diisi; fitur yang memerlukan lokasi menolaknya.
-      enum: [NOT_ADMIN, ACCESS_ORG_ADMIN_ONLY, ACCESS_OUTSIDE_ADMIN_SCOPE, REGION_NOT_FOUND, BRANCH_NOT_FOUND, CLIENT_NOT_FOUND, PROJECT_NOT_FOUND, TEAM_NOT_FOUND, CODE_TAKEN, HAS_ACTIVE_CHILDREN, BRANCH_LETTER_INVALID, BRANCH_REGION_MISMATCH, CLIENT_PREFIX_INVALID, PROJECT_NOT_CONFIGURED]
+        - `MEMBERSHIP_NOT_FOUND`: 404 NOT_FOUND. Keanggotaan tidak ada atau sudah berakhir (gerak, ganti peran, dan keluar berlaku untuk keanggotaan yang masih berjalan).
+        - `MEMBERSHIP_OVERLAP`: 409 CONFLICT. Personil sudah menjadi anggota regu yang sama pada sebagian tanggal itu.
+        - `TEAM_HAS_DANRU`: 409 CONFLICT. Regu sudah punya DANRU pada sebagian tanggal itu (satu DANRU per regu per tanggal).
+        - `PERSONNEL_NOT_FOUND`: 404 NOT_FOUND. NIK tidak dikenal Personalia di organisasi ini.
+        - `PERSONNEL_INACTIVE`: 422 VALIDATION_ERROR. Personil nonaktif di Personalia.
+      enum: [NOT_ADMIN, ACCESS_ORG_ADMIN_ONLY, ACCESS_OUTSIDE_ADMIN_SCOPE, REGION_NOT_FOUND, BRANCH_NOT_FOUND, CLIENT_NOT_FOUND, PROJECT_NOT_FOUND, TEAM_NOT_FOUND, CODE_TAKEN, HAS_ACTIVE_CHILDREN, BRANCH_LETTER_INVALID, BRANCH_REGION_MISMATCH, CLIENT_PREFIX_INVALID, PROJECT_NOT_CONFIGURED, MEMBERSHIP_NOT_FOUND, MEMBERSHIP_OVERLAP, TEAM_HAS_DANRU, PERSONNEL_NOT_FOUND, PERSONNEL_INACTIVE]
+
+    # ---------- 7. team memberships (keanggotaan regu, 02.3) ----------
+    # Riwayat dijaga: keluar, pindah, dan ganti peran MENGAKHIRI baris (end_date) dan, untuk dua
+    # yang terakhir, memulai baris baru. Tanggal adalah tanggal bisnis di zona waktu proyek;
+    # end_date inklusif.
+    TeamRole:
+      type: string
+      enum: [DANRU, MEMBER]
+      description: "Peran lapangan di regu (DL-04). Satu DANRU per regu per tanggal (BR-RULE-02)."
+    TeamMembership:
+      type: object
+      properties:
+        id: { type: integer, format: int64, description: "Dipakai oleh /admin/team-members/{id}/move dan /change-role." }
+        team_code: { type: string, example: "1K-IBMI-S1" }
+        personnel_id: { type: integer, format: int64 }
+        nik: { type: string, nullable: true, example: "************0001", description: NIK dimasker (hanya 4 karakter terakhir). }
+        full_name: { type: string }
+        role: { $ref: '#/components/schemas/TeamRole' }
+        start_date: { type: string, format: date, example: "2026-01-15" }
+        end_date: { type: string, format: date, nullable: true, description: "Inklusif; tidak ada = masih berjalan." }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    TeamMembershipInput:
+      type: object
+      additionalProperties: false
+      required: [nik, role, start_date]
+      properties:
+        nik: { type: string, minLength: 1, maxLength: 32, example: SIAPPA0002, description: "WAJIB. Dicari di Personalia; orang yang belum pernah login tetap dapat ditambahkan (404 PERSONNEL_NOT_FOUND bila NIK tidak dikenal, 422 PERSONNEL_INACTIVE bila nonaktif)." }
+        role: { $ref: '#/components/schemas/TeamRole' }
+        start_date: { type: string, format: date, example: "2026-01-15", description: "WAJIB. Boleh tanggal depan (keanggotaan terjadwal)." }
+    TeamMembershipMoveInput:
+      type: object
+      additionalProperties: false
+      required: [to_team_code, effective_date]
+      properties:
+        to_team_code: { type: string, example: "1K-IBMI-S2", description: "WAJIB. Regu tujuan; harus ada (404 TEAM_NOT_FOUND) dan berbeda dari regu sekarang (422). Peran dibawa." }
+        effective_date: { type: string, format: date, description: "WAJIB. Baris lama berakhir sehari sebelumnya, baris baru mulai pada tanggal ini. Harus setelah tanggal mulai keanggotaan (422)." }
+    TeamMembershipChangeRoleInput:
+      type: object
+      additionalProperties: false
+      required: [role, effective_date]
+      properties:
+        role: { allOf: [ { $ref: '#/components/schemas/TeamRole' } ], description: "WAJIB. Harus berbeda dari peran sekarang (422)." }
+        effective_date: { type: string, format: date, description: "WAJIB. Baris lama berakhir sehari sebelumnya, baris baru mulai pada tanggal ini. Harus setelah tanggal mulai keanggotaan (422)." }
+    MeMembership:
+      type: object
+      description: Satu regu tempat orang ini bertugas hari ini (tanggal bisnis di zona waktu proyek regu itu).
+      properties:
+        team_code: { type: string, example: "1K-IBMI-S1" }
+        team_name: { type: string }
+        project_code: { type: string, example: "1K-IBMI-S" }
+        project_name: { type: string }
+        role: { $ref: '#/components/schemas/TeamRole' }
+        start_date: { type: string, format: date }
 
     # ---------- 7. team_members ----------
     TeamMember:
@@ -6306,42 +6383,460 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
         '413': { description: PAYLOAD_TOO_LARGE, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
-  /admin/teams/{id}/members:
+  /admin/teams/{code}/members:
     parameters:
-      - $ref: '#/components/parameters/IdPath'
+      - $ref: '#/components/parameters/TeamCodePath'
     get:
-      operationId: getAdminTeamsByIdMembers
+      operationId: getAdminTeamsByCodeMembers
       tags: [Organization]
-      summary: List anggota regu
+      summary: "Daftar anggota regu"
+      description: |
+        Anggota regu pada satu tanggal: DANRU lebih dulu, lalu menurut nama (tanpa membedakan huruf besar/kecil).
+        `on_date` opsional; bawaannya hari ini di zona waktu proyek regu (bukan UTC). Sebuah keanggotaan berlaku pada tanggal D
+        bila mulai pada atau sebelum D dan berakhir pada atau sesudah D (atau belum berakhir).
+
+        Wewenang: ORG_ADMIN menjangkau semua regu. REGION_ADMIN hanya regu di koordinator wilayahnya;
+        wilayah sebuah regu adalah nomor di depan kodenya (1K-IBMI-S1 ada di OS1), apa pun proyeknya.
+        Pemeriksaan wilayah dijawab sebelum database ditanya, sehingga regu di wilayah lain mendapat 403 SCOPE_DENIED juga bila kodenya tidak ada. Staf lapangan (tanpa web role) mendapat 403 NOT_ADMIN.
+      x-roles: [ORG_ADMIN, REGION_ADMIN]
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/OnDateQuery'
       responses:
-        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/ListEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/TeamMember' } } } } ] } } } }
-        '401': { $ref: '#/components/responses/Unauthorized' }
+        '200':
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/ListEnvelope' }
+                  - properties: { data: { type: array, items: { $ref: '#/components/schemas/TeamMembership' } } }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "FORBIDDEN (NOT_ADMIN): bukan admin. SCOPE_DENIED (ACCESS_OUTSIDE_ADMIN_SCOPE): REGION_ADMIN menyentuh regu di wilayah lain."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+                ACCESS_OUTSIDE_ADMIN_SCOPE:
+                  summary: "Regu di wilayah lain, ada ataupun tidak"
+                  value: { success: false, error: { code: SCOPE_DENIED, message: "Data ini berada di luar wilayah yang Anda kelola.", details: { reason: ACCESS_OUTSIDE_ADMIN_SCOPE } }, meta: { request_id: req_abc123 } }
+        '404':
+          description: "Regu tidak ada, sudah dihapus, atau milik organisasi lain."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                TEAM_NOT_FOUND:
+                  summary: "Regu tidak ada, sudah dihapus, atau milik organisasi lain (ORG_ADMIN; REGION_ADMIN mendapat 403 untuk wilayah lain)"
+                  value: { success: false, error: { code: NOT_FOUND, message: "Regu tidak ditemukan.", details: { reason: TEAM_NOT_FOUND } }, meta: { request_id: req_abc123 } }
+        '422':
+          description: "VALIDATION_ERROR: on_date bukan YYYY-MM-DD, atau page/limit di luar batas."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                badOnDate:
+                  summary: "on_date=2026-13-40"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: on_date, code: INVALID, message: "Harus berformat YYYY-MM-DD." } ] }, meta: { request_id: req_abc123 } }
+                badLimit:
+                  summary: "limit=1000"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: limit, code: INVALID, message: "Maksimum 100." } ] }, meta: { request_id: req_abc123 } }
     post:
-      operationId: postAdminTeamsByIdMembers
+      operationId: postAdminTeamsByCodeMembers
       tags: [Organization]
-      summary: Tambah anggota regu (role DANRU/MEMBER)
+      summary: "Tambah anggota regu"
+      description: |
+        Menambahkan personil, dicari lewat NIK, ke regu mulai `start_date`. Orang yang belum pernah login ikut diambil dari Personalia dan disimpan; personil nonaktif ditolak.
+        Satu personil boleh berada di beberapa regu dan proyek sekaligus, tetapi tidak dua kali di regu yang sama pada tanggal yang bertumpuk (409 MEMBERSHIP_OVERLAP); satu regu hanya punya satu DANRU per tanggal (409 TEAM_HAS_DANRU). Kegagalan apa pun tidak meninggalkan data setengah jadi.
+
+        Wewenang: ORG_ADMIN menjangkau semua regu. REGION_ADMIN hanya regu di koordinator wilayahnya;
+        wilayah sebuah regu adalah nomor di depan kodenya (1K-IBMI-S1 ada di OS1), apa pun proyeknya.
+        Pemeriksaan wilayah dijawab sebelum database ditanya, sehingga regu di wilayah lain mendapat 403 SCOPE_DENIED juga bila kodenya tidak ada. Staf lapangan (tanpa web role) mendapat 403 NOT_ADMIN.
+      x-roles: [ORG_ADMIN, REGION_ADMIN]
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/TeamMemberInput' }
+            schema: { $ref: '#/components/schemas/TeamMembershipInput' }
       responses:
-        '201': { description: Created, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/TeamMember' } } } ] } } } }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '422': { $ref: '#/components/responses/ValidationError' }
-  /admin/teams/{id}/members/{personnel_id}:
+        '201':
+          description: "Created"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { $ref: '#/components/schemas/TeamMembership' } }
+        '400':
+          description: "BAD_REQUEST: body kosong atau bukan JSON yang valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                empty:
+                  summary: Body kosong
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Body wajib diisi." }, meta: { request_id: req_abc123 } }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "FORBIDDEN (NOT_ADMIN): bukan admin. SCOPE_DENIED (ACCESS_OUTSIDE_ADMIN_SCOPE): REGION_ADMIN menyentuh regu di wilayah lain."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+                ACCESS_OUTSIDE_ADMIN_SCOPE:
+                  summary: "Regu di wilayah lain, ada ataupun tidak"
+                  value: { success: false, error: { code: SCOPE_DENIED, message: "Data ini berada di luar wilayah yang Anda kelola.", details: { reason: ACCESS_OUTSIDE_ADMIN_SCOPE } }, meta: { request_id: req_abc123 } }
+        '404':
+          description: "Regu tidak ada, atau NIK tidak dikenal Personalia di organisasi ini."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                TEAM_NOT_FOUND:
+                  summary: "Regu tidak ada, sudah dihapus, atau milik organisasi lain (ORG_ADMIN; REGION_ADMIN mendapat 403 untuk wilayah lain)"
+                  value: { success: false, error: { code: NOT_FOUND, message: "Regu tidak ditemukan.", details: { reason: TEAM_NOT_FOUND } }, meta: { request_id: req_abc123 } }
+                PERSONNEL_NOT_FOUND:
+                  summary: "NIK tidak dikenal, atau milik PT di luar grup"
+                  value: { success: false, error: { code: NOT_FOUND, message: "NIK tidak ditemukan di Personalia.", details: { reason: PERSONNEL_NOT_FOUND } }, meta: { request_id: req_abc123 } }
+        '409':
+          description: "CONFLICT: keanggotaan bertumpuk, atau DANRU kedua."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                MEMBERSHIP_OVERLAP:
+                  summary: "Personil yang sama sudah di regu ini pada sebagian tanggal itu"
+                  value: { success: false, error: { code: CONFLICT, message: "Personil sudah menjadi anggota regu ini pada tanggal tersebut.", details: { reason: MEMBERSHIP_OVERLAP } }, meta: { request_id: req_abc123 } }
+                TEAM_HAS_DANRU:
+                  summary: "Regu sudah punya DANRU pada sebagian tanggal itu"
+                  value: { success: false, error: { code: CONFLICT, message: "Regu ini sudah memiliki DANRU pada tanggal tersebut.", details: { reason: TEAM_HAS_DANRU } }, meta: { request_id: req_abc123 } }
+        '422':
+          description: "VALIDATION_ERROR: nik, role atau start_date tidak valid, field tidak dikenal, atau personil nonaktif."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                missingDate:
+                  summary: "start_date tidak dikirim"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: start_date, code: INVALID, message: "Wajib diisi dengan format YYYY-MM-DD." } ] }, meta: { request_id: req_abc123 } }
+                badDate:
+                  summary: "start_date = 01/02/2026"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: start_date, code: INVALID, message: "Harus berformat YYYY-MM-DD." } ] }, meta: { request_id: req_abc123 } }
+                badRole:
+                  summary: "role di luar enum (DANRU, MEMBER)"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: role, code: INVALID, message: "Harus salah satu dari DANRU MEMBER." } ] }, meta: { request_id: req_abc123 } }
+                blankNik:
+                  summary: "nik kosong atau hanya spasi"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: nik, code: INVALID, message: "Tidak boleh kosong." } ] }, meta: { request_id: req_abc123 } }
+                unknownField:
+                  summary: "Field yang tidak dikenal"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: team_code, code: INVALID, message: "Field tidak dikenal." } ] }, meta: { request_id: req_abc123 } }
+                PERSONNEL_INACTIVE:
+                  summary: "Personil nonaktif di Personalia"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Personil tidak aktif di Personalia dan tidak dapat ditambahkan ke regu.", details: { reason: PERSONNEL_INACTIVE } }, meta: { request_id: req_abc123 } }
+        '503':
+          description: "PERSONEL_UNAVAILABLE: Personalia tidak dapat dihubungi saat mencari NIK (orang yang sudah dikenal tidak memerlukan panggilan itu)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                PERSONEL_UNAVAILABLE:
+                  value: { success: false, error: { code: INTERNAL_ERROR, message: "Layanan Personalia sedang tidak tersedia. Coba lagi sebentar lagi.", details: { reason: PERSONEL_UNAVAILABLE } }, meta: { request_id: req_abc123 } }
+  /admin/teams/{code}/members/{personnel_id}:
     parameters:
-      - $ref: '#/components/parameters/IdPath'
-      - { name: personnel_id, in: path, required: true, schema: { type: integer, format: int64 } }
+      - $ref: '#/components/parameters/TeamCodePath'
+      - $ref: '#/components/parameters/PersonnelIdOfMemberPath'
     delete:
-      operationId: deleteAdminTeamsByIdMembersByPersonnelId
+      operationId: deleteAdminTeamsByCodeMembersByPersonnelId
       tags: [Organization]
-      summary: Keluarkan anggota dari regu
+      summary: "Keluarkan anggota dari regu"
+      description: |
+        Mengakhiri keanggotaan yang masih berjalan: `end_date` diisi hari ini di zona waktu proyek regu, dan tanggal itu masih dihitung (inklusif). Baris tidak dihapus, supaya kehadiran dan laporan lama tetap menemukan regunya.
+        Keanggotaan yang belum mulai (start_date setelah hari ini) tidak pernah berlaku, jadi dihapus.
+        Setelah keluar, personil dapat ditambahkan lagi dengan keanggotaan baru.
+
+        Wewenang: ORG_ADMIN menjangkau semua regu. REGION_ADMIN hanya regu di koordinator wilayahnya;
+        wilayah sebuah regu adalah nomor di depan kodenya (1K-IBMI-S1 ada di OS1), apa pun proyeknya.
+        Pemeriksaan wilayah dijawab sebelum database ditanya, sehingga regu di wilayah lain mendapat 403 SCOPE_DENIED juga bila kodenya tidak ada. Staf lapangan (tanpa web role) mendapat 403 NOT_ADMIN.
+      x-roles: [ORG_ADMIN, REGION_ADMIN]
       responses:
-        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessEnvelope' } } } }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: OK (data null)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "FORBIDDEN (NOT_ADMIN): bukan admin. SCOPE_DENIED (ACCESS_OUTSIDE_ADMIN_SCOPE): REGION_ADMIN menyentuh regu di wilayah lain."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+                ACCESS_OUTSIDE_ADMIN_SCOPE:
+                  summary: "Regu di wilayah lain, ada ataupun tidak"
+                  value: { success: false, error: { code: SCOPE_DENIED, message: "Data ini berada di luar wilayah yang Anda kelola.", details: { reason: ACCESS_OUTSIDE_ADMIN_SCOPE } }, meta: { request_id: req_abc123 } }
+        '404':
+          description: "Regu tidak ada, atau personil tidak punya keanggotaan yang masih berjalan di regu ini."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                TEAM_NOT_FOUND:
+                  summary: "Regu tidak ada, sudah dihapus, atau milik organisasi lain (ORG_ADMIN; REGION_ADMIN mendapat 403 untuk wilayah lain)"
+                  value: { success: false, error: { code: NOT_FOUND, message: "Regu tidak ditemukan.", details: { reason: TEAM_NOT_FOUND } }, meta: { request_id: req_abc123 } }
+                MEMBERSHIP_NOT_FOUND:
+                  summary: "Personil tidak punya keanggotaan yang masih berjalan di regu ini"
+                  value: { success: false, error: { code: NOT_FOUND, message: "Keanggotaan regu tidak ditemukan atau sudah berakhir.", details: { reason: MEMBERSHIP_NOT_FOUND } }, meta: { request_id: req_abc123 } }
+  /admin/team-members/{id}/move:
+    parameters:
+      - $ref: '#/components/parameters/TeamMembershipIdPath'
+    post:
+      operationId: postAdminTeamMembersByIdMove
+      tags: [Organization]
+      summary: "Pindahkan anggota ke regu lain"
+      description: |
+        Mengakhiri keanggotaan sehari sebelum `effective_date` dan memulai peran yang sama di regu tujuan pada tanggal itu, dalam satu transaksi (gagal berarti tidak ada yang berubah). Mengembalikan keanggotaan baru; baris lama menjadi riwayat.
+        Hanya keanggotaan yang masih berjalan yang dapat dipindahkan. Regu tujuan boleh di proyek lain.
+        Wewenang: REGION_ADMIN membutuhkan KEDUA regu di wilayahnya: regu tujuan diperiksa lebih dulu, lalu regu keanggotaan sekarang. Memindahkan DANRU ke regu yang sudah punya DANRU: 409 TEAM_HAS_DANRU.
+
+        Catatan id: id keanggotaan adalah angka, jadi id yang tidak ada dijawab 404 MEMBERSHIP_NOT_FOUND untuk semua admin, sedangkan id yang ada di wilayah lain dijawab 403 SCOPE_DENIED untuk REGION_ADMIN. Keanggotaan milik organisasi lain selalu 404 (anti-enumerasi lintas tenant).
+      x-roles: [ORG_ADMIN, REGION_ADMIN]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TeamMembershipMoveInput' }
+      responses:
+        '200':
+          description: "OK (keanggotaan baru)"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { $ref: '#/components/schemas/TeamMembership' } }
+        '400':
+          description: "BAD_REQUEST: body kosong atau bukan JSON yang valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                empty:
+                  summary: Body kosong
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Body wajib diisi." }, meta: { request_id: req_abc123 } }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "FORBIDDEN (NOT_ADMIN): bukan admin. SCOPE_DENIED (ACCESS_OUTSIDE_ADMIN_SCOPE): REGION_ADMIN menyentuh regu di wilayah lain."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+                destinationOutsideScope:
+                  summary: "Regu TUJUAN di wilayah lain (dijawab lebih dulu, juga bila regunya tidak ada)"
+                  value: { success: false, error: { code: SCOPE_DENIED, message: "Data ini berada di luar wilayah yang Anda kelola.", details: { reason: ACCESS_OUTSIDE_ADMIN_SCOPE } }, meta: { request_id: req_abc123 } }
+                currentOutsideScope:
+                  summary: "Keanggotaan ada di regu wilayah lain"
+                  value: { success: false, error: { code: SCOPE_DENIED, message: "Data ini berada di luar wilayah yang Anda kelola.", details: { reason: ACCESS_OUTSIDE_ADMIN_SCOPE } }, meta: { request_id: req_abc123 } }
+        '404':
+          description: "Keanggotaan tidak ada, sudah berakhir atau milik organisasi lain; atau regu tujuan tidak ada."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                MEMBERSHIP_NOT_FOUND:
+                  summary: "Id tidak ada, milik organisasi lain, atau keanggotaannya sudah berakhir (riwayat tidak dapat diubah lagi)"
+                  value: { success: false, error: { code: NOT_FOUND, message: "Keanggotaan regu tidak ditemukan atau sudah berakhir.", details: { reason: MEMBERSHIP_NOT_FOUND } }, meta: { request_id: req_abc123 } }
+                TEAM_NOT_FOUND:
+                  summary: "Regu tujuan tidak ada, sudah dihapus, atau milik organisasi lain"
+                  value: { success: false, error: { code: NOT_FOUND, message: "Regu tidak ditemukan.", details: { reason: TEAM_NOT_FOUND } }, meta: { request_id: req_abc123 } }
+        '409':
+          description: "CONFLICT: keanggotaan bertumpuk di regu tujuan, atau DANRU kedua. Tidak ada yang berubah."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                MEMBERSHIP_OVERLAP:
+                  summary: "Personil yang sama sudah di regu ini pada sebagian tanggal itu"
+                  value: { success: false, error: { code: CONFLICT, message: "Personil sudah menjadi anggota regu ini pada tanggal tersebut.", details: { reason: MEMBERSHIP_OVERLAP } }, meta: { request_id: req_abc123 } }
+                TEAM_HAS_DANRU:
+                  summary: "Regu sudah punya DANRU pada sebagian tanggal itu"
+                  value: { success: false, error: { code: CONFLICT, message: "Regu ini sudah memiliki DANRU pada tanggal tersebut.", details: { reason: TEAM_HAS_DANRU } }, meta: { request_id: req_abc123 } }
+        '422':
+          description: "VALIDATION_ERROR: tanggal hilang, salah format atau tidak setelah tanggal mulai; regu tujuan sama dengan regu sekarang; field tidak dikenal."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                missingDate:
+                  summary: "effective_date tidak dikirim"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: effective_date, code: INVALID, message: "Wajib diisi dengan format YYYY-MM-DD." } ] }, meta: { request_id: req_abc123 } }
+                badDate:
+                  summary: "effective_date salah format"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: effective_date, code: INVALID, message: "Harus berformat YYYY-MM-DD." } ] }, meta: { request_id: req_abc123 } }
+                sameTeam:
+                  summary: "Regu tujuan sama dengan regu sekarang"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: to_team_code, code: INVALID, message: "Harus regu yang berbeda dari regu sekarang." } ] }, meta: { request_id: req_abc123 } }
+                tooEarly:
+                  summary: "effective_date pada atau sebelum tanggal mulai (baris lama akan kosong)"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: effective_date, code: INVALID, message: "Harus setelah tanggal mulai keanggotaan (2026-01-15)." } ] }, meta: { request_id: req_abc123 } }
+                unknownField:
+                  summary: "Field yang tidak dikenal"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: role, code: INVALID, message: "Field tidak dikenal." } ] }, meta: { request_id: req_abc123 } }
+  /admin/team-members/{id}/change-role:
+    parameters:
+      - $ref: '#/components/parameters/TeamMembershipIdPath'
+    post:
+      operationId: postAdminTeamMembersByIdChangeRole
+      tags: [Organization]
+      summary: "Ganti peran anggota"
+      description: |
+        Mengakhiri keanggotaan sehari sebelum `effective_date` dan memulai peran baru di regu yang sama pada tanggal itu, dalam satu transaksi (gagal berarti tidak ada yang berubah). Mengembalikan keanggotaan baru; baris lama menjadi riwayat.
+        Hanya keanggotaan yang masih berjalan yang dapat diganti perannya. Menjadikan seseorang DANRU di regu yang sudah punya DANRU: 409 TEAM_HAS_DANRU.
+        Wewenang: REGION_ADMIN hanya untuk keanggotaan di regu wilayahnya.
+
+        Catatan id: id keanggotaan adalah angka, jadi id yang tidak ada dijawab 404 MEMBERSHIP_NOT_FOUND untuk semua admin, sedangkan id yang ada di wilayah lain dijawab 403 SCOPE_DENIED untuk REGION_ADMIN. Keanggotaan milik organisasi lain selalu 404 (anti-enumerasi lintas tenant).
+      x-roles: [ORG_ADMIN, REGION_ADMIN]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TeamMembershipChangeRoleInput' }
+      responses:
+        '200':
+          description: "OK (keanggotaan baru)"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { $ref: '#/components/schemas/TeamMembership' } }
+        '400':
+          description: "BAD_REQUEST: body kosong atau bukan JSON yang valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                empty:
+                  summary: Body kosong
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Body wajib diisi." }, meta: { request_id: req_abc123 } }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "FORBIDDEN (NOT_ADMIN): bukan admin. SCOPE_DENIED (ACCESS_OUTSIDE_ADMIN_SCOPE): keanggotaan ada di regu wilayah lain."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+                ACCESS_OUTSIDE_ADMIN_SCOPE:
+                  summary: "Keanggotaan ada di regu wilayah lain"
+                  value: { success: false, error: { code: SCOPE_DENIED, message: "Data ini berada di luar wilayah yang Anda kelola.", details: { reason: ACCESS_OUTSIDE_ADMIN_SCOPE } }, meta: { request_id: req_abc123 } }
+        '404':
+          description: "Keanggotaan tidak ada, sudah berakhir atau milik organisasi lain."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                MEMBERSHIP_NOT_FOUND:
+                  summary: "Id tidak ada, milik organisasi lain, atau keanggotaannya sudah berakhir (riwayat tidak dapat diubah lagi)"
+                  value: { success: false, error: { code: NOT_FOUND, message: "Keanggotaan regu tidak ditemukan atau sudah berakhir.", details: { reason: MEMBERSHIP_NOT_FOUND } }, meta: { request_id: req_abc123 } }
+        '409':
+          description: "CONFLICT: DANRU kedua. Tidak ada yang berubah."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                TEAM_HAS_DANRU:
+                  summary: "Regu sudah punya DANRU pada sebagian tanggal itu"
+                  value: { success: false, error: { code: CONFLICT, message: "Regu ini sudah memiliki DANRU pada tanggal tersebut.", details: { reason: TEAM_HAS_DANRU } }, meta: { request_id: req_abc123 } }
+        '422':
+          description: "VALIDATION_ERROR: tanggal hilang, salah format atau tidak setelah tanggal mulai; peran sama dengan peran sekarang; role di luar enum."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                missingDate:
+                  summary: "effective_date tidak dikirim"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: effective_date, code: INVALID, message: "Wajib diisi dengan format YYYY-MM-DD." } ] }, meta: { request_id: req_abc123 } }
+                sameRole:
+                  summary: "Peran sama dengan peran sekarang"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: role, code: INVALID, message: "Harus berbeda dari peran sekarang." } ] }, meta: { request_id: req_abc123 } }
+                badRole:
+                  summary: "role di luar enum"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: role, code: INVALID, message: "Harus salah satu dari DANRU MEMBER." } ] }, meta: { request_id: req_abc123 } }
+                tooEarly:
+                  summary: "effective_date pada atau sebelum tanggal mulai (baris lama akan kosong)"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: effective_date, code: INVALID, message: "Harus setelah tanggal mulai keanggotaan (2026-01-15)." } ] }, meta: { request_id: req_abc123 } }
   /admin/zones/{id}/qr:
     parameters:
       - $ref: '#/components/parameters/IdPath'

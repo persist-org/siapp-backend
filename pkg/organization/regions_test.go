@@ -31,11 +31,15 @@ type env struct {
 
 // newEnv serves the admin group of the real router (RequireAdmin, the regions and the web
 // roles) on a clean database, and checks every request and response against the contract.
-func newEnv(t *testing.T) *env {
+func newEnv(t *testing.T) *env { return newEnvWith(t, nil, clock.System{}) }
+
+// newEnvWith is newEnv with the people resolver the team members use (nil where nobody is
+// added by NIK) and the clock the usecases read, for tests that need a chosen "today".
+func newEnvWith(t *testing.T, people organization.PeopleResolver, clk clock.Clock) *env {
 	t.Helper()
 	testkit.Reset(t)
 	pool := testkit.Pool(t)
-	regions := organization.NewHandler(organization.NewUsecases(pool, clock.System{}))
+	regions := organization.NewHandler(organization.NewUsecases(pool, clk, people))
 	roles := access.NewHandler(access.NewWebRoles(pool, clock.System{}))
 	srv := testkit.NewServer(t, testkit.Deps{Mount: func(r chi.Router) {
 		r.Route("/api/v1/admin", func(admin chi.Router) {

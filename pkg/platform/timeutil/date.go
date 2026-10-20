@@ -6,6 +6,7 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -66,17 +67,21 @@ func (d Date) MarshalJSON() ([]byte, error) {
 }
 
 // UnmarshalJSON decodes "YYYY-MM-DD". JSON null leaves the Date unchanged.
+//
+// A value that is not such a date is a *json.UnmarshalTypeError, which encoding/json decorates
+// with the field it came from, so an API can answer "field X must be YYYY-MM-DD" instead of
+// "the body could not be read".
 func (d *Date) UnmarshalJSON(b []byte) error {
 	if bytes.Equal(b, []byte("null")) {
 		return nil
 	}
 	var s string
 	if err := json.Unmarshal(b, &s); err != nil {
-		return fmt.Errorf("date must be a string in YYYY-MM-DD format: %w", err)
+		return &json.UnmarshalTypeError{Value: string(b), Type: reflect.TypeFor[Date]()}
 	}
 	parsed, err := ParseDate(s)
 	if err != nil {
-		return err
+		return &json.UnmarshalTypeError{Value: s, Type: reflect.TypeFor[Date]()}
 	}
 	*d = parsed
 	return nil

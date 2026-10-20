@@ -54,11 +54,16 @@ func newRouter(d deps) *chi.Mux {
 	idempotency := idem.New(idem.Config{Pool: d.Pool, Identity: auth.Identity})
 
 	identityUsecase := identity.NewUsecase(d.Pool, d.Personel, d.Tokens, revocations, d.Clock, d.Logger)
+	// Who serves in which regu is module 02's: a REGION_ADMIN's reach over a person and the
+	// memberships /auth/me lists come from it.
+	directory := organization.NewDirectory(d.Clock)
+	identityUsecase.UseRegionLookup(directory)
+	identityUsecase.UseMembershipLookup(directory)
 	identityHandler := identity.NewHandler(identityUsecase, d.ClientIP, failures, idempotency.Middleware(false))
 	identityHandler.Mount(router)
 
 	accessHandler := access.NewHandler(access.NewWebRoles(d.Pool, d.Clock))
-	organizationHandler := organization.NewHandler(organization.NewUsecases(d.Pool, d.Clock))
+	organizationHandler := organization.NewHandler(organization.NewUsecases(d.Pool, d.Clock, identity.NewPeople(d.Pool, d.Personel, d.Clock)))
 
 	// ⚠ The admin group: access.RequireAdmin is mounted ONCE here, so every route a module
 	// adds under /api/v1/admin is protected without anyone having to remember it.

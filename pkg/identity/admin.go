@@ -10,13 +10,30 @@ import (
 	"siapp/pkg/platform/audit"
 	"siapp/pkg/platform/auth"
 	"siapp/pkg/platform/database"
+	"siapp/pkg/platform/timeutil"
 )
 
 // RegionLookup says under which koordinator wilayah a person has an active regu membership.
-// Phase 02.3 implements it from team_members; until then nobody belongs to a regu, so a
+// Module 02 (team_members) implements it; without it nobody belongs to a regu, so a
 // REGION_ADMIN can reach nobody, which fails closed.
 type RegionLookup interface {
 	RegionCodesOf(ctx context.Context, q *db.Queries, personnelID int64) ([]string, error)
+}
+
+// Membership is one regu a person serves in today, as /auth/me lists it.
+type Membership struct {
+	TeamCode    string
+	TeamName    string
+	ProjectCode string
+	ProjectName string
+	Role        string
+	StartDate   timeutil.Date
+}
+
+// MembershipLookup lists the regu a person serves in today (each in its project's own
+// timezone). Module 02 implements it.
+type MembershipLookup interface {
+	MembershipsOf(ctx context.Context, q *db.Queries, personnelID int64) ([]Membership, error)
 }
 
 type noMemberships struct{}
@@ -25,8 +42,15 @@ func (noMemberships) RegionCodesOf(context.Context, *db.Queries, int64) ([]strin
 	return nil, nil
 }
 
+func (noMemberships) MembershipsOf(context.Context, *db.Queries, int64) ([]Membership, error) {
+	return nil, nil
+}
+
 // UseRegionLookup replaces the default (nobody is in a regu) with the real membership data.
 func (u *Usecase) UseRegionLookup(l RegionLookup) { u.regions = l }
+
+// UseMembershipLookup replaces the default (nobody is in a regu) with the real membership data.
+func (u *Usecase) UseMembershipLookup(l MembershipLookup) { u.memberships = l }
 
 // ResetDeviceBinding frees the phone slot of a person: the admin's answer to a lost or
 // replaced phone. An ORG_ADMIN may reset anyone in the organization; a REGION_ADMIN only

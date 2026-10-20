@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 
 	"siapp/pkg/platform/apperr"
+	"siapp/pkg/platform/timeutil"
 )
 
 const maxBodyBytes = 1 << 20 // 1 MB
@@ -120,9 +121,11 @@ func decodeError(err error) error {
 	case errors.As(err, &syntax), errors.Is(err, io.ErrUnexpectedEOF):
 		return apperr.ErrBadRequest.WithMessage("Body bukan JSON yang valid.")
 	case errors.As(err, &typeErr):
-		return apperr.ErrValidation.WithFields(apperr.FieldError{
-			Field: typeErr.Field, Code: codeInvalid, Message: "Harus bertipe " + jsonKind(typeErr.Type) + ".",
-		})
+		message := "Harus bertipe " + jsonKind(typeErr.Type) + "."
+		if typeErr.Type == reflect.TypeFor[timeutil.Date]() {
+			message = "Harus berformat YYYY-MM-DD."
+		}
+		return apperr.ErrValidation.WithFields(apperr.FieldError{Field: typeErr.Field, Code: codeInvalid, Message: message})
 	}
 	// encoding/json has no typed error for unknown fields; it is reported as text.
 	if field, ok := strings.CutPrefix(err.Error(), "json: unknown field "); ok {
