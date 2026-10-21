@@ -181,6 +181,48 @@ func (ns NullPersonnelStatus) Value() (driver.Value, error) {
 	return string(ns.PersonnelStatus), nil
 }
 
+type ScheduleType string
+
+const (
+	ScheduleTypeFIXED    ScheduleType = "FIXED"
+	ScheduleTypeFLEXIBLE ScheduleType = "FLEXIBLE"
+)
+
+func (e *ScheduleType) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ScheduleType(s)
+	case string:
+		*e = ScheduleType(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ScheduleType: %T", src)
+	}
+	return nil
+}
+
+type NullScheduleType struct {
+	ScheduleType ScheduleType
+	Valid        bool // Valid is true if ScheduleType is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullScheduleType) Scan(value interface{}) error {
+	if value == nil {
+		ns.ScheduleType, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ScheduleType.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullScheduleType) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ScheduleType), nil
+}
+
 type SessionClient string
 
 const (
@@ -474,6 +516,18 @@ type Personnel struct {
 	CompanyName    pgtype.Text
 }
 
+type PersonnelShiftAssignment struct {
+	OrganizationID int64
+	PersonnelID    int64
+	ScheduleType   ScheduleType
+	ShiftGroupID   pgtype.Int8
+	EffectiveDate  pgtype.Date
+	GeneratedUntil pgtype.Date
+	UpdatedBy      pgtype.Int8
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
 type Project struct {
 	OrganizationID           int64
 	Code                     string
@@ -514,6 +568,19 @@ type Region struct {
 	DeletedAt      pgtype.Timestamptz
 }
 
+type Schedule struct {
+	ID             int64
+	OrganizationID int64
+	PersonnelID    int64
+	WorkDate       pgtype.Date
+	ShiftID        int64
+	ShiftGroupID   pgtype.Int8
+	CreatedBy      pgtype.Int8
+	UpdatedBy      pgtype.Int8
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
 type Session struct {
 	ID               int64
 	OrganizationID   int64
@@ -532,6 +599,40 @@ type Session struct {
 	CreatedAt        pgtype.Timestamptz
 	UpdatedAt        pgtype.Timestamptz
 	RevokeReason     NullSessionRevokeReason
+}
+
+type Shift struct {
+	ID               int64
+	OrganizationID   int64
+	Name             string
+	StartMinute      int16
+	EndMinute        int16
+	IsOff            bool
+	ToleranceMinutes int16
+	Active           bool
+	CreatedBy        pgtype.Int8
+	UpdatedBy        pgtype.Int8
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+	DeletedAt        pgtype.Timestamptz
+}
+
+type ShiftGroup struct {
+	ID             int64
+	OrganizationID int64
+	Name           string
+	CreatedBy      pgtype.Int8
+	UpdatedBy      pgtype.Int8
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+	DeletedAt      pgtype.Timestamptz
+}
+
+type ShiftGroupDay struct {
+	OrganizationID int64
+	ShiftGroupID   int64
+	Weekday        int16
+	ShiftID        int64
 }
 
 type Team struct {

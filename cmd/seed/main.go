@@ -2,6 +2,7 @@
 //
 //	seed                                      print who can log in (the Personalia dev accounts)
 //	seed grant-admin --nik <nik>              make a person the first ORG_ADMIN of the group
+//	seed shifts                               give the group PJ48's starting shifts and shift group
 //
 // For identity it seeds nothing: people come from Persist Personalia, and SiAPP only caches
 // them. Without arguments it prints the accounts of the real kpi-personalia-api seed
@@ -25,6 +26,7 @@ import (
 
 	"siapp/pkg/access"
 	"siapp/pkg/identity"
+	"siapp/pkg/organization"
 	"siapp/pkg/platform/clock"
 	"siapp/pkg/platform/config"
 	"siapp/pkg/platform/database"
@@ -48,8 +50,10 @@ func run(args []string) error {
 	switch args[0] {
 	case "grant-admin":
 		return grantAdmin(args[1:])
+	case "shifts":
+		return seedShifts()
 	default:
-		return fmt.Errorf("unknown command %q; use: seed | seed grant-admin --nik <nik>", args[0])
+		return fmt.Errorf("unknown command %q; use: seed | seed grant-admin --nik <nik> | seed shifts", args[0])
 	}
 }
 
@@ -114,12 +118,52 @@ func grantAdmin(args []string) error {
 	return nil
 }
 
+// seedShifts gives the group's organization (GROUP_ORGANIZATION_ID) PJ48's starting shifts and
+// the "5 Hari Kerja" group. Safe to run again: names that exist are left alone. It runs as the
+// owner (MIGRATE_DSN), like grant-admin, inside the organization's tenant transaction.
+func seedShifts() error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	if cfg.MigrateDSN == "" {
+		return fmt.Errorf("MIGRATE_DSN (the owner role) is required to seed shifts")
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	ctx, cancel := context.WithTimeout(ctx, grantTimeout)
+	defer cancel()
+
+	pool, err := database.Open(ctx, cfg.MigrateDSN)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+	res, err := organization.SeedDefaultShifts(ctx, pool, clock.System{}, cfg.GroupOrganizationID)
+	if err != nil {
+		return err
+	}
+	created := "none (all already there)"
+	if len(res.ShiftsCreated) > 0 {
+		created = strings.Join(res.ShiftsCreated, ", ")
+	}
+	group := "already there"
+	if res.GroupCreated {
+		group = "created"
+	}
+	fmt.Printf("done: organization %d; shifts created: %s; group %q: %s\n",
+		cfg.GroupOrganizationID, created, organization.SeedGroupWeekday, group)
+	return nil
+}
+
 func printAccounts() error {
 	fmt.Println("SiAPP signs people in with their Personalia account. These accounts come from")
 	fmt.Println("kpi-personalia-api's dev seed (run its `make seed` first). Every password is:")
 	fmt.Printf("\n    %s\n\n", personeltest.Password)
 	fmt.Println("Web login needs a web role: grant the first admin with")
-	fmt.Println("    go run ./cmd/seed grant-admin --nik SIAPPA0001")
+	fmt.Println("    make grant-admin NIK=SIAPPA0001")
+	fmt.Println("Then the starting shifts (OFF, Day Shift, Night Shift, group 5 Hari Kerja):")
+	fmt.Println("    make seed-shifts")
 	fmt.Println()
 
 	accounts := []struct{ email, nik, note string }{

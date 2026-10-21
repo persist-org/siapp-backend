@@ -1,11 +1,14 @@
 package organization
 
 import (
+	"errors"
+	"fmt"
 	"math"
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"siapp/pkg/platform/apperr"
 	"siapp/pkg/platform/auth"
 )
 
@@ -73,4 +76,14 @@ func clampInt32(n int) int32 {
 		return math.MinInt32
 	}
 	return int32(n) //nolint:gosec // bounded just above
+}
+
+// wrapUnexpected returns an API error as it is and gives anything else the context of what
+// failed.
+func wrapUnexpected(err error, what string) error {
+	var appErr *apperr.Error
+	if errors.As(err, &appErr) {
+		return err
+	}
+	return fmt.Errorf("%s: %w", what, err)
 }

@@ -17,12 +17,14 @@ import (
 
 // Usecases is every organization usecase, built over one pool and clock.
 type Usecases struct {
-	Regions  *Regions
-	Branches *Branches
-	Clients  *Clients
-	Projects *Projects
-	Teams    *Teams
-	Members  *Members
+	Regions   *Regions
+	Branches  *Branches
+	Clients   *Clients
+	Projects  *Projects
+	Teams     *Teams
+	Members   *Members
+	Shifts    *ShiftMasters
+	Schedules *Schedules
 }
 
 // NewUsecases returns the organization usecases. people finds a person by NIK for the team
@@ -31,22 +33,26 @@ func NewUsecases(pool *pgxpool.Pool, c clock.Clock, people PeopleResolver) Useca
 	return Usecases{
 		Regions: NewRegions(pool, c), Branches: NewBranches(pool, c), Clients: NewClients(pool, c),
 		Projects: NewProjects(pool, c), Teams: NewTeams(pool, c), Members: NewMembers(pool, c, people),
+		Shifts: NewShiftMasters(pool, c), Schedules: NewSchedules(pool, c),
 	}
 }
 
 // Handler serves the organization endpoints under /api/v1/admin.
 type Handler struct {
-	regions  *Regions
-	branches *Branches
-	clients  *Clients
-	projects *Projects
-	teams    *Teams
-	members  *Members
+	regions   *Regions
+	branches  *Branches
+	clients   *Clients
+	projects  *Projects
+	teams     *Teams
+	members   *Members
+	shifts    *ShiftMasters
+	schedules *Schedules
 }
 
 // NewHandler returns the organization Handler.
 func NewHandler(u Usecases) *Handler {
-	return &Handler{regions: u.Regions, branches: u.Branches, clients: u.Clients, projects: u.Projects, teams: u.Teams, members: u.Members}
+	return &Handler{regions: u.Regions, branches: u.Branches, clients: u.Clients, projects: u.Projects, teams: u.Teams, members: u.Members,
+		shifts: u.Shifts, schedules: u.Schedules}
 }
 
 // MountAdmin adds the routes to the /api/v1/admin group, behind access.RequireAdmin (cmd/api
@@ -59,6 +65,7 @@ func (h *Handler) MountAdmin(r chi.Router) {
 	r.Delete("/regions/{code}", h.deleteRegion)
 	h.mountHierarchy(r)
 	h.mountMembers(r)
+	h.mountShifts(r)
 }
 
 // caller returns who is asking and what they may reach. Both are set by auth.Require and

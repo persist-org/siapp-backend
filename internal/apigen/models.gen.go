@@ -500,25 +500,36 @@ func (e OrganizationCreateEnabledBusinessLines) Valid() bool {
 
 // Defines values for OrganizationErrorReason.
 const (
-	ACCESSORGADMINONLY      OrganizationErrorReason = "ACCESS_ORG_ADMIN_ONLY"
-	ACCESSOUTSIDEADMINSCOPE OrganizationErrorReason = "ACCESS_OUTSIDE_ADMIN_SCOPE"
-	BRANCHLETTERINVALID     OrganizationErrorReason = "BRANCH_LETTER_INVALID"
-	BRANCHNOTFOUND          OrganizationErrorReason = "BRANCH_NOT_FOUND"
-	BRANCHREGIONMISMATCH    OrganizationErrorReason = "BRANCH_REGION_MISMATCH"
-	CLIENTNOTFOUND          OrganizationErrorReason = "CLIENT_NOT_FOUND"
-	CLIENTPREFIXINVALID     OrganizationErrorReason = "CLIENT_PREFIX_INVALID"
-	CODETAKEN               OrganizationErrorReason = "CODE_TAKEN"
-	HASACTIVECHILDREN       OrganizationErrorReason = "HAS_ACTIVE_CHILDREN"
-	MEMBERSHIPNOTFOUND      OrganizationErrorReason = "MEMBERSHIP_NOT_FOUND"
-	MEMBERSHIPOVERLAP       OrganizationErrorReason = "MEMBERSHIP_OVERLAP"
-	NOTADMIN                OrganizationErrorReason = "NOT_ADMIN"
-	PERSONNELINACTIVE       OrganizationErrorReason = "PERSONNEL_INACTIVE"
-	PERSONNELNOTFOUND       OrganizationErrorReason = "PERSONNEL_NOT_FOUND"
-	PROJECTNOTCONFIGURED    OrganizationErrorReason = "PROJECT_NOT_CONFIGURED"
-	PROJECTNOTFOUND         OrganizationErrorReason = "PROJECT_NOT_FOUND"
-	REGIONNOTFOUND          OrganizationErrorReason = "REGION_NOT_FOUND"
-	TEAMHASDANRU            OrganizationErrorReason = "TEAM_HAS_DANRU"
-	TEAMNOTFOUND            OrganizationErrorReason = "TEAM_NOT_FOUND"
+	ACCESSORGADMINONLY        OrganizationErrorReason = "ACCESS_ORG_ADMIN_ONLY"
+	ACCESSOUTSIDEADMINSCOPE   OrganizationErrorReason = "ACCESS_OUTSIDE_ADMIN_SCOPE"
+	BRANCHLETTERINVALID       OrganizationErrorReason = "BRANCH_LETTER_INVALID"
+	BRANCHNOTFOUND            OrganizationErrorReason = "BRANCH_NOT_FOUND"
+	BRANCHREGIONMISMATCH      OrganizationErrorReason = "BRANCH_REGION_MISMATCH"
+	CLIENTNOTFOUND            OrganizationErrorReason = "CLIENT_NOT_FOUND"
+	CLIENTPREFIXINVALID       OrganizationErrorReason = "CLIENT_PREFIX_INVALID"
+	CODETAKEN                 OrganizationErrorReason = "CODE_TAKEN"
+	HASACTIVECHILDREN         OrganizationErrorReason = "HAS_ACTIVE_CHILDREN"
+	MEMBERSHIPNOTFOUND        OrganizationErrorReason = "MEMBERSHIP_NOT_FOUND"
+	MEMBERSHIPOVERLAP         OrganizationErrorReason = "MEMBERSHIP_OVERLAP"
+	NOTADMIN                  OrganizationErrorReason = "NOT_ADMIN"
+	PERSONNELINACTIVE         OrganizationErrorReason = "PERSONNEL_INACTIVE"
+	PERSONNELNOTFOUND         OrganizationErrorReason = "PERSONNEL_NOT_FOUND"
+	PROJECTNOTCONFIGURED      OrganizationErrorReason = "PROJECT_NOT_CONFIGURED"
+	PROJECTNOTFOUND           OrganizationErrorReason = "PROJECT_NOT_FOUND"
+	REGIONNOTFOUND            OrganizationErrorReason = "REGION_NOT_FOUND"
+	SCHEDULEEXISTS            OrganizationErrorReason = "SCHEDULE_EXISTS"
+	SCHEDULENOTFOUND          OrganizationErrorReason = "SCHEDULE_NOT_FOUND"
+	SCHEDULETIMEZONEAMBIGUOUS OrganizationErrorReason = "SCHEDULE_TIMEZONE_AMBIGUOUS"
+	SHIFTASSIGNMENTNOTFOUND   OrganizationErrorReason = "SHIFT_ASSIGNMENT_NOT_FOUND"
+	SHIFTGROUPINUSE           OrganizationErrorReason = "SHIFT_GROUP_IN_USE"
+	SHIFTGROUPNAMETAKEN       OrganizationErrorReason = "SHIFT_GROUP_NAME_TAKEN"
+	SHIFTGROUPNOTFOUND        OrganizationErrorReason = "SHIFT_GROUP_NOT_FOUND"
+	SHIFTINUSE                OrganizationErrorReason = "SHIFT_IN_USE"
+	SHIFTINVALIDTIME          OrganizationErrorReason = "SHIFT_INVALID_TIME"
+	SHIFTNAMETAKEN            OrganizationErrorReason = "SHIFT_NAME_TAKEN"
+	SHIFTNOTFOUND             OrganizationErrorReason = "SHIFT_NOT_FOUND"
+	TEAMHASDANRU              OrganizationErrorReason = "TEAM_HAS_DANRU"
+	TEAMNOTFOUND              OrganizationErrorReason = "TEAM_NOT_FOUND"
 )
 
 // Valid indicates whether the value is a known member of the OrganizationErrorReason enum.
@@ -557,6 +568,28 @@ func (e OrganizationErrorReason) Valid() bool {
 	case PROJECTNOTFOUND:
 		return true
 	case REGIONNOTFOUND:
+		return true
+	case SCHEDULEEXISTS:
+		return true
+	case SCHEDULENOTFOUND:
+		return true
+	case SCHEDULETIMEZONEAMBIGUOUS:
+		return true
+	case SHIFTASSIGNMENTNOTFOUND:
+		return true
+	case SHIFTGROUPINUSE:
+		return true
+	case SHIFTGROUPNAMETAKEN:
+		return true
+	case SHIFTGROUPNOTFOUND:
+		return true
+	case SHIFTINUSE:
+		return true
+	case SHIFTINVALIDTIME:
+		return true
+	case SHIFTNAMETAKEN:
+		return true
+	case SHIFTNOTFOUND:
 		return true
 	case TEAMHASDANRU:
 		return true
@@ -828,6 +861,24 @@ func (e QrGenerateRequestFormat) Valid() bool {
 	case QrGenerateRequestFormatPng:
 		return true
 	case QrGenerateRequestFormatSvg:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ScheduleType.
+const (
+	FIXED    ScheduleType = "FIXED"
+	FLEXIBLE ScheduleType = "FLEXIBLE"
+)
+
+// Valid indicates whether the value is a known member of the ScheduleType enum.
+func (e ScheduleType) Valid() bool {
+	switch e {
+	case FIXED:
+		return true
+	case FLEXIBLE:
 		return true
 	default:
 		return false
@@ -1128,6 +1179,39 @@ func (e WebhookEndpointInputStatus) Valid() bool {
 	case WebhookEndpointInputStatusDisabled:
 		return true
 	case WebhookEndpointInputStatusPaused:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for Weekday.
+const (
+	Friday    Weekday = "friday"
+	Monday    Weekday = "monday"
+	Saturday  Weekday = "saturday"
+	Sunday    Weekday = "sunday"
+	Thursday  Weekday = "thursday"
+	Tuesday   Weekday = "tuesday"
+	Wednesday Weekday = "wednesday"
+)
+
+// Valid indicates whether the value is a known member of the Weekday enum.
+func (e Weekday) Valid() bool {
+	switch e {
+	case Friday:
+		return true
+	case Monday:
+		return true
+	case Saturday:
+		return true
+	case Sunday:
+		return true
+	case Thursday:
+		return true
+	case Tuesday:
+		return true
+	case Wednesday:
 		return true
 	default:
 		return false
@@ -2031,6 +2115,51 @@ func (e GetAdminPersonnelReviews200JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
+// Defines values for PostAdminPersonnelByPersonnelIdSchedules201JSONResponseBodySuccess.
+const (
+	PostAdminPersonnelByPersonnelIdSchedules201JSONResponseBodySuccessTrue PostAdminPersonnelByPersonnelIdSchedules201JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostAdminPersonnelByPersonnelIdSchedules201JSONResponseBodySuccess enum.
+func (e PostAdminPersonnelByPersonnelIdSchedules201JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostAdminPersonnelByPersonnelIdSchedules201JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetAdminPersonnelByPersonnelIdShiftAssignment200JSONResponseBodySuccess.
+const (
+	GetAdminPersonnelByPersonnelIdShiftAssignment200JSONResponseBodySuccessTrue GetAdminPersonnelByPersonnelIdShiftAssignment200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetAdminPersonnelByPersonnelIdShiftAssignment200JSONResponseBodySuccess enum.
+func (e GetAdminPersonnelByPersonnelIdShiftAssignment200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetAdminPersonnelByPersonnelIdShiftAssignment200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PutAdminPersonnelByPersonnelIdShiftAssignment200JSONResponseBodySuccess.
+const (
+	PutAdminPersonnelByPersonnelIdShiftAssignment200JSONResponseBodySuccessTrue PutAdminPersonnelByPersonnelIdShiftAssignment200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PutAdminPersonnelByPersonnelIdShiftAssignment200JSONResponseBodySuccess enum.
+func (e PutAdminPersonnelByPersonnelIdShiftAssignment200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PutAdminPersonnelByPersonnelIdShiftAssignment200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetAdminPersonnels200JSONResponseBodySuccess.
 const (
 	GetAdminPersonnels200JSONResponseBodySuccessTrue GetAdminPersonnels200JSONResponseBodySuccess = true
@@ -2511,6 +2640,186 @@ const (
 func (e PatchAdminRolesById200JSONResponseBodySuccess) Valid() bool {
 	switch e {
 	case PatchAdminRolesById200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetAdminSchedules200JSONResponseBodySuccess.
+const (
+	GetAdminSchedules200JSONResponseBodySuccessTrue GetAdminSchedules200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetAdminSchedules200JSONResponseBodySuccess enum.
+func (e GetAdminSchedules200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetAdminSchedules200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostAdminSchedulesBulkDelete200JSONResponseBodySuccess.
+const (
+	PostAdminSchedulesBulkDelete200JSONResponseBodySuccessTrue PostAdminSchedulesBulkDelete200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostAdminSchedulesBulkDelete200JSONResponseBodySuccess enum.
+func (e PostAdminSchedulesBulkDelete200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostAdminSchedulesBulkDelete200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetAdminSchedulesById200JSONResponseBodySuccess.
+const (
+	GetAdminSchedulesById200JSONResponseBodySuccessTrue GetAdminSchedulesById200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetAdminSchedulesById200JSONResponseBodySuccess enum.
+func (e GetAdminSchedulesById200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetAdminSchedulesById200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatchAdminSchedulesById200JSONResponseBodySuccess.
+const (
+	PatchAdminSchedulesById200JSONResponseBodySuccessTrue PatchAdminSchedulesById200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PatchAdminSchedulesById200JSONResponseBodySuccess enum.
+func (e PatchAdminSchedulesById200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PatchAdminSchedulesById200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetAdminShiftGroups200JSONResponseBodySuccess.
+const (
+	GetAdminShiftGroups200JSONResponseBodySuccessTrue GetAdminShiftGroups200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetAdminShiftGroups200JSONResponseBodySuccess enum.
+func (e GetAdminShiftGroups200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetAdminShiftGroups200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostAdminShiftGroups201JSONResponseBodySuccess.
+const (
+	PostAdminShiftGroups201JSONResponseBodySuccessTrue PostAdminShiftGroups201JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostAdminShiftGroups201JSONResponseBodySuccess enum.
+func (e PostAdminShiftGroups201JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostAdminShiftGroups201JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetAdminShiftGroupsById200JSONResponseBodySuccess.
+const (
+	GetAdminShiftGroupsById200JSONResponseBodySuccessTrue GetAdminShiftGroupsById200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetAdminShiftGroupsById200JSONResponseBodySuccess enum.
+func (e GetAdminShiftGroupsById200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetAdminShiftGroupsById200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatchAdminShiftGroupsById200JSONResponseBodySuccess.
+const (
+	PatchAdminShiftGroupsById200JSONResponseBodySuccessTrue PatchAdminShiftGroupsById200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PatchAdminShiftGroupsById200JSONResponseBodySuccess enum.
+func (e PatchAdminShiftGroupsById200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PatchAdminShiftGroupsById200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetAdminShifts200JSONResponseBodySuccess.
+const (
+	GetAdminShifts200JSONResponseBodySuccessTrue GetAdminShifts200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetAdminShifts200JSONResponseBodySuccess enum.
+func (e GetAdminShifts200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetAdminShifts200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostAdminShifts201JSONResponseBodySuccess.
+const (
+	PostAdminShifts201JSONResponseBodySuccessTrue PostAdminShifts201JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostAdminShifts201JSONResponseBodySuccess enum.
+func (e PostAdminShifts201JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostAdminShifts201JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetAdminShiftsById200JSONResponseBodySuccess.
+const (
+	GetAdminShiftsById200JSONResponseBodySuccessTrue GetAdminShiftsById200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetAdminShiftsById200JSONResponseBodySuccess enum.
+func (e GetAdminShiftsById200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetAdminShiftsById200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatchAdminShiftsById200JSONResponseBodySuccess.
+const (
+	PatchAdminShiftsById200JSONResponseBodySuccessTrue PatchAdminShiftsById200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PatchAdminShiftsById200JSONResponseBodySuccess enum.
+func (e PatchAdminShiftsById200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PatchAdminShiftsById200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
@@ -6014,6 +6323,15 @@ type OrganizationCreateEnabledBusinessLines string
 // - `TEAM_HAS_DANRU`: 409 CONFLICT. Regu sudah punya DANRU pada sebagian tanggal itu (satu DANRU per regu per tanggal).
 // - `PERSONNEL_NOT_FOUND`: 404 NOT_FOUND. NIK tidak dikenal Personalia di organisasi ini.
 // - `PERSONNEL_INACTIVE`: 422 VALIDATION_ERROR. Personil nonaktif di Personalia.
+// - `SHIFT_NOT_FOUND` / `SHIFT_GROUP_NOT_FOUND`: 404. Shift atau shift group tidak ada atau sudah dihapus.
+// - `SHIFT_INVALID_TIME`: 422. Jam bukan HH:mm, jam masuk = jam pulang, atau shift OFF diberi jam.
+// - `SHIFT_NAME_TAKEN` / `SHIFT_GROUP_NAME_TAKEN`: 409 DUPLICATE. Nama sudah dipakai.
+// - `SHIFT_IN_USE`: 409. Shift dipakai shift group atau dijadwalkan mulai hari ini.
+// - `SHIFT_GROUP_IN_USE`: 409. Shift group dipakai pengaturan jadwal personil.
+// - `SHIFT_ASSIGNMENT_NOT_FOUND`: 404. Personil belum punya pengaturan jadwal.
+// - `SCHEDULE_NOT_FOUND`: 404. Jadwal tidak ada.
+// - `SCHEDULE_EXISTS`: 409. Personil sudah punya jadwal pada tanggal itu.
+// - `SCHEDULE_TIMEZONE_AMBIGUOUS`: 422 UNPROCESSABLE. Pada tanggal itu personil bertugas di proyek dengan zona waktu berbeda.
 type OrganizationErrorReason string
 
 // OrganizationProfileUpdate Update profil + branding organisasi (WEB-37).
@@ -6695,6 +7013,208 @@ type RoleInput struct {
 	} `json:"permissions"`
 }
 
+// Schedule defines model for Schedule.
+type Schedule struct {
+	CreatedAt *time.Time `json:"created_at,omitempty"`
+
+	// CreatedBy Personil yang membuat; null bila dibuat sistem (perpanjangan malam).
+	CreatedBy *int64  `json:"created_by,omitempty"`
+	FullName  *string `json:"full_name,omitempty"`
+	Id        *int64  `json:"id,omitempty"`
+
+	// Nik NIK dimasker.
+	Nik         *string        `json:"nik,omitempty"`
+	PersonnelId *int64         `json:"personnel_id,omitempty"`
+	Shift       *ScheduleShift `json:"shift,omitempty"`
+
+	// ShiftGroupId Shift group asal bila dibuat otomatis; null bila diisi atau diubah manual.
+	ShiftGroupId *int64     `json:"shift_group_id,omitempty"`
+	UpdatedAt    *time.Time `json:"updated_at,omitempty"`
+	UpdatedBy    *int64     `json:"updated_by,omitempty"`
+
+	// WorkDate Tanggal bisnis shift dimulai, di zona waktu proyek personil. Shift malam berakhir pada work_date + 1.
+	WorkDate *openapi_types.Date `json:"work_date,omitempty"`
+}
+
+// ScheduleBulkDeleteInput defines model for ScheduleBulkDeleteInput.
+type ScheduleBulkDeleteInput struct {
+	Ids []int64 `json:"ids"`
+}
+
+// ScheduleBulkDeleteResult defines model for ScheduleBulkDeleteResult.
+type ScheduleBulkDeleteResult struct {
+	Deleted *int `json:"deleted,omitempty"`
+}
+
+// ScheduleEntriesInput defines model for ScheduleEntriesInput.
+type ScheduleEntriesInput struct {
+	// Entries 1 sampai 62 tanggal; satu tanggal tidak boleh muncul dua kali (422).
+	Entries []ScheduleEntry `json:"entries"`
+}
+
+// ScheduleEntry defines model for ScheduleEntry.
+type ScheduleEntry struct {
+	// ShiftId Shift yang ada dan aktif (422 entries[i].shift_id).
+	ShiftId  int64              `json:"shift_id"`
+	WorkDate openapi_types.Date `json:"work_date"`
+}
+
+// ScheduleShift defines model for ScheduleShift.
+type ScheduleShift struct {
+	EndTime   *string `json:"end_time,omitempty"`
+	Id        *int64  `json:"id,omitempty"`
+	IsOff     *bool   `json:"is_off,omitempty"`
+	Name      *string `json:"name,omitempty"`
+	Overnight *bool   `json:"overnight,omitempty"`
+	StartTime *string `json:"start_time,omitempty"`
+}
+
+// ScheduleType FIXED: jadwal dibuat otomatis dari pola shift group. FLEXIBLE: tidak dibuat otomatis; admin mengisi tiap tanggal.
+type ScheduleType string
+
+// ScheduleUpdate Kedua field opsional. Jadwal yang diubah dianggap manual (shift_group_id menjadi null). Bila tidak ada yang berubah, jadwal dikembalikan apa adanya (tetap milik shift group). Hanya shift BARU yang harus aktif.
+type ScheduleUpdate struct {
+	ShiftId *int64 `json:"shift_id,omitempty"`
+
+	// WorkDate Pindah tanggal; tanggal tujuan yang sudah punya jadwal: 409 SCHEDULE_EXISTS.
+	WorkDate *openapi_types.Date `json:"work_date,omitempty"`
+}
+
+// Shift defines model for Shift.
+type Shift struct {
+	CreatedAt *time.Time `json:"created_at,omitempty"`
+
+	// EndTime Jam pulang lokal; 00:00 untuk OFF.
+	EndTime  *string `json:"end_time,omitempty"`
+	Id       *int64  `json:"id,omitempty"`
+	IsActive *bool   `json:"is_active,omitempty"`
+
+	// IsOff Hari libur (tanpa jam).
+	IsOff *bool   `json:"is_off,omitempty"`
+	Name  *string `json:"name,omitempty"`
+
+	// Overnight true bila shift berakhir keesokan harinya (jam pulang sebelum jam masuk, mis. 22:00-06:00). Selalu false untuk OFF.
+	Overnight *bool `json:"overnight,omitempty"`
+
+	// StartTime Jam masuk lokal; 00:00 untuk OFF.
+	StartTime *string `json:"start_time,omitempty"`
+
+	// ToleranceMinutes Toleransi terlambat (dipakai reject_attendance_after_tolerance regu). 0 untuk OFF.
+	ToleranceMinutes *int       `json:"tolerance_minutes,omitempty"`
+	UpdatedAt        *time.Time `json:"updated_at,omitempty"`
+}
+
+// ShiftAssignment Pengaturan jadwal seorang personil (shift_groub PJ48).
+type ShiftAssignment struct {
+	EffectiveDate *openapi_types.Date `json:"effective_date,omitempty"`
+
+	// GeneratedUntil Tanggal terakhir yang sudah dibuat (FIXED). Diperpanjang tiap malam hingga hari ini + 60 hari.
+	GeneratedUntil *openapi_types.Date `json:"generated_until,omitempty"`
+	PersonnelId    *int64              `json:"personnel_id,omitempty"`
+
+	// ScheduleType FIXED: jadwal dibuat otomatis dari pola shift group. FLEXIBLE: tidak dibuat otomatis; admin mengisi tiap tanggal.
+	ScheduleType *ScheduleType `json:"schedule_type,omitempty"`
+
+	// ShiftGroupId null untuk FLEXIBLE.
+	ShiftGroupId *int64     `json:"shift_group_id,omitempty"`
+	UpdatedAt    *time.Time `json:"updated_at,omitempty"`
+}
+
+// ShiftAssignmentInput defines model for ShiftAssignmentInput.
+type ShiftAssignmentInput struct {
+	// EffectiveDate WAJIB. Tanggal mulai pola berlaku. Boleh tanggal depan.
+	EffectiveDate openapi_types.Date `json:"effective_date"`
+
+	// ScheduleType FIXED: jadwal dibuat otomatis dari pola shift group. FLEXIBLE: tidak dibuat otomatis; admin mengisi tiap tanggal.
+	ScheduleType ScheduleType `json:"schedule_type"`
+
+	// ShiftGroupId WAJIB untuk FIXED, harus kosong untuk FLEXIBLE (422). Harus ada (404 SHIFT_GROUP_NOT_FOUND).
+	ShiftGroupId *int64 `json:"shift_group_id,omitempty"`
+}
+
+// ShiftAssignmentResult defines model for ShiftAssignmentResult.
+type ShiftAssignmentResult struct {
+	// Assignment Pengaturan jadwal seorang personil (shift_groub PJ48).
+	Assignment *ShiftAssignment `json:"assignment,omitempty"`
+
+	// Deleted Jumlah jadwal yang dihapus untuk diganti.
+	Deleted *int64 `json:"deleted,omitempty"`
+
+	// From Tanggal pertama yang dapat berubah: hari ini di zona waktu personil, atau besok bila shift hari ini sudah dimulai. Tanggal lampau tidak pernah diubah.
+	From *openapi_types.Date `json:"from,omitempty"`
+
+	// Generated Jumlah jadwal yang dibuat.
+	Generated *int64 `json:"generated,omitempty"`
+}
+
+// ShiftGroup Pola mingguan (shift group PJ48). Selalu tujuh hari, Senin lebih dulu.
+type ShiftGroup struct {
+	CreatedAt *time.Time       `json:"created_at,omitempty"`
+	Days      *[]ShiftGroupDay `json:"days,omitempty"`
+	Id        *int64           `json:"id,omitempty"`
+	Name      *string          `json:"name,omitempty"`
+	UpdatedAt *time.Time       `json:"updated_at,omitempty"`
+}
+
+// ShiftGroupDay defines model for ShiftGroupDay.
+type ShiftGroupDay struct {
+	Shift   *Shift   `json:"shift,omitempty"`
+	Weekday *Weekday `json:"weekday,omitempty"`
+}
+
+// ShiftGroupDays Nama hari (huruf kecil persis, monday sampai sunday) ke id shift. Shift harus ada dan aktif (422 pada days.<hari>). Hari libur = id shift OFF.
+type ShiftGroupDays struct {
+	Friday    *int64 `json:"friday,omitempty"`
+	Monday    *int64 `json:"monday,omitempty"`
+	Saturday  *int64 `json:"saturday,omitempty"`
+	Sunday    *int64 `json:"sunday,omitempty"`
+	Thursday  *int64 `json:"thursday,omitempty"`
+	Tuesday   *int64 `json:"tuesday,omitempty"`
+	Wednesday *int64 `json:"wednesday,omitempty"`
+}
+
+// ShiftGroupInput defines model for ShiftGroupInput.
+type ShiftGroupInput struct {
+	// Days WAJIB, ketujuh hari (422 days.<hari> bila ada yang kurang).
+	Days ShiftGroupDays `json:"days"`
+
+	// Name WAJIB. Unik di organisasi; 409 SHIFT_GROUP_NAME_TAKEN.
+	Name string `json:"name"`
+}
+
+// ShiftGroupUpdate Semua field opsional. `days` boleh sebagian: hanya hari yang dikirim yang berubah.
+// Seperti PJ48, perubahan hanya pada pola: jadwal yang sudah dibuat tetap; tanggal yang dibuat
+// sesudahnya (perpanjangan malam, atau pengaturan jadwal baru) mengikuti pola baru.
+type ShiftGroupUpdate struct {
+	// Days Nama hari (huruf kecil persis, monday sampai sunday) ke id shift. Shift harus ada dan aktif (422 pada days.<hari>). Hari libur = id shift OFF.
+	Days *ShiftGroupDays `json:"days,omitempty"`
+	Name *string         `json:"name,omitempty"`
+}
+
+// ShiftInput defines model for ShiftInput.
+type ShiftInput struct {
+	// EndTime WAJIB untuk shift kerja, HH:mm, berbeda dari start_time. Harus setelah start_time bila overnight false, dan sebelum start_time bila overnight true (422 SHIFT_INVALID_TIME). Shift OFF: tidak boleh dikirim.
+	EndTime *string `json:"end_time,omitempty"`
+
+	// IsActive Opsional. Shift nonaktif tidak dapat dipilih untuk shift group atau jadwal baru.
+	IsActive *bool `json:"is_active,omitempty"`
+
+	// IsOff Opsional. true = hari libur tanpa jam. Tidak dapat diubah setelah dibuat.
+	IsOff *bool `json:"is_off,omitempty"`
+
+	// Name WAJIB. Unik di organisasi (tanpa membedakan huruf besar/kecil) di antara shift yang belum dihapus; 409 SHIFT_NAME_TAKEN.
+	Name string `json:"name"`
+
+	// Overnight Opsional. true = shift berakhir keesokan harinya (mis. 22:00-06:00); wajib true agar end_time boleh sebelum start_time. Shift OFF: tidak boleh dikirim.
+	Overnight *bool `json:"overnight,omitempty"`
+
+	// StartTime WAJIB untuk shift kerja, HH:mm. Shift OFF: tidak boleh dikirim (422 SHIFT_INVALID_TIME).
+	StartTime *string `json:"start_time,omitempty"`
+
+	// ToleranceMinutes Opsional. Bawaan 15; harus lebih pendek dari durasi shift (422 tolerance_minutes). Shift OFF: tidak boleh dikirim (disimpan 0).
+	ToleranceMinutes *int `json:"tolerance_minutes,omitempty"`
+}
+
 // ShiftSwap defines model for ShiftSwap.
 type ShiftSwap struct {
 	ApprovedBy           *int64              `json:"approved_by,omitempty"`
@@ -6720,6 +7240,23 @@ type ShiftSwapCreate struct {
 	ReplacingPersonnelId int64              `json:"replacing_personnel_id"`
 	SwapDate             openapi_types.Date `json:"swap_date"`
 	TeamId               *int64             `json:"team_id,omitempty"`
+}
+
+// ShiftUpdate Semua field opsional; yang tidak dikirim tidak berubah. `is_off` tidak dapat dikirim (422).
+// Mengubah jam berlaku untuk semua tanggal yang sudah dijadwalkan dengan shift ini (seperti PJ48).
+// Hasilnya diperiksa utuh: `overnight` yang tidak dikirim tetap milik shift, jadi jam baru harus
+// sesuai dengannya (422 SHIFT_INVALID_TIME), dan toleransi harus lebih pendek dari durasi shift.
+// Shift OFF tidak menerima start_time, end_time, overnight, maupun tolerance_minutes (422 SHIFT_INVALID_TIME).
+// is_active false ditolak selama shift dipakai shift group (409 SHIFT_IN_USE).
+type ShiftUpdate struct {
+	EndTime  *string `json:"end_time,omitempty"`
+	IsActive *bool   `json:"is_active,omitempty"`
+	Name     *string `json:"name,omitempty"`
+
+	// Overnight true = berakhir keesokan harinya (end_time sebelum start_time).
+	Overnight        *bool   `json:"overnight,omitempty"`
+	StartTime        *string `json:"start_time,omitempty"`
+	ToleranceMinutes *int    `json:"tolerance_minutes,omitempty"`
 }
 
 // StakeholderType Master umum (qualifications, client_types, client_groups, stakeholder_types, panic_types, report_categories, instruction_categories, permission_categories).
@@ -7073,6 +7610,9 @@ type WebhookEndpointSecretResult struct {
 	Url    *string `json:"url,omitempty"`
 }
 
+// Weekday defines model for Weekday.
+type Weekday string
+
 // ZoneCheckInInput defines model for ZoneCheckInInput.
 type ZoneCheckInInput struct {
 	Lat float64 `json:"lat"`
@@ -7109,8 +7649,14 @@ type CursorParam = string
 // DateFromParam defines model for DateFromParam.
 type DateFromParam = openapi_types.Date
 
+// DateFromQuery defines model for DateFromQuery.
+type DateFromQuery = openapi_types.Date
+
 // DateToParam defines model for DateToParam.
 type DateToParam = openapi_types.Date
+
+// DateToQuery defines model for DateToQuery.
+type DateToQuery = openapi_types.Date
 
 // EndpointIdParam defines model for EndpointIdParam.
 type EndpointIdParam = int64
@@ -7139,6 +7685,9 @@ type PersonnelIdOfMemberPath = int64
 // PersonnelIdPath defines model for PersonnelIdPath.
 type PersonnelIdPath = int64
 
+// PersonnelIdQuery defines model for PersonnelIdQuery.
+type PersonnelIdQuery = int64
+
 // ProjectCodePath defines model for ProjectCodePath.
 type ProjectCodePath = string
 
@@ -7157,6 +7706,15 @@ type RegionCodePath = string
 // RegionCodeQuery defines model for RegionCodeQuery.
 type RegionCodeQuery = string
 
+// ScheduleIdPath defines model for ScheduleIdPath.
+type ScheduleIdPath = int64
+
+// ShiftGroupIdPath defines model for ShiftGroupIdPath.
+type ShiftGroupIdPath = int64
+
+// ShiftIdPath defines model for ShiftIdPath.
+type ShiftIdPath = int64
+
 // SinceParam defines model for SinceParam.
 type SinceParam = time.Time
 
@@ -7168,6 +7726,9 @@ type StatusParam = string
 
 // TeamCodePath defines model for TeamCodePath.
 type TeamCodePath = string
+
+// TeamCodeQuery defines model for TeamCodeQuery.
+type TeamCodeQuery = string
 
 // TeamIdParam defines model for TeamIdParam.
 type TeamIdParam = int64
@@ -7761,6 +8322,15 @@ type GetAdminPersonnelReviewsParamsType string
 // GetAdminPersonnelReviews200JSONResponseBodySuccess defines parameters for GetAdminPersonnelReviews.
 type GetAdminPersonnelReviews200JSONResponseBodySuccess bool
 
+// PostAdminPersonnelByPersonnelIdSchedules201JSONResponseBodySuccess defines parameters for PostAdminPersonnelByPersonnelIdSchedules.
+type PostAdminPersonnelByPersonnelIdSchedules201JSONResponseBodySuccess bool
+
+// GetAdminPersonnelByPersonnelIdShiftAssignment200JSONResponseBodySuccess defines parameters for GetAdminPersonnelByPersonnelIdShiftAssignment.
+type GetAdminPersonnelByPersonnelIdShiftAssignment200JSONResponseBodySuccess bool
+
+// PutAdminPersonnelByPersonnelIdShiftAssignment200JSONResponseBodySuccess defines parameters for PutAdminPersonnelByPersonnelIdShiftAssignment.
+type PutAdminPersonnelByPersonnelIdShiftAssignment200JSONResponseBodySuccess bool
+
 // GetAdminPersonnelsParams defines parameters for GetAdminPersonnels.
 type GetAdminPersonnelsParams struct {
 	// Page Nomor halaman (1-indexed).
@@ -8069,6 +8639,93 @@ type GetAdminRolesById200JSONResponseBodySuccess bool
 
 // PatchAdminRolesById200JSONResponseBodySuccess defines parameters for PatchAdminRolesById.
 type PatchAdminRolesById200JSONResponseBodySuccess bool
+
+// GetAdminSchedulesParams defines parameters for GetAdminSchedules.
+type GetAdminSchedulesParams struct {
+	// DateFrom WAJIB. Tanggal bisnis awal (YYYY-MM-DD).
+	DateFrom DateFromQuery `form:"date_from" json:"date_from"`
+
+	// DateTo WAJIB. Tanggal bisnis akhir (YYYY-MM-DD), tidak sebelum date_from, rentang paling lama 62 hari.
+	DateTo DateToQuery `form:"date_to" json:"date_to"`
+
+	// PersonnelId Opsional. Hanya jadwal personil ini.
+	PersonnelId *PersonnelIdQuery `form:"personnel_id,omitempty" json:"personnel_id,omitempty"`
+
+	// TeamCode Opsional. Hanya jadwal personil yang menjadi anggota regu ini pada tanggal jadwalnya. REGION_ADMIN: regu di wilayah lain 403.
+	TeamCode *TeamCodeQuery `form:"team_code,omitempty" json:"team_code,omitempty"`
+
+	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
+
+	// Page Nomor halaman (1-indexed).
+	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
+
+	// Limit Item per halaman (maks 100).
+	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetAdminSchedules200JSONResponseBodySuccess defines parameters for GetAdminSchedules.
+type GetAdminSchedules200JSONResponseBodySuccess bool
+
+// PostAdminSchedulesBulkDelete200JSONResponseBodySuccess defines parameters for PostAdminSchedulesBulkDelete.
+type PostAdminSchedulesBulkDelete200JSONResponseBodySuccess bool
+
+// GetAdminSchedulesById200JSONResponseBodySuccess defines parameters for GetAdminSchedulesById.
+type GetAdminSchedulesById200JSONResponseBodySuccess bool
+
+// PatchAdminSchedulesById200JSONResponseBodySuccess defines parameters for PatchAdminSchedulesById.
+type PatchAdminSchedulesById200JSONResponseBodySuccess bool
+
+// GetAdminShiftGroupsParams defines parameters for GetAdminShiftGroups.
+type GetAdminShiftGroupsParams struct {
+	// Page Nomor halaman (1-indexed).
+	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
+
+	// Limit Item per halaman (maks 100).
+	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
+}
+
+// GetAdminShiftGroups200JSONResponseBodySuccess defines parameters for GetAdminShiftGroups.
+type GetAdminShiftGroups200JSONResponseBodySuccess bool
+
+// PostAdminShiftGroups201JSONResponseBodySuccess defines parameters for PostAdminShiftGroups.
+type PostAdminShiftGroups201JSONResponseBodySuccess bool
+
+// GetAdminShiftGroupsById200JSONResponseBodySuccess defines parameters for GetAdminShiftGroupsById.
+type GetAdminShiftGroupsById200JSONResponseBodySuccess bool
+
+// PatchAdminShiftGroupsById200JSONResponseBodySuccess defines parameters for PatchAdminShiftGroupsById.
+type PatchAdminShiftGroupsById200JSONResponseBodySuccess bool
+
+// GetAdminShiftsParams defines parameters for GetAdminShifts.
+type GetAdminShiftsParams struct {
+	// Page Nomor halaman (1-indexed).
+	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
+
+	// Limit Item per halaman (maks 100).
+	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
+
+	// IsActive Filter status aktif.
+	IsActive *IsActiveParam `form:"is_active,omitempty" json:"is_active,omitempty"`
+}
+
+// GetAdminShifts200JSONResponseBodySuccess defines parameters for GetAdminShifts.
+type GetAdminShifts200JSONResponseBodySuccess bool
+
+// PostAdminShifts201JSONResponseBodySuccess defines parameters for PostAdminShifts.
+type PostAdminShifts201JSONResponseBodySuccess bool
+
+// GetAdminShiftsById200JSONResponseBodySuccess defines parameters for GetAdminShiftsById.
+type GetAdminShiftsById200JSONResponseBodySuccess bool
+
+// PatchAdminShiftsById200JSONResponseBodySuccess defines parameters for PatchAdminShiftsById.
+type PatchAdminShiftsById200JSONResponseBodySuccess bool
 
 // GetAdminStakeholderTypesParams defines parameters for GetAdminStakeholderTypes.
 type GetAdminStakeholderTypesParams struct {
@@ -9712,6 +10369,12 @@ type PostAdminPermissionCategoriesJSONRequestBody = CodedMasterInput
 // PatchAdminPermissionCategoriesByIdJSONRequestBody defines body for PatchAdminPermissionCategoriesById for application/json ContentType.
 type PatchAdminPermissionCategoriesByIdJSONRequestBody = CodedMasterInput
 
+// PostAdminPersonnelByPersonnelIdSchedulesJSONRequestBody defines body for PostAdminPersonnelByPersonnelIdSchedules for application/json ContentType.
+type PostAdminPersonnelByPersonnelIdSchedulesJSONRequestBody = ScheduleEntriesInput
+
+// PutAdminPersonnelByPersonnelIdShiftAssignmentJSONRequestBody defines body for PutAdminPersonnelByPersonnelIdShiftAssignment for application/json ContentType.
+type PutAdminPersonnelByPersonnelIdShiftAssignmentJSONRequestBody = ShiftAssignmentInput
+
 // PostAdminPersonnelsJSONRequestBody defines body for PostAdminPersonnels for application/json ContentType.
 type PostAdminPersonnelsJSONRequestBody = PersonnelInput
 
@@ -9759,6 +10422,24 @@ type PostAdminRolesJSONRequestBody = RoleInput
 
 // PatchAdminRolesByIdJSONRequestBody defines body for PatchAdminRolesById for application/json ContentType.
 type PatchAdminRolesByIdJSONRequestBody = RoleInput
+
+// PostAdminSchedulesBulkDeleteJSONRequestBody defines body for PostAdminSchedulesBulkDelete for application/json ContentType.
+type PostAdminSchedulesBulkDeleteJSONRequestBody = ScheduleBulkDeleteInput
+
+// PatchAdminSchedulesByIdJSONRequestBody defines body for PatchAdminSchedulesById for application/json ContentType.
+type PatchAdminSchedulesByIdJSONRequestBody = ScheduleUpdate
+
+// PostAdminShiftGroupsJSONRequestBody defines body for PostAdminShiftGroups for application/json ContentType.
+type PostAdminShiftGroupsJSONRequestBody = ShiftGroupInput
+
+// PatchAdminShiftGroupsByIdJSONRequestBody defines body for PatchAdminShiftGroupsById for application/json ContentType.
+type PatchAdminShiftGroupsByIdJSONRequestBody = ShiftGroupUpdate
+
+// PostAdminShiftsJSONRequestBody defines body for PostAdminShifts for application/json ContentType.
+type PostAdminShiftsJSONRequestBody = ShiftInput
+
+// PatchAdminShiftsByIdJSONRequestBody defines body for PatchAdminShiftsById for application/json ContentType.
+type PatchAdminShiftsByIdJSONRequestBody = ShiftUpdate
 
 // PostAdminStakeholderTypesJSONRequestBody defines body for PostAdminStakeholderTypes for application/json ContentType.
 type PostAdminStakeholderTypesJSONRequestBody = CodedMasterInput

@@ -20,6 +20,7 @@ import (
 	_ "time/tzdata"
 
 	"siapp/pkg/identity"
+	"siapp/pkg/organization"
 	"siapp/pkg/platform/audit"
 	"siapp/pkg/platform/auth"
 	"siapp/pkg/platform/clock"
@@ -84,6 +85,7 @@ func run() error {
 	mux := asynq.NewServeMux()
 	identity.RegisterJobs(mux, identity.NewCleaner(pool, clock.System{}), logger)
 	identity.RegisterResyncJob(mux, resyncer, logger)
+	organization.RegisterScheduleJob(mux, organization.NewScheduleExtender(pool, clock.System{}), logger)
 	registerPlatformJobs(mux, pool, logger)
 
 	// ⚠ The scheduler runs in UTC, so the cron expressions below read the same on every host.
@@ -92,6 +94,9 @@ func run() error {
 		return err
 	}
 	if err := identity.RegisterResyncSchedule(scheduler); err != nil {
+		return err
+	}
+	if err := organization.RegisterScheduleSchedule(scheduler); err != nil {
 		return err
 	}
 	if err := registerPlatformSchedule(scheduler); err != nil {

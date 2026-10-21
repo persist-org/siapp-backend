@@ -64,6 +64,14 @@ func (e *Error) Error() string {
 	return fmt.Sprintf("%s: %s", e.Code, e.Message)
 }
 
+// Is makes errors.Is see through the copies the With* methods make: an error matches a shared
+// one with the same code and reason, whatever its message, details or fields. Errors without
+// a reason (the generic ones) only match themselves.
+func (e *Error) Is(target error) bool {
+	t, ok := target.(*Error)
+	return ok && t.Reason != "" && e.Reason == t.Reason && e.Code == t.Code
+}
+
 // New returns an Error with the given status, code, reason and message.
 func New(status int, code Code, reason, msg string) *Error {
 	return &Error{Status: status, Code: code, Reason: reason, Message: msg}

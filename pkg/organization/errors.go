@@ -6,8 +6,8 @@
 // a number. A code contains its parent's code, so it is never edited after creation. People
 // stay in Personalia: this package only says which regu they serve in.
 //
-// Phase 02.1 starts it with the regions, 02.2 adds the rest of the hierarchy and 02.3 the
-// people in each regu.
+// Phase 02.1 starts it with the regions, 02.2 adds the rest of the hierarchy, 02.3 the
+// people in each regu and 02.5 their shifts and schedules.
 package organization
 
 import (
@@ -19,22 +19,33 @@ import (
 // Error reasons (details.reason). A reason that has shipped is never renamed. They keep the
 // names the plan (docs/plan/02-organization.md) gives them.
 const (
-	ReasonRegionNotFound       = "REGION_NOT_FOUND"
-	ReasonBranchNotFound       = "BRANCH_NOT_FOUND"
-	ReasonClientNotFound       = "CLIENT_NOT_FOUND"
-	ReasonProjectNotFound      = "PROJECT_NOT_FOUND"
-	ReasonTeamNotFound         = "TEAM_NOT_FOUND"
-	ReasonCodeTaken            = "CODE_TAKEN"
-	ReasonHasActiveChildren    = "HAS_ACTIVE_CHILDREN"
-	ReasonBranchRegionMismatch = "BRANCH_REGION_MISMATCH"
-	ReasonBranchLetterInvalid  = "BRANCH_LETTER_INVALID"
-	ReasonClientPrefixInvalid  = "CLIENT_PREFIX_INVALID"
-	ReasonProjectNotConfigured = "PROJECT_NOT_CONFIGURED"
-	ReasonMembershipNotFound   = "MEMBERSHIP_NOT_FOUND"
-	ReasonMembershipOverlap    = "MEMBERSHIP_OVERLAP"
-	ReasonTeamHasDanru         = "TEAM_HAS_DANRU"
-	ReasonPersonnelNotFound    = "PERSONNEL_NOT_FOUND"
-	ReasonPersonnelInactive    = "PERSONNEL_INACTIVE"
+	ReasonRegionNotFound            = "REGION_NOT_FOUND"
+	ReasonBranchNotFound            = "BRANCH_NOT_FOUND"
+	ReasonClientNotFound            = "CLIENT_NOT_FOUND"
+	ReasonProjectNotFound           = "PROJECT_NOT_FOUND"
+	ReasonTeamNotFound              = "TEAM_NOT_FOUND"
+	ReasonCodeTaken                 = "CODE_TAKEN"
+	ReasonHasActiveChildren         = "HAS_ACTIVE_CHILDREN"
+	ReasonBranchRegionMismatch      = "BRANCH_REGION_MISMATCH"
+	ReasonBranchLetterInvalid       = "BRANCH_LETTER_INVALID"
+	ReasonClientPrefixInvalid       = "CLIENT_PREFIX_INVALID"
+	ReasonProjectNotConfigured      = "PROJECT_NOT_CONFIGURED"
+	ReasonMembershipNotFound        = "MEMBERSHIP_NOT_FOUND"
+	ReasonMembershipOverlap         = "MEMBERSHIP_OVERLAP"
+	ReasonTeamHasDanru              = "TEAM_HAS_DANRU"
+	ReasonPersonnelNotFound         = "PERSONNEL_NOT_FOUND"
+	ReasonPersonnelInactive         = "PERSONNEL_INACTIVE"
+	ReasonShiftNotFound             = "SHIFT_NOT_FOUND"
+	ReasonShiftGroupNotFound        = "SHIFT_GROUP_NOT_FOUND"
+	ReasonShiftInvalidTime          = "SHIFT_INVALID_TIME"
+	ReasonShiftNameTaken            = "SHIFT_NAME_TAKEN"
+	ReasonShiftGroupNameTaken       = "SHIFT_GROUP_NAME_TAKEN"
+	ReasonShiftInUse                = "SHIFT_IN_USE"
+	ReasonShiftGroupInUse           = "SHIFT_GROUP_IN_USE"
+	ReasonShiftAssignmentNotFound   = "SHIFT_ASSIGNMENT_NOT_FOUND"
+	ReasonScheduleNotFound          = "SCHEDULE_NOT_FOUND"
+	ReasonScheduleExists            = "SCHEDULE_EXISTS"
+	ReasonScheduleTimezoneAmbiguous = "SCHEDULE_TIMEZONE_AMBIGUOUS"
 )
 
 // ErrRegionNotFound is returned for a koordinator wilayah that does not exist (or was deleted).
@@ -113,3 +124,50 @@ var ErrPersonnelNotFound = apperr.New(http.StatusNotFound, apperr.CodeNotFound,
 // be put in a regu.
 var ErrPersonnelInactive = apperr.New(http.StatusUnprocessableEntity, apperr.CodeValidation,
 	ReasonPersonnelInactive, "Personil tidak aktif di Personalia dan tidak dapat ditambahkan ke regu.")
+
+// Shift and schedule errors (Phase 02.5).
+var (
+	// errNoSuchPersonnel is ErrPersonnelNotFound for a personnel id in the path, which is no NIK.
+	errNoSuchPersonnel = ErrPersonnelNotFound.WithMessage("Personil tidak ditemukan.")
+	// errInactiveNotScheduled: a person Personalia reports as inactive has left; nothing new is
+	// scheduled for them (what they already have can still be changed or removed).
+	errInactiveNotScheduled = ErrPersonnelInactive.WithMessage("Personil tidak aktif di Personalia dan tidak dapat diberi jadwal baru.")
+
+	ErrShiftNotFound = apperr.New(http.StatusNotFound, apperr.CodeNotFound,
+		ReasonShiftNotFound, "Shift tidak ditemukan.")
+	ErrShiftGroupNotFound = apperr.New(http.StatusNotFound, apperr.CodeNotFound,
+		ReasonShiftGroupNotFound, "Shift group tidak ditemukan.")
+	ErrShiftAssignmentNotFound = apperr.New(http.StatusNotFound, apperr.CodeNotFound,
+		ReasonShiftAssignmentNotFound, "Personil ini belum memiliki pengaturan jadwal.")
+	ErrScheduleNotFound = apperr.New(http.StatusNotFound, apperr.CodeNotFound,
+		ReasonScheduleNotFound, "Jadwal tidak ditemukan.")
+
+	// ErrShiftNameTaken and ErrShiftGroupNameTaken: names are unique among the rows that are
+	// not deleted, ignoring case.
+	ErrShiftNameTaken = apperr.New(http.StatusConflict, apperr.CodeDuplicate,
+		ReasonShiftNameTaken, "Nama shift sudah dipakai.")
+	ErrShiftGroupNameTaken = apperr.New(http.StatusConflict, apperr.CodeDuplicate,
+		ReasonShiftGroupNameTaken, "Nama shift group sudah dipakai.")
+
+	// ErrShiftInUse: a shift that a group uses, or that is scheduled from today on, would leave
+	// days pointing at a shift nobody can see.
+	ErrShiftInUse = apperr.New(http.StatusConflict, apperr.CodeConflict,
+		ReasonShiftInUse, "Shift masih dipakai shift group atau jadwal mulai hari ini.")
+	// ErrShiftGroupInUse: a person's schedule is generated from the group.
+	ErrShiftGroupInUse = apperr.New(http.StatusConflict, apperr.CodeConflict,
+		ReasonShiftGroupInUse, "Shift group masih dipakai pengaturan jadwal personil.")
+
+	// ErrScheduleExists: one schedule per person per date (PJ48 refuses the same).
+	ErrScheduleExists = apperr.New(http.StatusConflict, apperr.CodeConflict,
+		ReasonScheduleExists, "Personil sudah memiliki jadwal pada tanggal tersebut.")
+
+	// ErrShiftInvalidTime: a working shift needs a start and an end that differ, in HH:mm; an
+	// OFF day has no times.
+	ErrShiftInvalidTime = apperr.New(http.StatusUnprocessableEntity, apperr.CodeValidation,
+		ReasonShiftInvalidTime, "Jam shift tidak valid: jam masuk dan jam pulang harus berformat HH:mm dan berbeda.")
+
+	// ErrScheduleTimezoneAmbiguous: on that date the person serves in projects of different
+	// timezones, so the local shift times would mean two different instants.
+	ErrScheduleTimezoneAmbiguous = apperr.New(http.StatusUnprocessableEntity, apperr.CodeUnprocessable,
+		ReasonScheduleTimezoneAmbiguous, "Personil bertugas di proyek dengan zona waktu berbeda pada tanggal tersebut.")
+)

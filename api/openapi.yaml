@@ -373,6 +373,45 @@ components:
       required: false
       description: "Opsional. Tanggal bisnis (YYYY-MM-DD). Bawaan: hari ini di zona waktu proyek regu."
       schema: { type: string, format: date }
+    ShiftIdPath:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer, format: int64, minimum: 1 }
+    ShiftGroupIdPath:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer, format: int64, minimum: 1 }
+    ScheduleIdPath:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer, format: int64, minimum: 1 }
+    DateFromQuery:
+      name: date_from
+      in: query
+      required: true
+      description: "WAJIB. Tanggal bisnis awal (YYYY-MM-DD)."
+      schema: { type: string, format: date }
+    DateToQuery:
+      name: date_to
+      in: query
+      required: true
+      description: "WAJIB. Tanggal bisnis akhir (YYYY-MM-DD), tidak sebelum date_from, rentang paling lama 62 hari."
+      schema: { type: string, format: date }
+    PersonnelIdQuery:
+      name: personnel_id
+      in: query
+      required: false
+      description: Opsional. Hanya jadwal personil ini.
+      schema: { type: integer, format: int64, minimum: 1 }
+    TeamCodeQuery:
+      name: team_code
+      in: query
+      required: false
+      description: "Opsional. Hanya jadwal personil yang menjadi anggota regu ini pada tanggal jadwalnya. REGION_ADMIN: regu di wilayah lain 403."
+      schema: { type: string, example: "1K-IBMI-S1" }
     PersonnelIdPath:
       name: personnel_id
       in: path
@@ -1119,7 +1158,16 @@ components:
         - `TEAM_HAS_DANRU`: 409 CONFLICT. Regu sudah punya DANRU pada sebagian tanggal itu (satu DANRU per regu per tanggal).
         - `PERSONNEL_NOT_FOUND`: 404 NOT_FOUND. NIK tidak dikenal Personalia di organisasi ini.
         - `PERSONNEL_INACTIVE`: 422 VALIDATION_ERROR. Personil nonaktif di Personalia.
-      enum: [NOT_ADMIN, ACCESS_ORG_ADMIN_ONLY, ACCESS_OUTSIDE_ADMIN_SCOPE, REGION_NOT_FOUND, BRANCH_NOT_FOUND, CLIENT_NOT_FOUND, PROJECT_NOT_FOUND, TEAM_NOT_FOUND, CODE_TAKEN, HAS_ACTIVE_CHILDREN, BRANCH_LETTER_INVALID, BRANCH_REGION_MISMATCH, CLIENT_PREFIX_INVALID, PROJECT_NOT_CONFIGURED, MEMBERSHIP_NOT_FOUND, MEMBERSHIP_OVERLAP, TEAM_HAS_DANRU, PERSONNEL_NOT_FOUND, PERSONNEL_INACTIVE]
+        - `SHIFT_NOT_FOUND` / `SHIFT_GROUP_NOT_FOUND`: 404. Shift atau shift group tidak ada atau sudah dihapus.
+        - `SHIFT_INVALID_TIME`: 422. Jam bukan HH:mm, jam masuk = jam pulang, atau shift OFF diberi jam.
+        - `SHIFT_NAME_TAKEN` / `SHIFT_GROUP_NAME_TAKEN`: 409 DUPLICATE. Nama sudah dipakai.
+        - `SHIFT_IN_USE`: 409. Shift dipakai shift group atau dijadwalkan mulai hari ini.
+        - `SHIFT_GROUP_IN_USE`: 409. Shift group dipakai pengaturan jadwal personil.
+        - `SHIFT_ASSIGNMENT_NOT_FOUND`: 404. Personil belum punya pengaturan jadwal.
+        - `SCHEDULE_NOT_FOUND`: 404. Jadwal tidak ada.
+        - `SCHEDULE_EXISTS`: 409. Personil sudah punya jadwal pada tanggal itu.
+        - `SCHEDULE_TIMEZONE_AMBIGUOUS`: 422 UNPROCESSABLE. Pada tanggal itu personil bertugas di proyek dengan zona waktu berbeda.
+      enum: [NOT_ADMIN, ACCESS_ORG_ADMIN_ONLY, ACCESS_OUTSIDE_ADMIN_SCOPE, REGION_NOT_FOUND, BRANCH_NOT_FOUND, CLIENT_NOT_FOUND, PROJECT_NOT_FOUND, TEAM_NOT_FOUND, CODE_TAKEN, HAS_ACTIVE_CHILDREN, BRANCH_LETTER_INVALID, BRANCH_REGION_MISMATCH, CLIENT_PREFIX_INVALID, PROJECT_NOT_CONFIGURED, MEMBERSHIP_NOT_FOUND, MEMBERSHIP_OVERLAP, TEAM_HAS_DANRU, PERSONNEL_NOT_FOUND, PERSONNEL_INACTIVE, SHIFT_NOT_FOUND, SHIFT_GROUP_NOT_FOUND, SHIFT_INVALID_TIME, SHIFT_NAME_TAKEN, SHIFT_GROUP_NAME_TAKEN, SHIFT_IN_USE, SHIFT_GROUP_IN_USE, SHIFT_ASSIGNMENT_NOT_FOUND, SCHEDULE_NOT_FOUND, SCHEDULE_EXISTS, SCHEDULE_TIMEZONE_AMBIGUOUS]
 
     # ---------- 7. team memberships (keanggotaan regu, 02.3) ----------
     # Riwayat dijaga: keluar, pindah, dan ganti peran MENGAKHIRI baris (end_date) dan, untuk dua
@@ -1174,6 +1222,188 @@ components:
         project_name: { type: string }
         role: { $ref: '#/components/schemas/TeamRole' }
         start_date: { type: string, format: date }
+
+    # ---------- 8. shifts & schedules (02.5, model PJ48) ----------
+    # Master shift dan shift group berlaku untuk seluruh organisasi (seperti PJ48). Jadwal adalah
+    # satu baris per personil per tanggal. Jam adalah jam lokal proyek tempat personil bertugas
+    # pada tanggal itu (DL-03).
+    Shift:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        name: { type: string, example: Day Shift }
+        start_time: { type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$', example: "08:00", description: "Jam masuk lokal; 00:00 untuk OFF." }
+        end_time: { type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$', example: "17:00", description: "Jam pulang lokal; 00:00 untuk OFF." }
+        is_off: { type: boolean, description: Hari libur (tanpa jam). }
+        overnight: { type: boolean, description: "true bila shift berakhir keesokan harinya (jam pulang sebelum jam masuk, mis. 22:00-06:00). Selalu false untuk OFF." }
+        tolerance_minutes: { type: integer, minimum: 0, maximum: 720, description: "Toleransi terlambat (dipakai reject_attendance_after_tolerance regu). 0 untuk OFF." }
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    ShiftInput:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100, example: Night Shift, description: "WAJIB. Unik di organisasi (tanpa membedakan huruf besar/kecil) di antara shift yang belum dihapus; 409 SHIFT_NAME_TAKEN." }
+        start_time: { type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$', example: "22:00", description: "WAJIB untuk shift kerja, HH:mm. Shift OFF: tidak boleh dikirim (422 SHIFT_INVALID_TIME)." }
+        end_time: { type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$', example: "06:00", description: "WAJIB untuk shift kerja, HH:mm, berbeda dari start_time. Harus setelah start_time bila overnight false, dan sebelum start_time bila overnight true (422 SHIFT_INVALID_TIME). Shift OFF: tidak boleh dikirim." }
+        is_off: { type: boolean, default: false, description: "Opsional. true = hari libur tanpa jam. Tidak dapat diubah setelah dibuat." }
+        overnight: { type: boolean, default: false, description: "Opsional. true = shift berakhir keesokan harinya (mis. 22:00-06:00); wajib true agar end_time boleh sebelum start_time. Shift OFF: tidak boleh dikirim." }
+        tolerance_minutes: { type: integer, minimum: 0, maximum: 720, default: 15, description: "Opsional. Bawaan 15; harus lebih pendek dari durasi shift (422 tolerance_minutes). Shift OFF: tidak boleh dikirim (disimpan 0)." }
+        is_active: { type: boolean, default: true, description: "Opsional. Shift nonaktif tidak dapat dipilih untuk shift group atau jadwal baru." }
+    ShiftUpdate:
+      type: object
+      additionalProperties: false
+      description: |
+        Semua field opsional; yang tidak dikirim tidak berubah. `is_off` tidak dapat dikirim (422).
+        Mengubah jam berlaku untuk semua tanggal yang sudah dijadwalkan dengan shift ini (seperti PJ48).
+        Hasilnya diperiksa utuh: `overnight` yang tidak dikirim tetap milik shift, jadi jam baru harus
+        sesuai dengannya (422 SHIFT_INVALID_TIME), dan toleransi harus lebih pendek dari durasi shift.
+        Shift OFF tidak menerima start_time, end_time, overnight, maupun tolerance_minutes (422 SHIFT_INVALID_TIME).
+        is_active false ditolak selama shift dipakai shift group (409 SHIFT_IN_USE).
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        start_time: { type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$' }
+        end_time: { type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$' }
+        overnight: { type: boolean, description: "true = berakhir keesokan harinya (end_time sebelum start_time)." }
+        tolerance_minutes: { type: integer, minimum: 0, maximum: 720 }
+        is_active: { type: boolean }
+    Weekday:
+      type: string
+      enum: [monday, tuesday, wednesday, thursday, friday, saturday, sunday]
+    ShiftGroupDay:
+      type: object
+      properties:
+        weekday: { $ref: '#/components/schemas/Weekday' }
+        shift: { $ref: '#/components/schemas/Shift' }
+    ShiftGroup:
+      type: object
+      description: Pola mingguan (shift group PJ48). Selalu tujuh hari, Senin lebih dulu.
+      properties:
+        id: { type: integer, format: int64 }
+        name: { type: string, example: "5 Hari Kerja" }
+        days: { type: array, items: { $ref: '#/components/schemas/ShiftGroupDay' } }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    ShiftGroupDays:
+      type: object
+      additionalProperties: false
+      description: "Nama hari (huruf kecil persis, monday sampai sunday) ke id shift. Shift harus ada dan aktif (422 pada days.<hari>). Hari libur = id shift OFF."
+      properties:
+        monday: { type: integer, format: int64, minimum: 1 }
+        tuesday: { type: integer, format: int64, minimum: 1 }
+        wednesday: { type: integer, format: int64, minimum: 1 }
+        thursday: { type: integer, format: int64, minimum: 1 }
+        friday: { type: integer, format: int64, minimum: 1 }
+        saturday: { type: integer, format: int64, minimum: 1 }
+        sunday: { type: integer, format: int64, minimum: 1 }
+    ShiftGroupInput:
+      type: object
+      additionalProperties: false
+      required: [name, days]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100, description: "WAJIB. Unik di organisasi; 409 SHIFT_GROUP_NAME_TAKEN." }
+        days:
+          allOf: [ { $ref: '#/components/schemas/ShiftGroupDays' } ]
+          description: "WAJIB, ketujuh hari (422 days.<hari> bila ada yang kurang)."
+    ShiftGroupUpdate:
+      type: object
+      additionalProperties: false
+      description: |
+        Semua field opsional. `days` boleh sebagian: hanya hari yang dikirim yang berubah.
+        Seperti PJ48, perubahan hanya pada pola: jadwal yang sudah dibuat tetap; tanggal yang dibuat
+        sesudahnya (perpanjangan malam, atau pengaturan jadwal baru) mengikuti pola baru.
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        days: { $ref: '#/components/schemas/ShiftGroupDays' }
+    ScheduleType:
+      type: string
+      enum: [FIXED, FLEXIBLE]
+      description: "FIXED: jadwal dibuat otomatis dari pola shift group. FLEXIBLE: tidak dibuat otomatis; admin mengisi tiap tanggal."
+    ShiftAssignment:
+      type: object
+      description: Pengaturan jadwal seorang personil (shift_groub PJ48).
+      properties:
+        personnel_id: { type: integer, format: int64 }
+        schedule_type: { $ref: '#/components/schemas/ScheduleType' }
+        shift_group_id: { type: integer, format: int64, nullable: true, description: null untuk FLEXIBLE. }
+        effective_date: { type: string, format: date }
+        generated_until: { type: string, format: date, nullable: true, description: "Tanggal terakhir yang sudah dibuat (FIXED). Diperpanjang tiap malam hingga hari ini + 60 hari." }
+        updated_at: { type: string, format: date-time }
+    ShiftAssignmentInput:
+      type: object
+      additionalProperties: false
+      required: [schedule_type, effective_date]
+      properties:
+        schedule_type: { $ref: '#/components/schemas/ScheduleType' }
+        shift_group_id: { type: integer, format: int64, minimum: 1, description: "WAJIB untuk FIXED, harus kosong untuk FLEXIBLE (422). Harus ada (404 SHIFT_GROUP_NOT_FOUND)." }
+        effective_date: { type: string, format: date, description: "WAJIB. Tanggal mulai pola berlaku. Boleh tanggal depan." }
+    ShiftAssignmentResult:
+      type: object
+      properties:
+        assignment: { $ref: '#/components/schemas/ShiftAssignment' }
+        from: { type: string, format: date, description: "Tanggal pertama yang dapat berubah: hari ini di zona waktu personil, atau besok bila shift hari ini sudah dimulai. Tanggal lampau tidak pernah diubah." }
+        deleted: { type: integer, format: int64, description: Jumlah jadwal yang dihapus untuk diganti. }
+        generated: { type: integer, format: int64, description: Jumlah jadwal yang dibuat. }
+    ScheduleShift:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        name: { type: string }
+        start_time: { type: string, example: "08:00" }
+        end_time: { type: string, example: "17:00" }
+        is_off: { type: boolean }
+        overnight: { type: boolean }
+    Schedule:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        personnel_id: { type: integer, format: int64 }
+        full_name: { type: string }
+        nik: { type: string, nullable: true, example: "******0001", description: NIK dimasker. }
+        work_date: { type: string, format: date, description: "Tanggal bisnis shift dimulai, di zona waktu proyek personil. Shift malam berakhir pada work_date + 1." }
+        shift: { $ref: '#/components/schemas/ScheduleShift' }
+        shift_group_id: { type: integer, format: int64, nullable: true, description: "Shift group asal bila dibuat otomatis; null bila diisi atau diubah manual." }
+        created_by: { type: integer, format: int64, nullable: true, description: "Personil yang membuat; null bila dibuat sistem (perpanjangan malam)." }
+        updated_by: { type: integer, format: int64, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    ScheduleEntry:
+      type: object
+      additionalProperties: false
+      required: [work_date, shift_id]
+      properties:
+        work_date: { type: string, format: date }
+        shift_id: { type: integer, format: int64, minimum: 1, description: "Shift yang ada dan aktif (422 entries[i].shift_id)." }
+    ScheduleEntriesInput:
+      type: object
+      additionalProperties: false
+      required: [entries]
+      properties:
+        entries:
+          type: array
+          minItems: 1
+          maxItems: 62
+          description: "1 sampai 62 tanggal; satu tanggal tidak boleh muncul dua kali (422)."
+          items: { $ref: '#/components/schemas/ScheduleEntry' }
+    ScheduleUpdate:
+      type: object
+      additionalProperties: false
+      description: "Kedua field opsional. Jadwal yang diubah dianggap manual (shift_group_id menjadi null). Bila tidak ada yang berubah, jadwal dikembalikan apa adanya (tetap milik shift group). Hanya shift BARU yang harus aktif."
+      properties:
+        work_date: { type: string, format: date, description: "Pindah tanggal; tanggal tujuan yang sudah punya jadwal: 409 SCHEDULE_EXISTS." }
+        shift_id: { type: integer, format: int64, minimum: 1 }
+    ScheduleBulkDeleteInput:
+      type: object
+      additionalProperties: false
+      required: [ids]
+      properties:
+        ids: { type: array, minItems: 1, maxItems: 500, items: { type: integer, format: int64, minimum: 1 } }
+    ScheduleBulkDeleteResult:
+      type: object
+      properties:
+        deleted: { type: integer }
 
     # ---------- 7. team_members ----------
     TeamMember:
@@ -6837,6 +7067,1180 @@ paths:
                 tooEarly:
                   summary: "effective_date pada atau sebelum tanggal mulai (baris lama akan kosong)"
                   value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: effective_date, code: INVALID, message: "Harus setelah tanggal mulai keanggotaan (2026-01-15)." } ] }, meta: { request_id: req_abc123 } }
+  /admin/shifts:
+    get:
+      operationId: getAdminShifts
+      tags: [Organization]
+      summary: "Daftar shift"
+      description: |
+        Master shift seluruh organisasi, menurut nama. Semua admin dapat membaca.
+      x-roles: [ORG_ADMIN, REGION_ADMIN]
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/QParam'
+        - $ref: '#/components/parameters/IsActiveParam'
+      responses:
+        '200':
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/ListEnvelope' }
+                  - properties: { data: { type: array, items: { $ref: '#/components/schemas/Shift' } } }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "FORBIDDEN (NOT_ADMIN): bukan admin."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+        '422':
+          description: "VALIDATION_ERROR: page/limit di luar batas, is_active bukan true/false, atau q lebih dari 100 karakter."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                badLimit:
+                  summary: "limit=1000"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: "limit", code: INVALID, message: "Maksimum 100." } ] }, meta: { request_id: req_abc123 } }
+    post:
+      operationId: postAdminShifts
+      tags: [Organization]
+      summary: "Buat shift"
+      description: |
+        Hanya ORG_ADMIN. Shift kerja butuh start_time dan end_time (HH:mm) yang berbeda; end_time tidak setelah start_time = shift malam (berakhir esok hari). Shift OFF tanpa jam.
+      x-roles: [ORG_ADMIN]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ShiftInput' }
+      responses:
+        '201':
+          description: "Created"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { $ref: '#/components/schemas/Shift' } }
+        '400':
+          description: "BAD_REQUEST: body kosong atau bukan JSON yang valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                empty:
+                  summary: Body kosong
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Body wajib diisi." }, meta: { request_id: req_abc123 } }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "FORBIDDEN (NOT_ADMIN): bukan admin. ROLE_DENIED (ACCESS_ORG_ADMIN_ONLY): REGION_ADMIN tidak dapat mengubah master shift."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+                ACCESS_ORG_ADMIN_ONLY:
+                  summary: "REGION_ADMIN pada aksi khusus ORG_ADMIN"
+                  value: { success: false, error: { code: ROLE_DENIED, message: "Hanya admin organisasi yang dapat melakukan ini.", details: { reason: ACCESS_ORG_ADMIN_ONLY } }, meta: { request_id: req_abc123 } }
+        '409':
+          description: "DUPLICATE: nama sudah dipakai."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                SHIFT_NAME_TAKEN:
+                  value: { success: false, error: { code: DUPLICATE, message: "Nama shift sudah dipakai.", details: { reason: SHIFT_NAME_TAKEN } }, meta: { request_id: req_abc123 } }
+        '422':
+          description: "VALIDATION_ERROR: nama kosong, jam tidak valid, end_time sebelum start_time tanpa overnight true (atau sebaliknya), shift OFF dikirim dengan jam/overnight/toleransi, toleransi tidak lebih pendek dari durasi shift, atau field tidak dikenal."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                SHIFT_INVALID_TIME:
+                  summary: "Jam bukan HH:mm, jam masuk = jam pulang, atau shift OFF diberi jam"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Jam shift tidak valid: jam masuk dan jam pulang harus berformat HH:mm dan berbeda.", details: { reason: SHIFT_INVALID_TIME } }, meta: { request_id: req_abc123 } }
+                blankName:
+                  summary: "Nama kosong"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: "name", code: INVALID, message: "Tidak boleh kosong." } ] }, meta: { request_id: req_abc123 } }
+                unknownField:
+                  summary: "Field yang tidak dikenal (termasuk is_off pada perubahan)"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: "is_off", code: INVALID, message: "Field tidak dikenal." } ] }, meta: { request_id: req_abc123 } }
+  /admin/shifts/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ShiftIdPath'
+    get:
+      operationId: getAdminShiftsById
+      tags: [Organization]
+      summary: "Detail shift"
+      description: |
+        Semua admin dapat membaca.
+      x-roles: [ORG_ADMIN, REGION_ADMIN]
+      responses:
+        '200':
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { $ref: '#/components/schemas/Shift' } }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "FORBIDDEN (NOT_ADMIN): bukan admin."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+        '404':
+          description: "Shift tidak ada, sudah dihapus, atau milik organisasi lain."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                SHIFT_NOT_FOUND:
+                  value: { success: false, error: { code: NOT_FOUND, message: "Shift tidak ditemukan.", details: { reason: SHIFT_NOT_FOUND } }, meta: { request_id: req_abc123 } }
+    patch:
+      operationId: patchAdminShiftsById
+      tags: [Organization]
+      summary: "Ubah shift"
+      description: |
+        Hanya ORG_ADMIN. Perubahan jam berlaku untuk semua tanggal yang sudah dijadwalkan dengan shift ini.
+      x-roles: [ORG_ADMIN]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ShiftUpdate' }
+      responses:
+        '200':
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { $ref: '#/components/schemas/Shift' } }
+        '400':
+          description: "BAD_REQUEST: body kosong atau bukan JSON yang valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                empty:
+                  summary: Body kosong
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Body wajib diisi." }, meta: { request_id: req_abc123 } }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "FORBIDDEN (NOT_ADMIN): bukan admin. ROLE_DENIED (ACCESS_ORG_ADMIN_ONLY): REGION_ADMIN tidak dapat mengubah master shift."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+                ACCESS_ORG_ADMIN_ONLY:
+                  summary: "REGION_ADMIN pada aksi khusus ORG_ADMIN"
+                  value: { success: false, error: { code: ROLE_DENIED, message: "Hanya admin organisasi yang dapat melakukan ini.", details: { reason: ACCESS_ORG_ADMIN_ONLY } }, meta: { request_id: req_abc123 } }
+        '404':
+          description: "Shift tidak ada, sudah dihapus, atau milik organisasi lain."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                SHIFT_NOT_FOUND:
+                  value: { success: false, error: { code: NOT_FOUND, message: "Shift tidak ditemukan.", details: { reason: SHIFT_NOT_FOUND } }, meta: { request_id: req_abc123 } }
+        '409':
+          description: "DUPLICATE: nama sudah dipakai shift lain. CONFLICT (SHIFT_IN_USE): menonaktifkan shift yang masih dipakai shift group."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                SHIFT_NAME_TAKEN:
+                  value: { success: false, error: { code: DUPLICATE, message: "Nama shift sudah dipakai.", details: { reason: SHIFT_NAME_TAKEN } }, meta: { request_id: req_abc123 } }
+                SHIFT_IN_USE:
+                  value: { success: false, error: { code: CONFLICT, message: "Shift masih dipakai shift group. Ganti hari yang memakainya sebelum menonaktifkan.", details: { reason: SHIFT_IN_USE } }, meta: { request_id: req_abc123 } }
+        '422':
+          description: "VALIDATION_ERROR: jam tidak valid, jam yang tidak sesuai overnight shift, shift OFF dikirim dengan jam/overnight/toleransi, toleransi tidak lebih pendek dari durasi shift, nama kosong, atau field tidak dikenal."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                SHIFT_INVALID_TIME:
+                  summary: "Jam bukan HH:mm, jam masuk = jam pulang, atau shift OFF diberi jam"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Jam shift tidak valid: jam masuk dan jam pulang harus berformat HH:mm dan berbeda.", details: { reason: SHIFT_INVALID_TIME } }, meta: { request_id: req_abc123 } }
+                unknownField:
+                  summary: "Field yang tidak dikenal (termasuk is_off pada perubahan)"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: "is_off", code: INVALID, message: "Field tidak dikenal." } ] }, meta: { request_id: req_abc123 } }
+    delete:
+      operationId: deleteAdminShiftsById
+      tags: [Organization]
+      summary: "Hapus shift"
+      description: |
+        Hanya ORG_ADMIN. Penghapusan lunak: jadwal lampau tetap menunjuk shift ini. 409 SHIFT_IN_USE selama shift dipakai shift group atau dijadwalkan mulai hari ini.
+      x-roles: [ORG_ADMIN]
+      responses:
+        '200':
+          description: OK (data null)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "FORBIDDEN (NOT_ADMIN): bukan admin. ROLE_DENIED (ACCESS_ORG_ADMIN_ONLY): REGION_ADMIN tidak dapat mengubah master shift."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+                ACCESS_ORG_ADMIN_ONLY:
+                  summary: "REGION_ADMIN pada aksi khusus ORG_ADMIN"
+                  value: { success: false, error: { code: ROLE_DENIED, message: "Hanya admin organisasi yang dapat melakukan ini.", details: { reason: ACCESS_ORG_ADMIN_ONLY } }, meta: { request_id: req_abc123 } }
+        '404':
+          description: "Shift tidak ada, sudah dihapus, atau milik organisasi lain."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                SHIFT_NOT_FOUND:
+                  value: { success: false, error: { code: NOT_FOUND, message: "Shift tidak ditemukan.", details: { reason: SHIFT_NOT_FOUND } }, meta: { request_id: req_abc123 } }
+        '409':
+          description: "CONFLICT: shift masih dipakai."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                SHIFT_IN_USE:
+                  value: { success: false, error: { code: CONFLICT, message: "Shift masih dipakai shift group atau jadwal mulai hari ini.", details: { reason: SHIFT_IN_USE } }, meta: { request_id: req_abc123 } }
+  /admin/shift-groups:
+    get:
+      operationId: getAdminShiftGroups
+      tags: [Organization]
+      summary: "Daftar shift group"
+      description: |
+        Pola mingguan seluruh organisasi beserta tujuh harinya, menurut nama. Semua admin dapat membaca.
+      x-roles: [ORG_ADMIN, REGION_ADMIN]
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/QParam'
+      responses:
+        '200':
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/ListEnvelope' }
+                  - properties: { data: { type: array, items: { $ref: '#/components/schemas/ShiftGroup' } } }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "FORBIDDEN (NOT_ADMIN): bukan admin."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+        '422':
+          description: "VALIDATION_ERROR: page/limit di luar batas, is_active bukan true/false, atau q lebih dari 100 karakter."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                badLimit:
+                  summary: "limit=1000"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: "limit", code: INVALID, message: "Maksimum 100." } ] }, meta: { request_id: req_abc123 } }
+    post:
+      operationId: postAdminShiftGroups
+      tags: [Organization]
+      summary: "Buat shift group"
+      description: |
+        Hanya ORG_ADMIN. Ketujuh hari wajib diisi dengan shift yang ada dan aktif.
+      x-roles: [ORG_ADMIN]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ShiftGroupInput' }
+      responses:
+        '201':
+          description: "Created"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { $ref: '#/components/schemas/ShiftGroup' } }
+        '400':
+          description: "BAD_REQUEST: body kosong atau bukan JSON yang valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                empty:
+                  summary: Body kosong
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Body wajib diisi." }, meta: { request_id: req_abc123 } }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "FORBIDDEN (NOT_ADMIN): bukan admin. ROLE_DENIED (ACCESS_ORG_ADMIN_ONLY): REGION_ADMIN tidak dapat mengubah master shift."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+                ACCESS_ORG_ADMIN_ONLY:
+                  summary: "REGION_ADMIN pada aksi khusus ORG_ADMIN"
+                  value: { success: false, error: { code: ROLE_DENIED, message: "Hanya admin organisasi yang dapat melakukan ini.", details: { reason: ACCESS_ORG_ADMIN_ONLY } }, meta: { request_id: req_abc123 } }
+        '409':
+          description: "DUPLICATE: nama sudah dipakai."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                SHIFT_GROUP_NAME_TAKEN:
+                  value: { success: false, error: { code: DUPLICATE, message: "Nama shift group sudah dipakai.", details: { reason: SHIFT_GROUP_NAME_TAKEN } }, meta: { request_id: req_abc123 } }
+        '422':
+          description: "VALIDATION_ERROR: hari kurang atau tidak dikenal, shift tidak ada atau nonaktif, nama kosong."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                missingDay:
+                  summary: "Hari kurang"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: "days.sunday", code: INVALID, message: "Ketujuh hari wajib diisi (monday sampai sunday)." } ] }, meta: { request_id: req_abc123 } }
+                unknownShift:
+                  summary: "Shift tidak ada"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: "days.monday", code: INVALID, message: "Shift tidak ditemukan." } ] }, meta: { request_id: req_abc123 } }
+                inactiveShift:
+                  summary: "Shift nonaktif"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: "days.monday", code: INVALID, message: "Shift tidak aktif." } ] }, meta: { request_id: req_abc123 } }
+  /admin/shift-groups/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ShiftGroupIdPath'
+    get:
+      operationId: getAdminShiftGroupsById
+      tags: [Organization]
+      summary: "Detail shift group"
+      description: |
+        Semua admin dapat membaca.
+      x-roles: [ORG_ADMIN, REGION_ADMIN]
+      responses:
+        '200':
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { $ref: '#/components/schemas/ShiftGroup' } }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "FORBIDDEN (NOT_ADMIN): bukan admin."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+        '404':
+          description: "Shift group tidak ada, sudah dihapus, atau milik organisasi lain."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                SHIFT_GROUP_NOT_FOUND:
+                  value: { success: false, error: { code: NOT_FOUND, message: "Shift group tidak ditemukan.", details: { reason: SHIFT_GROUP_NOT_FOUND } }, meta: { request_id: req_abc123 } }
+    patch:
+      operationId: patchAdminShiftGroupsById
+      tags: [Organization]
+      summary: "Ubah shift group"
+      description: |
+        Hanya ORG_ADMIN. Nama dan/atau sebagian hari. Jadwal yang sudah dibuat tidak berubah (seperti PJ48).
+      x-roles: [ORG_ADMIN]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ShiftGroupUpdate' }
+      responses:
+        '200':
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { $ref: '#/components/schemas/ShiftGroup' } }
+        '400':
+          description: "BAD_REQUEST: body kosong atau bukan JSON yang valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                empty:
+                  summary: Body kosong
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Body wajib diisi." }, meta: { request_id: req_abc123 } }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "FORBIDDEN (NOT_ADMIN): bukan admin. ROLE_DENIED (ACCESS_ORG_ADMIN_ONLY): REGION_ADMIN tidak dapat mengubah master shift."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+                ACCESS_ORG_ADMIN_ONLY:
+                  summary: "REGION_ADMIN pada aksi khusus ORG_ADMIN"
+                  value: { success: false, error: { code: ROLE_DENIED, message: "Hanya admin organisasi yang dapat melakukan ini.", details: { reason: ACCESS_ORG_ADMIN_ONLY } }, meta: { request_id: req_abc123 } }
+        '404':
+          description: "Shift group tidak ada, sudah dihapus, atau milik organisasi lain."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                SHIFT_GROUP_NOT_FOUND:
+                  value: { success: false, error: { code: NOT_FOUND, message: "Shift group tidak ditemukan.", details: { reason: SHIFT_GROUP_NOT_FOUND } }, meta: { request_id: req_abc123 } }
+        '409':
+          description: "DUPLICATE: nama sudah dipakai."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                SHIFT_GROUP_NAME_TAKEN:
+                  value: { success: false, error: { code: DUPLICATE, message: "Nama shift group sudah dipakai.", details: { reason: SHIFT_GROUP_NAME_TAKEN } }, meta: { request_id: req_abc123 } }
+        '422':
+          description: "VALIDATION_ERROR: hari tidak dikenal, shift tidak ada atau nonaktif."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unknownShift:
+                  summary: "Shift tidak ada"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: "days.monday", code: INVALID, message: "Shift tidak ditemukan." } ] }, meta: { request_id: req_abc123 } }
+    delete:
+      operationId: deleteAdminShiftGroupsById
+      tags: [Organization]
+      summary: "Hapus shift group"
+      description: |
+        Hanya ORG_ADMIN. Penghapusan lunak. 409 SHIFT_GROUP_IN_USE selama ada personil dengan pengaturan jadwal FIXED dari grup ini.
+      x-roles: [ORG_ADMIN]
+      responses:
+        '200':
+          description: OK (data null)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "FORBIDDEN (NOT_ADMIN): bukan admin. ROLE_DENIED (ACCESS_ORG_ADMIN_ONLY): REGION_ADMIN tidak dapat mengubah master shift."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+                ACCESS_ORG_ADMIN_ONLY:
+                  summary: "REGION_ADMIN pada aksi khusus ORG_ADMIN"
+                  value: { success: false, error: { code: ROLE_DENIED, message: "Hanya admin organisasi yang dapat melakukan ini.", details: { reason: ACCESS_ORG_ADMIN_ONLY } }, meta: { request_id: req_abc123 } }
+        '404':
+          description: "Shift group tidak ada, sudah dihapus, atau milik organisasi lain."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                SHIFT_GROUP_NOT_FOUND:
+                  value: { success: false, error: { code: NOT_FOUND, message: "Shift group tidak ditemukan.", details: { reason: SHIFT_GROUP_NOT_FOUND } }, meta: { request_id: req_abc123 } }
+        '409':
+          description: "CONFLICT: grup masih dipakai."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                SHIFT_GROUP_IN_USE:
+                  value: { success: false, error: { code: CONFLICT, message: "Shift group masih dipakai pengaturan jadwal personil.", details: { reason: SHIFT_GROUP_IN_USE } }, meta: { request_id: req_abc123 } }
+  /admin/personnel/{personnel_id}/shift-assignment:
+    parameters:
+      - $ref: '#/components/parameters/PersonnelIdPath'
+    get:
+      operationId: getAdminPersonnelByPersonnelIdShiftAssignment
+      tags: [Organization]
+      summary: "Pengaturan jadwal personil"
+      description: |
+        Wewenang REGION_ADMIN: personil yang bertugas, atau akan bertugas, di regu wilayahnya (keanggotaan yang belum berakhir).
+      x-roles: [ORG_ADMIN, REGION_ADMIN]
+      responses:
+        '200':
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { $ref: '#/components/schemas/ShiftAssignment' } }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "FORBIDDEN (NOT_ADMIN): bukan admin. SCOPE_DENIED (ACCESS_OUTSIDE_ADMIN_SCOPE): personil di luar wilayah REGION_ADMIN."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+                ACCESS_OUTSIDE_ADMIN_SCOPE:
+                  summary: "Personil tidak bertugas di regu wilayah REGION_ADMIN"
+                  value: { success: false, error: { code: SCOPE_DENIED, message: "Data ini berada di luar wilayah yang Anda kelola.", details: { reason: ACCESS_OUTSIDE_ADMIN_SCOPE } }, meta: { request_id: req_abc123 } }
+        '404':
+          description: "Personil tidak ada, atau belum punya pengaturan jadwal."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                PERSONNEL_NOT_FOUND:
+                  summary: "Personil tidak ada di organisasi ini"
+                  value: { success: false, error: { code: NOT_FOUND, message: "Personil tidak ditemukan.", details: { reason: PERSONNEL_NOT_FOUND } }, meta: { request_id: req_abc123 } }
+                SHIFT_ASSIGNMENT_NOT_FOUND:
+                  value: { success: false, error: { code: NOT_FOUND, message: "Personil ini belum memiliki pengaturan jadwal.", details: { reason: SHIFT_ASSIGNMENT_NOT_FOUND } }, meta: { request_id: req_abc123 } }
+    put:
+      operationId: putAdminPersonnelByPersonnelIdShiftAssignment
+      tags: [Organization]
+      summary: "Atur jadwal personil (FIXED/FLEXIBLE)"
+      description: |
+        Sama dengan halaman Shift Group PJ48, dalam satu transaksi.
+        FIXED: jadwal dibuat dari pola shift group mulai effective_date sampai hari ini + 60 hari, lalu diperpanjang tiap malam. Sebelumnya jadwal yang akan diganti dihapus, mulai dari effective_date (atau effective_date lama bila lebih awal), tetapi tidak pernah tanggal lampau, dan tidak hari ini bila shift hari ini sudah dimulai. Jadwal manual dalam rentang itu ikut diganti, seperti PJ48.
+        FLEXIBLE: tidak membuat dan tidak menghapus jadwal; admin mengisi tiap tanggal.
+        Zona waktu "hari ini" adalah zona proyek regu personil (WIB bila tidak di regu mana pun).
+        Wewenang REGION_ADMIN: personil yang bertugas, atau akan bertugas, di regu wilayahnya.
+      x-roles: [ORG_ADMIN, REGION_ADMIN]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ShiftAssignmentInput' }
+      responses:
+        '200':
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { $ref: '#/components/schemas/ShiftAssignmentResult' } }
+        '400':
+          description: "BAD_REQUEST: body kosong atau bukan JSON yang valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                empty:
+                  summary: Body kosong
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Body wajib diisi." }, meta: { request_id: req_abc123 } }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "FORBIDDEN (NOT_ADMIN): bukan admin. SCOPE_DENIED (ACCESS_OUTSIDE_ADMIN_SCOPE): personil di luar wilayah REGION_ADMIN."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+                ACCESS_OUTSIDE_ADMIN_SCOPE:
+                  summary: "Personil tidak bertugas di regu wilayah REGION_ADMIN"
+                  value: { success: false, error: { code: SCOPE_DENIED, message: "Data ini berada di luar wilayah yang Anda kelola.", details: { reason: ACCESS_OUTSIDE_ADMIN_SCOPE } }, meta: { request_id: req_abc123 } }
+        '404':
+          description: "Personil atau shift group tidak ada."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                PERSONNEL_NOT_FOUND:
+                  summary: "Personil tidak ada di organisasi ini"
+                  value: { success: false, error: { code: NOT_FOUND, message: "Personil tidak ditemukan.", details: { reason: PERSONNEL_NOT_FOUND } }, meta: { request_id: req_abc123 } }
+                SHIFT_GROUP_NOT_FOUND:
+                  value: { success: false, error: { code: NOT_FOUND, message: "Shift group tidak ditemukan.", details: { reason: SHIFT_GROUP_NOT_FOUND } }, meta: { request_id: req_abc123 } }
+        '422':
+          description: "VALIDATION_ERROR / UNPROCESSABLE: tanggal hilang atau salah format, shift_group_id wajib (FIXED) atau harus kosong (FLEXIBLE), personil tidak aktif di Personalia (PERSONNEL_INACTIVE), atau zona waktu personil ambigu pada salah satu tanggal yang akan dibuat."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                groupRequired:
+                  summary: "FIXED tanpa shift_group_id"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: "shift_group_id", code: INVALID, message: "Wajib diisi untuk jadwal FIXED." } ] }, meta: { request_id: req_abc123 } }
+                groupForbidden:
+                  summary: "FLEXIBLE dengan shift_group_id"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: "shift_group_id", code: INVALID, message: "Harus kosong untuk jadwal FLEXIBLE." } ] }, meta: { request_id: req_abc123 } }
+                badDate:
+                  summary: "Tanggal salah format"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: "effective_date", code: INVALID, message: "Harus berformat YYYY-MM-DD." } ] }, meta: { request_id: req_abc123 } }
+                SCHEDULE_TIMEZONE_AMBIGUOUS:
+                  summary: "Pada tanggal itu personil bertugas di proyek WIB dan WITA/WIT sekaligus"
+                  value: { success: false, error: { code: UNPROCESSABLE, message: "Personil bertugas di proyek dengan zona waktu berbeda pada tanggal tersebut.", details: { reason: SCHEDULE_TIMEZONE_AMBIGUOUS } }, meta: { request_id: req_abc123 } }
+  /admin/personnel/{personnel_id}/schedules:
+    parameters:
+      - $ref: '#/components/parameters/PersonnelIdPath'
+    post:
+      operationId: postAdminPersonnelByPersonnelIdSchedules
+      tags: [Organization]
+      summary: "Buat jadwal manual"
+      description: |
+        Seperti Generate Schedule PJ48: satu shift per tanggal, 1 sampai 62 tanggal, semua atau tidak sama sekali. Tanggal yang sudah punya jadwal ditolak (409 SCHEDULE_EXISTS; ubah jadwal tanggal itu). Boleh tanggal lampau (koreksi).
+        Wewenang REGION_ADMIN: hanya personil yang bertugas di regu wilayahnya pada tanggal jadwal itu (wilayah regu = nomor di depan kode regu).
+      x-roles: [ORG_ADMIN, REGION_ADMIN]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ScheduleEntriesInput' }
+      responses:
+        '201':
+          description: Created (jadwal yang dibuat)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { type: array, items: { $ref: '#/components/schemas/Schedule' } } }
+        '400':
+          description: "BAD_REQUEST: body kosong atau bukan JSON yang valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                empty:
+                  summary: Body kosong
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Body wajib diisi." }, meta: { request_id: req_abc123 } }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "FORBIDDEN (NOT_ADMIN): bukan admin. SCOPE_DENIED (ACCESS_OUTSIDE_ADMIN_SCOPE): personil di luar wilayah REGION_ADMIN."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+                ACCESS_OUTSIDE_ADMIN_SCOPE:
+                  summary: "Personil tidak bertugas di regu wilayah REGION_ADMIN"
+                  value: { success: false, error: { code: SCOPE_DENIED, message: "Data ini berada di luar wilayah yang Anda kelola.", details: { reason: ACCESS_OUTSIDE_ADMIN_SCOPE } }, meta: { request_id: req_abc123 } }
+        '404':
+          description: "Personil tidak ada."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                PERSONNEL_NOT_FOUND:
+                  summary: "Personil tidak ada di organisasi ini"
+                  value: { success: false, error: { code: NOT_FOUND, message: "Personil tidak ditemukan.", details: { reason: PERSONNEL_NOT_FOUND } }, meta: { request_id: req_abc123 } }
+        '409':
+          description: "CONFLICT: tanggal sudah punya jadwal. Tidak ada yang disimpan."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                SCHEDULE_EXISTS:
+                  summary: "Tanggal itu sudah punya jadwal (satu jadwal per personil per tanggal)"
+                  value: { success: false, error: { code: CONFLICT, message: "Personil sudah memiliki jadwal pada 2026-10-21. Ubah jadwal tanggal tersebut.", details: { reason: SCHEDULE_EXISTS } }, meta: { request_id: req_abc123 } }
+        '422':
+          description: "VALIDATION_ERROR / UNPROCESSABLE: entri kosong atau lebih dari 62, tanggal ganda atau salah format, shift tidak ada atau nonaktif, personil tidak aktif di Personalia (PERSONNEL_INACTIVE), atau zona waktu ambigu."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                duplicateDate:
+                  summary: "Tanggal ganda"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: "entries[1].work_date", code: INVALID, message: "Tanggal 2026-10-21 muncul dua kali dalam permintaan." } ] }, meta: { request_id: req_abc123 } }
+                unknownShift:
+                  summary: "Shift tidak ada"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: "entries[0].shift_id", code: INVALID, message: "Shift tidak ditemukan." } ] }, meta: { request_id: req_abc123 } }
+                SCHEDULE_TIMEZONE_AMBIGUOUS:
+                  summary: "Pada tanggal itu personil bertugas di proyek WIB dan WITA/WIT sekaligus"
+                  value: { success: false, error: { code: UNPROCESSABLE, message: "Personil bertugas di proyek dengan zona waktu berbeda pada tanggal tersebut.", details: { reason: SCHEDULE_TIMEZONE_AMBIGUOUS } }, meta: { request_id: req_abc123 } }
+  /admin/schedules:
+    get:
+      operationId: getAdminSchedules
+      tags: [Organization]
+      summary: "Daftar jadwal"
+      description: |
+        Seperti Schedule Management PJ48: jadwal satu rentang tanggal (paling lama 62 hari), menurut tanggal lalu nama. `q` mencari nama atau NIK persis.
+        Wewenang REGION_ADMIN: hanya personil yang bertugas di regu wilayahnya pada tanggal jadwal itu (wilayah regu = nomor di depan kode regu).
+      x-roles: [ORG_ADMIN, REGION_ADMIN]
+      parameters:
+        - $ref: '#/components/parameters/DateFromQuery'
+        - $ref: '#/components/parameters/DateToQuery'
+        - $ref: '#/components/parameters/PersonnelIdQuery'
+        - $ref: '#/components/parameters/TeamCodeQuery'
+        - $ref: '#/components/parameters/QParam'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/ListEnvelope' }
+                  - properties: { data: { type: array, items: { $ref: '#/components/schemas/Schedule' } } }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "FORBIDDEN (NOT_ADMIN): bukan admin. SCOPE_DENIED (ACCESS_OUTSIDE_ADMIN_SCOPE): personil di luar wilayah REGION_ADMIN."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+                ACCESS_OUTSIDE_ADMIN_SCOPE:
+                  summary: "Personil tidak bertugas di regu wilayah REGION_ADMIN"
+                  value: { success: false, error: { code: SCOPE_DENIED, message: "Data ini berada di luar wilayah yang Anda kelola.", details: { reason: ACCESS_OUTSIDE_ADMIN_SCOPE } }, meta: { request_id: req_abc123 } }
+        '422':
+          description: "VALIDATION_ERROR: date_from/date_to hilang atau salah format, date_to sebelum date_from, rentang lebih dari 62 hari."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                missingRange:
+                  summary: "Rentang tidak dikirim"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: "date_from", code: INVALID, message: "date_from dan date_to wajib diisi (YYYY-MM-DD)." } ] }, meta: { request_id: req_abc123 } }
+                tooLong:
+                  summary: "Rentang terlalu panjang"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: "date_to", code: INVALID, message: "Rentang paling lama 62 hari." } ] }, meta: { request_id: req_abc123 } }
+  /admin/schedules/bulk-delete:
+    post:
+      operationId: postAdminSchedulesBulkDelete
+      tags: [Organization]
+      summary: "Hapus banyak jadwal"
+      description: |
+        Seperti deleteAll PJ48, tetapi semua atau tidak sama sekali: satu id yang tidak ada atau di luar wewenang menggagalkan semuanya. Id ganda dihitung sekali.
+        Wewenang REGION_ADMIN: hanya personil yang bertugas di regu wilayahnya pada tanggal jadwal itu (wilayah regu = nomor di depan kode regu).
+      x-roles: [ORG_ADMIN, REGION_ADMIN]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ScheduleBulkDeleteInput' }
+      responses:
+        '200':
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { $ref: '#/components/schemas/ScheduleBulkDeleteResult' } }
+        '400':
+          description: "BAD_REQUEST: body kosong atau bukan JSON yang valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                empty:
+                  summary: Body kosong
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Body wajib diisi." }, meta: { request_id: req_abc123 } }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "FORBIDDEN (NOT_ADMIN): bukan admin. SCOPE_DENIED (ACCESS_OUTSIDE_ADMIN_SCOPE): personil di luar wilayah REGION_ADMIN."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+                ACCESS_OUTSIDE_ADMIN_SCOPE:
+                  summary: "Personil tidak bertugas di regu wilayah REGION_ADMIN"
+                  value: { success: false, error: { code: SCOPE_DENIED, message: "Data ini berada di luar wilayah yang Anda kelola.", details: { reason: ACCESS_OUTSIDE_ADMIN_SCOPE } }, meta: { request_id: req_abc123 } }
+        '404':
+          description: "Salah satu jadwal tidak ada."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                SCHEDULE_NOT_FOUND:
+                  summary: "Jadwal tidak ada atau milik organisasi lain"
+                  value: { success: false, error: { code: NOT_FOUND, message: "Jadwal tidak ditemukan.", details: { reason: SCHEDULE_NOT_FOUND } }, meta: { request_id: req_abc123 } }
+        '422':
+          description: "VALIDATION_ERROR: ids kosong, lebih dari 500, atau bukan angka positif."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                empty:
+                  summary: "ids kosong"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: "ids", code: INVALID, message: "Wajib diisi." } ] }, meta: { request_id: req_abc123 } }
+  /admin/schedules/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ScheduleIdPath'
+    get:
+      operationId: getAdminSchedulesById
+      tags: [Organization]
+      summary: "Detail jadwal"
+      description: |
+        Wewenang REGION_ADMIN: hanya personil yang bertugas di regu wilayahnya pada tanggal jadwal itu (wilayah regu = nomor di depan kode regu).
+      x-roles: [ORG_ADMIN, REGION_ADMIN]
+      responses:
+        '200':
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { $ref: '#/components/schemas/Schedule' } }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "FORBIDDEN (NOT_ADMIN): bukan admin. SCOPE_DENIED (ACCESS_OUTSIDE_ADMIN_SCOPE): personil di luar wilayah REGION_ADMIN."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+                ACCESS_OUTSIDE_ADMIN_SCOPE:
+                  summary: "Personil tidak bertugas di regu wilayah REGION_ADMIN"
+                  value: { success: false, error: { code: SCOPE_DENIED, message: "Data ini berada di luar wilayah yang Anda kelola.", details: { reason: ACCESS_OUTSIDE_ADMIN_SCOPE } }, meta: { request_id: req_abc123 } }
+        '404':
+          description: "Jadwal tidak ada."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                SCHEDULE_NOT_FOUND:
+                  summary: "Jadwal tidak ada atau milik organisasi lain"
+                  value: { success: false, error: { code: NOT_FOUND, message: "Jadwal tidak ditemukan.", details: { reason: SCHEDULE_NOT_FOUND } }, meta: { request_id: req_abc123 } }
+    patch:
+      operationId: patchAdminSchedulesById
+      tags: [Organization]
+      summary: "Ubah jadwal"
+      description: |
+        Pindah tanggal dan/atau ganti shift (update PJ48). Tanggal tujuan yang sudah punya jadwal: 409 SCHEDULE_EXISTS. Jadwal yang diubah menjadi manual. Absensi yang terkait dihitung ulang mulai Fase 07.
+        Wewenang REGION_ADMIN: personil di regu wilayahnya pada tanggal lama DAN tanggal baru.
+      x-roles: [ORG_ADMIN, REGION_ADMIN]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ScheduleUpdate' }
+      responses:
+        '200':
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { $ref: '#/components/schemas/Schedule' } }
+        '400':
+          description: "BAD_REQUEST: body kosong atau bukan JSON yang valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                empty:
+                  summary: Body kosong
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Body wajib diisi." }, meta: { request_id: req_abc123 } }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "FORBIDDEN (NOT_ADMIN): bukan admin. SCOPE_DENIED (ACCESS_OUTSIDE_ADMIN_SCOPE): personil di luar wilayah REGION_ADMIN."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+                ACCESS_OUTSIDE_ADMIN_SCOPE:
+                  summary: "Personil tidak bertugas di regu wilayah REGION_ADMIN"
+                  value: { success: false, error: { code: SCOPE_DENIED, message: "Data ini berada di luar wilayah yang Anda kelola.", details: { reason: ACCESS_OUTSIDE_ADMIN_SCOPE } }, meta: { request_id: req_abc123 } }
+        '404':
+          description: "Jadwal tidak ada."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                SCHEDULE_NOT_FOUND:
+                  summary: "Jadwal tidak ada atau milik organisasi lain"
+                  value: { success: false, error: { code: NOT_FOUND, message: "Jadwal tidak ditemukan.", details: { reason: SCHEDULE_NOT_FOUND } }, meta: { request_id: req_abc123 } }
+        '409':
+          description: "CONFLICT: tanggal tujuan sudah punya jadwal."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                SCHEDULE_EXISTS:
+                  summary: "Tanggal itu sudah punya jadwal (satu jadwal per personil per tanggal)"
+                  value: { success: false, error: { code: CONFLICT, message: "Personil sudah memiliki jadwal pada 2026-10-21. Ubah jadwal tanggal tersebut.", details: { reason: SCHEDULE_EXISTS } }, meta: { request_id: req_abc123 } }
+        '422':
+          description: "VALIDATION_ERROR / UNPROCESSABLE: tanggal salah format, shift tidak ada atau nonaktif, atau zona waktu ambigu pada tanggal baru."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unknownShift:
+                  summary: "Shift tidak ada"
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: "shift_id", code: INVALID, message: "Shift tidak ditemukan." } ] }, meta: { request_id: req_abc123 } }
+                SCHEDULE_TIMEZONE_AMBIGUOUS:
+                  summary: "Pada tanggal itu personil bertugas di proyek WIB dan WITA/WIT sekaligus"
+                  value: { success: false, error: { code: UNPROCESSABLE, message: "Personil bertugas di proyek dengan zona waktu berbeda pada tanggal tersebut.", details: { reason: SCHEDULE_TIMEZONE_AMBIGUOUS } }, meta: { request_id: req_abc123 } }
+    delete:
+      operationId: deleteAdminSchedulesById
+      tags: [Organization]
+      summary: "Hapus jadwal"
+      description: |
+        Dihapus sungguhan; jejaknya di audit log.
+        Wewenang REGION_ADMIN: hanya personil yang bertugas di regu wilayahnya pada tanggal jadwal itu (wilayah regu = nomor di depan kode regu).
+      x-roles: [ORG_ADMIN, REGION_ADMIN]
+      responses:
+        '200':
+          description: OK (data null)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+                expired:
+                  summary: Token kedaluwarsa
+                  value: { success: false, error: { code: TOKEN_EXPIRED, message: "Token kedaluwarsa." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "FORBIDDEN (NOT_ADMIN): bukan admin. SCOPE_DENIED (ACCESS_OUTSIDE_ADMIN_SCOPE): personil di luar wilayah REGION_ADMIN."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_ADMIN:
+                  summary: "Staf lapangan (tanpa web role)"
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+                ACCESS_OUTSIDE_ADMIN_SCOPE:
+                  summary: "Personil tidak bertugas di regu wilayah REGION_ADMIN"
+                  value: { success: false, error: { code: SCOPE_DENIED, message: "Data ini berada di luar wilayah yang Anda kelola.", details: { reason: ACCESS_OUTSIDE_ADMIN_SCOPE } }, meta: { request_id: req_abc123 } }
+        '404':
+          description: "Jadwal tidak ada."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                SCHEDULE_NOT_FOUND:
+                  summary: "Jadwal tidak ada atau milik organisasi lain"
+                  value: { success: false, error: { code: NOT_FOUND, message: "Jadwal tidak ditemukan.", details: { reason: SCHEDULE_NOT_FOUND } }, meta: { request_id: req_abc123 } }
   /admin/zones/{id}/qr:
     parameters:
       - $ref: '#/components/parameters/IdPath'
