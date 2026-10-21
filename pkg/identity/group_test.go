@@ -56,6 +56,10 @@ func TestEveryCompanyOfTheGroupIsOneOrganization(t *testing.T) {
 			scalar[string](t, groupOrg, "SELECT company_name FROM personnels WHERE id = $1", inDua.User.ID))
 	})
 
+	t.Run("each person's position is cached for the Regu screens", func(t *testing.T) {
+		require.Equal(t, "Danru", scalar[string](t, groupOrg, "SELECT position_name FROM personnels WHERE id = $1", inSatu.User.ID))
+	})
+
 	t.Run("a person of any PT is found by NIK in the one organization", func(t *testing.T) {
 		people := e.people()
 		for _, nik := range []string{personeltest.NIKAnggota1Satu, personeltest.NIKAnggota1Dua} {

@@ -46,6 +46,7 @@ const (
 	ReasonScheduleNotFound          = "SCHEDULE_NOT_FOUND"
 	ReasonScheduleExists            = "SCHEDULE_EXISTS"
 	ReasonScheduleTimezoneAmbiguous = "SCHEDULE_TIMEZONE_AMBIGUOUS"
+	ReasonNotProjectMember          = "NOT_PROJECT_MEMBER"
 )
 
 // ErrRegionNotFound is returned for a koordinator wilayah that does not exist (or was deleted).
@@ -171,3 +172,8 @@ var (
 	ErrScheduleTimezoneAmbiguous = apperr.New(http.StatusUnprocessableEntity, apperr.CodeUnprocessable,
 		ReasonScheduleTimezoneAmbiguous, "Personil bertugas di proyek dengan zona waktu berbeda pada tanggal tersebut.")
 )
+
+// ErrNotProjectMember is returned to a field user who asks about a project they serve in no
+// regu of today (or one that does not exist: the two are not told apart).
+var ErrNotProjectMember = apperr.New(http.StatusForbidden, apperr.CodeScopeDenied,
+	ReasonNotProjectMember, "Anda bukan anggota proyek ini.")

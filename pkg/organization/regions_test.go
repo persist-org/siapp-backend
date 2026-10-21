@@ -47,6 +47,7 @@ func newEnvWith(t *testing.T, people organization.PeopleResolver, clk clock.Cloc
 			regions.MountAdmin(admin)
 			roles.MountAdmin(admin)
 		})
+		regions.MountField(r)
 	}})
 	return &env{t: t, srv: srv.URL, client: testkit.NewClient(t, srv)}
 }

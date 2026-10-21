@@ -53,6 +53,7 @@ func (repo) upsertPersonnel(ctx context.Context, q *db.Queries, id personel.Iden
 		Email:          textOrNull(id.Email),
 		Phone:          textOrNull(id.Phone),
 		PhotoUrl:       textOrNull(id.PhotoURL),
+		PositionName:   textOrNull(id.PositionName),
 		Status:         status,
 		Now:            ts(now),
 		SeenAt:         pgtype.Timestamptz{Time: now, Valid: seen},

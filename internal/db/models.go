@@ -514,6 +514,7 @@ type Personnel struct {
 	UpdatedAt      pgtype.Timestamptz
 	CompanyID      pgtype.Int8
 	CompanyName    pgtype.Text
+	PositionName   pgtype.Text
 }
 
 type PersonnelShiftAssignment struct {

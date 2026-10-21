@@ -64,6 +64,8 @@ func newRouter(d deps) *chi.Mux {
 
 	accessHandler := access.NewHandler(access.NewWebRoles(d.Pool, d.Clock))
 	organizationHandler := organization.NewHandler(organization.NewUsecases(d.Pool, d.Clock, identity.NewPeople(d.Pool, d.Personel, d.Clock)))
+	// The Regu screens: any signed-in person, scoped by the regu they serve in.
+	organizationHandler.MountField(router)
 
 	// ⚠ The admin group: access.RequireAdmin is mounted ONCE here, so every route a module
 	// adds under /api/v1/admin is protected without anyone having to remember it.

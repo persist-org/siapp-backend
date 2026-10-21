@@ -5115,6 +5115,21 @@ func (e GetTeamsMe200JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
+// Defines values for GetTeamsByCodeMembers200JSONResponseBodySuccess.
+const (
+	GetTeamsByCodeMembers200JSONResponseBodySuccessTrue GetTeamsByCodeMembers200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetTeamsByCodeMembers200JSONResponseBodySuccess enum.
+func (e GetTeamsByCodeMembers200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetTeamsByCodeMembers200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetTeamsByIdMap200JSONResponseBodySuccess.
 const (
 	GetTeamsByIdMap200JSONResponseBodySuccessTrue GetTeamsByIdMap200JSONResponseBodySuccess = true
@@ -5124,21 +5139,6 @@ const (
 func (e GetTeamsByIdMap200JSONResponseBodySuccess) Valid() bool {
 	switch e {
 	case GetTeamsByIdMap200JSONResponseBodySuccessTrue:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for GetTeamsByIdMembers200JSONResponseBodySuccess.
-const (
-	GetTeamsByIdMembers200JSONResponseBodySuccessTrue GetTeamsByIdMembers200JSONResponseBodySuccess = true
-)
-
-// Valid indicates whether the value is a known member of the GetTeamsByIdMembers200JSONResponseBodySuccess enum.
-func (e GetTeamsByIdMembers200JSONResponseBodySuccess) Valid() bool {
-	switch e {
-	case GetTeamsByIdMembers200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
@@ -5775,6 +5775,14 @@ type DeltaMeta struct {
 
 	// ServerTime Watermark monoton (= titik mulai pull `since` berikutnya).
 	ServerTime time.Time `json:"server_time"`
+}
+
+// DirectoryPerson Kartu singkat seorang personil (DANRU, relationship officer).
+type DirectoryPerson struct {
+	FullName    *string `json:"full_name,omitempty"`
+	PersonnelId *int64  `json:"personnel_id,omitempty"`
+	Phone       *string `json:"phone,omitempty"`
+	PhotoUrl    *string `json:"photo_url,omitempty"`
 }
 
 // EMemo Memo induk E-Memo (WEB-34/MOB-14) — CS-only (`business_line='cleaning'`, di-derive dari `projects.business_line`, dijaga guard flag `e_memo`). Isolasi `organization_id` (RLS).
@@ -6614,6 +6622,24 @@ type Personnel struct {
 // PersonnelGender defines model for Personnel.Gender.
 type PersonnelGender string
 
+// PersonnelCard Biodata personil untuk layar Regu. Hanya yang dibutuhkan layar itu: profil HR (tanggal lahir,
+// alamat, dokumen) milik Personalia dan tidak ditampilkan di SiAPP.
+type PersonnelCard struct {
+	FullName *string `json:"full_name,omitempty"`
+
+	// Memberships Regu personil hari ini di proyek yang juga proyek pemanggil (semua regunya bila melihat diri sendiri).
+	Memberships *[]PersonnelMembership `json:"memberships,omitempty"`
+
+	// Nik NIK dimasker.
+	Nik         *string `json:"nik,omitempty"`
+	PersonnelId *int64  `json:"personnel_id,omitempty"`
+	Phone       *string `json:"phone,omitempty"`
+	PhotoUrl    *string `json:"photo_url,omitempty"`
+
+	// PositionName Jabatan dari Personalia (salinan, hanya untuk tampilan).
+	PositionName *string `json:"position_name,omitempty"`
+}
+
 // PersonnelInput defines model for PersonnelInput.
 type PersonnelInput struct {
 	Address         *string              `json:"address,omitempty"`
@@ -6643,6 +6669,17 @@ type PersonnelInput struct {
 
 // PersonnelInputGender defines model for PersonnelInput.Gender.
 type PersonnelInputGender string
+
+// PersonnelMembership defines model for PersonnelMembership.
+type PersonnelMembership struct {
+	ProjectCode *string `json:"project_code,omitempty"`
+	ProjectName *string `json:"project_name,omitempty"`
+
+	// Role Peran lapangan di regu (DL-04). Satu DANRU per regu per tanggal (BR-RULE-02).
+	Role     *TeamRole `json:"role,omitempty"`
+	TeamCode *string   `json:"team_code,omitempty"`
+	TeamName *string   `json:"team_name,omitempty"`
+}
 
 // PersonnelReview Penilaian Personil (WEB `/personnel_review`; mobile `my_review`/`send_review`) — DL-59. Nominal reward/punishment sebagai string desimal (DL-38, nullable). `period` = bulan/tanggal (DATE-ONLY, relatif TZ proyek DL-03). Integrasi uang (payroll/koperasi) belum ditentukan.
 type PersonnelReview struct {
@@ -7362,6 +7399,42 @@ type Team struct {
 	ValidateShift *bool `json:"validate_shift,omitempty"`
 }
 
+// TeamDetail Detail regu untuk layar Regu (§3.2.5).
+type TeamDetail struct {
+	// BusinessDate Hari ini di zona waktu proyek.
+	BusinessDate *openapi_types.Date `json:"business_date,omitempty"`
+	ClientCode   *string             `json:"client_code,omitempty"`
+	ClientName   *string             `json:"client_name,omitempty"`
+	Code         *string             `json:"code,omitempty"`
+
+	// Danru DANRU hari ini; null bila regu belum punya DANRU.
+	Danru *DirectoryPerson `json:"danru,omitempty"`
+
+	// IsMyTeam Pemanggil anggota regu ini hari ini.
+	IsMyTeam *bool `json:"is_my_team,omitempty"`
+
+	// MemberCount Anggota yang berlaku hari ini.
+	MemberCount *int `json:"member_count,omitempty"`
+
+	// Members DANRU lebih dulu, lalu menurut nama.
+	Members      *[]TeamRosterMember `json:"members,omitempty"`
+	MinPersonnel *int                `json:"min_personnel,omitempty"`
+
+	// MyRole Peran pemanggil di regu ini; null bila bukan anggotanya.
+	MyRole              *TeamRole        `json:"my_role,omitempty"`
+	Name                *string          `json:"name,omitempty"`
+	Phone               *string          `json:"phone,omitempty"`
+	ProjectCode         *string          `json:"project_code,omitempty"`
+	ProjectName         *string          `json:"project_name,omitempty"`
+	RelationshipOfficer *DirectoryPerson `json:"relationship_officer,omitempty"`
+
+	// TodayShifts Urut jam masuk.
+	TodayShifts *[]TeamShiftToday `json:"today_shifts,omitempty"`
+
+	// Understaffed true bila member_count di bawah min_personnel (DL-02).
+	Understaffed *bool `json:"understaffed,omitempty"`
+}
+
 // TeamInput defines model for TeamInput.
 type TeamInput struct {
 	// Description WAJIB. Nama regu; tidak boleh hanya spasi.
@@ -7470,6 +7543,61 @@ type TeamMembershipMoveInput struct {
 
 // TeamRole Peran lapangan di regu (DL-04). Satu DANRU per regu per tanggal (BR-RULE-02).
 type TeamRole string
+
+// TeamRosterMember defines model for TeamRosterMember.
+type TeamRosterMember struct {
+	FullName    *string `json:"full_name,omitempty"`
+	PersonnelId *int64  `json:"personnel_id,omitempty"`
+	PhotoUrl    *string `json:"photo_url,omitempty"`
+
+	// PositionName Jabatan dari Personalia (salinan, hanya untuk tampilan).
+	PositionName *string `json:"position_name,omitempty"`
+
+	// Role Peran lapangan di regu (DL-04). Satu DANRU per regu per tanggal (BR-RULE-02).
+	Role *TeamRole `json:"role,omitempty"`
+
+	// TodayShift Jadwal personil hari ini (termasuk OFF); null bila belum dijadwalkan.
+	TodayShift *ScheduleShift `json:"today_shift,omitempty"`
+}
+
+// TeamShiftToday Shift kerja yang dijadwalkan hari ini untuk anggota regu, dengan jumlah anggotanya. OFF tidak termasuk.
+type TeamShiftToday struct {
+	EndTime        *string `json:"end_time,omitempty"`
+	Id             *int64  `json:"id,omitempty"`
+	Name           *string `json:"name,omitempty"`
+	Overnight      *bool   `json:"overnight,omitempty"`
+	PersonnelCount *int    `json:"personnel_count,omitempty"`
+	StartTime      *string `json:"start_time,omitempty"`
+}
+
+// TeamSummary Satu regu dengan proyek dan kliennya.
+type TeamSummary struct {
+	// BusinessDate Hari ini di zona waktu proyek.
+	BusinessDate *openapi_types.Date `json:"business_date,omitempty"`
+	ClientCode   *string             `json:"client_code,omitempty"`
+	ClientName   *string             `json:"client_name,omitempty"`
+	Code         *string             `json:"code,omitempty"`
+
+	// Danru DANRU hari ini; null bila regu belum punya DANRU.
+	Danru *DirectoryPerson `json:"danru,omitempty"`
+
+	// IsMyTeam Pemanggil anggota regu ini hari ini.
+	IsMyTeam *bool `json:"is_my_team,omitempty"`
+
+	// MemberCount Anggota yang berlaku hari ini.
+	MemberCount  *int `json:"member_count,omitempty"`
+	MinPersonnel *int `json:"min_personnel,omitempty"`
+
+	// MyRole Peran pemanggil di regu ini; null bila bukan anggotanya.
+	MyRole      *TeamRole `json:"my_role,omitempty"`
+	Name        *string   `json:"name,omitempty"`
+	Phone       *string   `json:"phone,omitempty"`
+	ProjectCode *string   `json:"project_code,omitempty"`
+	ProjectName *string   `json:"project_name,omitempty"`
+
+	// Understaffed true bila member_count di bawah min_personnel (DL-02).
+	Understaffed *bool `json:"understaffed,omitempty"`
+}
 
 // TeamUpdate Semua field opsional; field yang tidak dikirim tidak berubah. Body kosong `{}` sah.
 // `code` dan `project_code` tidak dapat dikirim (422, field tidak dikenal).
@@ -10195,11 +10323,8 @@ type PostShiftSwaps201JSONResponseBodySuccess bool
 
 // GetTeamsParams defines parameters for GetTeams.
 type GetTeamsParams struct {
-	// ProjectId Filter scope proyek.
-	ProjectId *ProjectIdParam `form:"project_id,omitempty" json:"project_id,omitempty"`
-
-	// Q Pencarian teks case-insensitive (nama/kode/subjek).
-	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
+	// ProjectCode Opsional. Hanya baris di proyek ini.
+	ProjectCode *ProjectCodeQuery `form:"project_code,omitempty" json:"project_code,omitempty"`
 }
 
 // GetTeams200JSONResponseBodySuccess defines parameters for GetTeams.
@@ -10208,11 +10333,11 @@ type GetTeams200JSONResponseBodySuccess bool
 // GetTeamsMe200JSONResponseBodySuccess defines parameters for GetTeamsMe.
 type GetTeamsMe200JSONResponseBodySuccess bool
 
+// GetTeamsByCodeMembers200JSONResponseBodySuccess defines parameters for GetTeamsByCodeMembers.
+type GetTeamsByCodeMembers200JSONResponseBodySuccess bool
+
 // GetTeamsByIdMap200JSONResponseBodySuccess defines parameters for GetTeamsByIdMap.
 type GetTeamsByIdMap200JSONResponseBodySuccess bool
-
-// GetTeamsByIdMembers200JSONResponseBodySuccess defines parameters for GetTeamsByIdMembers.
-type GetTeamsByIdMembers200JSONResponseBodySuccess bool
 
 // GetZonesParams defines parameters for GetZones.
 type GetZonesParams struct {

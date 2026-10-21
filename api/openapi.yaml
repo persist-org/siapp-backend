@@ -1405,6 +1405,100 @@ components:
       properties:
         deleted: { type: integer }
 
+    # ---------- 7b. layar Regu aplikasi lapangan (02.6) ----------
+    # "Hari ini" adalah tanggal bisnis proyek: tanggal kalender di zona waktu proyek (DL-03).
+    # Personil melihat proyek tempat ia menjadi anggota regu yang berlaku hari ini; DANRU melihat
+    # proyek regunya karena ia DANRU regu itu, MEMBER proyek regunya sendiri.
+    DirectoryPerson:
+      type: object
+      description: Kartu singkat seorang personil (DANRU, relationship officer).
+      properties:
+        personnel_id: { type: integer, format: int64 }
+        full_name: { type: string, example: Budi Santoso }
+        phone: { type: string, nullable: true, example: "08xxxxxxxxxx" }
+        photo_url: { type: string, nullable: true }
+    TeamShiftToday:
+      type: object
+      description: Shift kerja yang dijadwalkan hari ini untuk anggota regu, dengan jumlah anggotanya. OFF tidak termasuk.
+      properties:
+        id: { type: integer, format: int64 }
+        name: { type: string, example: Day Shift }
+        start_time: { type: string, example: "08:00" }
+        end_time: { type: string, example: "17:00" }
+        overnight: { type: boolean }
+        personnel_count: { type: integer }
+    TeamRosterMember:
+      type: object
+      properties:
+        personnel_id: { type: integer, format: int64 }
+        full_name: { type: string }
+        role: { $ref: '#/components/schemas/TeamRole' }
+        position_name: { type: string, nullable: true, description: "Jabatan dari Personalia (salinan, hanya untuk tampilan)." }
+        photo_url: { type: string, nullable: true }
+        today_shift:
+          allOf: [ { $ref: '#/components/schemas/ScheduleShift' } ]
+          nullable: true
+          description: Jadwal personil hari ini (termasuk OFF); null bila belum dijadwalkan.
+    TeamSummary:
+      type: object
+      description: Satu regu dengan proyek dan kliennya.
+      properties:
+        code: { type: string, example: "1K-IBMI-S1" }
+        name: { type: string, example: Regu A }
+        phone: { type: string, nullable: true }
+        project_code: { type: string, example: "1K-IBMI-S" }
+        project_name: { type: string }
+        client_code: { type: string, example: "1K-IBMI" }
+        client_name: { type: string }
+        business_date: { type: string, format: date, description: Hari ini di zona waktu proyek. }
+        member_count: { type: integer, description: Anggota yang berlaku hari ini. }
+        min_personnel: { type: integer }
+        understaffed: { type: boolean, description: "true bila member_count di bawah min_personnel (DL-02)." }
+        is_my_team: { type: boolean, description: Pemanggil anggota regu ini hari ini. }
+        my_role:
+          allOf: [ { $ref: '#/components/schemas/TeamRole' } ]
+          nullable: true
+          description: Peran pemanggil di regu ini; null bila bukan anggotanya.
+        danru:
+          allOf: [ { $ref: '#/components/schemas/DirectoryPerson' } ]
+          nullable: true
+          description: DANRU hari ini; null bila regu belum punya DANRU.
+    TeamDetail:
+      description: Detail regu untuk layar Regu (§3.2.5).
+      allOf:
+        - { $ref: '#/components/schemas/TeamSummary' }
+        - type: object
+          properties:
+            relationship_officer:
+              allOf: [ { $ref: '#/components/schemas/DirectoryPerson' } ]
+              nullable: true
+            today_shifts: { type: array, items: { $ref: '#/components/schemas/TeamShiftToday' }, description: "Urut jam masuk." }
+            members: { type: array, items: { $ref: '#/components/schemas/TeamRosterMember' }, description: "DANRU lebih dulu, lalu menurut nama." }
+    PersonnelMembership:
+      type: object
+      properties:
+        team_code: { type: string, example: "1K-IBMI-S1" }
+        team_name: { type: string }
+        project_code: { type: string, example: "1K-IBMI-S" }
+        project_name: { type: string }
+        role: { $ref: '#/components/schemas/TeamRole' }
+    PersonnelCard:
+      type: object
+      description: |
+        Biodata personil untuk layar Regu. Hanya yang dibutuhkan layar itu: profil HR (tanggal lahir,
+        alamat, dokumen) milik Personalia dan tidak ditampilkan di SiAPP.
+      properties:
+        personnel_id: { type: integer, format: int64 }
+        full_name: { type: string }
+        nik: { type: string, nullable: true, example: "******0001", description: NIK dimasker. }
+        position_name: { type: string, nullable: true, description: "Jabatan dari Personalia (salinan, hanya untuk tampilan)." }
+        phone: { type: string, nullable: true }
+        photo_url: { type: string, nullable: true }
+        memberships:
+          type: array
+          items: { $ref: '#/components/schemas/PersonnelMembership' }
+          description: "Regu personil hari ini di proyek yang juga proyek pemanggil (semua regunya bila melihat diri sendiri)."
+
     # ---------- 7. team_members ----------
     TeamMember:
       type: object
@@ -9185,28 +9279,110 @@ paths:
     get:
       operationId: getTeamsMe
       tags: [Organization]
-      summary: Regu Saya (proyek/regu/anggota)
+      summary: "Lihat Regu Saya (§3.2.5.5)"
+      description: |
+        Detail setiap regu tempat pemanggil menjadi anggota hari ini (hari ini menurut zona waktu
+        masing-masing proyek). Kosong bila pemanggil bukan anggota regu mana pun.
       responses:
-        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/Team' } } } } ] } } } }
-        '401': { $ref: '#/components/responses/Unauthorized' }
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { type: array, items: { $ref: '#/components/schemas/TeamDetail' } } }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
   /teams:
     get:
       operationId: getTeams
       tags: [Organization]
-      summary: Filter Project/Regu
-      parameters: [ { $ref: '#/components/parameters/ProjectIdParam' }, { $ref: '#/components/parameters/QParam' } ]
+      summary: "Daftar regu (§2.9.1-2.9.2)"
+      description: |
+        Dengan project_code: semua regu proyek itu; pemanggil harus anggota regu di proyek itu hari ini
+        (403 NOT_PROJECT_MEMBER, juga untuk proyek yang tidak ada). Tanpa project_code: regu-regu di
+        setiap proyek tempat pemanggil menjadi anggota hari ini. Urut proyek, lalu nomor regu.
+      parameters:
+        - $ref: '#/components/parameters/ProjectCodeQuery'
       responses:
-        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/ListEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/Team' } } } } ] } } } }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-  /teams/{id}/members:
-    parameters: [ { $ref: '#/components/parameters/IdPath' } ]
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { type: array, items: { $ref: '#/components/schemas/TeamSummary' } } }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "SCOPE_DENIED (NOT_PROJECT_MEMBER): pemanggil bukan anggota regu mana pun di proyek ini hari ini."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_PROJECT_MEMBER:
+                  value: { success: false, error: { code: SCOPE_DENIED, message: "Anda bukan anggota proyek ini.", details: { reason: NOT_PROJECT_MEMBER } }, meta: { request_id: req_abc123 } }
+  /teams/{code}/members:
+    parameters:
+      - $ref: '#/components/parameters/TeamCodePath'
     get:
-      operationId: getTeamsByIdMembers
+      operationId: getTeamsByCodeMembers
       tags: [Organization]
-      summary: Anggota regu (mobile)
+      summary: "Detail regu dan anggotanya (§3.2.5.1-3.2.5.2)"
+      description: |
+        Nama proyek, klien dan regu, relationship officer, DANRU, shift hari ini, understaffed, dan
+        anggota (DANRU lebih dulu, lalu menurut nama) dengan jadwal masing-masing hari ini. Hanya untuk
+        anggota regu di proyek regu ini hari ini. Status online tidak ada di sini (Fase 08.1).
       responses:
-        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/ListEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/TeamMember' } } } } ] } } } }
-        '401': { $ref: '#/components/responses/Unauthorized' }
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { $ref: '#/components/schemas/TeamDetail' } }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "SCOPE_DENIED (NOT_PROJECT_MEMBER): pemanggil bukan anggota regu mana pun di proyek ini hari ini."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_PROJECT_MEMBER:
+                  value: { success: false, error: { code: SCOPE_DENIED, message: "Anda bukan anggota proyek ini.", details: { reason: NOT_PROJECT_MEMBER } }, meta: { request_id: req_abc123 } }
+        '404':
+          description: "Regu tidak ada, sudah dihapus, atau milik organisasi lain."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                TEAM_NOT_FOUND:
+                  value: { success: false, error: { code: NOT_FOUND, message: "Regu tidak ditemukan.", details: { reason: TEAM_NOT_FOUND } }, meta: { request_id: req_abc123 } }
   /teams/{id}/map:
     parameters: [ { $ref: '#/components/parameters/IdPath' } ]
     get:
@@ -9218,20 +9394,53 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
   /personnels/{id}:
-    parameters: [ { $ref: '#/components/parameters/IdPath' } ]
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Identitas lokal orang (personnels.id), bukan id Personalia.
+        schema: { type: integer, format: int64 }
     get:
       operationId: getPersonnelsById
       tags: [Organization]
-      summary: Biodata personil (mobile)
-      security:
-        - bearerSession: []
-        - oauth2ClientCredentials: [personnel:read]
-        - apiKey: []
+      summary: "Biodata personil (§3.2.5.3)"
+      description: |
+        Hanya bila pemanggil dan personil itu sama-sama anggota regu di satu proyek hari ini, atau
+        pemanggil melihat dirinya sendiri. NIK dimasker. Tanpa data HR lain (milik Personalia).
       responses:
-        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/Personnel' } } } ] } } } }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { $ref: '#/components/responses/NotFound' }
-
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { $ref: '#/components/schemas/PersonnelCard' } }
+        '401':
+          description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unauthenticated:
+                  summary: Tanpa token
+                  value: { success: false, error: { code: UNAUTHENTICATED, message: "Token tidak ditemukan." }, meta: { request_id: req_abc123 } }
+        '403':
+          description: "SCOPE_DENIED (NOT_PROJECT_MEMBER): pemanggil dan personil ini tidak berbagi proyek hari ini."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                NOT_PROJECT_MEMBER:
+                  value: { success: false, error: { code: SCOPE_DENIED, message: "Anda bukan anggota proyek ini.", details: { reason: NOT_PROJECT_MEMBER } }, meta: { request_id: req_abc123 } }
+        '404':
+          description: "Personil tidak ada atau milik organisasi lain."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                PERSONNEL_NOT_FOUND:
+                  value: { success: false, error: { code: NOT_FOUND, message: "Personil tidak ditemukan.", details: { reason: PERSONNEL_NOT_FOUND } }, meta: { request_id: req_abc123 } }
   # ============ ASET (assets / asset-reports) ============
   /assets:
     get:

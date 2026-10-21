@@ -25,6 +25,7 @@ type Usecases struct {
 	Members   *Members
 	Shifts    *ShiftMasters
 	Schedules *Schedules
+	Roster    *Roster
 }
 
 // NewUsecases returns the organization usecases. people finds a person by NIK for the team
@@ -33,7 +34,7 @@ func NewUsecases(pool *pgxpool.Pool, c clock.Clock, people PeopleResolver) Useca
 	return Usecases{
 		Regions: NewRegions(pool, c), Branches: NewBranches(pool, c), Clients: NewClients(pool, c),
 		Projects: NewProjects(pool, c), Teams: NewTeams(pool, c), Members: NewMembers(pool, c, people),
-		Shifts: NewShiftMasters(pool, c), Schedules: NewSchedules(pool, c),
+		Shifts: NewShiftMasters(pool, c), Schedules: NewSchedules(pool, c), Roster: NewRoster(pool, c),
 	}
 }
 
@@ -47,12 +48,13 @@ type Handler struct {
 	members   *Members
 	shifts    *ShiftMasters
 	schedules *Schedules
+	roster    *Roster
 }
 
 // NewHandler returns the organization Handler.
 func NewHandler(u Usecases) *Handler {
 	return &Handler{regions: u.Regions, branches: u.Branches, clients: u.Clients, projects: u.Projects, teams: u.Teams, members: u.Members,
-		shifts: u.Shifts, schedules: u.Schedules}
+		shifts: u.Shifts, schedules: u.Schedules, roster: u.Roster}
 }
 
 // MountAdmin adds the routes to the /api/v1/admin group, behind access.RequireAdmin (cmd/api

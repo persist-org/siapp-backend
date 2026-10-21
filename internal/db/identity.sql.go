@@ -263,7 +263,7 @@ func (q *Queries) GetLiveSessionOfChain(ctx context.Context, arg GetLiveSessionO
 }
 
 const getPersonnel = `-- name: GetPersonnel :one
-SELECT id, organization_id, personel_user_id, nik, client_id, client_name, full_name, email, phone, photo_url, status, synced_at, last_seen_at, created_at, updated_at, company_id, company_name FROM personnels WHERE id = $1
+SELECT id, organization_id, personel_user_id, nik, client_id, client_name, full_name, email, phone, photo_url, status, synced_at, last_seen_at, created_at, updated_at, company_id, company_name, position_name FROM personnels WHERE id = $1
 `
 
 func (q *Queries) GetPersonnel(ctx context.Context, id int64) (Personnel, error) {
@@ -287,12 +287,13 @@ func (q *Queries) GetPersonnel(ctx context.Context, id int64) (Personnel, error)
 		&i.UpdatedAt,
 		&i.CompanyID,
 		&i.CompanyName,
+		&i.PositionName,
 	)
 	return i, err
 }
 
 const getPersonnelByNIK = `-- name: GetPersonnelByNIK :one
-SELECT id, organization_id, personel_user_id, nik, client_id, client_name, full_name, email, phone, photo_url, status, synced_at, last_seen_at, created_at, updated_at, company_id, company_name FROM personnels WHERE nik = $1
+SELECT id, organization_id, personel_user_id, nik, client_id, client_name, full_name, email, phone, photo_url, status, synced_at, last_seen_at, created_at, updated_at, company_id, company_name, position_name FROM personnels WHERE nik = $1
 `
 
 func (q *Queries) GetPersonnelByNIK(ctx context.Context, nik pgtype.Text) (Personnel, error) {
@@ -316,6 +317,7 @@ func (q *Queries) GetPersonnelByNIK(ctx context.Context, nik pgtype.Text) (Perso
 		&i.UpdatedAt,
 		&i.CompanyID,
 		&i.CompanyName,
+		&i.PositionName,
 	)
 	return i, err
 }
@@ -488,7 +490,7 @@ func (q *Queries) ListRecentSessionIDsOfPersonnel(ctx context.Context, arg ListR
 
 const listStalePersonnel = `-- name: ListStalePersonnel :many
 
-SELECT id, organization_id, personel_user_id, nik, client_id, client_name, full_name, email, phone, photo_url, status, synced_at, last_seen_at, created_at, updated_at, company_id, company_name FROM personnels
+SELECT id, organization_id, personel_user_id, nik, client_id, client_name, full_name, email, phone, photo_url, status, synced_at, last_seen_at, created_at, updated_at, company_id, company_name, position_name FROM personnels
 WHERE status = 'ACTIVE' AND nik IS NOT NULL AND synced_at < $1 AND id > $2
 ORDER BY id
 LIMIT $3
@@ -530,6 +532,7 @@ func (q *Queries) ListStalePersonnel(ctx context.Context, arg ListStalePersonnel
 			&i.UpdatedAt,
 			&i.CompanyID,
 			&i.CompanyName,
+			&i.PositionName,
 		); err != nil {
 			return nil, err
 		}
@@ -642,22 +645,24 @@ UPDATE personnels SET
     nik = $1, company_id = $2, company_name = $3,
     client_id = $4, client_name = $5,
     full_name = $6, email = $7, phone = $8,
-    photo_url = $9, status = 'ACTIVE', synced_at = $10, updated_at = $10
-WHERE id = $11
+    photo_url = $9, position_name = $10,
+    status = 'ACTIVE', synced_at = $11, updated_at = $11
+WHERE id = $12
 `
 
 type RefreshPersonnelParams struct {
-	Nik         pgtype.Text
-	CompanyID   pgtype.Int8
-	CompanyName pgtype.Text
-	ClientID    pgtype.Int8
-	ClientName  pgtype.Text
-	FullName    string
-	Email       pgtype.Text
-	Phone       pgtype.Text
-	PhotoUrl    pgtype.Text
-	Now         pgtype.Timestamptz
-	ID          int64
+	Nik          pgtype.Text
+	CompanyID    pgtype.Int8
+	CompanyName  pgtype.Text
+	ClientID     pgtype.Int8
+	ClientName   pgtype.Text
+	FullName     string
+	Email        pgtype.Text
+	Phone        pgtype.Text
+	PhotoUrl     pgtype.Text
+	PositionName pgtype.Text
+	Now          pgtype.Timestamptz
+	ID           int64
 }
 
 // Refreshes the cached copy from Personalia without counting as activity: last_seen_at (the
@@ -674,6 +679,7 @@ func (q *Queries) RefreshPersonnel(ctx context.Context, arg RefreshPersonnelPara
 		arg.Email,
 		arg.Phone,
 		arg.PhotoUrl,
+		arg.PositionName,
 		arg.Now,
 		arg.ID,
 	)
@@ -829,12 +835,12 @@ const upsertPersonnel = `-- name: UpsertPersonnel :one
 
 INSERT INTO personnels (
     personel_user_id, nik, company_id, company_name, client_id, client_name, full_name, email, phone, photo_url,
-    status, synced_at, last_seen_at, created_at, updated_at
+    position_name, status, synced_at, last_seen_at, created_at, updated_at
 ) VALUES (
     $1, $2, $3, $4,
     $5, $6,
     $7, $8, $9, $10,
-    $11, $12, $13, $12, $12
+    $11, $12, $13, $14, $13, $13
 )
 ON CONFLICT (organization_id, personel_user_id) DO UPDATE SET
     nik          = EXCLUDED.nik,
@@ -846,11 +852,12 @@ ON CONFLICT (organization_id, personel_user_id) DO UPDATE SET
     email        = EXCLUDED.email,
     phone        = EXCLUDED.phone,
     photo_url    = EXCLUDED.photo_url,
+    position_name = EXCLUDED.position_name,
     status       = EXCLUDED.status,
     synced_at    = EXCLUDED.synced_at,
     last_seen_at = COALESCE(EXCLUDED.last_seen_at, personnels.last_seen_at),
     updated_at   = EXCLUDED.updated_at
-RETURNING id, organization_id, personel_user_id, nik, client_id, client_name, full_name, email, phone, photo_url, status, synced_at, last_seen_at, created_at, updated_at, company_id, company_name
+RETURNING id, organization_id, personel_user_id, nik, client_id, client_name, full_name, email, phone, photo_url, status, synced_at, last_seen_at, created_at, updated_at, company_id, company_name, position_name
 `
 
 type UpsertPersonnelParams struct {
@@ -864,6 +871,7 @@ type UpsertPersonnelParams struct {
 	Email          pgtype.Text
 	Phone          pgtype.Text
 	PhotoUrl       pgtype.Text
+	PositionName   pgtype.Text
 	Status         PersonnelStatus
 	Now            pgtype.Timestamptz
 	SeenAt         pgtype.Timestamptz
@@ -892,6 +900,7 @@ func (q *Queries) UpsertPersonnel(ctx context.Context, arg UpsertPersonnelParams
 		arg.Email,
 		arg.Phone,
 		arg.PhotoUrl,
+		arg.PositionName,
 		arg.Status,
 		arg.Now,
 		arg.SeenAt,
@@ -915,6 +924,7 @@ func (q *Queries) UpsertPersonnel(ctx context.Context, arg UpsertPersonnelParams
 		&i.UpdatedAt,
 		&i.CompanyID,
 		&i.CompanyName,
+		&i.PositionName,
 	)
 	return i, err
 }
