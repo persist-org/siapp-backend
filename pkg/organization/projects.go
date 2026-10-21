@@ -79,10 +79,10 @@ type ProjectInput struct {
 	Email                    *string            `json:"email" validate:"omitempty,max=200"`
 	Latitude                 *float64           `json:"latitude" validate:"omitempty,gte=-90,lte=90"`
 	Longitude                *float64           `json:"longitude" validate:"omitempty,gte=-180,lte=180"`
-	AttendanceRadiusMeters   *int               `json:"attendance_radius_meters" validate:"omitempty,gte=1"`
+	AttendanceRadiusMeters   *int               `json:"attendance_radius_meters" validate:"omitempty,gte=1,lte=10000"`
 	StrictAttendanceGeofence *bool              `json:"strict_attendance_geofence"`
 	GPSTrackingEnabled       *bool              `json:"gps_tracking_enabled"`
-	PatrolIntervalMinutes    *int               `json:"patrol_interval_minutes" validate:"omitempty,gte=1"`
+	PatrolIntervalMinutes    *int               `json:"patrol_interval_minutes" validate:"omitempty,gte=1,lte=1440"`
 	EmergencyContacts        []EmergencyContact `json:"emergency_contacts" validate:"omitempty,dive"`
 	Active                   *bool              `json:"is_active"`
 }
@@ -102,10 +102,10 @@ type ProjectUpdate struct {
 	Email                    *string            `json:"email" validate:"omitempty,max=200"`
 	Latitude                 *float64           `json:"latitude" validate:"omitempty,gte=-90,lte=90"`
 	Longitude                *float64           `json:"longitude" validate:"omitempty,gte=-180,lte=180"`
-	AttendanceRadiusMeters   *int               `json:"attendance_radius_meters" validate:"omitempty,gte=1"`
+	AttendanceRadiusMeters   *int               `json:"attendance_radius_meters" validate:"omitempty,gte=1,lte=10000"`
 	StrictAttendanceGeofence *bool              `json:"strict_attendance_geofence"`
 	GPSTrackingEnabled       *bool              `json:"gps_tracking_enabled"`
-	PatrolIntervalMinutes    *int               `json:"patrol_interval_minutes" validate:"omitempty,gte=1"`
+	PatrolIntervalMinutes    *int               `json:"patrol_interval_minutes" validate:"omitempty,gte=1,lte=1440"`
 	EmergencyContacts        []EmergencyContact `json:"emergency_contacts" validate:"omitempty,dive"`
 	Active                   *bool              `json:"is_active"`
 }
@@ -309,12 +309,12 @@ func (p *Projects) Delete(ctx context.Context, actor auth.Principal, scope acces
 		if err != nil {
 			return fmt.Errorf("get project: %w", err)
 		}
-		teams, err := q.CountActiveTeamsOfProject(ctx, code)
+		teams, err := q.CountTeamsOfProject(ctx, code)
 		if err != nil {
 			return fmt.Errorf("count teams of project: %w", err)
 		}
 		if teams > 0 {
-			return ErrHasActiveChildren.WithMessage("Masih ada regu aktif di proyek ini.")
+			return ErrHasActiveChildren.WithMessage("Masih ada regu (aktif maupun nonaktif) di proyek ini.")
 		}
 		if _, err := q.SoftDeleteProject(ctx, db.SoftDeleteProjectParams{Code: code, Actor: personnelRef(actor), Now: ts(p.clock.Now())}); err != nil {
 			return fmt.Errorf("delete project: %w", err)
@@ -402,7 +402,8 @@ func validatePoint(lat, lng *float64) error {
 }
 
 func validateCompanyPrefix(prefix *string) error {
-	if prefix != nil && *prefix != "" && !clientPrefixPattern.MatchString(*prefix) {
+	// An empty prefix is invalid too: stored as '' it breaks the table's CHECK (a 500).
+	if prefix != nil && !clientPrefixPattern.MatchString(*prefix) {
 		return ErrClientPrefixInvalid
 	}
 	return nil

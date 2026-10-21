@@ -89,8 +89,9 @@ func NewRoster(pool *pgxpool.Pool, c clock.Clock) *Roster { return &Roster{pool:
 // MyTeams returns the detail of every regu the caller serves in today.
 func (r *Roster) MyTeams(ctx context.Context, actor auth.Principal) ([]TeamView, error) {
 	var out []TeamView
+	now := r.clock.Now()
 	err := database.WithTenant(ctx, r.pool, actor.OrganizationID, func(q *db.Queries) error {
-		mine, err := r.membershipsOf(ctx, q, actor.PersonnelID)
+		mine, err := r.membershipsOf(ctx, q, actor.PersonnelID, now)
 		if err != nil {
 			return err
 		}
@@ -101,7 +102,7 @@ func (r *Roster) MyTeams(ctx context.Context, actor auth.Principal) ([]TeamView,
 		if len(codes) == 0 {
 			return nil
 		}
-		out, err = r.teams(ctx, q, mine, nil, codes, true)
+		out, err = r.teams(ctx, q, now, mine, nil, codes, true)
 		return err
 	})
 	return out, err
@@ -112,8 +113,9 @@ func (r *Roster) MyTeams(ctx context.Context, actor auth.Principal) ([]TeamView,
 // (or one that does not exist) is NOT_PROJECT_MEMBER.
 func (r *Roster) Teams(ctx context.Context, actor auth.Principal, projectCode string) ([]TeamView, error) {
 	var out []TeamView
+	now := r.clock.Now()
 	err := database.WithTenant(ctx, r.pool, actor.OrganizationID, func(q *db.Queries) error {
-		mine, err := r.membershipsOf(ctx, q, actor.PersonnelID)
+		mine, err := r.membershipsOf(ctx, q, actor.PersonnelID, now)
 		if err != nil {
 			return err
 		}
@@ -127,7 +129,7 @@ func (r *Roster) Teams(ctx context.Context, actor auth.Principal, projectCode st
 		if len(projects) == 0 {
 			return nil
 		}
-		out, err = r.teams(ctx, q, mine, projects, nil, false)
+		out, err = r.teams(ctx, q, now, mine, projects, nil, false)
 		return err
 	})
 	return out, err
@@ -136,13 +138,17 @@ func (r *Roster) Teams(ctx context.Context, actor auth.Principal, projectCode st
 // TeamDetail returns one regu with its members and today's shifts, for someone who serves in
 // a regu of the same project today.
 func (r *Roster) TeamDetail(ctx context.Context, actor auth.Principal, teamCode string) (TeamView, error) {
+	if teamCode == "" {
+		return TeamView{}, ErrTeamNotFound
+	}
 	var out TeamView
+	now := r.clock.Now()
 	err := database.WithTenant(ctx, r.pool, actor.OrganizationID, func(q *db.Queries) error {
-		mine, err := r.membershipsOf(ctx, q, actor.PersonnelID)
+		mine, err := r.membershipsOf(ctx, q, actor.PersonnelID, now)
 		if err != nil {
 			return err
 		}
-		views, err := r.teams(ctx, q, mine, nil, []string{teamCode}, true)
+		views, err := r.teams(ctx, q, now, mine, nil, []string{teamCode}, true)
 		if err != nil {
 			return err
 		}
@@ -163,6 +169,7 @@ func (r *Roster) TeamDetail(ctx context.Context, actor auth.Principal, teamCode 
 // serves is not the caller's business.
 func (r *Roster) Card(ctx context.Context, actor auth.Principal, personnelID int64) (PersonnelCard, error) {
 	var out PersonnelCard
+	now := r.clock.Now()
 	err := database.WithTenant(ctx, r.pool, actor.OrganizationID, func(q *db.Queries) error {
 		p, err := q.GetPersonnel(ctx, personnelID)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -171,13 +178,16 @@ func (r *Roster) Card(ctx context.Context, actor auth.Principal, personnelID int
 		if err != nil {
 			return fmt.Errorf("get personnel: %w", err)
 		}
-		theirs, err := r.membershipsOf(ctx, q, personnelID)
+		if p.Status == db.PersonnelStatusINACTIVE && personnelID != actor.PersonnelID {
+			return errNoSuchPersonnel // they have left: the Regu screens no longer list them
+		}
+		theirs, err := r.membershipsOf(ctx, q, personnelID, now)
 		if err != nil {
 			return err
 		}
 		shown := theirs
 		if personnelID != actor.PersonnelID {
-			mine, err := r.membershipsOf(ctx, q, actor.PersonnelID)
+			mine, err := r.membershipsOf(ctx, q, actor.PersonnelID, now)
 			if err != nil {
 				return err
 			}
@@ -201,8 +211,8 @@ func (r *Roster) Card(ctx context.Context, actor auth.Principal, personnelID int
 
 // membershipsOf returns the regu a person serves in today, each project's today in its own
 // timezone.
-func (r *Roster) membershipsOf(ctx context.Context, q *db.Queries, personnelID int64) ([]Membership, error) {
-	rows, err := q.ListCurrentMembershipsOfPersonnel(ctx, db.ListCurrentMembershipsOfPersonnelParams{PersonnelID: personnelID, Now: ts(r.clock.Now())})
+func (r *Roster) membershipsOf(ctx context.Context, q *db.Queries, personnelID int64, now time.Time) ([]Membership, error) {
+	rows, err := q.ListCurrentMembershipsOfPersonnel(ctx, db.ListCurrentMembershipsOfPersonnelParams{PersonnelID: personnelID, Now: ts(now)})
 	if err != nil {
 		return nil, fmt.Errorf("list current memberships: %w", err)
 	}
@@ -213,29 +223,16 @@ func (r *Roster) membershipsOf(ctx context.Context, q *db.Queries, personnelID i
 	return out, nil
 }
 
-// teams reads the regu of some projects, or some regu by code, with who serves in them today.
-// detail also fills the members and today's shifts.
-func (r *Roster) teams(ctx context.Context, q *db.Queries, mine []Membership, projects, codes []string, detail bool) ([]TeamView, error) {
-	var rows []db.ListDirectoryTeamsRow
-	if codes != nil {
-		for _, code := range codes {
-			found, err := q.ListDirectoryTeams(ctx, db.ListDirectoryTeamsParams{TeamCode: textOrNull(code)})
-			if err != nil {
-				return nil, fmt.Errorf("list teams: %w", err)
-			}
-			rows = append(rows, found...)
-		}
-	} else {
-		found, err := q.ListDirectoryTeams(ctx, db.ListDirectoryTeamsParams{ProjectCodes: projects})
-		if err != nil {
-			return nil, fmt.Errorf("list teams: %w", err)
-		}
-		rows = found
+// teams reads the regu of some projects, or some regu by code (exactly one of the two is
+// non-nil), with who serves in them today. detail also fills the members and today's shifts.
+func (r *Roster) teams(ctx context.Context, q *db.Queries, now time.Time, mine []Membership, projects, codes []string, detail bool) ([]TeamView, error) {
+	rows, err := q.ListDirectoryTeams(ctx, db.ListDirectoryTeamsParams{ProjectCodes: projects, TeamCodes: codes})
+	if err != nil {
+		return nil, fmt.Errorf("list teams: %w", err)
 	}
 	if len(rows) == 0 {
 		return nil, nil
 	}
-	now := r.clock.Now()
 	teamCodes := make([]string, 0, len(rows))
 	for _, t := range rows {
 		teamCodes = append(teamCodes, t.Code)

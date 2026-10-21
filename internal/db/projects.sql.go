@@ -12,17 +12,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const countActiveTeamsOfProject = `-- name: CountActiveTeamsOfProject :one
-SELECT count(*) FROM teams WHERE project_code = $1 AND deleted_at IS NULL AND active
-`
-
-func (q *Queries) CountActiveTeamsOfProject(ctx context.Context, projectCode string) (int64, error) {
-	row := q.db.QueryRow(ctx, countActiveTeamsOfProject, projectCode)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
 const countProjects = `-- name: CountProjects :one
 SELECT count(*) FROM projects
 WHERE deleted_at IS NULL
@@ -30,7 +19,7 @@ WHERE deleted_at IS NULL
   AND ($2::text IS NULL OR client_code = $2)
   AND ($3::business_line IS NULL OR business_line = $3)
   AND ($4::boolean IS NULL OR active = $4)
-  AND ($5::text IS NULL OR code ILIKE '%' || $5 || '%' OR description ILIKE '%' || $5 || '%')
+  AND ($5::text IS NULL OR strpos(lower(code), lower($5)) > 0 OR strpos(lower(description), lower($5)) > 0)
 `
 
 type CountProjectsParams struct {
@@ -49,6 +38,19 @@ func (q *Queries) CountProjects(ctx context.Context, arg CountProjectsParams) (i
 		arg.Active,
 		arg.Q,
 	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countTeamsOfProject = `-- name: CountTeamsOfProject :one
+SELECT count(*) FROM teams WHERE project_code = $1 AND deleted_at IS NULL
+`
+
+// A project cannot be deleted while a team that is not deleted sits under it, active or not:
+// an inactive team keeps its memberships, and they would point at a deleted project.
+func (q *Queries) CountTeamsOfProject(ctx context.Context, projectCode string) (int64, error) {
+	row := q.db.QueryRow(ctx, countTeamsOfProject, projectCode)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -273,7 +275,7 @@ WHERE deleted_at IS NULL
   AND ($2::text IS NULL OR client_code = $2)
   AND ($3::business_line IS NULL OR business_line = $3)
   AND ($4::boolean IS NULL OR active = $4)
-  AND ($5::text IS NULL OR code ILIKE '%' || $5 || '%' OR description ILIKE '%' || $5 || '%')
+  AND ($5::text IS NULL OR strpos(lower(code), lower($5)) > 0 OR strpos(lower(description), lower($5)) > 0)
 ORDER BY code
 LIMIT $7 OFFSET $6
 `

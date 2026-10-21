@@ -57,7 +57,7 @@ func (q *Queries) CountSchedulesOfShiftFrom(ctx context.Context, arg CountSchedu
 const countShiftGroups = `-- name: CountShiftGroups :one
 SELECT count(*) FROM shift_groups
 WHERE deleted_at IS NULL
-  AND ($1::text IS NULL OR name ILIKE '%' || $1 || '%')
+  AND ($1::text IS NULL OR strpos(lower(name), lower($1)) > 0)
 `
 
 func (q *Queries) CountShiftGroups(ctx context.Context, q_ pgtype.Text) (int64, error) {
@@ -71,7 +71,7 @@ const countShifts = `-- name: CountShifts :one
 SELECT count(*) FROM shifts
 WHERE deleted_at IS NULL
   AND ($1::boolean IS NULL OR active = $1)
-  AND ($2::text IS NULL OR name ILIKE '%' || $2 || '%')
+  AND ($2::text IS NULL OR strpos(lower(name), lower($2)) > 0)
 `
 
 type CountShiftsParams struct {
@@ -276,6 +276,27 @@ func (q *Queries) GetShiftGroupByName(ctx context.Context, name string) (ShiftGr
 	return i, err
 }
 
+const getShiftGroupForShare = `-- name: GetShiftGroupForShare :one
+SELECT id, organization_id, name, created_by, updated_by, created_at, updated_at, deleted_at FROM shift_groups WHERE id = $1 AND deleted_at IS NULL FOR SHARE
+`
+
+// A group an assignment is about to point at: a delete of it in flight is waited for and seen.
+func (q *Queries) GetShiftGroupForShare(ctx context.Context, id int64) (ShiftGroup, error) {
+	row := q.db.QueryRow(ctx, getShiftGroupForShare, id)
+	var i ShiftGroup
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.Name,
+		&i.CreatedBy,
+		&i.UpdatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
 const getShiftGroupForUpdate = `-- name: GetShiftGroupForUpdate :one
 SELECT id, organization_id, name, created_by, updated_by, created_at, updated_at, deleted_at FROM shift_groups WHERE id = $1 AND deleted_at IS NULL FOR UPDATE
 `
@@ -302,6 +323,47 @@ SELECT id, organization_id, name, start_minute, end_minute, is_off, tolerance_mi
 
 func (q *Queries) GetShiftsByIDs(ctx context.Context, ids []int64) ([]Shift, error) {
 	rows, err := q.db.Query(ctx, getShiftsByIDs, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Shift{}
+	for rows.Next() {
+		var i Shift
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrganizationID,
+			&i.Name,
+			&i.StartMinute,
+			&i.EndMinute,
+			&i.IsOff,
+			&i.ToleranceMinutes,
+			&i.Active,
+			&i.CreatedBy,
+			&i.UpdatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getShiftsByIDsForShare = `-- name: GetShiftsByIDsForShare :many
+SELECT id, organization_id, name, start_minute, end_minute, is_off, tolerance_minutes, active, created_by, updated_by, created_at, updated_at, deleted_at FROM shifts WHERE id = ANY($1::bigint[]) AND deleted_at IS NULL ORDER BY id FOR SHARE
+`
+
+// The shifts a write is about to point at (a group's days, a schedule). FOR SHARE makes a
+// deactivation or delete of one of them in flight wait, and be seen; by id, so two writers
+// take the locks in the same order.
+func (q *Queries) GetShiftsByIDsForShare(ctx context.Context, ids []int64) ([]Shift, error) {
+	rows, err := q.db.Query(ctx, getShiftsByIDsForShare, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -384,7 +446,7 @@ func (q *Queries) ListShiftGroupDays(ctx context.Context, groupIds []int64) ([]L
 const listShiftGroups = `-- name: ListShiftGroups :many
 SELECT id, organization_id, name, created_by, updated_by, created_at, updated_at, deleted_at FROM shift_groups
 WHERE deleted_at IS NULL
-  AND ($1::text IS NULL OR name ILIKE '%' || $1 || '%')
+  AND ($1::text IS NULL OR strpos(lower(name), lower($1)) > 0)
 ORDER BY lower(name), id
 LIMIT $3 OFFSET $2
 `
@@ -429,7 +491,7 @@ const listShifts = `-- name: ListShifts :many
 SELECT id, organization_id, name, start_minute, end_minute, is_off, tolerance_minutes, active, created_by, updated_by, created_at, updated_at, deleted_at FROM shifts
 WHERE deleted_at IS NULL
   AND ($1::boolean IS NULL OR active = $1)
-  AND ($2::text IS NULL OR name ILIKE '%' || $2 || '%')
+  AND ($2::text IS NULL OR strpos(lower(name), lower($2)) > 0)
 ORDER BY lower(name), id
 LIMIT $4 OFFSET $3
 `

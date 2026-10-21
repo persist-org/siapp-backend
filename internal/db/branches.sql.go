@@ -11,25 +11,13 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const countActiveClientsOfBranch = `-- name: CountActiveClientsOfBranch :one
-SELECT count(*) FROM clients WHERE branch_code = $1 AND deleted_at IS NULL AND active
-`
-
-// A branch cannot be deleted while an active client sits under it.
-func (q *Queries) CountActiveClientsOfBranch(ctx context.Context, branchCode string) (int64, error) {
-	row := q.db.QueryRow(ctx, countActiveClientsOfBranch, branchCode)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
 const countBranches = `-- name: CountBranches :one
 SELECT count(*) FROM branches
 WHERE deleted_at IS NULL
   AND ($1::text IS NULL OR region_code = $1)
   AND ($2::text IS NULL OR region_code = $2)
   AND ($3::boolean IS NULL OR active = $3)
-  AND ($4::text IS NULL OR code ILIKE '%' || $4 || '%' OR description ILIKE '%' || $4 || '%')
+  AND ($4::text IS NULL OR strpos(lower(code), lower($4)) > 0 OR strpos(lower(description), lower($4)) > 0)
 `
 
 type CountBranchesParams struct {
@@ -46,6 +34,18 @@ func (q *Queries) CountBranches(ctx context.Context, arg CountBranchesParams) (i
 		arg.Active,
 		arg.Q,
 	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countClientsOfBranch = `-- name: CountClientsOfBranch :one
+SELECT count(*) FROM clients WHERE branch_code = $1 AND deleted_at IS NULL
+`
+
+// A branch cannot be deleted while a client that is not deleted sits under it, active or not.
+func (q *Queries) CountClientsOfBranch(ctx context.Context, branchCode string) (int64, error) {
+	row := q.db.QueryRow(ctx, countClientsOfBranch, branchCode)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -178,7 +178,7 @@ WHERE deleted_at IS NULL
   AND ($1::text IS NULL OR region_code = $1)
   AND ($2::text IS NULL OR region_code = $2)
   AND ($3::boolean IS NULL OR active = $3)
-  AND ($4::text IS NULL OR code ILIKE '%' || $4 || '%' OR description ILIKE '%' || $4 || '%')
+  AND ($4::text IS NULL OR strpos(lower(code), lower($4)) > 0 OR strpos(lower(description), lower($4)) > 0)
 ORDER BY length(code), code
 LIMIT $6 OFFSET $5
 `

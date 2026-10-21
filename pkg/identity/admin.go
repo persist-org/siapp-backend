@@ -76,6 +76,11 @@ func (u *Usecase) ResetDeviceBinding(ctx context.Context, actor auth.Principal, 
 			return err
 		}
 		if !found {
+			// A REGION_ADMIN gets the same answer for a person who does not exist as for one
+			// outside their region, so ids cannot be probed.
+			if !scope.All {
+				return access.ErrOutsideAdminScope
+			}
 			return apperr.ErrNotFound
 		}
 		if !scope.All {

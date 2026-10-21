@@ -228,12 +228,12 @@ func (b *Branches) Delete(ctx context.Context, actor auth.Principal, scope acces
 		if err != nil {
 			return fmt.Errorf("get branch: %w", err)
 		}
-		clients, err := q.CountActiveClientsOfBranch(ctx, code)
+		clients, err := q.CountClientsOfBranch(ctx, code)
 		if err != nil {
 			return fmt.Errorf("count clients of branch: %w", err)
 		}
 		if clients > 0 {
-			return ErrHasActiveChildren.WithMessage("Masih ada klien aktif di kantor cabang ini.")
+			return ErrHasActiveChildren.WithMessage("Masih ada klien (aktif maupun nonaktif) di kantor cabang ini.")
 		}
 		if _, err := q.SoftDeleteBranch(ctx, db.SoftDeleteBranchParams{Code: code, Now: ts(b.clock.Now())}); err != nil {
 			return fmt.Errorf("delete branch: %w", err)

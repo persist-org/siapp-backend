@@ -46,23 +46,83 @@ func (q *Queries) DeleteFutureMembershipsOfTeam(ctx context.Context, arg DeleteF
 	return result.RowsAffected(), nil
 }
 
-const deleteTeamMember = `-- name: DeleteTeamMember :execrows
-DELETE FROM team_members WHERE id = $1
+const deletePlannedMembershipsOfPerson = `-- name: DeletePlannedMembershipsOfPerson :many
+DELETE FROM team_members
+WHERE team_code = $1 AND personnel_id = $2 AND start_date > $3
+RETURNING id
 `
 
-// Only for a membership that never took effect (it starts after today): there is no history
-// to keep of a row that was never in force.
-func (q *Queries) DeleteTeamMember(ctx context.Context, id int64) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteTeamMember, id)
+type DeletePlannedMembershipsOfPersonParams struct {
+	TeamCode    string
+	PersonnelID int64
+	Today       pgtype.Date
+}
+
+// Taking a person out of a regu today: the rows that have not started yet never took effect
+// and go away, and the row in force today ends today. "In force" includes a row that already
+// has a later end date (a move or role change planned for a future date ended it there).
+func (q *Queries) DeletePlannedMembershipsOfPerson(ctx context.Context, arg DeletePlannedMembershipsOfPersonParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, deletePlannedMembershipsOfPerson, arg.TeamCode, arg.PersonnelID, arg.Today)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	return result.RowsAffected(), nil
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const endMembershipsOfPersonToday = `-- name: EndMembershipsOfPersonToday :many
+UPDATE team_members SET end_date = $1, updated_at = $2
+WHERE team_code = $3 AND personnel_id = $4
+  AND start_date <= $1 AND (end_date IS NULL OR end_date > $1)
+RETURNING id
+`
+
+type EndMembershipsOfPersonTodayParams struct {
+	Today       pgtype.Date
+	Now         pgtype.Timestamptz
+	TeamCode    string
+	PersonnelID int64
+}
+
+func (q *Queries) EndMembershipsOfPersonToday(ctx context.Context, arg EndMembershipsOfPersonTodayParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, endMembershipsOfPersonToday,
+		arg.Today,
+		arg.Now,
+		arg.TeamCode,
+		arg.PersonnelID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const endOpenMembershipsOfTeam = `-- name: EndOpenMembershipsOfTeam :execrows
 UPDATE team_members SET end_date = $1, updated_at = $2
-WHERE team_code = $3 AND end_date IS NULL AND start_date <= $1
+WHERE team_code = $3 AND start_date <= $1 AND (end_date IS NULL OR end_date > $1)
 `
 
 type EndOpenMembershipsOfTeamParams struct {
@@ -71,8 +131,8 @@ type EndOpenMembershipsOfTeamParams struct {
 	TeamCode string
 }
 
-// A deleted team ends its memberships: the ones in force end today, the ones that have not
-// started yet go away.
+// A deleted team ends its memberships: the ones in force end today (also one that already
+// ends on a later date), the ones that have not started yet go away.
 func (q *Queries) EndOpenMembershipsOfTeam(ctx context.Context, arg EndOpenMembershipsOfTeamParams) (int64, error) {
 	result, err := q.db.Exec(ctx, endOpenMembershipsOfTeam, arg.Today, arg.Now, arg.TeamCode)
 	if err != nil {
@@ -95,36 +155,6 @@ type EndTeamMemberParams struct {
 
 func (q *Queries) EndTeamMember(ctx context.Context, arg EndTeamMemberParams) (TeamMember, error) {
 	row := q.db.QueryRow(ctx, endTeamMember, arg.EndDate, arg.Now, arg.ID)
-	var i TeamMember
-	err := row.Scan(
-		&i.ID,
-		&i.OrganizationID,
-		&i.TeamCode,
-		&i.PersonnelID,
-		&i.Role,
-		&i.StartDate,
-		&i.EndDate,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
-const getOpenTeamMemberForUpdate = `-- name: GetOpenTeamMemberForUpdate :one
-SELECT id, organization_id, team_code, personnel_id, role, start_date, end_date, created_at, updated_at FROM team_members
-WHERE team_code = $1 AND personnel_id = $2 AND end_date IS NULL
-FOR UPDATE
-`
-
-type GetOpenTeamMemberForUpdateParams struct {
-	TeamCode    string
-	PersonnelID int64
-}
-
-// The one open membership (no end date) of a person in a team. The overlap constraint allows
-// at most one open row per person and team.
-func (q *Queries) GetOpenTeamMemberForUpdate(ctx context.Context, arg GetOpenTeamMemberForUpdateParams) (TeamMember, error) {
-	row := q.db.QueryRow(ctx, getOpenTeamMemberForUpdate, arg.TeamCode, arg.PersonnelID)
 	var i TeamMember
 	err := row.Scan(
 		&i.ID,
@@ -181,6 +211,29 @@ func (q *Queries) GetTeamDanruOn(ctx context.Context, arg GetTeamDanruOnParams) 
 		&i.UpdatedAt,
 		&i.FullName,
 		&i.Nik,
+	)
+	return i, err
+}
+
+const getTeamMember = `-- name: GetTeamMember :one
+SELECT id, organization_id, team_code, personnel_id, role, start_date, end_date, created_at, updated_at FROM team_members WHERE id = $1
+`
+
+// The same without a lock: a move or a role change reads it first to know which regu to lock,
+// because the regu is always locked before its memberships (see Members.replace).
+func (q *Queries) GetTeamMember(ctx context.Context, id int64) (TeamMember, error) {
+	row := q.db.QueryRow(ctx, getTeamMember, id)
+	var i TeamMember
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.TeamCode,
+		&i.PersonnelID,
+		&i.Role,
+		&i.StartDate,
+		&i.EndDate,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -337,7 +390,7 @@ SELECT tm.id, tm.team_code, t.description AS team_name, t.project_code, pr.descr
 FROM team_members tm
 JOIN teams t    ON t.organization_id = tm.organization_id AND t.code = tm.team_code
 JOIN projects pr ON pr.organization_id = t.organization_id AND pr.code = t.project_code
-WHERE tm.personnel_id = $1 AND t.deleted_at IS NULL
+WHERE tm.personnel_id = $1 AND t.deleted_at IS NULL AND pr.deleted_at IS NULL
   AND tm.start_date <= ($2::timestamptz AT TIME ZONE pr.timezone)::date
   AND (tm.end_date IS NULL OR tm.end_date >= ($2::timestamptz AT TIME ZONE pr.timezone)::date)
 ORDER BY tm.team_code

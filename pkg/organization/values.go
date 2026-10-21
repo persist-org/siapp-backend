@@ -1,6 +1,7 @@
 package organization
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -14,6 +15,23 @@ import (
 
 // Conversions between the request and domain types (pointers: "not sent" is nil) and the
 // pgtype values sqlc takes and returns (Valid: false is NULL).
+
+// nullableID is a PATCH field that can be left out (Set false), cleared with null (Set true,
+// Value nil) or set. A plain pointer cannot tell the first two apart, so a value once set
+// could never be removed.
+type nullableID struct {
+	Set   bool
+	Value *int64
+}
+
+// UnmarshalJSON records that the field was sent; encoding/json calls it for null too.
+func (n *nullableID) UnmarshalJSON(b []byte) error {
+	n.Set = true
+	return json.Unmarshal(b, &n.Value)
+}
+
+// param is the value for a CASE WHEN @set THEN @value query argument.
+func (n nullableID) param() pgtype.Int8 { return int8OrNull(n.Value) }
 
 // textValue is a nullable text column as a pointer.
 func textValue(t pgtype.Text) *string {

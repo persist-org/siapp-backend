@@ -10,7 +10,7 @@ WHERE deleted_at IS NULL
   AND (sqlc.narg('scope_region')::text IS NULL OR 'OS' || substring(code from '^[0-9]+') = sqlc.narg('scope_region'))
   AND (sqlc.narg('branch_code')::text IS NULL OR branch_code = sqlc.narg('branch_code'))
   AND (sqlc.narg('active')::boolean IS NULL OR active = sqlc.narg('active'))
-  AND (sqlc.narg('q')::text IS NULL OR code ILIKE '%' || sqlc.narg('q') || '%' OR description ILIKE '%' || sqlc.narg('q') || '%')
+  AND (sqlc.narg('q')::text IS NULL OR strpos(lower(code), lower(sqlc.narg('q'))) > 0 OR strpos(lower(description), lower(sqlc.narg('q'))) > 0)
 ORDER BY code
 LIMIT @page_limit OFFSET @page_offset;
 
@@ -20,7 +20,7 @@ WHERE deleted_at IS NULL
   AND (sqlc.narg('scope_region')::text IS NULL OR 'OS' || substring(code from '^[0-9]+') = sqlc.narg('scope_region'))
   AND (sqlc.narg('branch_code')::text IS NULL OR branch_code = sqlc.narg('branch_code'))
   AND (sqlc.narg('active')::boolean IS NULL OR active = sqlc.narg('active'))
-  AND (sqlc.narg('q')::text IS NULL OR code ILIKE '%' || sqlc.narg('q') || '%' OR description ILIKE '%' || sqlc.narg('q') || '%');
+  AND (sqlc.narg('q')::text IS NULL OR strpos(lower(code), lower(sqlc.narg('q'))) > 0 OR strpos(lower(description), lower(sqlc.narg('q'))) > 0);
 
 -- name: GetClient :one
 SELECT * FROM clients WHERE code = $1 AND deleted_at IS NULL;
@@ -60,5 +60,6 @@ RETURNING *;
 UPDATE clients SET deleted_at = @now, active = false, modify_by = @actor, updated_at = @now
 WHERE code = @code AND deleted_at IS NULL;
 
--- name: CountActiveProjectsOfClient :one
-SELECT count(*) FROM projects WHERE client_code = $1 AND deleted_at IS NULL AND active;
+-- A client cannot be deleted while a project that is not deleted sits under it, active or not.
+-- name: CountProjectsOfClient :one
+SELECT count(*) FROM projects WHERE client_code = $1 AND deleted_at IS NULL;

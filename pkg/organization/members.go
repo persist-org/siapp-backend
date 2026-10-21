@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -213,30 +214,30 @@ func (m *Members) End(ctx context.Context, actor auth.Principal, scope access.Ad
 		if err != nil {
 			return fmt.Errorf("get team: %w", err)
 		}
-		open, err := q.GetOpenTeamMemberForUpdate(ctx, db.GetOpenTeamMemberForUpdateParams{TeamCode: teamCode, PersonnelID: personnelID})
-		if errors.Is(err, pgx.ErrNoRows) {
-			return ErrMembershipNotFound
-		}
-		if err != nil {
-			return fmt.Errorf("get open membership: %w", err)
-		}
 		today, err := todayOf(ctx, q, team, m.clock.Now())
 		if err != nil {
 			return err
 		}
-		meta := map[string]any{"team_code": teamCode, "personnel_id": personnelID, "role": string(open.Role), "start_date": dateValue(open.StartDate).String()}
-		if dateValue(open.StartDate).After(today) {
-			if _, err := q.DeleteTeamMember(ctx, open.ID); err != nil {
-				return fmt.Errorf("delete team member: %w", err)
-			}
-			meta["cancelled"] = true
-		} else {
-			if _, err := q.EndTeamMember(ctx, db.EndTeamMemberParams{ID: open.ID, EndDate: dateParam(today), Now: ts(m.clock.Now())}); err != nil {
-				return fmt.Errorf("end team member: %w", err)
-			}
+		// ⚠ Not only the open row: a move or a role change planned for a later date leaves the
+		// row in force today with that later end date, and the planned row after it. Both must
+		// go, or the person would stay in the regu until the planned date (or join it then).
+		cancelled, err := q.DeletePlannedMembershipsOfPerson(ctx, db.DeletePlannedMembershipsOfPersonParams{TeamCode: teamCode, PersonnelID: personnelID, Today: dateParam(today)})
+		if err != nil {
+			return fmt.Errorf("delete planned memberships: %w", err)
+		}
+		ended, err := q.EndMembershipsOfPersonToday(ctx, db.EndMembershipsOfPersonTodayParams{TeamCode: teamCode, PersonnelID: personnelID, Today: dateParam(today), Now: ts(m.clock.Now())})
+		if err != nil {
+			return fmt.Errorf("end memberships: %w", err)
+		}
+		if len(cancelled) == 0 && len(ended) == 0 {
+			return ErrMembershipNotFound
+		}
+		meta := map[string]any{"team_code": teamCode, "personnel_id": personnelID, "cancelled_ids": cancelled, "ended_ids": ended}
+		id := slices.Concat(ended, cancelled)[0]
+		if len(ended) > 0 {
 			meta["end_date"] = today.String()
 		}
-		return recordMemberAudit(ctx, q, actor, "team_member.end", open.ID, meta)
+		return recordMemberAudit(ctx, q, actor, "team_member.end", id, meta)
 	})
 }
 
@@ -283,6 +284,37 @@ func (m *Members) replace(ctx context.Context, actor auth.Principal, scope acces
 ) (Member, error) {
 	var out Member
 	err := database.WithTenant(ctx, m.pool, actor.OrganizationID, func(q *db.Queries) error {
+		peek, err := q.GetTeamMember(ctx, id)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrMembershipNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("get team member: %w", err)
+		}
+		if !scope.AllowsRegion(RegionOfCode(peek.TeamCode)) {
+			return access.ErrOutsideAdminScope
+		}
+		// Only a membership still in force can be replaced; an ended one is history.
+		if peek.EndDate.Valid {
+			return ErrMembershipNotFound
+		}
+		toTeam, role, err := target(peek)
+		if err != nil {
+			return err
+		}
+		// ⚠ Lock order: the regu first (both, by code), then the membership. A team delete takes
+		// its regu and then its memberships; locking the membership first here would deadlock
+		// with it.
+		for _, code := range slices.Compact(slices.Sorted(slices.Values([]string{peek.TeamCode, toTeam}))) {
+			if _, err := q.GetTeamForUpdate(ctx, code); errors.Is(err, pgx.ErrNoRows) {
+				if code == peek.TeamCode {
+					return ErrMembershipNotFound // its regu was deleted, which ended it
+				}
+				return ErrTeamNotFound
+			} else if err != nil {
+				return fmt.Errorf("get team: %w", err)
+			}
+		}
 		old, err := q.GetTeamMemberForUpdate(ctx, id)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrMembershipNotFound
@@ -290,24 +322,18 @@ func (m *Members) replace(ctx context.Context, actor auth.Principal, scope acces
 		if err != nil {
 			return fmt.Errorf("get team member: %w", err)
 		}
-		if !scope.AllowsRegion(RegionOfCode(old.TeamCode)) {
-			return access.ErrOutsideAdminScope
-		}
-		// Only a membership still in force can be replaced; an ended one is history.
-		if old.EndDate.Valid {
+		if old.EndDate.Valid { // replaced or ended while this request waited for the locks
 			return ErrMembershipNotFound
-		}
-		toTeam, role, err := target(old)
-		if err != nil {
-			return err
 		}
 		if !dateValue(old.StartDate).Before(effective) {
 			return validationError("effective_date", "Harus setelah tanggal mulai keanggotaan ("+dateValue(old.StartDate).String()+").")
 		}
-		if _, err := q.GetTeamForUpdate(ctx, toTeam); errors.Is(err, pgx.ErrNoRows) {
-			return ErrTeamNotFound
-		} else if err != nil {
-			return fmt.Errorf("get team: %w", err)
+		person, err := q.GetPersonnel(ctx, old.PersonnelID)
+		if err != nil {
+			return fmt.Errorf("get personnel: %w", err)
+		}
+		if person.Status == db.PersonnelStatusINACTIVE {
+			return ErrPersonnelInactive.WithMessage("Personil tidak aktif di Personalia dan tidak dapat dipindah atau diubah perannya.")
 		}
 		if _, err := q.EndTeamMember(ctx, db.EndTeamMemberParams{ID: old.ID, EndDate: dateParam(effective.AddDays(-1)), Now: ts(m.clock.Now())}); err != nil {
 			return fmt.Errorf("end team member: %w", err)

@@ -1,6 +1,7 @@
 package organization
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -183,8 +184,10 @@ func (s *Schedules) SetAssignment(ctx context.Context, actor auth.Principal, sco
 	err := database.WithTenant(ctx, s.pool, actor.OrganizationID, func(q *db.Queries) error {
 		// ⚠ The person's row is locked first: a first assignment has no row of its own to lock
 		// yet, and two at once would otherwise both delete and generate, leaving the schedule
-		// of one group under the other's assignment.
-		if _, err := q.LockPersonnel(ctx, personnelID); errors.Is(err, pgx.ErrNoRows) {
+		// of one group under the other's assignment. FOR NO KEY UPDATE, not FOR UPDATE: the
+		// nightly extension holds an assignment row while its schedule inserts take the
+		// person's KEY SHARE lock (the foreign key), and FOR UPDATE would deadlock with that.
+		if _, err := q.LockPersonnelForSchedule(ctx, personnelID); errors.Is(err, pgx.ErrNoRows) {
 			return errNoSuchPersonnel
 		} else if err != nil {
 			return fmt.Errorf("lock personnel: %w", err)
@@ -192,20 +195,28 @@ func (s *Schedules) SetAssignment(ctx context.Context, actor auth.Principal, sco
 		if err := s.reachPerson(ctx, q, scope, personnelID); err != nil {
 			return err
 		}
-		if err := mustBeActive(ctx, q, personnelID); err != nil {
-			return err
+		// Only FIXED generates anything. FLEXIBLE stays possible for someone who has left, so
+		// their group can be freed (and deleted).
+		if in.ScheduleType == ScheduleFixed {
+			if err := mustBeActive(ctx, q, personnelID); err != nil {
+				return err
+			}
 		}
 		previous, err := q.GetShiftAssignmentForUpdate(ctx, personnelID)
 		hadPrevious := err == nil
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("get shift assignment: %w", err)
 		}
+		var group *ShiftGroup
 		if in.ShiftGroupID != nil {
-			if _, err := loadGroup(ctx, q, *in.ShiftGroupID, false); err != nil {
+			// FOR SHARE: a delete of the group in flight is waited for and then seen.
+			g, err := loadGroup(ctx, q, *in.ShiftGroupID, lockShare)
+			if err != nil {
 				return err
 			}
+			group = &g
 		}
-		guard, horizonEnd, err := s.guardStart(ctx, q, personnelID, now)
+		guard, horizonEnd, err := s.guardStart(ctx, q, personnelID, now, group)
 		if err != nil {
 			return err
 		}
@@ -220,8 +231,14 @@ func (s *Schedules) SetAssignment(ctx context.Context, actor auth.Principal, sco
 			deleteFrom = laterDate(deleteFrom, guard)
 			// Every date about to be generated must have one timezone, as a manual entry must.
 			if genFrom := laterDate(in.EffectiveDate, guard); !horizonEnd.Before(genFrom) {
-				if _, err := zonesBetween(ctx, q, personnelID, genFrom, horizonEnd); err != nil {
+				zones, err := zonesBetween(ctx, q, personnelID, genFrom, horizonEnd)
+				if err != nil {
 					return err
+				}
+				for d := genFrom; !horizonEnd.Before(d); d = d.AddDays(1) {
+					if zones[d].ambiguous != nil {
+						return zones[d].ambiguous
+					}
 				}
 			}
 			if out.Deleted, err = q.DeleteSchedulesOfPersonnelFrom(ctx, db.DeleteSchedulesOfPersonnelFromParams{PersonnelID: personnelID, FromDate: dateParam(deleteFrom)}); err != nil {
@@ -336,6 +353,12 @@ func (s *Schedules) Create(ctx context.Context, actor auth.Principal, scope acce
 	now := s.clock.Now()
 	var out []ScheduleRow
 	err := database.WithTenant(ctx, s.pool, actor.OrganizationID, func(q *db.Queries) error {
+		// Scope first: a REGION_ADMIN learns nothing (exists? active?) about people outside it.
+		for _, e := range in.Entries {
+			if err := s.reachPersonOn(ctx, q, scope, personnelID, e.WorkDate); err != nil {
+				return err
+			}
+		}
 		if err := mustBeActive(ctx, q, personnelID); err != nil {
 			return err
 		}
@@ -344,11 +367,10 @@ func (s *Schedules) Create(ctx context.Context, actor auth.Principal, scope acce
 			return err
 		}
 		for i, e := range in.Entries {
-			if err := s.reachPersonOn(ctx, q, scope, personnelID, e.WorkDate); err != nil {
+			if z, err := zoneOn(ctx, q, personnelID, e.WorkDate); err != nil {
 				return err
-			}
-			if _, err := zoneOn(ctx, q, personnelID, e.WorkDate); err != nil {
-				return err
+			} else if z.ambiguous != nil {
+				return z.ambiguous
 			}
 			id, err := q.InsertSchedule(ctx, db.InsertScheduleParams{
 				PersonnelID: personnelID, WorkDate: dateParam(e.WorkDate), ShiftID: e.ShiftID, Actor: personnelRef(actor), Now: ts(now),
@@ -423,13 +445,23 @@ func (s *Schedules) Update(ctx context.Context, actor auth.Principal, scope acce
 			if _, err := entryShifts(ctx, q, []ScheduleEntry{{ShiftID: shiftID}}); err != nil {
 				return relabel(err, "entries[0].shift_id", "shift_id")
 			}
+		} else if newDate != oldDate && !newDate.Before(earliestToday(now)) {
+			// ...but not one that was deleted since: moved to today or later, the row would be
+			// a coming shift nobody can see (a deleted shift only stays on past dates).
+			if _, err := q.GetShift(ctx, shiftID); errors.Is(err, pgx.ErrNoRows) {
+				return validationError("shift_id", "Shift jadwal ini sudah dihapus. Pilih shift lain untuk tanggal ini.")
+			} else if err != nil {
+				return fmt.Errorf("get shift: %w", err)
+			}
 		}
 		if newDate != oldDate {
 			if err := s.reachPersonOn(ctx, q, scope, row.PersonnelID, newDate); err != nil {
 				return err
 			}
-			if _, err := zoneOn(ctx, q, row.PersonnelID, newDate); err != nil {
+			if z, err := zoneOn(ctx, q, row.PersonnelID, newDate); err != nil {
 				return err
+			} else if z.ambiguous != nil {
+				return z.ambiguous
 			}
 		}
 		err = q.UpdateSchedule(ctx, db.UpdateScheduleParams{ID: id, WorkDate: dateParam(newDate), ShiftID: shiftID, Actor: personnelRef(actor), Now: ts(now)})
@@ -559,20 +591,33 @@ func (s *Schedules) reachPersonOn(ctx context.Context, q *db.Queries, scope acce
 // ⚠ This is PJ48's getUpdateGuardStart: past dates are never touched, and today is locked once
 // its shift has started, because attendance hangs on it. (PJ48 also locks today once the
 // person has checked in; SiAPP's attendance arrives in Phase 07 and adds that check here.)
-func (s *Schedules) guardStart(ctx context.Context, q *db.Queries, personnelID int64, now time.Time) (timeutil.Date, timeutil.Date, error) {
+// Today is also left alone when the new group's shift of today has already started: the
+// person would otherwise get a shift that began hours ago, and be late for it.
+func (s *Schedules) guardStart(ctx context.Context, q *db.Queries, personnelID int64, now time.Time, group *ShiftGroup) (timeutil.Date, timeutil.Date, error) {
 	loc, err := currentZone(ctx, q, personnelID, now)
 	if err != nil {
 		return timeutil.Date{}, timeutil.Date{}, err
 	}
 	today := timeutil.BusinessDate(now, loc)
 	guard := today
+	started := func(isOff bool, startMinute int) bool {
+		return !isOff && !now.Before(timeutil.At(today, startMinute, loc))
+	}
 	rows, err := q.ListSchedulesOfPersonnelBetween(ctx, db.ListSchedulesOfPersonnelBetweenParams{PersonnelID: personnelID, DateFrom: dateParam(today), DateTo: dateParam(today)})
 	if err != nil {
 		return timeutil.Date{}, timeutil.Date{}, fmt.Errorf("get today's schedule: %w", err)
 	}
 	for _, r := range rows {
-		if !r.IsOff && !now.Before(timeutil.At(today, int(r.StartMinute), loc)) {
+		if started(r.IsOff, int(r.StartMinute)) {
 			guard = today.AddDays(1)
+		}
+	}
+	if group != nil {
+		weekday := int(today.Time().Weekday()+6)%7 + 1 // ISO: Monday 1 .. Sunday 7
+		for _, d := range group.Days {
+			if d.Weekday == weekday && started(d.Shift.IsOff, d.Shift.StartMinute) {
+				guard = today.AddDays(1)
+			}
 		}
 	}
 	return guard, today.AddDays(ScheduleHorizonDays), nil
@@ -601,7 +646,8 @@ func entryShifts(ctx context.Context, q *db.Queries, entries []ScheduleEntry) ([
 	for _, e := range entries {
 		ids = append(ids, e.ShiftID)
 	}
-	rows, err := q.GetShiftsByIDs(ctx, ids)
+	// FOR SHARE: a deactivation or delete of one of them in flight is waited for and then seen.
+	rows, err := q.GetShiftsByIDsForShare(ctx, ids)
 	if err != nil {
 		return nil, fmt.Errorf("get shifts: %w", err)
 	}
@@ -628,12 +674,16 @@ func entryShifts(ctx context.Context, q *db.Queries, entries []ScheduleEntry) ([
 type zone struct {
 	loc      *time.Location
 	projects []string
+	// ambiguous is SCHEDULE_TIMEZONE_AMBIGUOUS when the projects of that date are in different
+	// timezones (loc is then the first one's). Only a caller that puts a working shift on the
+	// date has to refuse it: an OFF day, or a date nothing is written to, has no instant.
+	ambiguous *apperr.Error
 }
 
 // zonesBetween returns the zone of each date of [from, to] from the person's memberships. A
 // date without a membership is in the group's default timezone (WIB) with no project. Two
-// projects with different timezones on one date is SCHEDULE_TIMEZONE_AMBIGUOUS: the local
-// shift times would mean two different instants.
+// projects with different timezones on one date mark it ambiguous: the local shift times
+// would mean two different instants.
 func zonesBetween(ctx context.Context, q *db.Queries, personnelID int64, from, to timeutil.Date) (map[timeutil.Date]zone, error) {
 	rows, err := q.ListMembershipZonesOfPersonnelBetween(ctx, db.ListMembershipZonesOfPersonnelBetweenParams{
 		PersonnelID: personnelID, DateFrom: dateParam(from), DateTo: dateParam(to),
@@ -649,19 +699,21 @@ func zonesBetween(ctx context.Context, q *db.Queries, personnelID int64, from, t
 	for d := from; !to.Before(d); d = d.AddDays(1) {
 		var tz string
 		var projects []string
+		var ambiguous *apperr.Error
 		for _, r := range rows {
 			if dateValue(r.StartDate).After(d) || (r.EndDate.Valid && dateValue(r.EndDate).Before(d)) {
 				continue
 			}
-			if tz != "" && r.Timezone != tz {
-				return nil, ErrScheduleTimezoneAmbiguous.WithMessage("Pada " + d.String() + " personil bertugas di proyek dengan zona waktu berbeda (" + tz + " dan " + r.Timezone + ").")
+			if tz == "" {
+				tz = r.Timezone
+			} else if r.Timezone != tz && ambiguous == nil {
+				ambiguous = ErrScheduleTimezoneAmbiguous.WithMessage("Pada " + d.String() + " personil bertugas di proyek dengan zona waktu berbeda (" + tz + " dan " + r.Timezone + ").")
 			}
-			tz = r.Timezone
 			if !slices.Contains(projects, r.ProjectCode) {
 				projects = append(projects, r.ProjectCode)
 			}
 		}
-		z := zone{loc: fallback, projects: projects}
+		z := zone{loc: fallback, projects: projects, ambiguous: ambiguous}
 		if tz != "" {
 			if z.loc, err = time.LoadLocation(tz); err != nil {
 				return nil, fmt.Errorf("load timezone %q: %w", tz, err)
@@ -752,8 +804,9 @@ func NewScheduleExtender(pool *pgxpool.Pool, c clock.Clock) *ScheduleExtender {
 
 // Extend generates, for every FIXED assignment of every organization, the dates between its
 // generated_until and today + ScheduleHorizonDays. A date that already has a schedule (an
-// admin's own entry) keeps it. It returns how many rows it made. A failure in one organization
-// does not stop the others; the first error is returned at the end, so the scheduler retries.
+// admin's own entry) keeps it. It returns how many rows it made. A failure for one person (or
+// organization) does not stop the others; the first error is returned at the end, so the
+// scheduler retries.
 func (e *ScheduleExtender) Extend(ctx context.Context) (int64, error) {
 	var orgs []int64
 	if err := database.WithoutTenant(ctx, e.pool, func(q *db.Queries) (err error) {
@@ -765,35 +818,72 @@ func (e *ScheduleExtender) Extend(ctx context.Context) (int64, error) {
 	now := e.clock.Now()
 	// The latest "today" of the three zones is WIT's; WIB's plus one day covers it.
 	target := earliestToday(now).AddDays(ScheduleHorizonDays + 1)
+	// ⚠ Never today or earlier: a window left behind (someone inactive for a while, a worker
+	// outage) is caught up from tomorrow on. The past is history, and today may be under way.
+	floor := earliestToday(now).AddDays(1)
 	var total int64
 	var firstErr error
 	for _, org := range orgs {
-		err := database.WithTenant(ctx, e.pool, org, func(q *db.Queries) error {
-			rows, err := q.ListAssignmentsToExtend(ctx, dateParam(target))
+		var people []int64
+		if err := database.WithTenant(ctx, e.pool, org, func(q *db.Queries) (err error) {
+			people, err = q.ListAssignmentsToExtend(ctx, dateParam(target))
+			return err
+		}); err != nil {
+			firstErr = cmp.Or(firstErr, fmt.Errorf("extend schedules of organization %d: list assignments: %w", org, err))
+			continue
+		}
+		for _, personnelID := range people {
+			made, err := e.extendOne(ctx, org, personnelID, floor, target, now)
 			if err != nil {
-				return fmt.Errorf("list assignments to extend: %w", err)
+				firstErr = cmp.Or(firstErr, fmt.Errorf("extend schedules of personnel %d in organization %d: %w", personnelID, org, err))
+				continue
 			}
-			for _, a := range rows {
-				from := dateValue(a.EffectiveDate)
-				if a.GeneratedUntil.Valid {
-					from = laterDate(from, dateValue(a.GeneratedUntil).AddDays(1))
-				}
-				n, err := generate(ctx, q, a.PersonnelID, a.ShiftGroupID.Int64, dateValue(a.EffectiveDate), from, target, pgtype.Int8{}, now)
-				if err != nil {
-					return err
-				}
-				total += n
-				if err := q.SetGeneratedUntil(ctx, db.SetGeneratedUntilParams{PersonnelID: a.PersonnelID, GeneratedUntil: dateParam(target)}); err != nil {
-					return fmt.Errorf("set generated until: %w", err)
-				}
-			}
-			return nil
-		})
-		if err != nil && firstErr == nil {
-			firstErr = fmt.Errorf("extend schedules of organization %d: %w", org, err)
+			total += made
 		}
 	}
 	return total, firstErr
+}
+
+// extendOne extends one person's FIXED window in a transaction of its own, so one person's
+// failure does not undo the others and no lock is held across the whole run. It takes the
+// locks in SetAssignment's order (the person, then the assignment) and re-reads the
+// assignment, which may have changed since it was listed.
+func (e *ScheduleExtender) extendOne(ctx context.Context, org, personnelID int64, floor, target timeutil.Date, now time.Time) (int64, error) {
+	var made int64
+	err := database.WithTenant(ctx, e.pool, org, func(q *db.Queries) error {
+		person, err := q.LockPersonnelForSchedule(ctx, personnelID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("lock personnel: %w", err)
+		}
+		if person.Status == db.PersonnelStatusINACTIVE {
+			return nil
+		}
+		a, err := q.GetShiftAssignmentForUpdate(ctx, personnelID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("get shift assignment: %w", err)
+		}
+		if a.ScheduleType != db.ScheduleTypeFIXED || !a.ShiftGroupID.Valid || (a.GeneratedUntil.Valid && !dateValue(a.GeneratedUntil).Before(target)) {
+			return nil
+		}
+		from := laterDate(dateValue(a.EffectiveDate), floor)
+		if a.GeneratedUntil.Valid {
+			from = laterDate(from, dateValue(a.GeneratedUntil).AddDays(1))
+		}
+		if made, err = generate(ctx, q, personnelID, a.ShiftGroupID.Int64, dateValue(a.EffectiveDate), from, target, pgtype.Int8{}, now); err != nil {
+			return err
+		}
+		if err := q.SetGeneratedUntil(ctx, db.SetGeneratedUntilParams{PersonnelID: personnelID, GeneratedUntil: dateParam(target)}); err != nil {
+			return fmt.Errorf("set generated until: %w", err)
+		}
+		return nil
+	})
+	return made, err
 }
 
 // RegisterScheduleJob adds the extension task handler to the worker's mux.

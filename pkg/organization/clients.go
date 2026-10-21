@@ -230,12 +230,12 @@ func (c *Clients) Delete(ctx context.Context, actor auth.Principal, scope access
 		if err != nil {
 			return fmt.Errorf("get client: %w", err)
 		}
-		projects, err := q.CountActiveProjectsOfClient(ctx, code)
+		projects, err := q.CountProjectsOfClient(ctx, code)
 		if err != nil {
 			return fmt.Errorf("count projects of client: %w", err)
 		}
 		if projects > 0 {
-			return ErrHasActiveChildren.WithMessage("Masih ada proyek aktif di klien ini.")
+			return ErrHasActiveChildren.WithMessage("Masih ada proyek (aktif maupun nonaktif) di klien ini.")
 		}
 		if _, err := q.SoftDeleteClient(ctx, db.SoftDeleteClientParams{Code: code, Actor: personnelRef(actor), Now: ts(c.clock.Now())}); err != nil {
 			return fmt.Errorf("delete client: %w", err)

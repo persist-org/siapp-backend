@@ -6,7 +6,7 @@
 SELECT * FROM shifts
 WHERE deleted_at IS NULL
   AND (sqlc.narg('active')::boolean IS NULL OR active = sqlc.narg('active'))
-  AND (sqlc.narg('q')::text IS NULL OR name ILIKE '%' || sqlc.narg('q') || '%')
+  AND (sqlc.narg('q')::text IS NULL OR strpos(lower(name), lower(sqlc.narg('q'))) > 0)
 ORDER BY lower(name), id
 LIMIT @page_limit OFFSET @page_offset;
 
@@ -14,7 +14,7 @@ LIMIT @page_limit OFFSET @page_offset;
 SELECT count(*) FROM shifts
 WHERE deleted_at IS NULL
   AND (sqlc.narg('active')::boolean IS NULL OR active = sqlc.narg('active'))
-  AND (sqlc.narg('q')::text IS NULL OR name ILIKE '%' || sqlc.narg('q') || '%');
+  AND (sqlc.narg('q')::text IS NULL OR strpos(lower(name), lower(sqlc.narg('q'))) > 0);
 
 -- name: GetShift :one
 SELECT * FROM shifts WHERE id = $1 AND deleted_at IS NULL;
@@ -24,6 +24,12 @@ SELECT * FROM shifts WHERE id = $1 AND deleted_at IS NULL FOR UPDATE;
 
 -- name: GetShiftsByIDs :many
 SELECT * FROM shifts WHERE id = ANY(@ids::bigint[]) AND deleted_at IS NULL;
+
+-- The shifts a write is about to point at (a group's days, a schedule). FOR SHARE makes a
+-- deactivation or delete of one of them in flight wait, and be seen; by id, so two writers
+-- take the locks in the same order.
+-- name: GetShiftsByIDsForShare :many
+SELECT * FROM shifts WHERE id = ANY(@ids::bigint[]) AND deleted_at IS NULL ORDER BY id FOR SHARE;
 
 -- name: CreateShift :one
 INSERT INTO shifts (name, start_minute, end_minute, is_off, tolerance_minutes, active, created_by, updated_by, created_at, updated_at)
@@ -61,20 +67,24 @@ SELECT count(*) FROM schedules WHERE shift_id = @shift_id AND work_date >= @from
 -- name: ListShiftGroups :many
 SELECT * FROM shift_groups
 WHERE deleted_at IS NULL
-  AND (sqlc.narg('q')::text IS NULL OR name ILIKE '%' || sqlc.narg('q') || '%')
+  AND (sqlc.narg('q')::text IS NULL OR strpos(lower(name), lower(sqlc.narg('q'))) > 0)
 ORDER BY lower(name), id
 LIMIT @page_limit OFFSET @page_offset;
 
 -- name: CountShiftGroups :one
 SELECT count(*) FROM shift_groups
 WHERE deleted_at IS NULL
-  AND (sqlc.narg('q')::text IS NULL OR name ILIKE '%' || sqlc.narg('q') || '%');
+  AND (sqlc.narg('q')::text IS NULL OR strpos(lower(name), lower(sqlc.narg('q'))) > 0);
 
 -- name: GetShiftGroup :one
 SELECT * FROM shift_groups WHERE id = $1 AND deleted_at IS NULL;
 
 -- name: GetShiftGroupForUpdate :one
 SELECT * FROM shift_groups WHERE id = $1 AND deleted_at IS NULL FOR UPDATE;
+
+-- A group an assignment is about to point at: a delete of it in flight is waited for and seen.
+-- name: GetShiftGroupForShare :one
+SELECT * FROM shift_groups WHERE id = $1 AND deleted_at IS NULL FOR SHARE;
 
 -- The days of groups, Monday first, with their shift.
 -- name: ListShiftGroupDays :many

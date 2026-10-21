@@ -58,8 +58,9 @@ type TeamUpdate struct {
 	Notes                          *string `json:"notes" validate:"omitempty,max=1000"`
 	ValidateShift                  *bool   `json:"validate_shift"`
 	RejectAttendanceAfterTolerance *bool   `json:"reject_attendance_after_tolerance"`
-	RelationshipOfficerPersonnelID *int64  `json:"relationship_officer_personnel_id" validate:"omitempty,gte=1"`
-	Active                         *bool   `json:"is_active"`
+	// RelationshipOfficerPersonnelID null removes the officer (they left, or were replaced).
+	RelationshipOfficerPersonnelID nullableID `json:"relationship_officer_personnel_id"`
+	Active                         *bool      `json:"is_active"`
 }
 
 // TeamFilter narrows a list. Zero values match everything.
@@ -203,15 +204,23 @@ func (t *Teams) Update(ctx context.Context, actor auth.Principal, scope access.A
 		if err != nil {
 			return fmt.Errorf("get team: %w", err)
 		}
-		if err := t.checkOfficer(ctx, q, in.RelationshipOfficerPersonnelID); err != nil {
-			return err
+		officer := in.RelationshipOfficerPersonnelID
+		// Only a NEW officer is checked: the team's current one keeps their place in a change
+		// of something else, even after they became inactive.
+		if officer.Set && officer.Value != nil && (!before.RelationshipOfficerPersonnelID.Valid || *officer.Value != before.RelationshipOfficerPersonnelID.Int64) {
+			if *officer.Value < 1 {
+				return validationError("relationship_officer_personnel_id", "Harus angka positif, atau null untuk menghapus.")
+			}
+			if err := t.checkOfficer(ctx, q, officer.Value); err != nil {
+				return err
+			}
 		}
 		row, err := q.UpdateTeam(ctx, db.UpdateTeamParams{
 			Code: code, Description: textPtr(trimmed(in.Description)), Phone: textPtr(in.Phone),
 			MinPersonnel: int4OrNull(in.MinPersonnel), Notes: textPtr(in.Notes), ValidateShift: boolOrNull(in.ValidateShift),
 			RejectAttendanceAfterTolerance: boolOrNull(in.RejectAttendanceAfterTolerance),
-			RelationshipOfficerPersonnelID: int8OrNull(in.RelationshipOfficerPersonnelID),
-			Active:                         boolOrNull(in.Active), Now: ts(t.clock.Now()),
+			SetOfficer:                     officer.Set, RelationshipOfficerPersonnelID: officer.param(),
+			Active: boolOrNull(in.Active), Now: ts(t.clock.Now()),
 		})
 		if err != nil {
 			return fmt.Errorf("update team: %w", err)
@@ -263,17 +272,21 @@ func (t *Teams) Delete(ctx context.Context, actor auth.Principal, scope access.A
 }
 
 // checkOfficer refuses a relationship officer who is not a person of the caller's
-// organization. The foreign key alone would accept another tenant's person (it ignores RLS).
+// organization, or whom Personalia reports as inactive (they have left). The foreign key
+// alone would accept another tenant's person (it ignores RLS).
 func (t *Teams) checkOfficer(ctx context.Context, q *db.Queries, id *int64) error {
 	if id == nil {
 		return nil
 	}
-	ok, err := q.PersonnelExists(ctx, *id)
+	person, err := q.GetPersonnel(ctx, *id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return validationError("relationship_officer_personnel_id", "Personil tidak ditemukan.")
+	}
 	if err != nil {
 		return fmt.Errorf("check relationship officer: %w", err)
 	}
-	if !ok {
-		return validationError("relationship_officer_personnel_id", "Personil tidak ditemukan.")
+	if person.Status == db.PersonnelStatusINACTIVE {
+		return validationError("relationship_officer_personnel_id", "Personil tidak aktif di Personalia.")
 	}
 	return nil
 }

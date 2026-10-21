@@ -10,7 +10,7 @@ WHERE deleted_at IS NULL
   AND (sqlc.narg('client_code')::text IS NULL OR client_code = sqlc.narg('client_code'))
   AND (sqlc.narg('business_line')::business_line IS NULL OR business_line = sqlc.narg('business_line'))
   AND (sqlc.narg('active')::boolean IS NULL OR active = sqlc.narg('active'))
-  AND (sqlc.narg('q')::text IS NULL OR code ILIKE '%' || sqlc.narg('q') || '%' OR description ILIKE '%' || sqlc.narg('q') || '%')
+  AND (sqlc.narg('q')::text IS NULL OR strpos(lower(code), lower(sqlc.narg('q'))) > 0 OR strpos(lower(description), lower(sqlc.narg('q'))) > 0)
 ORDER BY code
 LIMIT @page_limit OFFSET @page_offset;
 
@@ -21,7 +21,7 @@ WHERE deleted_at IS NULL
   AND (sqlc.narg('client_code')::text IS NULL OR client_code = sqlc.narg('client_code'))
   AND (sqlc.narg('business_line')::business_line IS NULL OR business_line = sqlc.narg('business_line'))
   AND (sqlc.narg('active')::boolean IS NULL OR active = sqlc.narg('active'))
-  AND (sqlc.narg('q')::text IS NULL OR code ILIKE '%' || sqlc.narg('q') || '%' OR description ILIKE '%' || sqlc.narg('q') || '%');
+  AND (sqlc.narg('q')::text IS NULL OR strpos(lower(code), lower(sqlc.narg('q'))) > 0 OR strpos(lower(description), lower(sqlc.narg('q'))) > 0);
 
 -- name: GetProject :one
 SELECT * FROM projects WHERE code = $1 AND deleted_at IS NULL;
@@ -72,8 +72,10 @@ RETURNING *;
 UPDATE projects SET deleted_at = @now, active = false, modify_by = @actor, updated_at = @now
 WHERE code = @code AND deleted_at IS NULL;
 
--- name: CountActiveTeamsOfProject :one
-SELECT count(*) FROM teams WHERE project_code = $1 AND deleted_at IS NULL AND active;
+-- A project cannot be deleted while a team that is not deleted sits under it, active or not:
+-- an inactive team keeps its memberships, and they would point at a deleted project.
+-- name: CountTeamsOfProject :one
+SELECT count(*) FROM teams WHERE project_code = $1 AND deleted_at IS NULL;
 
 -- The number of the next regu of a project. ⚠ The counter only ever goes up and runs in the
 -- same transaction as the team insert: a number that was handed out is never handed out

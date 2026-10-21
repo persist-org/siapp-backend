@@ -17,7 +17,7 @@ FROM schedules s
 JOIN personnels p ON p.id = s.personnel_id
 WHERE s.work_date BETWEEN $1 AND $2
   AND ($3::bigint IS NULL OR s.personnel_id = $3)
-  AND ($4::text IS NULL OR p.full_name ILIKE '%' || $4 || '%' OR p.nik = $4)
+  AND ($4::text IS NULL OR strpos(lower(p.full_name), lower($4)) > 0 OR p.nik = $4)
   AND ($5::text IS NULL OR EXISTS (
         SELECT 1 FROM team_members tm
         WHERE tm.personnel_id = s.personnel_id AND tm.team_code = $5
@@ -265,40 +265,30 @@ func (q *Queries) InsertSchedule(ctx context.Context, arg InsertScheduleParams) 
 }
 
 const listAssignmentsToExtend = `-- name: ListAssignmentsToExtend :many
-SELECT a.organization_id, a.personnel_id, a.schedule_type, a.shift_group_id, a.effective_date, a.generated_until, a.updated_by, a.created_at, a.updated_at FROM personnel_shift_assignments a
+SELECT a.personnel_id FROM personnel_shift_assignments a
 JOIN personnels p ON p.id = a.personnel_id
 WHERE a.schedule_type = 'FIXED' AND p.status <> 'INACTIVE'
   AND (a.generated_until IS NULL OR a.generated_until < $1)
 ORDER BY a.personnel_id
-FOR UPDATE OF a
 `
 
-// The FIXED assignments whose generated window ends before the target date. Locked, so an
-// admin changing one of them waits for the extension (or the extension waits for them). A
-// person Personalia reports as inactive has left: their window is not extended.
-func (q *Queries) ListAssignmentsToExtend(ctx context.Context, target pgtype.Date) ([]PersonnelShiftAssignment, error) {
+// The people whose FIXED window ends before the target date. Not locked: the extension then
+// takes each person in a short transaction of its own (ExtendOne), so it never holds the whole
+// organization's assignments at once. A person Personalia reports as inactive has left: their
+// window is not extended.
+func (q *Queries) ListAssignmentsToExtend(ctx context.Context, target pgtype.Date) ([]int64, error) {
 	rows, err := q.db.Query(ctx, listAssignmentsToExtend, target)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []PersonnelShiftAssignment{}
+	items := []int64{}
 	for rows.Next() {
-		var i PersonnelShiftAssignment
-		if err := rows.Scan(
-			&i.OrganizationID,
-			&i.PersonnelID,
-			&i.ScheduleType,
-			&i.ShiftGroupID,
-			&i.EffectiveDate,
-			&i.GeneratedUntil,
-			&i.UpdatedBy,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
+		var personnel_id int64
+		if err := rows.Scan(&personnel_id); err != nil {
 			return nil, err
 		}
-		items = append(items, i)
+		items = append(items, personnel_id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -365,7 +355,7 @@ JOIN personnels p ON p.id = s.personnel_id
 JOIN shifts sh ON sh.id = s.shift_id
 WHERE s.work_date BETWEEN $1 AND $2
   AND ($3::bigint IS NULL OR s.personnel_id = $3)
-  AND ($4::text IS NULL OR p.full_name ILIKE '%' || $4 || '%' OR p.nik = $4)
+  AND ($4::text IS NULL OR strpos(lower(p.full_name), lower($4)) > 0 OR p.nik = $4)
   AND ($5::text IS NULL OR EXISTS (
         SELECT 1 FROM team_members tm
         WHERE tm.personnel_id = s.personnel_id AND tm.team_code = $5
@@ -510,6 +500,25 @@ func (q *Queries) ListSchedulesOfPersonnelBetween(ctx context.Context, arg ListS
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockPersonnelForSchedule = `-- name: LockPersonnelForSchedule :one
+SELECT id, status FROM personnels WHERE id = $1 FOR NO KEY UPDATE
+`
+
+type LockPersonnelForScheduleRow struct {
+	ID     int64
+	Status PersonnelStatus
+}
+
+// ⚠ The per-person lock of everything that rewrites a person's schedule (an assignment, the
+// extension of it). FOR NO KEY UPDATE, not FOR UPDATE: schedule inserts take the person's
+// KEY SHARE lock through their foreign key, which FOR UPDATE would conflict with.
+func (q *Queries) LockPersonnelForSchedule(ctx context.Context, id int64) (LockPersonnelForScheduleRow, error) {
+	row := q.db.QueryRow(ctx, lockPersonnelForSchedule, id)
+	var i LockPersonnelForScheduleRow
+	err := row.Scan(&i.ID, &i.Status)
+	return i, err
 }
 
 const personnelInRegionFromNow = `-- name: PersonnelInRegionFromNow :one

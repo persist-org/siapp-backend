@@ -120,7 +120,9 @@ func (w *WebRoles) Put(ctx context.Context, actor auth.Principal, scope AdminSco
 			// ⚠ The region must exist (and not be deleted): a REGION_ADMIN of nothing would
 			// see nothing and could never be told why. The foreign key backs this up; this
 			// check is what gives the caller a field error instead of a constraint failure.
-			if _, err := q.GetRegion(ctx, in.RegionCode); errors.Is(err, pgx.ErrNoRows) {
+			// FOR SHARE: a delete of the region in flight is waited for and then seen, instead
+			// of committing under a grant that points at it.
+			if _, err := q.GetRegionForShare(ctx, in.RegionCode); errors.Is(err, pgx.ErrNoRows) {
 				return apperr.ErrValidation.WithFields(apperr.FieldError{
 					Field: "region_code", Code: "NOT_FOUND", Message: "Koordinator wilayah tidak ditemukan.",
 				})
@@ -139,6 +141,13 @@ func (w *WebRoles) Put(ctx context.Context, actor auth.Principal, scope AdminSco
 			return nil
 		}
 
+		// What the person had before, for the audit: a role change must not lose the old scope.
+		var before map[string]any
+		if previous, err := q.GetWebRole(ctx, target); err == nil {
+			before = map[string]any{"role": string(previous.Role), "region_code": previous.RegionCode.String}
+		} else if !errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("get web role: %w", err)
+		}
 		row, err := q.UpsertWebRole(ctx, db.UpsertWebRoleParams{
 			PersonnelID:          target,
 			Role:                 db.WebRole(in.Role),
@@ -152,7 +161,7 @@ func (w *WebRoles) Put(ctx context.Context, actor auth.Principal, scope AdminSco
 		actorID := actor.PersonnelID
 		if err := audit.Record(ctx, q, audit.Entry{
 			ActorPersonnelID: &actorID, Action: "web_role.grant", EntityType: "web_role", EntityID: target,
-			Metadata: map[string]any{"role": in.Role, "region_code": in.RegionCode},
+			Metadata: map[string]any{"role": in.Role, "region_code": in.RegionCode, "before": before},
 		}); err != nil {
 			return err
 		}

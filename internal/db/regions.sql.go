@@ -11,13 +11,15 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const countActiveBranchesOfRegion = `-- name: CountActiveBranchesOfRegion :one
-SELECT count(*) FROM branches WHERE region_code = $1 AND deleted_at IS NULL AND active
+const countBranchesOfRegion = `-- name: CountBranchesOfRegion :one
+SELECT count(*) FROM branches WHERE region_code = $1 AND deleted_at IS NULL
 `
 
-// A region cannot be deleted while an active kantor cabang sits under it.
-func (q *Queries) CountActiveBranchesOfRegion(ctx context.Context, regionCode string) (int64, error) {
-	row := q.db.QueryRow(ctx, countActiveBranchesOfRegion, regionCode)
+// A region cannot be deleted while a kantor cabang that is not deleted sits under it,
+// active or not: an inactive one would otherwise outlive its region (and could be switched
+// back on under it).
+func (q *Queries) CountBranchesOfRegion(ctx context.Context, regionCode string) (int64, error) {
+	row := q.db.QueryRow(ctx, countBranchesOfRegion, regionCode)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -28,7 +30,7 @@ SELECT count(*) FROM regions
 WHERE deleted_at IS NULL
   AND ($1::text IS NULL OR code = $1)
   AND ($2::boolean IS NULL OR active = $2)
-  AND ($3::text IS NULL OR code ILIKE '%' || $3 || '%' OR description ILIKE '%' || $3 || '%')
+  AND ($3::text IS NULL OR strpos(lower(code), lower($3)) > 0 OR strpos(lower(description), lower($3)) > 0)
 `
 
 type CountRegionsParams struct {
@@ -108,6 +110,27 @@ func (q *Queries) GetRegion(ctx context.Context, code string) (Region, error) {
 	return i, err
 }
 
+const getRegionForShare = `-- name: GetRegionForShare :one
+SELECT organization_id, code, description, active, created_at, updated_at, deleted_at FROM regions WHERE code = $1 AND deleted_at IS NULL FOR SHARE
+`
+
+// A region something is about to point at (a REGION_ADMIN grant): FOR SHARE waits for a delete
+// of it in flight, and then no longer finds it.
+func (q *Queries) GetRegionForShare(ctx context.Context, code string) (Region, error) {
+	row := q.db.QueryRow(ctx, getRegionForShare, code)
+	var i Region
+	err := row.Scan(
+		&i.OrganizationID,
+		&i.Code,
+		&i.Description,
+		&i.Active,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
 const getRegionForUpdate = `-- name: GetRegionForUpdate :one
 SELECT organization_id, code, description, active, created_at, updated_at, deleted_at FROM regions WHERE code = $1 AND deleted_at IS NULL FOR UPDATE
 `
@@ -134,7 +157,7 @@ SELECT organization_id, code, description, active, created_at, updated_at, delet
 WHERE deleted_at IS NULL
   AND ($1::text IS NULL OR code = $1)
   AND ($2::boolean IS NULL OR active = $2)
-  AND ($3::text IS NULL OR code ILIKE '%' || $3 || '%' OR description ILIKE '%' || $3 || '%')
+  AND ($3::text IS NULL OR strpos(lower(code), lower($3)) > 0 OR strpos(lower(description), lower($3)) > 0)
 ORDER BY length(code), code
 LIMIT $5 OFFSET $4
 `

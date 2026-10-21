@@ -6168,7 +6168,7 @@ type MeResult struct {
 
 	// WebRole Penugasan peran web (admin) milik SiAPP; null untuk petugas lapangan.
 	WebRole *struct {
-		// RegionCode Koordinator wilayah milik REGION_ADMIN; null untuk ORG_ADMIN.
+		// RegionCode Koordinator wilayah milik REGION_ADMIN; tidak ada (atau null) untuk ORG_ADMIN.
 		RegionCode *string              `json:"region_code,omitempty"`
 		Role       *MeResultWebRoleRole `json:"role,omitempty"`
 	} `json:"web_role,omitempty"`
@@ -6321,7 +6321,7 @@ type OrganizationCreateEnabledBusinessLines string
 // - `PROJECT_NOT_FOUND`: 404 NOT_FOUND. Proyek tidak ada atau sudah dihapus.
 // - `TEAM_NOT_FOUND`: 404 NOT_FOUND. Regu tidak ada atau sudah dihapus.
 // - `CODE_TAKEN`: 409 DUPLICATE. Kode sudah dipakai, termasuk oleh baris yang sudah dihapus (D19).
-// - `HAS_ACTIVE_CHILDREN`: 409 CONFLICT. Masih ada data aktif di bawahnya (atau admin wilayah yang menunjuknya).
+// - `HAS_ACTIVE_CHILDREN`: 409 CONFLICT. Masih ada data yang belum dihapus di bawahnya, aktif maupun nonaktif (atau admin wilayah yang menunjuknya).
 // - `BRANCH_LETTER_INVALID`: 422 VALIDATION_ERROR. Huruf PT cabang bukan K, I, atau P.
 // - `BRANCH_REGION_MISMATCH`: 422 VALIDATION_ERROR. Nomor kode cabang tidak sama dengan nomor wilayahnya (hanya import, 02.4).
 // - `CLIENT_PREFIX_INVALID`: 422 VALIDATION_ERROR. Prefix klien bukan 2 sampai 10 huruf besar atau angka.
@@ -6623,7 +6623,7 @@ type Personnel struct {
 type PersonnelGender string
 
 // PersonnelCard Biodata personil untuk layar Regu. Hanya yang dibutuhkan layar itu: profil HR (tanggal lahir,
-// alamat, dokumen) milik Personalia dan tidak ditampilkan di SiAPP.
+// alamat, dokumen) milik Personalia dan tidak ditampilkan di SiAPP. Field yang kosong tidak dikirim.
 type PersonnelCard struct {
 	FullName *string `json:"full_name,omitempty"`
 
@@ -6792,7 +6792,7 @@ type ProjectInput struct {
 	// Address Opsional.
 	Address *string `json:"address,omitempty"`
 
-	// AttendanceRadiusMeters Opsional. Radius geofence absensi (meter). Bawaan 150.
+	// AttendanceRadiusMeters Opsional. Radius geofence absensi (meter), 1 sampai 10000. Bawaan 150.
 	AttendanceRadiusMeters *int `json:"attendance_radius_meters,omitempty"`
 
 	// BusinessLine WAJIB. Menentukan akhiran kode. Klien yang sudah punya proyek untuk bidang itu: 409 CODE_TAKEN. Tidak dapat diubah.
@@ -6834,7 +6834,7 @@ type ProjectInput struct {
 	// Longitude Opsional, tetapi harus dikirim bersama latitude.
 	Longitude *float64 `json:"longitude,omitempty"`
 
-	// PatrolIntervalMinutes Opsional. Tidak dikirim = tidak dibatasi.
+	// PatrolIntervalMinutes Opsional, 1 sampai 1440. Tidak dikirim = tidak dibatasi.
 	PatrolIntervalMinutes *int `json:"patrol_interval_minutes,omitempty"`
 
 	// Phone Opsional.
@@ -7407,7 +7407,7 @@ type TeamDetail struct {
 	ClientName   *string             `json:"client_name,omitempty"`
 	Code         *string             `json:"code,omitempty"`
 
-	// Danru DANRU hari ini; null bila regu belum punya DANRU.
+	// Danru DANRU hari ini; tidak ada (atau null) bila regu belum punya DANRU.
 	Danru *DirectoryPerson `json:"danru,omitempty"`
 
 	// IsMyTeam Pemanggil anggota regu ini hari ini.
@@ -7420,7 +7420,7 @@ type TeamDetail struct {
 	Members      *[]TeamRosterMember `json:"members,omitempty"`
 	MinPersonnel *int                `json:"min_personnel,omitempty"`
 
-	// MyRole Peran pemanggil di regu ini; null bila bukan anggotanya.
+	// MyRole Peran pemanggil di regu ini; tidak ada (atau null) bila bukan anggotanya.
 	MyRole              *TeamRole        `json:"my_role,omitempty"`
 	Name                *string          `json:"name,omitempty"`
 	Phone               *string          `json:"phone,omitempty"`
@@ -7458,7 +7458,7 @@ type TeamInput struct {
 	// RejectAttendanceAfterTolerance Opsional. Bawaan false.
 	RejectAttendanceAfterTolerance *bool `json:"reject_attendance_after_tolerance,omitempty"`
 
-	// RelationshipOfficerPersonnelId Opsional. Harus personil di organisasi ini (422 bila tidak).
+	// RelationshipOfficerPersonnelId Opsional. Harus personil aktif di organisasi ini (422 bila tidak).
 	RelationshipOfficerPersonnelId *int64 `json:"relationship_officer_personnel_id,omitempty"`
 
 	// ValidateShift Opsional. Bawaan true.
@@ -7544,7 +7544,7 @@ type TeamMembershipMoveInput struct {
 // TeamRole Peran lapangan di regu (DL-04). Satu DANRU per regu per tanggal (BR-RULE-02).
 type TeamRole string
 
-// TeamRosterMember defines model for TeamRosterMember.
+// TeamRosterMember Anggota regu hari ini. Personil yang sudah tidak aktif di Personalia tidak tercantum dan tidak dihitung.
 type TeamRosterMember struct {
 	FullName    *string `json:"full_name,omitempty"`
 	PersonnelId *int64  `json:"personnel_id,omitempty"`
@@ -7556,7 +7556,7 @@ type TeamRosterMember struct {
 	// Role Peran lapangan di regu (DL-04). Satu DANRU per regu per tanggal (BR-RULE-02).
 	Role *TeamRole `json:"role,omitempty"`
 
-	// TodayShift Jadwal personil hari ini (termasuk OFF); null bila belum dijadwalkan.
+	// TodayShift Jadwal personil hari ini (termasuk OFF); tidak ada (atau null) bila belum dijadwalkan.
 	TodayShift *ScheduleShift `json:"today_shift,omitempty"`
 }
 
@@ -7578,7 +7578,7 @@ type TeamSummary struct {
 	ClientName   *string             `json:"client_name,omitempty"`
 	Code         *string             `json:"code,omitempty"`
 
-	// Danru DANRU hari ini; null bila regu belum punya DANRU.
+	// Danru DANRU hari ini; tidak ada (atau null) bila regu belum punya DANRU.
 	Danru *DirectoryPerson `json:"danru,omitempty"`
 
 	// IsMyTeam Pemanggil anggota regu ini hari ini.
@@ -7588,7 +7588,7 @@ type TeamSummary struct {
 	MemberCount  *int `json:"member_count,omitempty"`
 	MinPersonnel *int `json:"min_personnel,omitempty"`
 
-	// MyRole Peran pemanggil di regu ini; null bila bukan anggotanya.
+	// MyRole Peran pemanggil di regu ini; tidak ada (atau null) bila bukan anggotanya.
 	MyRole      *TeamRole `json:"my_role,omitempty"`
 	Name        *string   `json:"name,omitempty"`
 	Phone       *string   `json:"phone,omitempty"`
@@ -7609,8 +7609,10 @@ type TeamUpdate struct {
 	Notes                          *string `json:"notes,omitempty"`
 	Phone                          *string `json:"phone,omitempty"`
 	RejectAttendanceAfterTolerance *bool   `json:"reject_attendance_after_tolerance,omitempty"`
-	RelationshipOfficerPersonnelId *int64  `json:"relationship_officer_personnel_id,omitempty"`
-	ValidateShift                  *bool   `json:"validate_shift,omitempty"`
+
+	// RelationshipOfficerPersonnelId null menghapus relationship officer. Officer BARU harus personil aktif di organisasi ini (422); officer yang sudah ada tetap walau kemudian nonaktif.
+	RelationshipOfficerPersonnelId *int64 `json:"relationship_officer_personnel_id,omitempty"`
+	ValidateShift                  *bool  `json:"validate_shift,omitempty"`
 }
 
 // Tombstone Record terhapus untuk cache lokal delta-sync (DL-34).
@@ -7893,7 +7895,7 @@ type ValidationError = ErrorEnvelope
 
 // GetAdminAssetConditionsParams defines parameters for GetAdminAssetConditions.
 type GetAdminAssetConditionsParams struct {
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -7934,7 +7936,7 @@ type GetAdminAssetsParams struct {
 	// ProjectId Filter scope proyek.
 	ProjectId *ProjectIdParam `form:"project_id,omitempty" json:"project_id,omitempty"`
 
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -7978,7 +7980,7 @@ type GetAdminAttendancesParams struct {
 	// DateTo Akhir rentang (YYYY-MM-DD, relatif TZ proyek).
 	DateTo *DateToParam `form:"date_to,omitempty" json:"date_to,omitempty"`
 
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -8007,7 +8009,7 @@ type PatchAdminAttendancesById200JSONResponseBodySuccess bool
 
 // GetAdminBranchesParams defines parameters for GetAdminBranches.
 type GetAdminBranchesParams struct {
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -8037,7 +8039,7 @@ type PatchAdminBranchesByCode200JSONResponseBodySuccess bool
 
 // GetAdminCctvsParams defines parameters for GetAdminCctvs.
 type GetAdminCctvsParams struct {
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -8093,7 +8095,7 @@ type PatchAdminCctvsByIdAccess200JSONResponseBodySuccess bool
 
 // GetAdminClientGroupsParams defines parameters for GetAdminClientGroups.
 type GetAdminClientGroupsParams struct {
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -8131,7 +8133,7 @@ type PatchAdminClientGroupsById200JSONResponseBodySuccess bool
 
 // GetAdminClientTypesParams defines parameters for GetAdminClientTypes.
 type GetAdminClientTypesParams struct {
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -8169,7 +8171,7 @@ type PatchAdminClientTypesById200JSONResponseBodySuccess bool
 
 // GetAdminClientsParams defines parameters for GetAdminClients.
 type GetAdminClientsParams struct {
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -8199,7 +8201,7 @@ type PatchAdminClientsByCode200JSONResponseBodySuccess bool
 
 // GetAdminInstructionCategoriesParams defines parameters for GetAdminInstructionCategories.
 type GetAdminInstructionCategoriesParams struct {
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -8237,7 +8239,7 @@ type PatchAdminInstructionCategoriesById200JSONResponseBodySuccess bool
 
 // GetAdminLetterheadsParams defines parameters for GetAdminLetterheads.
 type GetAdminLetterheadsParams struct {
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -8275,7 +8277,7 @@ type PatchAdminLetterheadsById200JSONResponseBodySuccess bool
 
 // GetAdminMasterReviewsParams defines parameters for GetAdminMasterReviews.
 type GetAdminMasterReviewsParams struct {
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -8319,7 +8321,7 @@ type PatchAdminMasterReviewsById200JSONResponseBodySuccess bool
 
 // GetAdminPanicTypesParams defines parameters for GetAdminPanicTypes.
 type GetAdminPanicTypesParams struct {
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -8381,7 +8383,7 @@ type PostAdminPanicsByIdResolve200JSONResponseBodySuccess bool
 
 // GetAdminPermissionCategoriesParams defines parameters for GetAdminPermissionCategories.
 type GetAdminPermissionCategoriesParams struct {
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -8437,7 +8439,7 @@ type GetAdminPersonnelReviewsParams struct {
 	// Q Pencarian teks case-insensitive (nama/kode/subjek).
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -8461,7 +8463,7 @@ type PutAdminPersonnelByPersonnelIdShiftAssignment200JSONResponseBodySuccess boo
 
 // GetAdminPersonnelsParams defines parameters for GetAdminPersonnels.
 type GetAdminPersonnelsParams struct {
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -8525,7 +8527,7 @@ type PostAdminPersonnelsByIdDocuments200JSONResponseBodySuccess bool
 
 // GetAdminPositionsParams defines parameters for GetAdminPositions.
 type GetAdminPositionsParams struct {
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -8563,7 +8565,7 @@ type PatchAdminPositionsById200JSONResponseBodySuccess bool
 
 // GetAdminProjectsParams defines parameters for GetAdminProjects.
 type GetAdminProjectsParams struct {
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -8596,7 +8598,7 @@ type PatchAdminProjectsByCode200JSONResponseBodySuccess bool
 
 // GetAdminQualificationsParams defines parameters for GetAdminQualifications.
 type GetAdminQualificationsParams struct {
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -8634,7 +8636,7 @@ type PatchAdminQualificationsById200JSONResponseBodySuccess bool
 
 // GetAdminRegionsParams defines parameters for GetAdminRegions.
 type GetAdminRegionsParams struct {
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -8661,7 +8663,7 @@ type PatchAdminRegionsByCode200JSONResponseBodySuccess bool
 
 // GetAdminReportCategoriesParams defines parameters for GetAdminReportCategories.
 type GetAdminReportCategoriesParams struct {
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -8712,7 +8714,7 @@ type GetAdminReportsParams struct {
 	// DateTo Akhir rentang (YYYY-MM-DD, relatif TZ proyek).
 	DateTo *DateToParam `form:"date_to,omitempty" json:"date_to,omitempty"`
 
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -8732,7 +8734,7 @@ type GetAdminReportsExportParamsFormat string
 
 // GetAdminRolesParams defines parameters for GetAdminRoles.
 type GetAdminRolesParams struct {
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -8785,7 +8787,7 @@ type GetAdminSchedulesParams struct {
 	// Q Pencarian teks case-insensitive (nama/kode/subjek).
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -8806,7 +8808,7 @@ type PatchAdminSchedulesById200JSONResponseBodySuccess bool
 
 // GetAdminShiftGroupsParams defines parameters for GetAdminShiftGroups.
 type GetAdminShiftGroupsParams struct {
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -8830,7 +8832,7 @@ type PatchAdminShiftGroupsById200JSONResponseBodySuccess bool
 
 // GetAdminShiftsParams defines parameters for GetAdminShifts.
 type GetAdminShiftsParams struct {
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -8857,7 +8859,7 @@ type PatchAdminShiftsById200JSONResponseBodySuccess bool
 
 // GetAdminStakeholderTypesParams defines parameters for GetAdminStakeholderTypes.
 type GetAdminStakeholderTypesParams struct {
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -8901,7 +8903,7 @@ type PostAdminTeamMembersByIdMove200JSONResponseBodySuccess bool
 
 // GetAdminTeamsParams defines parameters for GetAdminTeams.
 type GetAdminTeamsParams struct {
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -8931,7 +8933,7 @@ type PatchAdminTeamsByCode200JSONResponseBodySuccess bool
 
 // GetAdminTeamsByCodeMembersParams defines parameters for GetAdminTeamsByCodeMembers.
 type GetAdminTeamsByCodeMembersParams struct {
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -8949,7 +8951,7 @@ type PostAdminTeamsByCodeMembers201JSONResponseBodySuccess bool
 
 // GetAdminWebRolesParams defines parameters for GetAdminWebRoles.
 type GetAdminWebRolesParams struct {
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -8964,7 +8966,7 @@ type PutAdminWebRole200JSONResponseBodySuccess bool
 
 // GetAdminWebUsersParams defines parameters for GetAdminWebUsers.
 type GetAdminWebUsersParams struct {
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -9002,7 +9004,7 @@ type PatchAdminWebUsersById200JSONResponseBodySuccess bool
 
 // GetAdminZonesParams defines parameters for GetAdminZones.
 type GetAdminZonesParams struct {
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -9056,7 +9058,7 @@ type GetAssetConditions200JSONResponseBodySuccess bool
 type GetAssetReportsParams struct {
 	AssetId int64 `form:"asset_id" json:"asset_id"`
 
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -9087,7 +9089,7 @@ type PostAssetReports201JSONResponseBodySuccess bool
 type GetAssetsParams struct {
 	ProjectId int64 `form:"project_id" json:"project_id"`
 
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -9111,7 +9113,7 @@ type GetAttendancesParams struct {
 	// DateTo Akhir rentang (YYYY-MM-DD, relatif TZ proyek).
 	DateTo *DateToParam `form:"date_to,omitempty" json:"date_to,omitempty"`
 
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -9151,7 +9153,7 @@ type GetAttendancesMeParams struct {
 	// DateTo Akhir rentang (YYYY-MM-DD, relatif TZ proyek).
 	DateTo *DateToParam `form:"date_to,omitempty" json:"date_to,omitempty"`
 
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -9302,7 +9304,7 @@ type GetBillingInvoicesParams struct {
 	PeriodStart *openapi_types.Date `form:"period_start,omitempty" json:"period_start,omitempty"`
 	PeriodEnd   *openapi_types.Date `form:"period_end,omitempty" json:"period_end,omitempty"`
 
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -9348,7 +9350,7 @@ type GetCities200JSONResponseBodySuccess bool
 
 // GetDeveloperApiClientsParams defines parameters for GetDeveloperApiClients.
 type GetDeveloperApiClientsParams struct {
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -9386,7 +9388,7 @@ type PatchDeveloperApiClientsById200JSONResponseBodySuccess bool
 
 // GetDeveloperApiKeysParams defines parameters for GetDeveloperApiKeys.
 type GetDeveloperApiKeysParams struct {
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -9429,7 +9431,7 @@ type PostDeveloperApiKeysByIdRotate200JSONResponseBodySuccess bool
 
 // GetDeveloperApiRequestLogsParams defines parameters for GetDeveloperApiRequestLogs.
 type GetDeveloperApiRequestLogsParams struct {
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -9456,7 +9458,7 @@ type GetDeveloperApiRequestLogs200JSONResponseBodySuccess bool
 
 // GetDeveloperUsageParams defines parameters for GetDeveloperUsage.
 type GetDeveloperUsageParams struct {
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -9474,7 +9476,7 @@ type GetDeveloperUsage200JSONResponseBodySuccess bool
 
 // GetDeveloperWebhookDeliveriesParams defines parameters for GetDeveloperWebhookDeliveries.
 type GetDeveloperWebhookDeliveriesParams struct {
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -9512,7 +9514,7 @@ type PostDeveloperWebhookDeliveriesByIdRetry200JSONResponseBodySuccess bool
 
 // GetDeveloperWebhookEndpointsParams defines parameters for GetDeveloperWebhookEndpoints.
 type GetDeveloperWebhookEndpointsParams struct {
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -9547,7 +9549,7 @@ type PatchDeveloperWebhookEndpointsById200JSONResponseBodySuccess bool
 
 // GetEMemosParams defines parameters for GetEMemos.
 type GetEMemosParams struct {
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -9629,7 +9631,7 @@ type GetInstructionsInboxParams struct {
 	Q          *QParam `form:"q,omitempty" json:"q,omitempty"`
 	CategoryId *int64  `form:"category_id,omitempty" json:"category_id,omitempty"`
 
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 }
 
@@ -9668,7 +9670,7 @@ type GetMasterReviews200JSONResponseBodySuccess bool
 type GetNotificationsParams struct {
 	UnreadOnly *bool `form:"unread_only,omitempty" json:"unread_only,omitempty"`
 
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -9834,7 +9836,7 @@ type GetPermissionsParams struct {
 	// Status Filter status/enum resource.
 	Status *StatusParam `form:"status,omitempty" json:"status,omitempty"`
 
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -9888,7 +9890,7 @@ type GetPersonnelReviewsParams struct {
 	// DateTo Akhir rentang (YYYY-MM-DD, relatif TZ proyek).
 	DateTo *DateToParam `form:"date_to,omitempty" json:"date_to,omitempty"`
 
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -9994,7 +9996,7 @@ type GetPlatformInvoicesParams struct {
 	PeriodStart *openapi_types.Date `form:"period_start,omitempty" json:"period_start,omitempty"`
 	PeriodEnd   *openapi_types.Date `form:"period_end,omitempty" json:"period_end,omitempty"`
 
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -10057,7 +10059,7 @@ type GetPlatformOrganizationsParams struct {
 	// Status Filter status/enum resource.
 	Status *StatusParam `form:"status,omitempty" json:"status,omitempty"`
 
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -10095,7 +10097,7 @@ type PostPlatformOrganizationsByIdSuspend200JSONResponseBodySuccess bool
 
 // GetPlatformPlansParams defines parameters for GetPlatformPlans.
 type GetPlatformPlansParams struct {
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -10115,7 +10117,7 @@ type GetPlatformSubscriptionsParams struct {
 	// Status Filter status/enum resource.
 	Status *StatusParam `form:"status,omitempty" json:"status,omitempty"`
 
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -10139,7 +10141,7 @@ type GetProvinces200JSONResponseBodySuccess bool
 
 // GetQrCodesParams defines parameters for GetQrCodes.
 type GetQrCodesParams struct {
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
@@ -10201,7 +10203,7 @@ type GetReportSummaryByTypeParams struct {
 	// Q Pencarian teks case-insensitive (nama/kode/subjek).
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
-	// Page Nomor halaman (1-indexed).
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).

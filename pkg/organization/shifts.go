@@ -352,7 +352,7 @@ func (m *ShiftMasters) GetShiftGroup(ctx context.Context, actor auth.Principal, 
 	var out ShiftGroup
 	err := database.WithTenant(ctx, m.pool, actor.OrganizationID, func(q *db.Queries) error {
 		var err error
-		out, err = loadGroup(ctx, q, id, false)
+		out, err = loadGroup(ctx, q, id, lockNone)
 		return err
 	})
 	return out, err
@@ -379,7 +379,7 @@ func (m *ShiftMasters) CreateShiftGroup(ctx context.Context, actor auth.Principa
 		if err := saveDays(ctx, q, row.ID, days); err != nil {
 			return err
 		}
-		if out, err = loadGroup(ctx, q, row.ID, false); err != nil {
+		if out, err = loadGroup(ctx, q, row.ID, lockNone); err != nil {
 			return err
 		}
 		return recordIDAudit(ctx, q, actor, "shift_group.create", "shift_group", row.ID, nil, groupMeta(out))
@@ -407,7 +407,7 @@ func (m *ShiftMasters) UpdateShiftGroup(ctx context.Context, actor auth.Principa
 	}
 	var out ShiftGroup
 	err = database.WithTenant(ctx, m.pool, actor.OrganizationID, func(q *db.Queries) error {
-		before, err := loadGroup(ctx, q, id, true)
+		before, err := loadGroup(ctx, q, id, lockUpdate)
 		if err != nil {
 			return err
 		}
@@ -420,7 +420,7 @@ func (m *ShiftMasters) UpdateShiftGroup(ctx context.Context, actor auth.Principa
 		if err := saveDays(ctx, q, id, days); err != nil {
 			return err
 		}
-		if out, err = loadGroup(ctx, q, id, false); err != nil {
+		if out, err = loadGroup(ctx, q, id, lockNone); err != nil {
 			return err
 		}
 		return recordIDAudit(ctx, q, actor, "shift_group.update", "shift_group", id, groupMeta(before), groupMeta(out))
@@ -441,7 +441,7 @@ func (m *ShiftMasters) DeleteShiftGroup(ctx context.Context, actor auth.Principa
 		return access.ErrOrgAdminOnly
 	}
 	return database.WithTenant(ctx, m.pool, actor.OrganizationID, func(q *db.Queries) error {
-		before, err := loadGroup(ctx, q, id, true)
+		before, err := loadGroup(ctx, q, id, lockUpdate)
 		if err != nil {
 			return err
 		}
@@ -560,7 +560,8 @@ func checkDayShifts(ctx context.Context, q *db.Queries, days map[int]int64) erro
 	for _, id := range days {
 		ids = append(ids, id)
 	}
-	rows, err := q.GetShiftsByIDs(ctx, ids)
+	// FOR SHARE: a deactivation or delete of one of them in flight is waited for and then seen.
+	rows, err := q.GetShiftsByIDsForShare(ctx, ids)
 	if err != nil {
 		return fmt.Errorf("get shifts: %w", err)
 	}
@@ -595,13 +596,25 @@ func saveDays(ctx context.Context, q *db.Queries, groupID int64, days map[int]in
 	return nil
 }
 
-// loadGroup reads a group and its days, locking the group row when forUpdate.
-func loadGroup(ctx context.Context, q *db.Queries, id int64, forUpdate bool) (ShiftGroup, error) {
+// rowLock is how a read locks the row it reads.
+type rowLock int
+
+const (
+	lockNone   rowLock = iota
+	lockShare          // FOR SHARE: the row is about to be pointed at; a delete of it waits
+	lockUpdate         // FOR UPDATE: the row is about to change
+)
+
+// loadGroup reads a group and its days, locking the group row as asked.
+func loadGroup(ctx context.Context, q *db.Queries, id int64, lock rowLock) (ShiftGroup, error) {
 	var row db.ShiftGroup
 	var err error
-	if forUpdate {
+	switch lock {
+	case lockUpdate:
 		row, err = q.GetShiftGroupForUpdate(ctx, id)
-	} else {
+	case lockShare:
+		row, err = q.GetShiftGroupForShare(ctx, id)
+	case lockNone:
 		row, err = q.GetShiftGroup(ctx, id)
 	}
 	if errors.Is(err, pgx.ErrNoRows) {

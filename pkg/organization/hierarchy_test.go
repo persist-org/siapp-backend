@@ -344,14 +344,18 @@ func TestADeleteIsRefusedWhileActiveChildrenRemain(t *testing.T) {
 	})
 }
 
-func TestAnInactiveChildDoesNotBlockADelete(t *testing.T) {
+// An inactive child still blocks a delete: let through, it would outlive its deleted parent,
+// keep its memberships under a project nobody can see, and could be switched back on there.
+func TestAnInactiveChildStillBlocksADelete(t *testing.T) {
 	e := newEnv(t)
 	admin := e.person(testkit.NewOrg(t), "ORG_ADMIN", "")
 	_, _, _, project := e.tree(admin, 1)
 	require.Equal(t, http.StatusCreated, e.newTeam(admin, project).Status)
 
 	require.Equal(t, http.StatusOK, e.api(admin, http.MethodPatch, "/admin/teams/1K-IBMI-S1", map[string]any{"is_active": false}).Status)
-	require.Equal(t, http.StatusOK, e.api(admin, http.MethodDelete, "/admin/projects/1K-IBMI-S", nil).Status)
+	expect(t, e.api(admin, http.MethodDelete, "/admin/projects/1K-IBMI-S", nil), http.StatusConflict, "CONFLICT", organization.ReasonHasActiveChildren)
+	require.Equal(t, http.StatusOK, e.api(admin, http.MethodDelete, "/admin/teams/1K-IBMI-S1", nil).Status)
+	require.Equal(t, http.StatusOK, e.api(admin, http.MethodDelete, "/admin/projects/1K-IBMI-S", nil).Status, "once the team is deleted")
 }
 
 func TestARegionAdminWorksInsideTheirRegion(t *testing.T) {

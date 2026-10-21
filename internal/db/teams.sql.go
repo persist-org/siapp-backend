@@ -17,7 +17,7 @@ WHERE deleted_at IS NULL
   AND ($1::text IS NULL OR 'OS' || substring(code from '^[0-9]+') = $1)
   AND ($2::text IS NULL OR project_code = $2)
   AND ($3::boolean IS NULL OR active = $3)
-  AND ($4::text IS NULL OR code ILIKE '%' || $4 || '%' OR description ILIKE '%' || $4 || '%')
+  AND ($4::text IS NULL OR strpos(lower(code), lower($4)) > 0 OR strpos(lower(description), lower($4)) > 0)
 `
 
 type CountTeamsParams struct {
@@ -155,7 +155,7 @@ WHERE deleted_at IS NULL
   AND ($1::text IS NULL OR 'OS' || substring(code from '^[0-9]+') = $1)
   AND ($2::text IS NULL OR project_code = $2)
   AND ($3::boolean IS NULL OR active = $3)
-  AND ($4::text IS NULL OR code ILIKE '%' || $4 || '%' OR description ILIKE '%' || $4 || '%')
+  AND ($4::text IS NULL OR strpos(lower(code), lower($4)) > 0 OR strpos(lower(description), lower($4)) > 0)
 ORDER BY project_code, length(code), code
 LIMIT $6 OFFSET $5
 `
@@ -216,19 +216,6 @@ func (q *Queries) ListTeams(ctx context.Context, arg ListTeamsParams) ([]Team, e
 	return items, nil
 }
 
-const personnelExists = `-- name: PersonnelExists :one
-SELECT EXISTS (SELECT 1 FROM personnels WHERE id = $1)
-`
-
-// A team's relationship officer is a person of the caller's organization (RLS hides the
-// others), so an id from another tenant is not found.
-func (q *Queries) PersonnelExists(ctx context.Context, id int64) (bool, error) {
-	row := q.db.QueryRow(ctx, personnelExists, id)
-	var exists bool
-	err := row.Scan(&exists)
-	return exists, err
-}
-
 const softDeleteTeam = `-- name: SoftDeleteTeam :execrows
 UPDATE teams SET deleted_at = $1, active = false, updated_at = $1
 WHERE code = $2 AND deleted_at IS NULL
@@ -255,10 +242,12 @@ UPDATE teams SET
     notes                             = COALESCE($4, notes),
     validate_shift                    = COALESCE($5, validate_shift),
     reject_attendance_after_tolerance = COALESCE($6, reject_attendance_after_tolerance),
-    relationship_officer_personnel_id = COALESCE($7, relationship_officer_personnel_id),
-    active                            = COALESCE($8, active),
-    updated_at                        = $9
-WHERE code = $10 AND deleted_at IS NULL
+    -- set_officer tells "not sent" (keep) from null (remove the officer).
+    relationship_officer_personnel_id = CASE WHEN $7::boolean THEN $8::bigint
+                                             ELSE relationship_officer_personnel_id END,
+    active                            = COALESCE($9, active),
+    updated_at                        = $10
+WHERE code = $11 AND deleted_at IS NULL
 RETURNING organization_id, code, project_code, description, phone, min_personnel, notes, validate_shift, reject_attendance_after_tolerance, relationship_officer_personnel_id, active, created_at, updated_at, deleted_at
 `
 
@@ -269,6 +258,7 @@ type UpdateTeamParams struct {
 	Notes                          pgtype.Text
 	ValidateShift                  pgtype.Bool
 	RejectAttendanceAfterTolerance pgtype.Bool
+	SetOfficer                     bool
 	RelationshipOfficerPersonnelID pgtype.Int8
 	Active                         pgtype.Bool
 	Now                            pgtype.Timestamptz
@@ -284,6 +274,7 @@ func (q *Queries) UpdateTeam(ctx context.Context, arg UpdateTeamParams) (Team, e
 		arg.Notes,
 		arg.ValidateShift,
 		arg.RejectAttendanceAfterTolerance,
+		arg.SetOfficer,
 		arg.RelationshipOfficerPersonnelID,
 		arg.Active,
 		arg.Now,

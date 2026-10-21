@@ -26,16 +26,22 @@ RETURNING *;
 -- name: SetGeneratedUntil :exec
 UPDATE personnel_shift_assignments SET generated_until = @generated_until WHERE personnel_id = @personnel_id;
 
--- The FIXED assignments whose generated window ends before the target date. Locked, so an
--- admin changing one of them waits for the extension (or the extension waits for them). A
--- person Personalia reports as inactive has left: their window is not extended.
+-- The people whose FIXED window ends before the target date. Not locked: the extension then
+-- takes each person in a short transaction of its own (ExtendOne), so it never holds the whole
+-- organization's assignments at once. A person Personalia reports as inactive has left: their
+-- window is not extended.
 -- name: ListAssignmentsToExtend :many
-SELECT a.* FROM personnel_shift_assignments a
+SELECT a.personnel_id FROM personnel_shift_assignments a
 JOIN personnels p ON p.id = a.personnel_id
 WHERE a.schedule_type = 'FIXED' AND p.status <> 'INACTIVE'
   AND (a.generated_until IS NULL OR a.generated_until < @target)
-ORDER BY a.personnel_id
-FOR UPDATE OF a;
+ORDER BY a.personnel_id;
+
+-- ⚠ The per-person lock of everything that rewrites a person's schedule (an assignment, the
+-- extension of it). FOR NO KEY UPDATE, not FOR UPDATE: schedule inserts take the person's
+-- KEY SHARE lock through their foreign key, which FOR UPDATE would conflict with.
+-- name: LockPersonnelForSchedule :one
+SELECT id, status FROM personnels WHERE id = $1 FOR NO KEY UPDATE;
 
 -- name: DeleteSchedulesOfPersonnelFrom :execrows
 DELETE FROM schedules WHERE personnel_id = @personnel_id AND work_date >= @from_date;
@@ -62,7 +68,7 @@ JOIN personnels p ON p.id = s.personnel_id
 JOIN shifts sh ON sh.id = s.shift_id
 WHERE s.work_date BETWEEN @date_from AND @date_to
   AND (sqlc.narg('personnel_id')::bigint IS NULL OR s.personnel_id = sqlc.narg('personnel_id'))
-  AND (sqlc.narg('q')::text IS NULL OR p.full_name ILIKE '%' || sqlc.narg('q') || '%' OR p.nik = sqlc.narg('q'))
+  AND (sqlc.narg('q')::text IS NULL OR strpos(lower(p.full_name), lower(sqlc.narg('q'))) > 0 OR p.nik = sqlc.narg('q'))
   AND (sqlc.narg('team_code')::text IS NULL OR EXISTS (
         SELECT 1 FROM team_members tm
         WHERE tm.personnel_id = s.personnel_id AND tm.team_code = sqlc.narg('team_code')
@@ -81,7 +87,7 @@ FROM schedules s
 JOIN personnels p ON p.id = s.personnel_id
 WHERE s.work_date BETWEEN @date_from AND @date_to
   AND (sqlc.narg('personnel_id')::bigint IS NULL OR s.personnel_id = sqlc.narg('personnel_id'))
-  AND (sqlc.narg('q')::text IS NULL OR p.full_name ILIKE '%' || sqlc.narg('q') || '%' OR p.nik = sqlc.narg('q'))
+  AND (sqlc.narg('q')::text IS NULL OR strpos(lower(p.full_name), lower(sqlc.narg('q'))) > 0 OR p.nik = sqlc.narg('q'))
   AND (sqlc.narg('team_code')::text IS NULL OR EXISTS (
         SELECT 1 FROM team_members tm
         WHERE tm.personnel_id = s.personnel_id AND tm.team_code = sqlc.narg('team_code')

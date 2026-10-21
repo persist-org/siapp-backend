@@ -284,48 +284,66 @@ func TestAFixedAssignmentGeneratesTheScheduleLikePJ48(t *testing.T) {
 	// A past date entered by hand, which no generation may touch.
 	require.Equal(t, http.StatusCreated, e.manual(admin, budi, entry("2026-03-05", night)).Status)
 
-	t.Run("FIXED fills today to today + 60 from the weekly pattern", func(t *testing.T) {
+	t.Run("FIXED fills the window from the weekly pattern, from tomorrow when today's shift has begun", func(t *testing.T) {
+		// 12:00 in Jakarta on a Tuesday: the group's 08:00 Day shift of today began 4 hours ago,
+		// so today is not given it (the person would be late for a shift they never had).
 		res := e.assign(admin, budi, map[string]any{"schedule_type": "FIXED", "shift_group_id": weekdays, "effective_date": "2026-03-01"})
 		require.Equal(t, http.StatusOK, res.Status, "body: %s", res.Raw)
 		got := data[row](t, res)
-		require.Equal(t, "2026-03-10", got.str("from"), "today in Jakarta; the past is not generated")
-		require.EqualValues(t, 61, got["generated"])
+		require.Equal(t, "2026-03-11", got.str("from"), "the past is not generated, nor a today already under way")
+		require.EqualValues(t, 60, got["generated"])
 		require.EqualValues(t, 0, got["deleted"])
 		assignment := got["assignment"].(map[string]any)              //nolint:forcetypeassert // test
 		require.Equal(t, "2026-05-09", assignment["generated_until"]) // 2026-03-10 + 60
 
 		rows := e.scheduleOf(org, budi)
 		require.Equal(t, "2026-03-05 Night manual", rows[0], "the past stays")
-		require.Equal(t, "2026-03-10 Day group", rows[1], "Tuesday")
-		require.Equal(t, "2026-03-14 OFF group", rows[5], "Saturday")
-		require.Equal(t, "2026-03-15 OFF group", rows[6], "Sunday")
-		require.Equal(t, "2026-03-16 Day group", rows[7], "Monday")
+		require.Equal(t, "2026-03-11 Day group", rows[1], "Wednesday")
+		require.Equal(t, "2026-03-14 OFF group", rows[4], "Saturday")
+		require.Equal(t, "2026-03-15 OFF group", rows[5], "Sunday")
+		require.Equal(t, "2026-03-16 Day group", rows[6], "Monday")
 		require.Equal(t, "2026-05-09 OFF group", rows[len(rows)-1], "Saturday, the last day of the window")
 	})
 
-	t.Run("a new group replaces from tomorrow when today's shift has already started", func(t *testing.T) {
-		// 12:00 in Jakarta: today's 08:00 Day shift is under way, so today is locked.
+	t.Run("a group whose shift of today has not begun fills today too", func(t *testing.T) {
+		// The Night shift of today starts at 22:00, ten hours from now.
 		res := e.assign(admin, budi, map[string]any{"schedule_type": "FIXED", "shift_group_id": nights, "effective_date": "2026-03-01"})
+		require.Equal(t, http.StatusOK, res.Status, "body: %s", res.Raw)
+		got := data[row](t, res)
+		require.Equal(t, "2026-03-10", got.str("from"))
+		require.EqualValues(t, 60, got["deleted"])
+		require.EqualValues(t, 61, got["generated"])
+		rows := e.scheduleOf(org, budi)
+		require.Equal(t, "2026-03-10 Night group", rows[1])
+		require.Equal(t, "2026-03-11 Night group", rows[2])
+	})
+
+	t.Run("a new group replaces from tomorrow when today's own shift has already started", func(t *testing.T) {
+		today := data[[]row](t, e.raw(admin, http.MethodGet, "/admin/schedules?date_from=2026-03-10&date_to=2026-03-10&personnel_id="+strconv.FormatInt(budi, 10), nil))
+		require.Len(t, today, 1)
+		require.Equal(t, http.StatusOK, e.api(admin, http.MethodPatch, "/admin/schedules/"+strconv.FormatInt(id(today[0]), 10), map[string]any{"shift_id": day}).Status,
+			"today becomes the 08:00 Day shift, under way at 12:00")
+		res := e.assign(admin, budi, map[string]any{"schedule_type": "FIXED", "shift_group_id": weekdays, "effective_date": "2026-03-01"})
 		require.Equal(t, http.StatusOK, res.Status, "body: %s", res.Raw)
 		got := data[row](t, res)
 		require.Equal(t, "2026-03-11", got.str("from"))
 		require.EqualValues(t, 60, got["deleted"])
 		require.EqualValues(t, 60, got["generated"])
 		rows := e.scheduleOf(org, budi)
-		require.Equal(t, "2026-03-10 Day group", rows[1], "today keeps its shift")
-		require.Equal(t, "2026-03-11 Night group", rows[2])
+		require.Equal(t, "2026-03-10 Day manual", rows[1], "today keeps its shift")
+		require.Equal(t, "2026-03-11 Day group", rows[2])
 	})
 
 	t.Run("a future effective date keeps the dates before it", func(t *testing.T) {
-		res := e.assign(admin, budi, map[string]any{"schedule_type": "FIXED", "shift_group_id": weekdays, "effective_date": "2026-04-01"})
+		res := e.assign(admin, budi, map[string]any{"schedule_type": "FIXED", "shift_group_id": nights, "effective_date": "2026-04-01"})
 		require.Equal(t, http.StatusOK, res.Status, "body: %s", res.Raw)
 		rows := e.scheduleOf(org, budi)
 		// The old effective date (03-01) was earlier, so its rows from tomorrow on are replaced;
 		// before 04-01 nothing is generated.
-		require.Contains(t, rows, "2026-03-10 Day group")
-		require.NotContains(t, rows, "2026-03-11 Night group")
-		require.Contains(t, rows, "2026-04-01 Day group", "Wednesday")
-		require.Equal(t, "2026-04-01 Day group", rows[2])
+		require.Contains(t, rows, "2026-03-10 Day manual")
+		require.NotContains(t, rows, "2026-03-11 Day group")
+		require.Contains(t, rows, "2026-04-01 Night group", "Wednesday")
+		require.Equal(t, "2026-04-01 Night group", rows[2])
 	})
 
 	t.Run("FLEXIBLE generates and deletes nothing", func(t *testing.T) {
@@ -372,7 +390,7 @@ func TestAFixedAssignmentGeneratesTheScheduleLikePJ48(t *testing.T) {
 			require.NoError(t, tx.QueryRow(t.Context(),
 				"SELECT metadata::text FROM audit_logs WHERE action = 'shift_assignment.set' ORDER BY id LIMIT 1").Scan(&metadata))
 		})
-		require.Contains(t, metadata, `"generated": 61`)
+		require.Contains(t, metadata, `"generated": 60`)
 		require.Contains(t, metadata, `"schedule_type": "FIXED"`)
 	})
 }
@@ -623,10 +641,12 @@ func TestScheduleEdgeCases(t *testing.T) {
 		require.Contains(t, string(bad.Raw), "tidak aktif")
 	})
 
-	t.Run("someone who has left gets no new assignment or schedule", func(t *testing.T) {
+	t.Run("someone who has left gets no new FIXED assignment or schedule, but can be made FLEXIBLE", func(t *testing.T) {
 		gone := e.personNIK(org, "N-GONE", "Gone", "INACTIVE")
-		expect(t, e.assign(admin, gone, map[string]any{"schedule_type": "FLEXIBLE", "effective_date": "2026-03-01"}),
+		expect(t, e.assign(admin, gone, map[string]any{"schedule_type": "FIXED", "shift_group_id": group, "effective_date": "2026-03-01"}),
 			http.StatusUnprocessableEntity, "VALIDATION_ERROR", organization.ReasonPersonnelInactive)
+		require.Equal(t, http.StatusOK, e.assign(admin, gone, map[string]any{"schedule_type": "FLEXIBLE", "effective_date": "2026-03-01"}).Status,
+			"FLEXIBLE generates nothing, and frees the group they were on")
 		expect(t, e.manual(admin, gone, entry("2026-03-20", day)), http.StatusUnprocessableEntity, "VALIDATION_ERROR", organization.ReasonPersonnelInactive)
 		require.Zero(t, e.scheduleCount(org, gone))
 	})

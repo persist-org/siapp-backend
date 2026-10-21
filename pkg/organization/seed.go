@@ -110,7 +110,7 @@ func SeedDefaultShifts(ctx context.Context, pool *pgxpool.Pool, c clock.Clock, o
 		if err := saveDays(ctx, q, group.ID, days); err != nil {
 			return err
 		}
-		created, err := loadGroup(ctx, q, group.ID, false)
+		created, err := loadGroup(ctx, q, group.ID, lockNone)
 		if err != nil {
 			return err
 		}

@@ -12,28 +12,35 @@ RETURNING *;
 -- name: GetTeamMemberForUpdate :one
 SELECT * FROM team_members WHERE id = $1 FOR UPDATE;
 
--- The one open membership (no end date) of a person in a team. The overlap constraint allows
--- at most one open row per person and team.
--- name: GetOpenTeamMemberForUpdate :one
-SELECT * FROM team_members
-WHERE team_code = @team_code AND personnel_id = @personnel_id AND end_date IS NULL
-FOR UPDATE;
+-- The same without a lock: a move or a role change reads it first to know which regu to lock,
+-- because the regu is always locked before its memberships (see Members.replace).
+-- name: GetTeamMember :one
+SELECT * FROM team_members WHERE id = $1;
+
+-- Taking a person out of a regu today: the rows that have not started yet never took effect
+-- and go away, and the row in force today ends today. "In force" includes a row that already
+-- has a later end date (a move or role change planned for a future date ended it there).
+-- name: DeletePlannedMembershipsOfPerson :many
+DELETE FROM team_members
+WHERE team_code = @team_code AND personnel_id = @personnel_id AND start_date > @today
+RETURNING id;
+
+-- name: EndMembershipsOfPersonToday :many
+UPDATE team_members SET end_date = @today, updated_at = @now
+WHERE team_code = @team_code AND personnel_id = @personnel_id
+  AND start_date <= @today AND (end_date IS NULL OR end_date > @today)
+RETURNING id;
 
 -- name: EndTeamMember :one
 UPDATE team_members SET end_date = @end_date, updated_at = @now
 WHERE id = @id
 RETURNING *;
 
--- Only for a membership that never took effect (it starts after today): there is no history
--- to keep of a row that was never in force.
--- name: DeleteTeamMember :execrows
-DELETE FROM team_members WHERE id = $1;
-
--- A deleted team ends its memberships: the ones in force end today, the ones that have not
--- started yet go away.
+-- A deleted team ends its memberships: the ones in force end today (also one that already
+-- ends on a later date), the ones that have not started yet go away.
 -- name: EndOpenMembershipsOfTeam :execrows
 UPDATE team_members SET end_date = @today, updated_at = @now
-WHERE team_code = @team_code AND end_date IS NULL AND start_date <= @today;
+WHERE team_code = @team_code AND start_date <= @today AND (end_date IS NULL OR end_date > @today);
 
 -- name: DeleteFutureMembershipsOfTeam :execrows
 DELETE FROM team_members WHERE team_code = @team_code AND start_date > @today;
@@ -90,7 +97,7 @@ SELECT tm.id, tm.team_code, t.description AS team_name, t.project_code, pr.descr
 FROM team_members tm
 JOIN teams t    ON t.organization_id = tm.organization_id AND t.code = tm.team_code
 JOIN projects pr ON pr.organization_id = t.organization_id AND pr.code = t.project_code
-WHERE tm.personnel_id = @personnel_id AND t.deleted_at IS NULL
+WHERE tm.personnel_id = @personnel_id AND t.deleted_at IS NULL AND pr.deleted_at IS NULL
   AND tm.start_date <= (sqlc.arg('now')::timestamptz AT TIME ZONE pr.timezone)::date
   AND (tm.end_date IS NULL OR tm.end_date >= (sqlc.arg('now')::timestamptz AT TIME ZONE pr.timezone)::date)
 ORDER BY tm.team_code;

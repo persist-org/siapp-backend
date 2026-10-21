@@ -9,7 +9,7 @@ WHERE deleted_at IS NULL
   AND (sqlc.narg('scope_region')::text IS NULL OR 'OS' || substring(code from '^[0-9]+') = sqlc.narg('scope_region'))
   AND (sqlc.narg('project_code')::text IS NULL OR project_code = sqlc.narg('project_code'))
   AND (sqlc.narg('active')::boolean IS NULL OR active = sqlc.narg('active'))
-  AND (sqlc.narg('q')::text IS NULL OR code ILIKE '%' || sqlc.narg('q') || '%' OR description ILIKE '%' || sqlc.narg('q') || '%')
+  AND (sqlc.narg('q')::text IS NULL OR strpos(lower(code), lower(sqlc.narg('q'))) > 0 OR strpos(lower(description), lower(sqlc.narg('q'))) > 0)
 -- S2 before S10: the project, then the number.
 ORDER BY project_code, length(code), code
 LIMIT @page_limit OFFSET @page_offset;
@@ -20,7 +20,7 @@ WHERE deleted_at IS NULL
   AND (sqlc.narg('scope_region')::text IS NULL OR 'OS' || substring(code from '^[0-9]+') = sqlc.narg('scope_region'))
   AND (sqlc.narg('project_code')::text IS NULL OR project_code = sqlc.narg('project_code'))
   AND (sqlc.narg('active')::boolean IS NULL OR active = sqlc.narg('active'))
-  AND (sqlc.narg('q')::text IS NULL OR code ILIKE '%' || sqlc.narg('q') || '%' OR description ILIKE '%' || sqlc.narg('q') || '%');
+  AND (sqlc.narg('q')::text IS NULL OR strpos(lower(code), lower(sqlc.narg('q'))) > 0 OR strpos(lower(description), lower(sqlc.narg('q'))) > 0);
 
 -- name: GetTeam :one
 SELECT * FROM teams WHERE code = $1 AND deleted_at IS NULL;
@@ -45,7 +45,9 @@ UPDATE teams SET
     notes                             = COALESCE(sqlc.narg('notes'), notes),
     validate_shift                    = COALESCE(sqlc.narg('validate_shift'), validate_shift),
     reject_attendance_after_tolerance = COALESCE(sqlc.narg('reject_attendance_after_tolerance'), reject_attendance_after_tolerance),
-    relationship_officer_personnel_id = COALESCE(sqlc.narg('relationship_officer_personnel_id'), relationship_officer_personnel_id),
+    -- set_officer tells "not sent" (keep) from null (remove the officer).
+    relationship_officer_personnel_id = CASE WHEN @set_officer::boolean THEN sqlc.narg('relationship_officer_personnel_id')::bigint
+                                             ELSE relationship_officer_personnel_id END,
     active                            = COALESCE(sqlc.narg('active'), active),
     updated_at                        = @now
 WHERE code = @code AND deleted_at IS NULL
@@ -57,5 +59,3 @@ WHERE code = @code AND deleted_at IS NULL;
 
 -- A team's relationship officer is a person of the caller's organization (RLS hides the
 -- others), so an id from another tenant is not found.
--- name: PersonnelExists :one
-SELECT EXISTS (SELECT 1 FROM personnels WHERE id = $1);

@@ -11,7 +11,7 @@ WHERE deleted_at IS NULL
   AND (sqlc.narg('scope_region')::text IS NULL OR region_code = sqlc.narg('scope_region'))
   AND (sqlc.narg('region_code')::text IS NULL OR region_code = sqlc.narg('region_code'))
   AND (sqlc.narg('active')::boolean IS NULL OR active = sqlc.narg('active'))
-  AND (sqlc.narg('q')::text IS NULL OR code ILIKE '%' || sqlc.narg('q') || '%' OR description ILIKE '%' || sqlc.narg('q') || '%')
+  AND (sqlc.narg('q')::text IS NULL OR strpos(lower(code), lower(sqlc.narg('q'))) > 0 OR strpos(lower(description), lower(sqlc.narg('q'))) > 0)
 ORDER BY length(code), code
 LIMIT @page_limit OFFSET @page_offset;
 
@@ -21,7 +21,7 @@ WHERE deleted_at IS NULL
   AND (sqlc.narg('scope_region')::text IS NULL OR region_code = sqlc.narg('scope_region'))
   AND (sqlc.narg('region_code')::text IS NULL OR region_code = sqlc.narg('region_code'))
   AND (sqlc.narg('active')::boolean IS NULL OR active = sqlc.narg('active'))
-  AND (sqlc.narg('q')::text IS NULL OR code ILIKE '%' || sqlc.narg('q') || '%' OR description ILIKE '%' || sqlc.narg('q') || '%');
+  AND (sqlc.narg('q')::text IS NULL OR strpos(lower(code), lower(sqlc.narg('q'))) > 0 OR strpos(lower(description), lower(sqlc.narg('q'))) > 0);
 
 -- name: GetBranch :one
 SELECT * FROM branches WHERE code = $1 AND deleted_at IS NULL;
@@ -58,6 +58,6 @@ RETURNING *;
 UPDATE branches SET deleted_at = @now, active = false, updated_at = @now
 WHERE code = @code AND deleted_at IS NULL;
 
--- A branch cannot be deleted while an active client sits under it.
--- name: CountActiveClientsOfBranch :one
-SELECT count(*) FROM clients WHERE branch_code = $1 AND deleted_at IS NULL AND active;
+-- A branch cannot be deleted while a client that is not deleted sits under it, active or not.
+-- name: CountClientsOfBranch :one
+SELECT count(*) FROM clients WHERE branch_code = $1 AND deleted_at IS NULL;

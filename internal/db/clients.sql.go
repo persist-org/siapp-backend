@@ -11,24 +11,13 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const countActiveProjectsOfClient = `-- name: CountActiveProjectsOfClient :one
-SELECT count(*) FROM projects WHERE client_code = $1 AND deleted_at IS NULL AND active
-`
-
-func (q *Queries) CountActiveProjectsOfClient(ctx context.Context, clientCode string) (int64, error) {
-	row := q.db.QueryRow(ctx, countActiveProjectsOfClient, clientCode)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
 const countClients = `-- name: CountClients :one
 SELECT count(*) FROM clients
 WHERE deleted_at IS NULL
   AND ($1::text IS NULL OR 'OS' || substring(code from '^[0-9]+') = $1)
   AND ($2::text IS NULL OR branch_code = $2)
   AND ($3::boolean IS NULL OR active = $3)
-  AND ($4::text IS NULL OR code ILIKE '%' || $4 || '%' OR description ILIKE '%' || $4 || '%')
+  AND ($4::text IS NULL OR strpos(lower(code), lower($4)) > 0 OR strpos(lower(description), lower($4)) > 0)
 `
 
 type CountClientsParams struct {
@@ -45,6 +34,18 @@ func (q *Queries) CountClients(ctx context.Context, arg CountClientsParams) (int
 		arg.Active,
 		arg.Q,
 	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countProjectsOfClient = `-- name: CountProjectsOfClient :one
+SELECT count(*) FROM projects WHERE client_code = $1 AND deleted_at IS NULL
+`
+
+// A client cannot be deleted while a project that is not deleted sits under it, active or not.
+func (q *Queries) CountProjectsOfClient(ctx context.Context, clientCode string) (int64, error) {
+	row := q.db.QueryRow(ctx, countProjectsOfClient, clientCode)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -195,7 +196,7 @@ WHERE deleted_at IS NULL
   AND ($1::text IS NULL OR 'OS' || substring(code from '^[0-9]+') = $1)
   AND ($2::text IS NULL OR branch_code = $2)
   AND ($3::boolean IS NULL OR active = $3)
-  AND ($4::text IS NULL OR code ILIKE '%' || $4 || '%' OR description ILIKE '%' || $4 || '%')
+  AND ($4::text IS NULL OR strpos(lower(code), lower($4)) > 0 OR strpos(lower(description), lower($4)) > 0)
 ORDER BY code
 LIMIT $6 OFFSET $5
 `

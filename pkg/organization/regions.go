@@ -37,7 +37,7 @@ type Region struct {
 
 // RegionInput is a request to create a region. The json tags carry the contract's names.
 type RegionInput struct {
-	Code        string `json:"code" validate:"required"`
+	Code        string `json:"code" validate:"required,max=10"`
 	Description string `json:"description" validate:"required,notblank,max=200"`
 	Active      *bool  `json:"is_active"`
 }
@@ -178,6 +178,11 @@ func (r *Regions) Update(ctx context.Context, actor auth.Principal, scope access
 		if err != nil {
 			return fmt.Errorf("get region: %w", err)
 		}
+		if in.Description == nil && in.Active == nil {
+			// An empty change changes nothing: no updated_at, no audit row (the contract says so).
+			out = toRegion(before)
+			return nil
+		}
 		row, err := q.UpdateRegion(ctx, db.UpdateRegionParams{
 			Code: code, Description: textPtr(desc), Active: boolOrNull(in.Active), Now: ts(r.clock.Now()),
 		})
@@ -218,12 +223,12 @@ func (r *Regions) Delete(ctx context.Context, actor auth.Principal, scope access
 		if admins > 0 {
 			return ErrHasActiveChildren.WithMessage("Masih ada admin wilayah yang menunjuk koordinator wilayah ini.")
 		}
-		branches, err := q.CountActiveBranchesOfRegion(ctx, code)
+		branches, err := q.CountBranchesOfRegion(ctx, code)
 		if err != nil {
 			return fmt.Errorf("count branches of region: %w", err)
 		}
 		if branches > 0 {
-			return ErrHasActiveChildren.WithMessage("Masih ada kantor cabang aktif di koordinator wilayah ini.")
+			return ErrHasActiveChildren.WithMessage("Masih ada kantor cabang (aktif maupun nonaktif) di koordinator wilayah ini.")
 		}
 		if _, err := q.SoftDeleteRegion(ctx, db.SoftDeleteRegionParams{Code: code, Now: ts(r.clock.Now())}); err != nil {
 			return fmt.Errorf("delete region: %w", err)
