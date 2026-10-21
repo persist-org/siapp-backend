@@ -26,7 +26,7 @@ import (
 type WebRoleInput struct {
 	Role string `json:"role" validate:"required,oneof=ORG_ADMIN REGION_ADMIN"`
 	// RegionCode is required for a REGION_ADMIN and must be empty for an ORG_ADMIN.
-	RegionCode string `json:"region_code" validate:"omitempty,max=20"`
+	RegionCode string `json:"region_code" validate:"omitempty,max=10"`
 }
 
 // regionCodePattern is the shape of a koordinator wilayah code (the regions table's CHECK).

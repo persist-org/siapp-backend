@@ -67,7 +67,26 @@ tags:
   - name: Masters
     description: Master/konfigurasi org-scoped + referensi nasional
   - name: Organization
-    description: Domain organisasi (region/branch/client/project/team/personnel)
+    description: |
+      Domain organisasi: koordinator wilayah, kantor cabang, klien, proyek, regu, anggota regu, shift dan jadwal.
+      Satu grup (KPI, IDS, PCD) adalah satu organisasi. Kode adalah id (D19): server yang membuatnya, tidak dapat diubah, dan
+      tidak dipakai ulang walau barisnya dihapus.
+
+      **Aturan untuk semua operasi**
+      - Semua tanggal adalah tanggal bisnis di zona waktu proyek (WIB, WITA, atau WIT); "hari ini" juga menurut zona proyek, bukan UTC.
+      - Jalur `/admin/...` memerlukan web role (staf lapangan 403 `NOT_ADMIN`). REGION_ADMIN hanya menjangkau wilayahnya
+        (wilayah dibaca dari angka di depan kode: `1K-IBMI-S1` ada di OS1); di luar itu 403 `SCOPE_DENIED`, dijawab sebelum database
+        ditanya. Aksi yang hanya untuk ORG_ADMIN: 403 `ROLE_DENIED`. Jalur lapangan (`/teams`, `/personnels/{id}`) tidak memerlukan
+        web role: pemanggil melihat apa yang dibolehkan regu tempat ia bertugas hari ini.
+      - Daftar: `page` 1 sampai 1000000, `limit` 1 sampai 100, `q` paling panjang 100 karakter. Di luar batas 422, tidak dipotong.
+        Query string dengan karakter NUL 400.
+      - Body: JSON satu objek, paling besar 1 MB (413). Field yang tidak dikenal 422. Karakter NUL (`\u0000`) 400.
+        Field opsional yang tidak dikirim tidak berubah pada PATCH; `null` hanya berarti "hapus" bila field ditandai nullable.
+      - id angka di path (shift, shift group, jadwal, personil, keanggotaan) harus angka positif; selain itu 404 resource itu.
+      - Kode di path yang tidak ada atau sudah dihapus: 404. Penghapusan selalu lunak.
+      - Perubahan dicatat di audit log dengan nilai sebelum dan sesudah. PATCH yang tidak mengubah apa pun tidak mencatat apa-apa.
+      - Bentuk galat: `error.code` (enum ErrorCode), `error.details.reason` (enum OrganizationErrorReason), dan `error.errors[]`
+        (field, code, message) untuk 422.
   - name: Attendance
     description: Kehadiran (absensi) + koreksi
   - name: Permission
@@ -213,9 +232,9 @@ components:
     QParam:
       name: q
       in: query
-      description: Pencarian teks case-insensitive (nama/kode/subjek).
+      description: "Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard."
       required: false
-      schema: { type: string }
+      schema: { type: string, maxLength: 100 }
     BranchIdParam:
       name: branch_id
       in: query
@@ -359,13 +378,13 @@ components:
       name: id
       in: path
       required: true
-      description: Nomor keanggotaan (id dari TeamMembership).
+      description: "Nomor keanggotaan (id dari TeamMembership). Harus angka positif; selain itu 404 (id seperti itu tidak mungkin ada)."
       schema: { type: integer, format: int64, minimum: 1 }
     PersonnelIdOfMemberPath:
       name: personnel_id
       in: path
       required: true
-      description: Nomor personil anggota yang dikeluarkan.
+      description: "Nomor personil anggota yang dikeluarkan. Harus angka positif; selain itu 404 (id seperti itu tidak mungkin ada)."
       schema: { type: integer, format: int64, minimum: 1 }
     OnDateQuery:
       name: on_date
@@ -377,16 +396,19 @@ components:
       name: id
       in: path
       required: true
+      description: "Nomor shift. Harus angka positif; selain itu 404 (id seperti itu tidak mungkin ada)."
       schema: { type: integer, format: int64, minimum: 1 }
     ShiftGroupIdPath:
       name: id
       in: path
       required: true
+      description: "Nomor shift group. Harus angka positif; selain itu 404 (id seperti itu tidak mungkin ada)."
       schema: { type: integer, format: int64, minimum: 1 }
     ScheduleIdPath:
       name: id
       in: path
       required: true
+      description: "Nomor jadwal. Harus angka positif; selain itu 404 (id seperti itu tidak mungkin ada)."
       schema: { type: integer, format: int64, minimum: 1 }
     DateFromQuery:
       name: date_from
@@ -416,8 +438,8 @@ components:
       name: personnel_id
       in: path
       required: true
-      description: Identitas lokal orang (personnels.id), bukan id Personalia.
-      schema: { type: integer, format: int64 }
+      description: "Identitas lokal orang (personnels.id), bukan id Personalia. Harus angka positif; selain itu 404 (id seperti itu tidak mungkin ada)."
+      schema: { type: integer, format: int64, minimum: 1 }
     IdempotencyKeyHeader:
       name: Idempotency-Key
       in: header
@@ -772,6 +794,7 @@ components:
         role: { type: string, enum: [ORG_ADMIN, REGION_ADMIN] }
         region_code:
           type: string
+          maxLength: 10
           pattern: '^OS[1-9][0-9]*$'
           description: Wajib untuk REGION_ADMIN (harus koordinator wilayah yang ada); harus kosong untuk ORG_ADMIN.
     OAuthTokenResult:
@@ -1157,18 +1180,19 @@ components:
         - `MEMBERSHIP_NOT_FOUND`: 404 NOT_FOUND. Keanggotaan tidak ada atau sudah berakhir (gerak, ganti peran, dan keluar berlaku untuk keanggotaan yang masih berjalan).
         - `MEMBERSHIP_OVERLAP`: 409 CONFLICT. Personil sudah menjadi anggota regu yang sama pada sebagian tanggal itu.
         - `TEAM_HAS_DANRU`: 409 CONFLICT. Regu sudah punya DANRU pada sebagian tanggal itu (satu DANRU per regu per tanggal).
-        - `PERSONNEL_NOT_FOUND`: 404 NOT_FOUND. NIK tidak dikenal Personalia di organisasi ini.
-        - `PERSONNEL_INACTIVE`: 422 VALIDATION_ERROR. Personil nonaktif di Personalia.
+        - `PERSONNEL_NOT_FOUND`: 404 NOT_FOUND. NIK tidak dikenal Personalia di organisasi ini (tambah anggota), atau id personil tidak ada (jadwal, biodata); di layar Regu juga untuk personil yang sudah tidak aktif.
+        - `PERSONNEL_INACTIVE`: 422 VALIDATION_ERROR. Personil nonaktif di Personalia (sudah keluar): tidak dapat ditambah, dipindah, diubah perannya, atau diberi jadwal FIXED atau jadwal manual. Mengeluarkannya dan mengatur jadwalnya menjadi FLEXIBLE tetap boleh.
+        - `NOT_PROJECT_MEMBER`: 403 SCOPE_DENIED. Staf lapangan menanyakan proyek, regu, atau personil yang tidak berbagi proyek dengannya hari ini (juga untuk proyek yang tidak ada, agar tidak dapat ditebak).
         - `SHIFT_NOT_FOUND` / `SHIFT_GROUP_NOT_FOUND`: 404. Shift atau shift group tidak ada atau sudah dihapus.
-        - `SHIFT_INVALID_TIME`: 422. Jam bukan HH:mm, jam masuk = jam pulang, atau shift OFF diberi jam.
+        - `SHIFT_INVALID_TIME`: 422. Jam bukan HH:mm, jam masuk = jam pulang, jam pulang sebelum jam masuk tanpa `overnight: true` (atau `overnight: true` dengan jam pulang setelah jam masuk), atau shift OFF dikirim dengan jam, overnight, atau toleransi. Field yang salah disebut di `errors`.
         - `SHIFT_NAME_TAKEN` / `SHIFT_GROUP_NAME_TAKEN`: 409 DUPLICATE. Nama sudah dipakai.
-        - `SHIFT_IN_USE`: 409. Shift dipakai shift group atau dijadwalkan mulai hari ini.
+        - `SHIFT_IN_USE`: 409. Shift dipakai shift group (tidak dapat dihapus maupun dinonaktifkan) atau dijadwalkan mulai hari ini (tidak dapat dihapus).
         - `SHIFT_GROUP_IN_USE`: 409. Shift group dipakai pengaturan jadwal personil.
         - `SHIFT_ASSIGNMENT_NOT_FOUND`: 404. Personil belum punya pengaturan jadwal.
         - `SCHEDULE_NOT_FOUND`: 404. Jadwal tidak ada.
         - `SCHEDULE_EXISTS`: 409. Personil sudah punya jadwal pada tanggal itu.
-        - `SCHEDULE_TIMEZONE_AMBIGUOUS`: 422 UNPROCESSABLE. Pada tanggal itu personil bertugas di proyek dengan zona waktu berbeda.
-      enum: [NOT_ADMIN, ACCESS_ORG_ADMIN_ONLY, ACCESS_OUTSIDE_ADMIN_SCOPE, REGION_NOT_FOUND, BRANCH_NOT_FOUND, CLIENT_NOT_FOUND, PROJECT_NOT_FOUND, TEAM_NOT_FOUND, CODE_TAKEN, HAS_ACTIVE_CHILDREN, BRANCH_LETTER_INVALID, BRANCH_REGION_MISMATCH, CLIENT_PREFIX_INVALID, PROJECT_NOT_CONFIGURED, MEMBERSHIP_NOT_FOUND, MEMBERSHIP_OVERLAP, TEAM_HAS_DANRU, PERSONNEL_NOT_FOUND, PERSONNEL_INACTIVE, SHIFT_NOT_FOUND, SHIFT_GROUP_NOT_FOUND, SHIFT_INVALID_TIME, SHIFT_NAME_TAKEN, SHIFT_GROUP_NAME_TAKEN, SHIFT_IN_USE, SHIFT_GROUP_IN_USE, SHIFT_ASSIGNMENT_NOT_FOUND, SCHEDULE_NOT_FOUND, SCHEDULE_EXISTS, SCHEDULE_TIMEZONE_AMBIGUOUS]
+        - `SCHEDULE_TIMEZONE_AMBIGUOUS`: 422 UNPROCESSABLE. Pada tanggal itu personil bertugas di proyek dengan zona waktu berbeda, sehingga jam shift berarti dua waktu. Hanya menolak shift kerja; hari OFF tidak.
+      enum: [NOT_ADMIN, ACCESS_ORG_ADMIN_ONLY, ACCESS_OUTSIDE_ADMIN_SCOPE, REGION_NOT_FOUND, BRANCH_NOT_FOUND, CLIENT_NOT_FOUND, PROJECT_NOT_FOUND, TEAM_NOT_FOUND, CODE_TAKEN, HAS_ACTIVE_CHILDREN, BRANCH_LETTER_INVALID, BRANCH_REGION_MISMATCH, CLIENT_PREFIX_INVALID, PROJECT_NOT_CONFIGURED, MEMBERSHIP_NOT_FOUND, MEMBERSHIP_OVERLAP, TEAM_HAS_DANRU, PERSONNEL_NOT_FOUND, PERSONNEL_INACTIVE, SHIFT_NOT_FOUND, SHIFT_GROUP_NOT_FOUND, SHIFT_INVALID_TIME, SHIFT_NAME_TAKEN, SHIFT_GROUP_NAME_TAKEN, SHIFT_IN_USE, SHIFT_GROUP_IN_USE, SHIFT_ASSIGNMENT_NOT_FOUND, SCHEDULE_NOT_FOUND, SCHEDULE_EXISTS, SCHEDULE_TIMEZONE_AMBIGUOUS, NOT_PROJECT_MEMBER]
 
     # ---------- 7. team memberships (keanggotaan regu, 02.3) ----------
     # Riwayat dijaga: keluar, pindah, dan ganti peran MENGAKHIRI baris (end_date) dan, untuk dua
@@ -3869,6 +3893,14 @@ paths:
                 allOf:
                   - { $ref: '#/components/schemas/ListEnvelope' }
                   - properties: { data: { type: array, items: { $ref: '#/components/schemas/Region' } } }
+        '400':
+          description: "BAD_REQUEST: query string mengandung karakter NUL (%00), yang tidak dapat disimpan di database."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                nul:
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Query string tidak boleh berisi karakter NUL." }, meta: { request_id: req_abc123 } }
         '401':
           description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
           content:
@@ -3924,7 +3956,7 @@ paths:
                   - { $ref: '#/components/schemas/SuccessEnvelope' }
                   - properties: { data: { $ref: '#/components/schemas/Region' } }
         '400':
-          description: "BAD_REQUEST: body kosong atau bukan JSON yang valid. 413 PAYLOAD_TOO_LARGE bila body terlalu besar."
+          description: "BAD_REQUEST: body kosong, bukan JSON yang valid, lebih dari satu nilai JSON, atau berisi karakter NUL (\\u0000)."
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorEnvelope' }
@@ -3982,6 +4014,14 @@ paths:
                 unknownField:
                   summary: "Field yang tidak boleh dikirim (kode atau kolom pembentuk kode)"
                   value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: code, code: INVALID, message: "Field tidak dikenal." } ] }, meta: { request_id: req_abc123 } }
+        '413':
+          description: "PAYLOAD_TOO_LARGE: body lebih dari 1 MB."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                tooLarge:
+                  value: { success: false, error: { code: PAYLOAD_TOO_LARGE, message: "Body terlalu besar." }, meta: { request_id: req_abc123 } }
   /admin/regions/{code}:
     parameters:
       - $ref: '#/components/parameters/RegionCodePath'
@@ -4055,7 +4095,7 @@ paths:
                   - { $ref: '#/components/schemas/SuccessEnvelope' }
                   - properties: { data: { $ref: '#/components/schemas/Region' } }
         '400':
-          description: "BAD_REQUEST: body kosong atau bukan JSON yang valid. 413 PAYLOAD_TOO_LARGE bila body terlalu besar."
+          description: "BAD_REQUEST: body kosong, bukan JSON yang valid, lebih dari satu nilai JSON, atau berisi karakter NUL (\\u0000)."
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorEnvelope' }
@@ -4113,6 +4153,14 @@ paths:
                 blankDescription:
                   summary: "Deskripsi kosong atau hanya spasi"
                   value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: description, code: INVALID, message: "Tidak boleh kosong." } ] }, meta: { request_id: req_abc123 } }
+        '413':
+          description: "PAYLOAD_TOO_LARGE: body lebih dari 1 MB."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                tooLarge:
+                  value: { success: false, error: { code: PAYLOAD_TOO_LARGE, message: "Body terlalu besar." }, meta: { request_id: req_abc123 } }
     delete:
       operationId: deleteAdminRegionsByCode
       tags: [Organization]
@@ -4794,6 +4842,14 @@ paths:
                 allOf:
                   - { $ref: '#/components/schemas/ListEnvelope' }
                   - properties: { data: { type: array, items: { $ref: '#/components/schemas/Branch' } } }
+        '400':
+          description: "BAD_REQUEST: query string mengandung karakter NUL (%00), yang tidak dapat disimpan di database."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                nul:
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Query string tidak boleh berisi karakter NUL." }, meta: { request_id: req_abc123 } }
         '401':
           description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
           content:
@@ -4850,7 +4906,7 @@ paths:
                   - { $ref: '#/components/schemas/SuccessEnvelope' }
                   - properties: { data: { $ref: '#/components/schemas/Branch' } }
         '400':
-          description: "BAD_REQUEST: body kosong atau bukan JSON yang valid. 413 PAYLOAD_TOO_LARGE bila body terlalu besar."
+          description: "BAD_REQUEST: body kosong, bukan JSON yang valid, lebih dari satu nilai JSON, atau berisi karakter NUL (\\u0000)."
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorEnvelope' }
@@ -4916,6 +4972,14 @@ paths:
                 blankDescription:
                   summary: "Deskripsi kosong atau hanya spasi"
                   value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: description, code: INVALID, message: "Tidak boleh kosong." } ] }, meta: { request_id: req_abc123 } }
+        '413':
+          description: "PAYLOAD_TOO_LARGE: body lebih dari 1 MB."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                tooLarge:
+                  value: { success: false, error: { code: PAYLOAD_TOO_LARGE, message: "Body terlalu besar." }, meta: { request_id: req_abc123 } }
   /admin/branches/{code}:
     parameters:
       - $ref: '#/components/parameters/BranchCodePath'
@@ -4989,7 +5053,7 @@ paths:
                   - { $ref: '#/components/schemas/SuccessEnvelope' }
                   - properties: { data: { $ref: '#/components/schemas/Branch' } }
         '400':
-          description: "BAD_REQUEST: body kosong atau bukan JSON yang valid. 413 PAYLOAD_TOO_LARGE bila body terlalu besar."
+          description: "BAD_REQUEST: body kosong, bukan JSON yang valid, lebih dari satu nilai JSON, atau berisi karakter NUL (\\u0000)."
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorEnvelope' }
@@ -5047,6 +5111,14 @@ paths:
                 blankDescription:
                   summary: "Deskripsi kosong atau hanya spasi"
                   value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: description, code: INVALID, message: "Tidak boleh kosong." } ] }, meta: { request_id: req_abc123 } }
+        '413':
+          description: "PAYLOAD_TOO_LARGE: body lebih dari 1 MB."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                tooLarge:
+                  value: { success: false, error: { code: PAYLOAD_TOO_LARGE, message: "Body terlalu besar." }, meta: { request_id: req_abc123 } }
     delete:
       operationId: deleteAdminBranchesByCode
       tags: [Organization]
@@ -5123,6 +5195,14 @@ paths:
                 allOf:
                   - { $ref: '#/components/schemas/ListEnvelope' }
                   - properties: { data: { type: array, items: { $ref: '#/components/schemas/Client' } } }
+        '400':
+          description: "BAD_REQUEST: query string mengandung karakter NUL (%00), yang tidak dapat disimpan di database."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                nul:
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Query string tidak boleh berisi karakter NUL." }, meta: { request_id: req_abc123 } }
         '401':
           description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
           content:
@@ -5179,7 +5259,7 @@ paths:
                   - { $ref: '#/components/schemas/SuccessEnvelope' }
                   - properties: { data: { $ref: '#/components/schemas/Client' } }
         '400':
-          description: "BAD_REQUEST: body kosong atau bukan JSON yang valid. 413 PAYLOAD_TOO_LARGE bila body terlalu besar."
+          description: "BAD_REQUEST: body kosong, bukan JSON yang valid, lebih dari satu nilai JSON, atau berisi karakter NUL (\\u0000)."
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorEnvelope' }
@@ -5242,6 +5322,14 @@ paths:
                 blankDescription:
                   summary: "Deskripsi kosong atau hanya spasi"
                   value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: description, code: INVALID, message: "Tidak boleh kosong." } ] }, meta: { request_id: req_abc123 } }
+        '413':
+          description: "PAYLOAD_TOO_LARGE: body lebih dari 1 MB."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                tooLarge:
+                  value: { success: false, error: { code: PAYLOAD_TOO_LARGE, message: "Body terlalu besar." }, meta: { request_id: req_abc123 } }
   /admin/clients/{code}:
     parameters:
       - $ref: '#/components/parameters/ClientCodePath'
@@ -5315,7 +5403,7 @@ paths:
                   - { $ref: '#/components/schemas/SuccessEnvelope' }
                   - properties: { data: { $ref: '#/components/schemas/Client' } }
         '400':
-          description: "BAD_REQUEST: body kosong atau bukan JSON yang valid. 413 PAYLOAD_TOO_LARGE bila body terlalu besar."
+          description: "BAD_REQUEST: body kosong, bukan JSON yang valid, lebih dari satu nilai JSON, atau berisi karakter NUL (\\u0000)."
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorEnvelope' }
@@ -5373,6 +5461,14 @@ paths:
                 blankDescription:
                   summary: "Deskripsi kosong atau hanya spasi"
                   value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: description, code: INVALID, message: "Tidak boleh kosong." } ] }, meta: { request_id: req_abc123 } }
+        '413':
+          description: "PAYLOAD_TOO_LARGE: body lebih dari 1 MB."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                tooLarge:
+                  value: { success: false, error: { code: PAYLOAD_TOO_LARGE, message: "Body terlalu besar." }, meta: { request_id: req_abc123 } }
     delete:
       operationId: deleteAdminClientsByCode
       tags: [Organization]
@@ -5450,6 +5546,14 @@ paths:
                 allOf:
                   - { $ref: '#/components/schemas/ListEnvelope' }
                   - properties: { data: { type: array, items: { $ref: '#/components/schemas/Project' } } }
+        '400':
+          description: "BAD_REQUEST: query string mengandung karakter NUL (%00), yang tidak dapat disimpan di database."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                nul:
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Query string tidak boleh berisi karakter NUL." }, meta: { request_id: req_abc123 } }
         '401':
           description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
           content:
@@ -5506,7 +5610,7 @@ paths:
                   - { $ref: '#/components/schemas/SuccessEnvelope' }
                   - properties: { data: { $ref: '#/components/schemas/Project' } }
         '400':
-          description: "BAD_REQUEST: body kosong atau bukan JSON yang valid. 413 PAYLOAD_TOO_LARGE bila body terlalu besar."
+          description: "BAD_REQUEST: body kosong, bukan JSON yang valid, lebih dari satu nilai JSON, atau berisi karakter NUL (\\u0000)."
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorEnvelope' }
@@ -5578,6 +5682,14 @@ paths:
                 blankDescription:
                   summary: "Deskripsi kosong atau hanya spasi"
                   value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: description, code: INVALID, message: "Tidak boleh kosong." } ] }, meta: { request_id: req_abc123 } }
+        '413':
+          description: "PAYLOAD_TOO_LARGE: body lebih dari 1 MB."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                tooLarge:
+                  value: { success: false, error: { code: PAYLOAD_TOO_LARGE, message: "Body terlalu besar." }, meta: { request_id: req_abc123 } }
   /admin/projects/{code}:
     parameters:
       - $ref: '#/components/parameters/ProjectCodePath'
@@ -5651,7 +5763,7 @@ paths:
                   - { $ref: '#/components/schemas/SuccessEnvelope' }
                   - properties: { data: { $ref: '#/components/schemas/Project' } }
         '400':
-          description: "BAD_REQUEST: body kosong atau bukan JSON yang valid. 413 PAYLOAD_TOO_LARGE bila body terlalu besar."
+          description: "BAD_REQUEST: body kosong, bukan JSON yang valid, lebih dari satu nilai JSON, atau berisi karakter NUL (\\u0000)."
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorEnvelope' }
@@ -5709,6 +5821,14 @@ paths:
                 blankDescription:
                   summary: "Deskripsi kosong atau hanya spasi"
                   value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: description, code: INVALID, message: "Tidak boleh kosong." } ] }, meta: { request_id: req_abc123 } }
+        '413':
+          description: "PAYLOAD_TOO_LARGE: body lebih dari 1 MB."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                tooLarge:
+                  value: { success: false, error: { code: PAYLOAD_TOO_LARGE, message: "Body terlalu besar." }, meta: { request_id: req_abc123 } }
     delete:
       operationId: deleteAdminProjectsByCode
       tags: [Organization]
@@ -5785,6 +5905,14 @@ paths:
                 allOf:
                   - { $ref: '#/components/schemas/ListEnvelope' }
                   - properties: { data: { type: array, items: { $ref: '#/components/schemas/Team' } } }
+        '400':
+          description: "BAD_REQUEST: query string mengandung karakter NUL (%00), yang tidak dapat disimpan di database."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                nul:
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Query string tidak boleh berisi karakter NUL." }, meta: { request_id: req_abc123 } }
         '401':
           description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
           content:
@@ -5841,7 +5969,7 @@ paths:
                   - { $ref: '#/components/schemas/SuccessEnvelope' }
                   - properties: { data: { $ref: '#/components/schemas/Team' } }
         '400':
-          description: "BAD_REQUEST: body kosong atau bukan JSON yang valid. 413 PAYLOAD_TOO_LARGE bila body terlalu besar."
+          description: "BAD_REQUEST: body kosong, bukan JSON yang valid, lebih dari satu nilai JSON, atau berisi karakter NUL (\\u0000)."
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorEnvelope' }
@@ -5904,6 +6032,14 @@ paths:
                 blankDescription:
                   summary: "Deskripsi kosong atau hanya spasi"
                   value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: description, code: INVALID, message: "Tidak boleh kosong." } ] }, meta: { request_id: req_abc123 } }
+        '413':
+          description: "PAYLOAD_TOO_LARGE: body lebih dari 1 MB."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                tooLarge:
+                  value: { success: false, error: { code: PAYLOAD_TOO_LARGE, message: "Body terlalu besar." }, meta: { request_id: req_abc123 } }
   /admin/teams/{code}:
     parameters:
       - $ref: '#/components/parameters/TeamCodePath'
@@ -5977,7 +6113,7 @@ paths:
                   - { $ref: '#/components/schemas/SuccessEnvelope' }
                   - properties: { data: { $ref: '#/components/schemas/Team' } }
         '400':
-          description: "BAD_REQUEST: body kosong atau bukan JSON yang valid. 413 PAYLOAD_TOO_LARGE bila body terlalu besar."
+          description: "BAD_REQUEST: body kosong, bukan JSON yang valid, lebih dari satu nilai JSON, atau berisi karakter NUL (\\u0000)."
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorEnvelope' }
@@ -6035,6 +6171,14 @@ paths:
                 blankDescription:
                   summary: "Deskripsi kosong atau hanya spasi"
                   value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: description, code: INVALID, message: "Tidak boleh kosong." } ] }, meta: { request_id: req_abc123 } }
+        '413':
+          description: "PAYLOAD_TOO_LARGE: body lebih dari 1 MB."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                tooLarge:
+                  value: { success: false, error: { code: PAYLOAD_TOO_LARGE, message: "Body terlalu besar." }, meta: { request_id: req_abc123 } }
     delete:
       operationId: deleteAdminTeamsByCode
       tags: [Organization]
@@ -6731,6 +6875,14 @@ paths:
                 allOf:
                   - { $ref: '#/components/schemas/ListEnvelope' }
                   - properties: { data: { type: array, items: { $ref: '#/components/schemas/TeamMembership' } } }
+        '400':
+          description: "BAD_REQUEST: query string mengandung karakter NUL (%00), yang tidak dapat disimpan di database."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                nul:
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Query string tidak boleh berisi karakter NUL." }, meta: { request_id: req_abc123 } }
         '401':
           description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
           content:
@@ -6896,6 +7048,14 @@ paths:
               examples:
                 PERSONEL_UNAVAILABLE:
                   value: { success: false, error: { code: INTERNAL_ERROR, message: "Layanan Personalia sedang tidak tersedia. Coba lagi sebentar lagi.", details: { reason: PERSONEL_UNAVAILABLE } }, meta: { request_id: req_abc123 } }
+        '413':
+          description: "PAYLOAD_TOO_LARGE: body lebih dari 1 MB."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                tooLarge:
+                  value: { success: false, error: { code: PAYLOAD_TOO_LARGE, message: "Body terlalu besar." }, meta: { request_id: req_abc123 } }
   /admin/teams/{code}/members/{personnel_id}:
     parameters:
       - $ref: '#/components/parameters/TeamCodePath'
@@ -7066,6 +7226,14 @@ paths:
                 unknownField:
                   summary: "Field yang tidak dikenal"
                   value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: role, code: INVALID, message: "Field tidak dikenal." } ] }, meta: { request_id: req_abc123 } }
+        '413':
+          description: "PAYLOAD_TOO_LARGE: body lebih dari 1 MB."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                tooLarge:
+                  value: { success: false, error: { code: PAYLOAD_TOO_LARGE, message: "Body terlalu besar." }, meta: { request_id: req_abc123 } }
   /admin/team-members/{id}/change-role:
     parameters:
       - $ref: '#/components/parameters/TeamMembershipIdPath'
@@ -7163,6 +7331,14 @@ paths:
                 tooEarly:
                   summary: "effective_date pada atau sebelum tanggal mulai (baris lama akan kosong)"
                   value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: effective_date, code: INVALID, message: "Harus setelah tanggal mulai keanggotaan (2026-01-15)." } ] }, meta: { request_id: req_abc123 } }
+        '413':
+          description: "PAYLOAD_TOO_LARGE: body lebih dari 1 MB."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                tooLarge:
+                  value: { success: false, error: { code: PAYLOAD_TOO_LARGE, message: "Body terlalu besar." }, meta: { request_id: req_abc123 } }
   /admin/shifts:
     get:
       operationId: getAdminShifts
@@ -7185,6 +7361,14 @@ paths:
                 allOf:
                   - { $ref: '#/components/schemas/ListEnvelope' }
                   - properties: { data: { type: array, items: { $ref: '#/components/schemas/Shift' } } }
+        '400':
+          description: "BAD_REQUEST: query string mengandung karakter NUL (%00), yang tidak dapat disimpan di database."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                nul:
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Query string tidak boleh berisi karakter NUL." }, meta: { request_id: req_abc123 } }
         '401':
           description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
           content:
@@ -7292,6 +7476,14 @@ paths:
                 unknownField:
                   summary: "Field yang tidak dikenal (termasuk is_off pada perubahan)"
                   value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: "is_off", code: INVALID, message: "Field tidak dikenal." } ] }, meta: { request_id: req_abc123 } }
+        '413':
+          description: "PAYLOAD_TOO_LARGE: body lebih dari 1 MB."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                tooLarge:
+                  value: { success: false, error: { code: PAYLOAD_TOO_LARGE, message: "Body terlalu besar." }, meta: { request_id: req_abc123 } }
   /admin/shifts/{id}:
     parameters:
       - $ref: '#/components/parameters/ShiftIdPath'
@@ -7424,6 +7616,14 @@ paths:
                 unknownField:
                   summary: "Field yang tidak dikenal (termasuk is_off pada perubahan)"
                   value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: "is_off", code: INVALID, message: "Field tidak dikenal." } ] }, meta: { request_id: req_abc123 } }
+        '413':
+          description: "PAYLOAD_TOO_LARGE: body lebih dari 1 MB."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                tooLarge:
+                  value: { success: false, error: { code: PAYLOAD_TOO_LARGE, message: "Body terlalu besar." }, meta: { request_id: req_abc123 } }
     delete:
       operationId: deleteAdminShiftsById
       tags: [Organization]
@@ -7498,6 +7698,14 @@ paths:
                 allOf:
                   - { $ref: '#/components/schemas/ListEnvelope' }
                   - properties: { data: { type: array, items: { $ref: '#/components/schemas/ShiftGroup' } } }
+        '400':
+          description: "BAD_REQUEST: query string mengandung karakter NUL (%00), yang tidak dapat disimpan di database."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                nul:
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Query string tidak boleh berisi karakter NUL." }, meta: { request_id: req_abc123 } }
         '401':
           description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
           content:
@@ -7605,6 +7813,14 @@ paths:
                 inactiveShift:
                   summary: "Shift nonaktif"
                   value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: "days.monday", code: INVALID, message: "Shift tidak aktif." } ] }, meta: { request_id: req_abc123 } }
+        '413':
+          description: "PAYLOAD_TOO_LARGE: body lebih dari 1 MB."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                tooLarge:
+                  value: { success: false, error: { code: PAYLOAD_TOO_LARGE, message: "Body terlalu besar." }, meta: { request_id: req_abc123 } }
   /admin/shift-groups/{id}:
     parameters:
       - $ref: '#/components/parameters/ShiftGroupIdPath'
@@ -7732,6 +7948,14 @@ paths:
                 unknownShift:
                   summary: "Shift tidak ada"
                   value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: "days.monday", code: INVALID, message: "Shift tidak ditemukan." } ] }, meta: { request_id: req_abc123 } }
+        '413':
+          description: "PAYLOAD_TOO_LARGE: body lebih dari 1 MB."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                tooLarge:
+                  value: { success: false, error: { code: PAYLOAD_TOO_LARGE, message: "Body terlalu besar." }, meta: { request_id: req_abc123 } }
     delete:
       operationId: deleteAdminShiftGroupsById
       tags: [Organization]
@@ -7928,6 +8152,14 @@ paths:
                 SCHEDULE_TIMEZONE_AMBIGUOUS:
                   summary: "Pada tanggal itu personil bertugas di proyek WIB dan WITA/WIT sekaligus"
                   value: { success: false, error: { code: UNPROCESSABLE, message: "Personil bertugas di proyek dengan zona waktu berbeda pada tanggal tersebut.", details: { reason: SCHEDULE_TIMEZONE_AMBIGUOUS } }, meta: { request_id: req_abc123 } }
+        '413':
+          description: "PAYLOAD_TOO_LARGE: body lebih dari 1 MB."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                tooLarge:
+                  value: { success: false, error: { code: PAYLOAD_TOO_LARGE, message: "Body terlalu besar." }, meta: { request_id: req_abc123 } }
   /admin/personnel/{personnel_id}/schedules:
     parameters:
       - $ref: '#/components/parameters/PersonnelIdPath'
@@ -8019,6 +8251,14 @@ paths:
                 SCHEDULE_TIMEZONE_AMBIGUOUS:
                   summary: "Pada tanggal itu personil bertugas di proyek WIB dan WITA/WIT sekaligus"
                   value: { success: false, error: { code: UNPROCESSABLE, message: "Personil bertugas di proyek dengan zona waktu berbeda pada tanggal tersebut.", details: { reason: SCHEDULE_TIMEZONE_AMBIGUOUS } }, meta: { request_id: req_abc123 } }
+        '413':
+          description: "PAYLOAD_TOO_LARGE: body lebih dari 1 MB."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                tooLarge:
+                  value: { success: false, error: { code: PAYLOAD_TOO_LARGE, message: "Body terlalu besar." }, meta: { request_id: req_abc123 } }
   /admin/schedules:
     get:
       operationId: getAdminSchedules
@@ -8045,6 +8285,14 @@ paths:
                 allOf:
                   - { $ref: '#/components/schemas/ListEnvelope' }
                   - properties: { data: { type: array, items: { $ref: '#/components/schemas/Schedule' } } }
+        '400':
+          description: "BAD_REQUEST: query string mengandung karakter NUL (%00), yang tidak dapat disimpan di database."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                nul:
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Query string tidak boleh berisi karakter NUL." }, meta: { request_id: req_abc123 } }
         '401':
           description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
           content:
@@ -8155,6 +8403,14 @@ paths:
                 empty:
                   summary: "ids kosong"
                   value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: "ids", code: INVALID, message: "Wajib diisi." } ] }, meta: { request_id: req_abc123 } }
+        '413':
+          description: "PAYLOAD_TOO_LARGE: body lebih dari 1 MB."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                tooLarge:
+                  value: { success: false, error: { code: PAYLOAD_TOO_LARGE, message: "Body terlalu besar." }, meta: { request_id: req_abc123 } }
   /admin/schedules/{id}:
     parameters:
       - $ref: '#/components/parameters/ScheduleIdPath'
@@ -8293,6 +8549,14 @@ paths:
                 SCHEDULE_TIMEZONE_AMBIGUOUS:
                   summary: "Pada tanggal itu personil bertugas di proyek WIB dan WITA/WIT sekaligus"
                   value: { success: false, error: { code: UNPROCESSABLE, message: "Personil bertugas di proyek dengan zona waktu berbeda pada tanggal tersebut.", details: { reason: SCHEDULE_TIMEZONE_AMBIGUOUS } }, meta: { request_id: req_abc123 } }
+        '413':
+          description: "PAYLOAD_TOO_LARGE: body lebih dari 1 MB."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                tooLarge:
+                  value: { success: false, error: { code: PAYLOAD_TOO_LARGE, message: "Body terlalu besar." }, meta: { request_id: req_abc123 } }
     delete:
       operationId: deleteAdminSchedulesById
       tags: [Organization]
@@ -9326,6 +9590,14 @@ paths:
                 allOf:
                   - { $ref: '#/components/schemas/SuccessEnvelope' }
                   - properties: { data: { type: array, items: { $ref: '#/components/schemas/TeamSummary' } } }
+        '400':
+          description: "BAD_REQUEST: query string mengandung karakter NUL (%00), yang tidak dapat disimpan di database."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                nul:
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Query string tidak boleh berisi karakter NUL." }, meta: { request_id: req_abc123 } }
         '401':
           description: "UNAUTHENTICATED atau TOKEN_EXPIRED: token tidak ada, tidak valid, atau kedaluwarsa."
           content:

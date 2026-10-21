@@ -512,6 +512,7 @@ const (
 	MEMBERSHIPNOTFOUND        OrganizationErrorReason = "MEMBERSHIP_NOT_FOUND"
 	MEMBERSHIPOVERLAP         OrganizationErrorReason = "MEMBERSHIP_OVERLAP"
 	NOTADMIN                  OrganizationErrorReason = "NOT_ADMIN"
+	NOTPROJECTMEMBER          OrganizationErrorReason = "NOT_PROJECT_MEMBER"
 	PERSONNELINACTIVE         OrganizationErrorReason = "PERSONNEL_INACTIVE"
 	PERSONNELNOTFOUND         OrganizationErrorReason = "PERSONNEL_NOT_FOUND"
 	PROJECTNOTCONFIGURED      OrganizationErrorReason = "PROJECT_NOT_CONFIGURED"
@@ -558,6 +559,8 @@ func (e OrganizationErrorReason) Valid() bool {
 	case MEMBERSHIPOVERLAP:
 		return true
 	case NOTADMIN:
+		return true
+	case NOTPROJECTMEMBER:
 		return true
 	case PERSONNELINACTIVE:
 		return true
@@ -6329,17 +6332,18 @@ type OrganizationCreateEnabledBusinessLines string
 // - `MEMBERSHIP_NOT_FOUND`: 404 NOT_FOUND. Keanggotaan tidak ada atau sudah berakhir (gerak, ganti peran, dan keluar berlaku untuk keanggotaan yang masih berjalan).
 // - `MEMBERSHIP_OVERLAP`: 409 CONFLICT. Personil sudah menjadi anggota regu yang sama pada sebagian tanggal itu.
 // - `TEAM_HAS_DANRU`: 409 CONFLICT. Regu sudah punya DANRU pada sebagian tanggal itu (satu DANRU per regu per tanggal).
-// - `PERSONNEL_NOT_FOUND`: 404 NOT_FOUND. NIK tidak dikenal Personalia di organisasi ini.
-// - `PERSONNEL_INACTIVE`: 422 VALIDATION_ERROR. Personil nonaktif di Personalia.
+// - `PERSONNEL_NOT_FOUND`: 404 NOT_FOUND. NIK tidak dikenal Personalia di organisasi ini (tambah anggota), atau id personil tidak ada (jadwal, biodata); di layar Regu juga untuk personil yang sudah tidak aktif.
+// - `PERSONNEL_INACTIVE`: 422 VALIDATION_ERROR. Personil nonaktif di Personalia (sudah keluar): tidak dapat ditambah, dipindah, diubah perannya, atau diberi jadwal FIXED atau jadwal manual. Mengeluarkannya dan mengatur jadwalnya menjadi FLEXIBLE tetap boleh.
+// - `NOT_PROJECT_MEMBER`: 403 SCOPE_DENIED. Staf lapangan menanyakan proyek, regu, atau personil yang tidak berbagi proyek dengannya hari ini (juga untuk proyek yang tidak ada, agar tidak dapat ditebak).
 // - `SHIFT_NOT_FOUND` / `SHIFT_GROUP_NOT_FOUND`: 404. Shift atau shift group tidak ada atau sudah dihapus.
-// - `SHIFT_INVALID_TIME`: 422. Jam bukan HH:mm, jam masuk = jam pulang, atau shift OFF diberi jam.
+// - `SHIFT_INVALID_TIME`: 422. Jam bukan HH:mm, jam masuk = jam pulang, jam pulang sebelum jam masuk tanpa `overnight: true` (atau `overnight: true` dengan jam pulang setelah jam masuk), atau shift OFF dikirim dengan jam, overnight, atau toleransi. Field yang salah disebut di `errors`.
 // - `SHIFT_NAME_TAKEN` / `SHIFT_GROUP_NAME_TAKEN`: 409 DUPLICATE. Nama sudah dipakai.
-// - `SHIFT_IN_USE`: 409. Shift dipakai shift group atau dijadwalkan mulai hari ini.
+// - `SHIFT_IN_USE`: 409. Shift dipakai shift group (tidak dapat dihapus maupun dinonaktifkan) atau dijadwalkan mulai hari ini (tidak dapat dihapus).
 // - `SHIFT_GROUP_IN_USE`: 409. Shift group dipakai pengaturan jadwal personil.
 // - `SHIFT_ASSIGNMENT_NOT_FOUND`: 404. Personil belum punya pengaturan jadwal.
 // - `SCHEDULE_NOT_FOUND`: 404. Jadwal tidak ada.
 // - `SCHEDULE_EXISTS`: 409. Personil sudah punya jadwal pada tanggal itu.
-// - `SCHEDULE_TIMEZONE_AMBIGUOUS`: 422 UNPROCESSABLE. Pada tanggal itu personil bertugas di proyek dengan zona waktu berbeda.
+// - `SCHEDULE_TIMEZONE_AMBIGUOUS`: 422 UNPROCESSABLE. Pada tanggal itu personil bertugas di proyek dengan zona waktu berbeda, sehingga jam shift berarti dua waktu. Hanya menolak shift kerja; hari OFF tidak.
 type OrganizationErrorReason string
 
 // OrganizationProfileUpdate Update profil + branding organisasi (WEB-37).
@@ -7904,7 +7908,7 @@ type GetAdminAssetConditionsParams struct {
 	// Sort Sortir per-resource, mis. `created_at:desc`.
 	Sort *SortParam `form:"sort,omitempty" json:"sort,omitempty"`
 
-	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
 	// IsActive Filter status aktif.
@@ -7942,7 +7946,7 @@ type GetAdminAssetsParams struct {
 	// Limit Item per halaman (maks 100).
 	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 }
 
@@ -8015,7 +8019,7 @@ type GetAdminBranchesParams struct {
 	// Limit Item per halaman (maks 100).
 	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
 	// IsActive Filter status aktif.
@@ -8048,7 +8052,7 @@ type GetAdminCctvsParams struct {
 	// Sort Sortir per-resource, mis. `created_at:desc`.
 	Sort *SortParam `form:"sort,omitempty" json:"sort,omitempty"`
 
-	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
 	// IsActive Filter status aktif.
@@ -8074,7 +8078,7 @@ type PostAdminCctvs201JSONResponseBodySuccess bool
 
 // GetAdminCctvsSearchParams defines parameters for GetAdminCctvsSearch.
 type GetAdminCctvsSearchParams struct {
-	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
 	// ProjectId Filter scope proyek.
@@ -8104,7 +8108,7 @@ type GetAdminClientGroupsParams struct {
 	// Sort Sortir per-resource, mis. `created_at:desc`.
 	Sort *SortParam `form:"sort,omitempty" json:"sort,omitempty"`
 
-	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
 	// IsActive Filter status aktif.
@@ -8142,7 +8146,7 @@ type GetAdminClientTypesParams struct {
 	// Sort Sortir per-resource, mis. `created_at:desc`.
 	Sort *SortParam `form:"sort,omitempty" json:"sort,omitempty"`
 
-	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
 	// IsActive Filter status aktif.
@@ -8177,7 +8181,7 @@ type GetAdminClientsParams struct {
 	// Limit Item per halaman (maks 100).
 	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
 	// IsActive Filter status aktif.
@@ -8210,7 +8214,7 @@ type GetAdminInstructionCategoriesParams struct {
 	// Sort Sortir per-resource, mis. `created_at:desc`.
 	Sort *SortParam `form:"sort,omitempty" json:"sort,omitempty"`
 
-	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
 	// IsActive Filter status aktif.
@@ -8248,7 +8252,7 @@ type GetAdminLetterheadsParams struct {
 	// Sort Sortir per-resource, mis. `created_at:desc`.
 	Sort *SortParam `form:"sort,omitempty" json:"sort,omitempty"`
 
-	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
 	// IsActive Filter status aktif.
@@ -8286,7 +8290,7 @@ type GetAdminMasterReviewsParams struct {
 	// Sort Sortir per-resource, mis. `created_at:desc`.
 	Sort *SortParam `form:"sort,omitempty" json:"sort,omitempty"`
 
-	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
 	// Type Filter tipe penilaian (Pelanggaran/Penghargaan).
@@ -8330,7 +8334,7 @@ type GetAdminPanicTypesParams struct {
 	// Sort Sortir per-resource, mis. `created_at:desc`.
 	Sort *SortParam `form:"sort,omitempty" json:"sort,omitempty"`
 
-	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
 	// IsActive Filter status aktif.
@@ -8392,7 +8396,7 @@ type GetAdminPermissionCategoriesParams struct {
 	// Sort Sortir per-resource, mis. `created_at:desc`.
 	Sort *SortParam `form:"sort,omitempty" json:"sort,omitempty"`
 
-	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
 	// IsActive Filter status aktif.
@@ -8436,7 +8440,7 @@ type GetAdminPersonnelReviewsParams struct {
 	// DateTo Akhir rentang (YYYY-MM-DD, relatif TZ proyek).
 	DateTo *DateToParam `form:"date_to,omitempty" json:"date_to,omitempty"`
 
-	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
 	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
@@ -8472,7 +8476,7 @@ type GetAdminPersonnelsParams struct {
 	// Sort Sortir per-resource, mis. `created_at:desc`.
 	Sort *SortParam `form:"sort,omitempty" json:"sort,omitempty"`
 
-	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
 	// IsActive Filter status aktif.
@@ -8536,7 +8540,7 @@ type GetAdminPositionsParams struct {
 	// Sort Sortir per-resource, mis. `created_at:desc`.
 	Sort *SortParam `form:"sort,omitempty" json:"sort,omitempty"`
 
-	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
 	// IsActive Filter status aktif.
@@ -8571,7 +8575,7 @@ type GetAdminProjectsParams struct {
 	// Limit Item per halaman (maks 100).
 	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
 	// IsActive Filter status aktif.
@@ -8607,7 +8611,7 @@ type GetAdminQualificationsParams struct {
 	// Sort Sortir per-resource, mis. `created_at:desc`.
 	Sort *SortParam `form:"sort,omitempty" json:"sort,omitempty"`
 
-	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
 	// IsActive Filter status aktif.
@@ -8642,7 +8646,7 @@ type GetAdminRegionsParams struct {
 	// Limit Item per halaman (maks 100).
 	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
 	// IsActive Filter status aktif.
@@ -8672,7 +8676,7 @@ type GetAdminReportCategoriesParams struct {
 	// Sort Sortir per-resource, mis. `created_at:desc`.
 	Sort *SortParam `form:"sort,omitempty" json:"sort,omitempty"`
 
-	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
 	// IsActive Filter status aktif.
@@ -8701,7 +8705,7 @@ type PatchAdminReportCategoriesById200JSONResponseBodySuccess bool
 
 // GetAdminReportsParams defines parameters for GetAdminReports.
 type GetAdminReportsParams struct {
-	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q          *QParam `form:"q,omitempty" json:"q,omitempty"`
 	CategoryId *int64  `form:"category_id,omitempty" json:"category_id,omitempty"`
 
@@ -8743,7 +8747,7 @@ type GetAdminRolesParams struct {
 	// Sort Sortir per-resource, mis. `created_at:desc`.
 	Sort *SortParam `form:"sort,omitempty" json:"sort,omitempty"`
 
-	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
 	// IsActive Filter status aktif.
@@ -8784,7 +8788,7 @@ type GetAdminSchedulesParams struct {
 	// TeamCode Opsional. Hanya jadwal personil yang menjadi anggota regu ini pada tanggal jadwalnya. REGION_ADMIN: regu di wilayah lain 403.
 	TeamCode *TeamCodeQuery `form:"team_code,omitempty" json:"team_code,omitempty"`
 
-	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
 	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
@@ -8814,7 +8818,7 @@ type GetAdminShiftGroupsParams struct {
 	// Limit Item per halaman (maks 100).
 	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 }
 
@@ -8838,7 +8842,7 @@ type GetAdminShiftsParams struct {
 	// Limit Item per halaman (maks 100).
 	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
 	// IsActive Filter status aktif.
@@ -8868,7 +8872,7 @@ type GetAdminStakeholderTypesParams struct {
 	// Sort Sortir per-resource, mis. `created_at:desc`.
 	Sort *SortParam `form:"sort,omitempty" json:"sort,omitempty"`
 
-	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
 	// IsActive Filter status aktif.
@@ -8909,7 +8913,7 @@ type GetAdminTeamsParams struct {
 	// Limit Item per halaman (maks 100).
 	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
 	// IsActive Filter status aktif.
@@ -8975,7 +8979,7 @@ type GetAdminWebUsersParams struct {
 	// Sort Sortir per-resource, mis. `created_at:desc`.
 	Sort *SortParam `form:"sort,omitempty" json:"sort,omitempty"`
 
-	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
 	// IsActive Filter status aktif.
@@ -9013,7 +9017,7 @@ type GetAdminZonesParams struct {
 	// Sort Sortir per-resource, mis. `created_at:desc`.
 	Sort *SortParam `form:"sort,omitempty" json:"sort,omitempty"`
 
-	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
 	// IsActive Filter status aktif.
@@ -9359,7 +9363,7 @@ type GetDeveloperApiClientsParams struct {
 	// Sort Sortir per-resource, mis. `created_at:desc`.
 	Sort *SortParam `form:"sort,omitempty" json:"sort,omitempty"`
 
-	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
 	// Status Filter status/enum resource.
@@ -9397,7 +9401,7 @@ type GetDeveloperApiKeysParams struct {
 	// Sort Sortir per-resource, mis. `created_at:desc`.
 	Sort *SortParam `form:"sort,omitempty" json:"sort,omitempty"`
 
-	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
 	// Status Filter status/enum resource.
@@ -9558,7 +9562,7 @@ type GetEMemosParams struct {
 	// Sort Sortir per-resource, mis. `created_at:desc`.
 	Sort *SortParam `form:"sort,omitempty" json:"sort,omitempty"`
 
-	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
 	// ProjectId Filter scope proyek.
@@ -9627,7 +9631,7 @@ type PostInstructions201JSONResponseBodySuccess bool
 
 // GetInstructionsInboxParams defines parameters for GetInstructionsInbox.
 type GetInstructionsInboxParams struct {
-	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q          *QParam `form:"q,omitempty" json:"q,omitempty"`
 	CategoryId *int64  `form:"category_id,omitempty" json:"category_id,omitempty"`
 
@@ -9640,7 +9644,7 @@ type GetInstructionsInbox200JSONResponseBodySuccess bool
 
 // GetInstructionsSentParams defines parameters for GetInstructionsSent.
 type GetInstructionsSentParams struct {
-	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q          *QParam `form:"q,omitempty" json:"q,omitempty"`
 	CategoryId *int64  `form:"category_id,omitempty" json:"category_id,omitempty"`
 }
@@ -10053,7 +10057,7 @@ type GetPlatformOnboardingById200JSONResponseBodySuccess bool
 
 // GetPlatformOrganizationsParams defines parameters for GetPlatformOrganizations.
 type GetPlatformOrganizationsParams struct {
-	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
 	// Status Filter status/enum resource.
@@ -10200,7 +10204,7 @@ type GetReportSummaryByTypeParams struct {
 	// DateTo Akhir rentang (YYYY-MM-DD, relatif TZ proyek).
 	DateTo *DateToParam `form:"date_to,omitempty" json:"date_to,omitempty"`
 
-	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
 	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
@@ -10255,7 +10259,7 @@ type PostReports201JSONResponseBodySuccess bool
 
 // GetReportsMeParams defines parameters for GetReportsMe.
 type GetReportsMeParams struct {
-	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q          *QParam `form:"q,omitempty" json:"q,omitempty"`
 	CategoryId *int64  `form:"category_id,omitempty" json:"category_id,omitempty"`
 
@@ -10277,7 +10281,7 @@ type GetReportsTeamParams struct {
 	// TeamId Filter scope regu.
 	TeamId *TeamIdParam `form:"team_id,omitempty" json:"team_id,omitempty"`
 
-	// Q Pencarian teks case-insensitive (nama/kode/subjek).
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q          *QParam `form:"q,omitempty" json:"q,omitempty"`
 	CategoryId *int64  `form:"category_id,omitempty" json:"category_id,omitempty"`
 }
