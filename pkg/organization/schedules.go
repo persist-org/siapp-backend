@@ -229,6 +229,13 @@ func (s *Schedules) SetAssignment(ctx context.Context, actor auth.Principal, sco
 				deleteFrom = dateValue(previous.EffectiveDate)
 			}
 			deleteFrom = laterDate(deleteFrom, guard)
+			// ⚠ The delete and the generation below reach every date from deleteFrom to the
+			// horizon, including manual entries, so a REGION_ADMIN needs the person in their
+			// region on each of them (as for one entry): someone moving in from another region
+			// has days that are not theirs.
+			if err := s.reachRange(ctx, q, scope, personnelID, deleteFrom, horizonEnd); err != nil {
+				return err
+			}
 			// Every date about to be generated must have one timezone, as a manual entry must.
 			if genFrom := laterDate(in.EffectiveDate, guard); !horizonEnd.Before(genFrom) {
 				zones, err := zonesBetween(ctx, q, personnelID, genFrom, horizonEnd)
@@ -583,6 +590,24 @@ func (s *Schedules) reachPersonOn(ctx context.Context, q *db.Queries, scope acce
 		return access.ErrOutsideAdminScope
 	}
 	return nil
+}
+
+// reachRange checks, for a REGION_ADMIN, that the person serves in a regu of their region on
+// every date of [from, to]. An empty range passes.
+func (s *Schedules) reachRange(ctx context.Context, q *db.Queries, scope access.AdminScope, personnelID int64, from, to timeutil.Date) error {
+	if scope.All || to.Before(from) {
+		return nil
+	}
+	_, err := q.FirstDateOutsideRegion(ctx, db.FirstDateOutsideRegionParams{
+		FromDate: dateParam(from), ToDate: dateParam(to), PersonnelID: personnelID, RegionCode: scope.RegionCode,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil // no date outside the region
+	}
+	if err != nil {
+		return fmt.Errorf("check region of personnel over range: %w", err)
+	}
+	return access.ErrOutsideAdminScope
 }
 
 // guardStart is the first date a FIXED (re)generation may change, and the end of the window it

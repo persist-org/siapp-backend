@@ -207,7 +207,11 @@ func (m *Members) End(ctx context.Context, actor auth.Principal, scope access.Ad
 		return access.ErrOutsideAdminScope
 	}
 	return database.WithTenant(ctx, m.pool, actor.OrganizationID, func(q *db.Queries) error {
-		team, err := q.GetTeam(ctx, teamCode)
+		// ⚠ The regu is locked before any membership, as replace and a team delete do. Without
+		// it a change of role in flight (old row ended at F-1, new row from F, not yet committed)
+		// is invisible to the delete of planned rows below, and the new row would outlive this
+		// call: the person comes back in the regu on F.
+		team, err := q.GetTeamForUpdate(ctx, teamCode)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrTeamNotFound
 		}

@@ -81,6 +81,39 @@ func (q *Queries) DeleteSchedulesOfPersonnelFrom(ctx context.Context, arg Delete
 	return result.RowsAffected(), nil
 }
 
+const firstDateOutsideRegion = `-- name: FirstDateOutsideRegion :one
+SELECT d::date AS outside_date
+FROM generate_series($1::date, $2::date, interval '1 day') AS d
+WHERE NOT EXISTS (
+    SELECT 1 FROM team_members tm
+    WHERE tm.personnel_id = $3
+      AND 'OS' || substring(tm.team_code from '^[0-9]+') = $4::text
+      AND tm.start_date <= d::date AND (tm.end_date IS NULL OR tm.end_date >= d::date))
+ORDER BY d
+LIMIT 1
+`
+
+type FirstDateOutsideRegionParams struct {
+	FromDate    pgtype.Date
+	ToDate      pgtype.Date
+	PersonnelID int64
+	RegionCode  string
+}
+
+// The first date of [from, to] on which the person serves in no regu of the region, if any: a
+// REGION_ADMIN may regenerate a range only when every date of it is theirs.
+func (q *Queries) FirstDateOutsideRegion(ctx context.Context, arg FirstDateOutsideRegionParams) (pgtype.Date, error) {
+	row := q.db.QueryRow(ctx, firstDateOutsideRegion,
+		arg.FromDate,
+		arg.ToDate,
+		arg.PersonnelID,
+		arg.RegionCode,
+	)
+	var outside_date pgtype.Date
+	err := row.Scan(&outside_date)
+	return outside_date, err
+}
+
 const generateSchedules = `-- name: GenerateSchedules :execrows
 INSERT INTO schedules (personnel_id, work_date, shift_id, shift_group_id, created_by, updated_by, created_at, updated_at)
 SELECT $1, d::date, gd.shift_id, gd.shift_group_id, $2, $2, $3, $3

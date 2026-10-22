@@ -563,6 +563,20 @@ func TestARegionAdminSchedulesOnlyTheirPeople(t *testing.T) {
 	t.Run("a date on which their person is not in their region is refused", func(t *testing.T) {
 		expect(t, e.manual(regionAdmin, budi, entry("2025-12-31", day)), http.StatusForbidden, "SCOPE_DENIED", access.ReasonOutsideScope)
 	})
+
+	t.Run("a FIXED regeneration reaching days of another region is refused", func(t *testing.T) {
+		// Eka serves in region 2 until 03-19 and in region 1 from 03-20. Today is 03-10, so
+		// regenerating from today would delete and replace the region 2 days 03-10 .. 03-19.
+		eka := e.personNIK(org, "N-EKA", "Eka", "ACTIVE")
+		membership := id(e.mustAdd(admin, "2K-IBMI-S1", "N-EKA", "MEMBER", "2026-01-01"))
+		require.Equal(t, http.StatusOK, e.move(admin, membership, "1K-IBMI-S1", "2026-03-20").Status)
+		require.Equal(t, http.StatusCreated, e.manual(admin, eka, entry("2026-03-12", day)).Status)
+		before := e.scheduleOf(org, eka)
+
+		deny(e.assign(regionAdmin, eka, map[string]any{"schedule_type": "FIXED", "shift_group_id": group, "effective_date": "2026-03-01"}))
+		require.Equal(t, before, e.scheduleOf(org, eka), "the region 2 days are untouched")
+		require.Equal(t, http.StatusOK, e.assign(admin, eka, map[string]any{"schedule_type": "FIXED", "shift_group_id": group, "effective_date": "2026-03-01"}).Status, "an ORG_ADMIN is not bound by regions")
+	})
 }
 
 func TestTwoTimezonesOnOneDayAreRefused(t *testing.T) {

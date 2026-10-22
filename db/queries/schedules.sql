@@ -151,6 +151,19 @@ SELECT EXISTS (
       AND 'OS' || substring(tm.team_code from '^[0-9]+') = @region_code::text
       AND tm.start_date <= @on_date AND (tm.end_date IS NULL OR tm.end_date >= @on_date));
 
+-- The first date of [from, to] on which the person serves in no regu of the region, if any: a
+-- REGION_ADMIN may regenerate a range only when every date of it is theirs.
+-- name: FirstDateOutsideRegion :one
+SELECT d::date AS outside_date
+FROM generate_series(@from_date::date, @to_date::date, interval '1 day') AS d
+WHERE NOT EXISTS (
+    SELECT 1 FROM team_members tm
+    WHERE tm.personnel_id = @personnel_id
+      AND 'OS' || substring(tm.team_code from '^[0-9]+') = @region_code::text
+      AND tm.start_date <= d::date AND (tm.end_date IS NULL OR tm.end_date >= d::date))
+ORDER BY d
+LIMIT 1;
+
 -- A person is within a REGION_ADMIN's reach for their assignment when they serve, or will
 -- serve, in a regu of the region: a membership in it that has not ended before its project's
 -- today.
