@@ -5,6 +5,8 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -43,7 +45,7 @@ func NewRouter(cfg RouterConfig) *chi.Mux {
 	// inside the access log so a recovered panic is still logged with its 500 status, and
 	// authentication comes after CORS so that browser preflight requests, which carry no
 	// token, are answered before the token check.
-	r.Use(requestID, accessLog(cfg.Logger), recoverer(cfg.Logger), cors(cfg.CORSOrigins), cfg.Authenticate)
+	r.Use(requestID, accessLog(cfg.Logger), recoverer(cfg.Logger), cors(cfg.CORSOrigins), cfg.Authenticate, rejectNUL)
 
 	// Unknown paths get the standard error shape instead of chi's plain-text 404.
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) { Error(w, r, apperr.ErrNotFound) })
@@ -72,4 +74,23 @@ func health(logger *slog.Logger, db Pinger) http.HandlerFunc {
 		}
 		JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	}
+}
+
+// rejectNUL refuses a NUL character in the path or the query string. Postgres cannot store or
+// compare NUL in text, so a path code or a filter carrying one would fail in a query as a 500.
+// A path with NUL names nothing (404); a query string with NUL is malformed (400).
+func rejectNUL(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.ContainsRune(r.URL.Path, 0) {
+			Error(w, r, apperr.ErrNotFound)
+			return
+		}
+		for key, values := range r.URL.Query() {
+			if strings.ContainsRune(key, 0) || slices.ContainsFunc(values, func(v string) bool { return strings.ContainsRune(v, 0) }) {
+				Error(w, r, apperr.ErrBadRequest.WithMessage("Query string tidak boleh berisi karakter NUL."))
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
 }

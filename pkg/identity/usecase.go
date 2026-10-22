@@ -37,13 +37,14 @@ type Usecase struct {
 	revocations *auth.Revocations
 	clock       clock.Clock
 	logger      *slog.Logger
-	placements  PlacementLookup
+	regions     RegionLookup
+	memberships MembershipLookup
 	repo        repo
 }
 
 // NewUsecase returns the identity Usecase.
 func NewUsecase(pool *pgxpool.Pool, p personelClient, tokens *auth.Tokens, revocations *auth.Revocations, c clock.Clock, logger *slog.Logger) *Usecase {
-	return &Usecase{pool: pool, personel: p, tokens: tokens, revocations: revocations, clock: c, logger: logger, placements: noPlacements{}}
+	return &Usecase{pool: pool, personel: p, tokens: tokens, revocations: revocations, clock: c, logger: logger, regions: noMemberships{}, memberships: noMemberships{}}
 }
 
 // Login is the single path that starts a session.
@@ -79,8 +80,13 @@ func (u *Usecase) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 		return LoginResult{}, ErrAccountDisabled
 	}
 	// Both domains ('personalia' and 'siapp') may sign in to SiAPP, so id.Domain is not
-	// checked. The organization is the person's employing company: it comes from this
-	// answer and never from the request (D11).
+	// checked. The organization is the group's one organization (D17): it comes from this
+	// answer and never from the request.
+	if id.OrganizationID <= 0 && id.CompanyID > 0 {
+		// Right password, active employee, but of a company that is not in the group. Not
+		// an outage: a plain refusal, and nothing about them is stored.
+		return LoginResult{}, ErrNotInGroup
+	}
 	if id.OrganizationID <= 0 {
 		// Personalia broke its own contract (a login answer always names the employing
 		// company). Not the person's fault and not something they can fix: report it as

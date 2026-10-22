@@ -11,6 +11,10 @@ import (
 
 const maxSearchLen = 100
 
+// maxPage bounds page so that the offset, (page-1)*limit, stays far inside an int32: a huge
+// page would otherwise overflow into a negative OFFSET, which the database refuses (a 500).
+const maxPage = 1_000_000
+
 // ListQuery is the shared query string of list endpoints. Endpoints ignore the fields
 // they do not support.
 type ListQuery struct {
@@ -74,9 +78,12 @@ func ParseListQuery(r *http.Request) (ListQuery, error) {
 
 	if s := values.Get("page"); s != "" {
 		n, err := strconv.Atoi(s)
-		if err != nil || n < 1 {
+		switch {
+		case err != nil || n < 1:
 			fail("page", codeInvalid, "Harus berupa angka minimal 1.")
-		} else {
+		case n > maxPage:
+			fail("page", codeTooLarge, "Maksimum "+strconv.Itoa(maxPage)+".")
+		default:
 			q.Page = n
 		}
 	}

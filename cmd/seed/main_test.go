@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"strconv"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -30,7 +31,14 @@ func configure(t *testing.T) {
 	t.Setenv("JWT_SECRET", testkit.JWTSecret)
 	t.Setenv("PERSONEL_BASE_URL", baseURL)
 	t.Setenv("PERSONEL_INTEGRATION_KEY", fake.Key)
+	// The group is the fixtures' first company only, so the second company's people are
+	// outside it.
+	t.Setenv("GROUP_COMPANY_IDS", strconv.FormatInt(personeltest.OrgSatu, 10))
+	t.Setenv("GROUP_ORGANIZATION_ID", strconv.FormatInt(groupOrg, 10))
 }
+
+// groupOrg is the organization the test group maps to.
+const groupOrg int64 = 7
 
 func textOf(s string) pgtype.Text { return pgtype.Text{String: s, Valid: true} }
 
@@ -58,16 +66,16 @@ func TestGrantAdminCreatesTheFirstAdmin(t *testing.T) {
 	configure(t)
 
 	// Nobody has ever signed in: the person is fetched from Personalia by NIK first.
-	require.NoError(t, run([]string{"grant-admin", "--org", "900101", "--nik", personeltest.NIKDanruSatu}))
+	require.NoError(t, run([]string{"grant-admin", "--nik", personeltest.NIKDanruSatu}))
 
-	role, grantedBy, found := roleOf(t, personeltest.OrgSatu)
+	role, grantedBy, found := roleOf(t, groupOrg)
 	require.True(t, found)
 	require.Equal(t, access.RoleOrgAdmin, role)
 	require.Nil(t, grantedBy, "nobody granted it: it came from the command line")
 
 	// The person is a real, active row and an admin by the gate's own check.
 	var admin bool
-	require.NoError(t, database.WithTenant(t.Context(), testkit.Pool(t), personeltest.OrgSatu, func(q *db.Queries) error {
+	require.NoError(t, database.WithTenant(t.Context(), testkit.Pool(t), groupOrg, func(q *db.Queries) error {
 		p, err := q.GetPersonnelByNIK(t.Context(), textOf(personeltest.NIKDanruSatu))
 		require.NoError(t, err)
 		require.Equal(t, db.PersonnelStatusACTIVE, p.Status)
@@ -77,7 +85,7 @@ func TestGrantAdminCreatesTheFirstAdmin(t *testing.T) {
 	require.True(t, admin)
 
 	// Audited as a grant with no actor.
-	require.NoError(t, database.WithTenantTx(t.Context(), testkit.Pool(t), personeltest.OrgSatu, func(tx pgx.Tx) error {
+	require.NoError(t, database.WithTenantTx(t.Context(), testkit.Pool(t), groupOrg, func(tx pgx.Tx) error {
 		var action string
 		var actor *int64
 		require.NoError(t, tx.QueryRow(t.Context(), "SELECT action, actor_personnel_id FROM audit_logs").Scan(&action, &actor))
@@ -87,25 +95,23 @@ func TestGrantAdminCreatesTheFirstAdmin(t *testing.T) {
 	}))
 
 	// Running it again is safe.
-	require.NoError(t, run([]string{"grant-admin", "--org", "900101", "--nik", personeltest.NIKDanruSatu}))
+	require.NoError(t, run([]string{"grant-admin", "--nik", personeltest.NIKDanruSatu}))
 }
 
 func TestGrantAdminRefusesWhatItCannotFind(t *testing.T) {
 	configure(t)
 
 	for name, args := range map[string][]string{
-		"a NIK of another organization": {"grant-admin", "--org", "900101", "--nik", personeltest.NIKDanruDua},
-		"a NIK nobody has":              {"grant-admin", "--org", "900101", "--nik", "NOPE0000"},
-		"no flags":                      {"grant-admin"},
-		"no NIK":                        {"grant-admin", "--org", "900101"},
-		"an unknown command":            {"nope"},
+		"a NIK of a company outside the group": {"grant-admin", "--nik", personeltest.NIKDanruDua},
+		"a NIK nobody has":                     {"grant-admin", "--nik", "NOPE0000"},
+		"no flags":                             {"grant-admin"},
+		"no NIK":                               {"grant-admin"},
+		"an unknown command":                   {"nope"},
 	} {
 		require.Error(t, run(args), name)
 	}
-	_, _, found := roleOf(t, personeltest.OrgSatu)
+	_, _, found := roleOf(t, groupOrg)
 	require.False(t, found, "nothing was granted")
-	_, _, found = roleOf(t, personeltest.OrgDua)
-	require.False(t, found)
 }
 
 func TestWithoutArgumentsItPrintsTheAccounts(t *testing.T) {

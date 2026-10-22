@@ -20,3 +20,12 @@ sql:
           - db_type: jsonb
             nullable: true
             go_type: encoding/json.RawMessage
+          # The only numeric columns are the GPS coordinates (numeric(9,6)), which the API and
+          # the geofence maths read as float64; pgtype.Numeric would be noise at every call.
+          - db_type: pg_catalog.numeric
+            go_type: float64
+          - db_type: pg_catalog.numeric
+            nullable: true
+            go_type:
+              type: float64
+              pointer: true

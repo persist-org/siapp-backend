@@ -50,6 +50,9 @@ type Config struct {
 	// this backend calls these routes, and the key never leaves the two servers.
 	Key string
 
+	// Group says which companies form the one organization. See Group.
+	Group Group
+
 	Logger *slog.Logger
 	// Clock drives the circuit breaker; nil is the system clock.
 	Clock clock.Clock
@@ -64,6 +67,7 @@ type Config struct {
 type Client struct {
 	base    string
 	key     string
+	group   Group
 	http    *http.Client
 	log     *slog.Logger
 	breaker *breaker
@@ -88,6 +92,7 @@ func New(cfg Config) (*Client, error) {
 	c := &Client{
 		base:    strings.TrimRight(cfg.BaseURL, "/"),
 		key:     cfg.Key,
+		group:   cfg.Group,
 		http:    cfg.HTTPClient,
 		log:     cfg.Logger,
 		backoff: retryBackoff,
@@ -132,7 +137,7 @@ func (c *Client) Login(ctx context.Context, in LoginInput) (Identity, error) {
 	if err := c.call(ctx, "/login", body, false, &out); err != nil {
 		return Identity{}, err
 	}
-	return out.identity()
+	return out.identity(c.group)
 }
 
 // EmployeeByNIK implements Directory.
@@ -168,11 +173,12 @@ func (c *Client) EmployeesByNIKs(ctx context.Context, orgID int64, niks []string
 			return nil, err
 		}
 		for _, j := range out {
-			id, err := j.identity()
+			id, err := j.identity(c.group)
 			if err != nil {
 				return nil, err
 			}
-			// Tenant guard: Personalia's NIKs are global, SiAPP's tenants are not.
+			// Tenant guard: Personalia's NIKs are global, SiAPP's tenants are not. A person
+			// of a company outside the group has no organization (0), so never matches.
 			if id.OrganizationID == orgID {
 				result = append(result, id)
 			}
@@ -384,7 +390,7 @@ type ref struct {
 	Name string `json:"name"`
 }
 
-func (j identityJSON) identity() (Identity, error) {
+func (j identityJSON) identity(group Group) (Identity, error) {
 	if !j.Domain.Valid() {
 		return Identity{}, fmt.Errorf("%w: unknown account domain %q", ErrUnavailable, j.Domain)
 	}
@@ -399,7 +405,10 @@ func (j identityJSON) identity() (Identity, error) {
 		Domain:         j.Domain,
 	}
 	if j.Company != nil {
-		id.OrganizationID, id.OrganizationName = j.Company.ID, j.Company.Name
+		id.CompanyID, id.CompanyName = j.Company.ID, j.Company.Name
+		if orgID, orgName, ok := group.tenant(j.Company.ID, j.Company.Name); ok {
+			id.OrganizationID, id.OrganizationName = orgID, orgName
+		}
 	}
 	if j.Client != nil {
 		id.ClientID, id.ClientName = j.Client.ID, j.Client.Name

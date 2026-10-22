@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"siapp/internal/apigen"
 	"siapp/pkg/access"
@@ -69,7 +70,15 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user := toUser(me.Person)
-	result := apigen.MeResult{User: &user, Memberships: &[]map[string]any{}}
+	memberships := make([]apigen.MeMembership, 0, len(me.Memberships))
+	for _, m := range me.Memberships {
+		role := apigen.TeamRole(m.Role)
+		memberships = append(memberships, apigen.MeMembership{
+			TeamCode: &m.TeamCode, TeamName: &m.TeamName, ProjectCode: &m.ProjectCode, ProjectName: &m.ProjectName,
+			Role: &role, StartDate: &openapi_types.Date{Time: m.StartDate.Time()},
+		})
+	}
+	result := apigen.MeResult{User: &user, Memberships: &memberships}
 	result.Organization = &struct {
 		Id   *int64  `json:"id,omitempty"`   //nolint:revive // must match the generated anonymous type
 		Name *string `json:"name,omitempty"` //nolint:revive // must match the generated anonymous type
@@ -77,10 +86,14 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 	roles := []string{}
 	if me.WebRole != nil {
 		role := apigen.MeResultWebRoleRole(me.WebRole.Role)
+		var regionCode *string
+		if me.WebRole.RegionCode != "" {
+			regionCode = &me.WebRole.RegionCode
+		}
 		result.WebRole = &struct {
-			ProjectIds *[]int64                    `json:"project_ids,omitempty"` //nolint:revive // must match the generated anonymous type
+			RegionCode *string                     `json:"region_code,omitempty"` //nolint:revive // must match the generated anonymous type
 			Role       *apigen.MeResultWebRoleRole `json:"role,omitempty"`
-		}{ProjectIds: &me.WebRole.ProjectIDs, Role: &role}
+		}{RegionCode: regionCode, Role: &role}
 		roles = append(roles, me.WebRole.Role)
 	}
 	result.Roles = &roles

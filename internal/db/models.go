@@ -12,6 +12,48 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type BusinessLine string
+
+const (
+	BusinessLineSecurity BusinessLine = "security"
+	BusinessLineCleaning BusinessLine = "cleaning"
+)
+
+func (e *BusinessLine) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = BusinessLine(s)
+	case string:
+		*e = BusinessLine(s)
+	default:
+		return fmt.Errorf("unsupported scan type for BusinessLine: %T", src)
+	}
+	return nil
+}
+
+type NullBusinessLine struct {
+	BusinessLine BusinessLine
+	Valid        bool // Valid is true if BusinessLine is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullBusinessLine) Scan(value interface{}) error {
+	if value == nil {
+		ns.BusinessLine, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.BusinessLine.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullBusinessLine) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.BusinessLine), nil
+}
+
 type DevicePlatform string
 
 const (
@@ -139,6 +181,48 @@ func (ns NullPersonnelStatus) Value() (driver.Value, error) {
 	return string(ns.PersonnelStatus), nil
 }
 
+type ScheduleType string
+
+const (
+	ScheduleTypeFIXED    ScheduleType = "FIXED"
+	ScheduleTypeFLEXIBLE ScheduleType = "FLEXIBLE"
+)
+
+func (e *ScheduleType) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ScheduleType(s)
+	case string:
+		*e = ScheduleType(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ScheduleType: %T", src)
+	}
+	return nil
+}
+
+type NullScheduleType struct {
+	ScheduleType ScheduleType
+	Valid        bool // Valid is true if ScheduleType is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullScheduleType) Scan(value interface{}) error {
+	if value == nil {
+		ns.ScheduleType, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ScheduleType.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullScheduleType) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ScheduleType), nil
+}
+
 type SessionClient string
 
 const (
@@ -228,11 +312,53 @@ func (ns NullSessionRevokeReason) Value() (driver.Value, error) {
 	return string(ns.SessionRevokeReason), nil
 }
 
+type TeamRole string
+
+const (
+	TeamRoleDANRU  TeamRole = "DANRU"
+	TeamRoleMEMBER TeamRole = "MEMBER"
+)
+
+func (e *TeamRole) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = TeamRole(s)
+	case string:
+		*e = TeamRole(s)
+	default:
+		return fmt.Errorf("unsupported scan type for TeamRole: %T", src)
+	}
+	return nil
+}
+
+type NullTeamRole struct {
+	TeamRole TeamRole
+	Valid    bool // Valid is true if TeamRole is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullTeamRole) Scan(value interface{}) error {
+	if value == nil {
+		ns.TeamRole, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.TeamRole.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullTeamRole) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.TeamRole), nil
+}
+
 type WebRole string
 
 const (
-	WebRoleORGADMIN     WebRole = "ORG_ADMIN"
-	WebRolePROJECTADMIN WebRole = "PROJECT_ADMIN"
+	WebRoleORGADMIN    WebRole = "ORG_ADMIN"
+	WebRoleREGIONADMIN WebRole = "REGION_ADMIN"
 )
 
 func (e *WebRole) Scan(src interface{}) error {
@@ -276,9 +402,52 @@ type AuditLog struct {
 	ActorPersonnelID pgtype.Int8
 	Action           string
 	EntityType       string
-	EntityID         int64
+	EntityID         pgtype.Int8
 	Metadata         json.RawMessage
 	CreatedAt        pgtype.Timestamptz
+	EntityCode       pgtype.Text
+}
+
+type Branch struct {
+	OrganizationID int64
+	Code           string
+	RegionCode     string
+	CompanyLetter  string
+	ManagerName    pgtype.Text
+	City           pgtype.Text
+	Phone          pgtype.Text
+	Fax            pgtype.Text
+	Email          pgtype.Text
+	Address        pgtype.Text
+	ZipCode        pgtype.Text
+	Description    string
+	Active         bool
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+	DeletedAt      pgtype.Timestamptz
+}
+
+type Client struct {
+	OrganizationID     int64
+	Code               string
+	BranchCode         string
+	Description        string
+	CompanyCode        pgtype.Text
+	CompanyPrefix      string
+	CompanyBidangUsaha pgtype.Text
+	DirectorName       pgtype.Text
+	City               pgtype.Text
+	Phone              pgtype.Text
+	Fax                pgtype.Text
+	Address            pgtype.Text
+	ZipCode            pgtype.Text
+	Email              pgtype.Text
+	Active             bool
+	CreatedBy          pgtype.Int8
+	ModifyBy           pgtype.Int8
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
+	DeletedAt          pgtype.Timestamptz
 }
 
 type Device struct {
@@ -343,6 +512,74 @@ type Personnel struct {
 	LastSeenAt     pgtype.Timestamptz
 	CreatedAt      pgtype.Timestamptz
 	UpdatedAt      pgtype.Timestamptz
+	CompanyID      pgtype.Int8
+	CompanyName    pgtype.Text
+	PositionName   pgtype.Text
+}
+
+type PersonnelShiftAssignment struct {
+	OrganizationID int64
+	PersonnelID    int64
+	ScheduleType   ScheduleType
+	ShiftGroupID   pgtype.Int8
+	EffectiveDate  pgtype.Date
+	GeneratedUntil pgtype.Date
+	UpdatedBy      pgtype.Int8
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
+type Project struct {
+	OrganizationID           int64
+	Code                     string
+	ClientCode               string
+	Description              string
+	CompanyCode              pgtype.Text
+	CompanyPrefix            pgtype.Text
+	CompanyBidangUsaha       pgtype.Text
+	BusinessLine             BusinessLine
+	City                     pgtype.Text
+	Address                  pgtype.Text
+	Phone                    pgtype.Text
+	Email                    pgtype.Text
+	Timezone                 string
+	Latitude                 *float64
+	Longitude                *float64
+	AttendanceRadiusMeters   int32
+	StrictAttendanceGeofence bool
+	GpsTrackingEnabled       bool
+	PatrolIntervalMinutes    pgtype.Int4
+	EmergencyContacts        json.RawMessage
+	NextTeamNumber           int32
+	Active                   bool
+	CreatedBy                pgtype.Int8
+	ModifyBy                 pgtype.Int8
+	CreatedAt                pgtype.Timestamptz
+	UpdatedAt                pgtype.Timestamptz
+	DeletedAt                pgtype.Timestamptz
+}
+
+type Region struct {
+	OrganizationID int64
+	Code           string
+	Description    string
+	Active         bool
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+	DeletedAt      pgtype.Timestamptz
+}
+
+type Schedule struct {
+	ID             int64
+	OrganizationID int64
+	PersonnelID    int64
+	WorkDate       pgtype.Date
+	ShiftID        int64
+	ShiftGroupID   pgtype.Int8
+	CreatedBy      pgtype.Int8
+	UpdatedBy      pgtype.Int8
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
 }
 
 type Session struct {
@@ -365,13 +602,76 @@ type Session struct {
 	RevokeReason     NullSessionRevokeReason
 }
 
+type Shift struct {
+	ID               int64
+	OrganizationID   int64
+	Name             string
+	StartMinute      int16
+	EndMinute        int16
+	IsOff            bool
+	ToleranceMinutes int16
+	Active           bool
+	CreatedBy        pgtype.Int8
+	UpdatedBy        pgtype.Int8
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+	DeletedAt        pgtype.Timestamptz
+}
+
+type ShiftGroup struct {
+	ID             int64
+	OrganizationID int64
+	Name           string
+	CreatedBy      pgtype.Int8
+	UpdatedBy      pgtype.Int8
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+	DeletedAt      pgtype.Timestamptz
+}
+
+type ShiftGroupDay struct {
+	OrganizationID int64
+	ShiftGroupID   int64
+	Weekday        int16
+	ShiftID        int64
+}
+
+type Team struct {
+	OrganizationID                 int64
+	Code                           string
+	ProjectCode                    string
+	Description                    string
+	Phone                          pgtype.Text
+	MinPersonnel                   int32
+	Notes                          pgtype.Text
+	ValidateShift                  bool
+	RejectAttendanceAfterTolerance bool
+	RelationshipOfficerPersonnelID pgtype.Int8
+	Active                         bool
+	CreatedAt                      pgtype.Timestamptz
+	UpdatedAt                      pgtype.Timestamptz
+	DeletedAt                      pgtype.Timestamptz
+}
+
+type TeamMember struct {
+	ID             int64
+	OrganizationID int64
+	TeamCode       string
+	PersonnelID    int64
+	Role           TeamRole
+	StartDate      pgtype.Date
+	EndDate        pgtype.Date
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
 type WebRoleAssignment struct {
 	ID                   int64
 	OrganizationID       int64
 	PersonnelID          int64
 	Role                 WebRole
-	ProjectIds           []int64
 	GrantedByPersonnelID pgtype.Int8
 	CreatedAt            pgtype.Timestamptz
 	UpdatedAt            pgtype.Timestamptz
+	RegionCode           pgtype.Text
 }

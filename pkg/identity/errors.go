@@ -16,6 +16,7 @@ const (
 	ReasonAccountDisabled       = "AUTH_ACCOUNT_DISABLED"
 	ReasonDeviceBound           = "AUTH_DEVICE_BOUND"
 	ReasonOrganizationSuspended = "AUTH_ORGANIZATION_SUSPENDED"
+	ReasonNotInGroup            = "AUTH_NOT_IN_GROUP"
 	ReasonRefreshReused         = "AUTH_REFRESH_REUSED"
 	ReasonDeviceChanged         = "AUTH_DEVICE_CHANGED"
 )
@@ -37,6 +38,11 @@ var ErrDeviceBound = apperr.New(http.StatusForbidden, apperr.CodeForbidden,
 // ErrOrganizationSuspended is returned when the person's organization has been suspended.
 var ErrOrganizationSuspended = apperr.New(http.StatusForbidden, apperr.CodeForbidden,
 	ReasonOrganizationSuspended, "Organisasi Anda sedang dinonaktifkan. Hubungi administrator.")
+
+// ErrNotInGroup is returned after a correct password for a person employed by a company
+// outside the group (KPI, IDS, PCD): SiAPP serves only the group (D17).
+var ErrNotInGroup = apperr.New(http.StatusForbidden, apperr.CodeForbidden,
+	ReasonNotInGroup, "Perusahaan Anda tidak terdaftar di SiAPP. Hubungi administrator.")
 
 // ErrRefreshTokenInvalid is returned for a refresh token that is malformed, unknown, expired
 // or from another organization. The reasons are deliberately not told apart. The client has

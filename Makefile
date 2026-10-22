@@ -2,7 +2,7 @@
 -include .env
 export
 
-.PHONY: contract test-personel-live up up-app up-cctv down reset-db logs ps psql psql-app run worker migrate seed grant-admin generate lint test check
+.PHONY: contract test-personel-live up up-app up-cctv down reset-db logs ps psql psql-app run worker migrate seed grant-admin seed-shifts generate lint test check
 
 # postgres, redis, minio
 up:
@@ -55,11 +55,17 @@ seed:
 	go run ./cmd/seed
 
 # Make a person the first ORG_ADMIN of an organization (needs kpi-personalia-api running):
-#   make grant-admin ORG=900101 NIK=SIAPPA0001
+#   make grant-admin NIK=SIAPPA0001
 # It goes through make so that .env is loaded; `go run ./cmd/seed grant-admin` alone is not.
 grant-admin:
-	@test -n "$(ORG)" -a -n "$(NIK)" || { echo "usage: make grant-admin ORG=<organization id> NIK=<nik>"; exit 1; }
-	go run ./cmd/seed grant-admin --org $(ORG) --nik $(NIK)
+	@test -n "$(NIK)" || { echo "usage: make grant-admin NIK=<nik>"; exit 1; }
+	go run ./cmd/seed grant-admin --nik $(NIK)
+
+# PJ48's starting shifts (OFF, Day Shift 08:00-17:00, Night Shift 22:00-06:00) and the shift
+# group "5 Hari Kerja" (Day Shift Mon-Fri, OFF on the weekend) in GROUP_ORGANIZATION_ID.
+# Run after make migrate and make grant-admin. Safe to run again: existing names are kept.
+seed-shifts:
+	go run ./cmd/seed shifts
 
 # Where the PERSIST contract lives (set CONTRACT_SRC in .env to override).
 CONTRACT_SRC ?= ../persist-ecosystem/contracts/openapi.yaml

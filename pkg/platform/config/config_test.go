@@ -18,6 +18,7 @@ func validEnv() map[string]string {
 		"JWT_SECRET":               "test-secret-test-secret-test-secret",
 		"PERSONEL_BASE_URL":        "http://localhost:8081/api/v3/integrations/siapp",
 		"PERSONEL_INTEGRATION_KEY": "test-integration-key",
+		"GROUP_COMPANY_IDS":        "3,45,89",
 	}
 }
 
@@ -29,6 +30,14 @@ func TestParse(t *testing.T) {
 	require.Equal(t, slog.LevelInfo, cfg.LogLevel)
 	require.Empty(t, cfg.MigrateDSN)
 	require.Empty(t, cfg.CORSOrigins)
+}
+
+func TestParseGroup(t *testing.T) {
+	cfg, err := Parse(validEnv())
+	require.NoError(t, err)
+	require.Equal(t, []int64{3, 45, 89}, cfg.GroupCompanyIDs)
+	require.EqualValues(t, 1, cfg.GroupOrganizationID, "one organization for the whole group")
+	require.Equal(t, "KPI Group", cfg.GroupOrganizationName)
 }
 
 func TestParseErrors(t *testing.T) {
@@ -97,6 +106,26 @@ func TestParseErrors(t *testing.T) {
 			name:     "JWT_SECRET too short",
 			override: map[string]string{"JWT_SECRET": "short"},
 			wantMsgs: []string{"JWT_SECRET must be at least 32 bytes"},
+		},
+		{
+			name:     "missing GROUP_COMPANY_IDS",
+			drop:     []string{"GROUP_COMPANY_IDS"},
+			wantMsgs: []string{`"GROUP_COMPANY_IDS"`},
+		},
+		{
+			name:     "a company listed twice",
+			override: map[string]string{"GROUP_COMPANY_IDS": "3,45,3"},
+			wantMsgs: []string{"GROUP_COMPANY_IDS lists company 3 twice"},
+		},
+		{
+			name:     "a company id that is not positive",
+			override: map[string]string{"GROUP_COMPANY_IDS": "3,0"},
+			wantMsgs: []string{"GROUP_COMPANY_IDS must list positive company ids"},
+		},
+		{
+			name:     "a group organization id that is not positive",
+			override: map[string]string{"GROUP_ORGANIZATION_ID": "0"},
+			wantMsgs: []string{"GROUP_ORGANIZATION_ID must be a positive number"},
 		},
 		{
 			name:     "all problems reported together",

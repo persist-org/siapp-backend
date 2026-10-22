@@ -1,6 +1,7 @@
 package httpx
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"github.com/google/uuid"
 
 	"siapp/pkg/platform/apperr"
+	"siapp/pkg/platform/timeutil"
 )
 
 const maxBodyBytes = 1 << 20 // 1 MB
@@ -92,8 +94,16 @@ const (
 func Decode(r *http.Request, dst any) error {
 	// A nil ResponseWriter is allowed: it only means the server is not told to close
 	// the connection after an oversized body.
-	body := http.MaxBytesReader(nil, r.Body, maxBodyBytes)
-	dec := json.NewDecoder(body)
+	data, err := io.ReadAll(http.MaxBytesReader(nil, r.Body, maxBodyBytes))
+	if err != nil {
+		return decodeError(err)
+	}
+	// ⚠ Postgres cannot store NUL in text: a string with \u0000 would fail deep in a query
+	// as a 500. JSON can only carry it escaped, so the escape is what is looked for.
+	if bytes.Contains(data, []byte(`\u0000`)) {
+		return apperr.ErrBadRequest.WithMessage("Body tidak boleh berisi karakter NUL (\\u0000).")
+	}
+	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
 
 	if err := dec.Decode(dst); err != nil {
@@ -120,9 +130,11 @@ func decodeError(err error) error {
 	case errors.As(err, &syntax), errors.Is(err, io.ErrUnexpectedEOF):
 		return apperr.ErrBadRequest.WithMessage("Body bukan JSON yang valid.")
 	case errors.As(err, &typeErr):
-		return apperr.ErrValidation.WithFields(apperr.FieldError{
-			Field: typeErr.Field, Code: codeInvalid, Message: "Harus bertipe " + jsonKind(typeErr.Type) + ".",
-		})
+		message := "Harus bertipe " + jsonKind(typeErr.Type) + "."
+		if typeErr.Type == reflect.TypeFor[timeutil.Date]() {
+			message = "Harus berformat YYYY-MM-DD."
+		}
+		return apperr.ErrValidation.WithFields(apperr.FieldError{Field: typeErr.Field, Code: codeInvalid, Message: message})
 	}
 	// encoding/json has no typed error for unknown fields; it is reported as text.
 	if field, ok := strings.CutPrefix(err.Error(), "json: unknown field "); ok {

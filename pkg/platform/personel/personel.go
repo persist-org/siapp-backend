@@ -45,10 +45,16 @@ type Identity struct {
 	FullName string
 	Phone    string
 	PhotoURL string
-	// OrganizationID is the employing company: the SiAPP tenant (D11). It is 0 when the
-	// person has no work row, which a login never returns (that is ErrAccountDisabled).
+	// OrganizationID is the SiAPP tenant: the group's one organization when the Client has a
+	// Group (D17), the employing company itself otherwise. It is 0 when the person has no
+	// work row (which a login never returns: that is ErrAccountDisabled) and when they work
+	// for a company outside the group (CompanyID is then set).
 	OrganizationID   int64
 	OrganizationName string
+	// CompanyID is the employing company (PT) in Personalia, for display. It is not the
+	// tenant: KPI, IDS and PCD share one organization.
+	CompanyID   int64
+	CompanyName string
 	// ClientID is the placement client, which is not a tenant.
 	ClientID     int64
 	ClientName   string
