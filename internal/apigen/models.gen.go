@@ -207,6 +207,30 @@ func (e ErrorEnvelopeSuccess) Valid() bool {
 	}
 }
 
+// Defines values for FieldPermissionScope.
+const (
+	FieldPermissionScopeNONE    FieldPermissionScope = "NONE"
+	FieldPermissionScopePROJECT FieldPermissionScope = "PROJECT"
+	FieldPermissionScopeSELF    FieldPermissionScope = "SELF"
+	FieldPermissionScopeTEAM    FieldPermissionScope = "TEAM"
+)
+
+// Valid indicates whether the value is a known member of the FieldPermissionScope enum.
+func (e FieldPermissionScope) Valid() bool {
+	switch e {
+	case FieldPermissionScopeNONE:
+		return true
+	case FieldPermissionScopePROJECT:
+		return true
+	case FieldPermissionScopeSELF:
+		return true
+	case FieldPermissionScopeTEAM:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for InstructionFeedbackRead.
 const (
 	InstructionFeedbackReadTrue InstructionFeedbackRead = true
@@ -513,6 +537,7 @@ const (
 	MEMBERSHIPOVERLAP         OrganizationErrorReason = "MEMBERSHIP_OVERLAP"
 	NOTADMIN                  OrganizationErrorReason = "NOT_ADMIN"
 	NOTPROJECTMEMBER          OrganizationErrorReason = "NOT_PROJECT_MEMBER"
+	PERMISSIONUNKNOWN         OrganizationErrorReason = "PERMISSION_UNKNOWN"
 	PERSONNELINACTIVE         OrganizationErrorReason = "PERSONNEL_INACTIVE"
 	PERSONNELNOTFOUND         OrganizationErrorReason = "PERSONNEL_NOT_FOUND"
 	PROJECTNOTCONFIGURED      OrganizationErrorReason = "PROJECT_NOT_CONFIGURED"
@@ -561,6 +586,8 @@ func (e OrganizationErrorReason) Valid() bool {
 	case NOTADMIN:
 		return true
 	case NOTPROJECTMEMBER:
+		return true
+	case PERMISSIONUNKNOWN:
 		return true
 	case PERSONNELINACTIVE:
 		return true
@@ -711,6 +738,27 @@ func (e PermissionStatus) Valid() bool {
 	case PermissionStatusPENDING:
 		return true
 	case PermissionStatusREJECTED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PermissionScope.
+const (
+	PermissionScopePROJECT PermissionScope = "PROJECT"
+	PermissionScopeSELF    PermissionScope = "SELF"
+	PermissionScopeTEAM    PermissionScope = "TEAM"
+)
+
+// Valid indicates whether the value is a known member of the PermissionScope enum.
+func (e PermissionScope) Valid() bool {
+	switch e {
+	case PermissionScopePROJECT:
+		return true
+	case PermissionScopeSELF:
+		return true
+	case PermissionScopeTEAM:
 		return true
 	default:
 		return false
@@ -1731,6 +1779,36 @@ const (
 func (e PatchAdminClientsByCode200JSONResponseBodySuccess) Valid() bool {
 	switch e {
 	case PatchAdminClientsByCode200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetAdminFieldPermissions200JSONResponseBodySuccess.
+const (
+	GetAdminFieldPermissions200JSONResponseBodySuccessTrue GetAdminFieldPermissions200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetAdminFieldPermissions200JSONResponseBodySuccess enum.
+func (e GetAdminFieldPermissions200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetAdminFieldPermissions200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PutAdminFieldPermissionsByTeamRole200JSONResponseBodySuccess.
+const (
+	PutAdminFieldPermissionsByTeamRole200JSONResponseBodySuccessTrue PutAdminFieldPermissionsByTeamRole200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PutAdminFieldPermissionsByTeamRole200JSONResponseBodySuccess enum.
+func (e PutAdminFieldPermissionsByTeamRole200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PutAdminFieldPermissionsByTeamRole200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
@@ -5903,6 +5981,69 @@ type FieldError struct {
 	Message string `json:"message"`
 }
 
+// FieldPermissionDefaults Jangkauan bawaan tiap peran, dari Tabel 8 manual.
+type FieldPermissionDefaults struct {
+	// DANRU Jangkauan satu hak di matriks. `NONE`: peran itu tidak boleh. Selebihnya sama dengan `PermissionScope`.
+	// `NONE` disimpan sebagai nilai, bukan sebagai baris yang tidak ada, supaya hak yang dicabut admin tidak kembali saat seed ulang.
+	DANRU FieldPermissionScope `json:"DANRU"`
+
+	// MEMBER Jangkauan satu hak di matriks. `NONE`: peran itu tidak boleh. Selebihnya sama dengan `PermissionScope`.
+	// `NONE` disimpan sebagai nilai, bukan sebagai baris yang tidak ada, supaya hak yang dicabut admin tidak kembali saat seed ulang.
+	MEMBER FieldPermissionScope `json:"MEMBER"`
+}
+
+// FieldPermissionDefinition Satu hak akses di katalog. Katalog ditetapkan oleh aplikasi; admin hanya mengubah jangkauannya per peran.
+type FieldPermissionDefinition struct {
+	// BusinessLines Hak ini hanya berlaku di proyek bidang usaha ini. Kosong berarti semua bidang.
+	BusinessLines []BusinessLine `json:"business_lines"`
+
+	// Defaults Jangkauan bawaan tiap peran, dari Tabel 8 manual.
+	Defaults FieldPermissionDefaults `json:"defaults"`
+
+	// Description Nama hak di Tabel 8 manual (Bahasa Indonesia).
+	Description string `json:"description"`
+
+	// Module Modul pemilik hak ini
+	Module     string `json:"module"`
+	Permission string `json:"permission"`
+}
+
+// FieldPermissionGrant defines model for FieldPermissionGrant.
+type FieldPermissionGrant struct {
+	Permission string `json:"permission"`
+
+	// Scope Jangkauan satu hak di matriks. `NONE`: peran itu tidak boleh. Selebihnya sama dengan `PermissionScope`.
+	// `NONE` disimpan sebagai nilai, bukan sebagai baris yang tidak ada, supaya hak yang dicabut admin tidak kembali saat seed ulang.
+	Scope FieldPermissionScope `json:"scope"`
+}
+
+// FieldPermissionMatrix defines model for FieldPermissionMatrix.
+type FieldPermissionMatrix struct {
+	Catalog []FieldPermissionDefinition `json:"catalog"`
+
+	// Roles Satu entri per peran regu (DANRU, MEMBER).
+	Roles []FieldPermissionRole `json:"roles"`
+}
+
+// FieldPermissionRole Semua hak satu peran regu, satu per hak di katalog, urut seperti katalog.
+type FieldPermissionRole struct {
+	Grants []FieldPermissionGrant `json:"grants"`
+
+	// TeamRole Peran lapangan di regu (DL-04). Satu DANRU per regu per tanggal (BR-RULE-02).
+	TeamRole TeamRole `json:"team_role"`
+}
+
+// FieldPermissionScope Jangkauan satu hak di matriks. `NONE`: peran itu tidak boleh. Selebihnya sama dengan `PermissionScope`.
+// `NONE` disimpan sebagai nilai, bukan sebagai baris yang tidak ada, supaya hak yang dicabut admin tidak kembali saat seed ulang.
+type FieldPermissionScope string
+
+// FieldPermissionsInput defines model for FieldPermissionsInput.
+type FieldPermissionsInput struct {
+	// Grants WAJIB: setiap hak di katalog tepat satu kali. Ini penggantian seluruh hak satu peran, jadi hak yang tidak disebut
+	// ditolak (422 `REQUIRED`), bukan dianggap dicabut.
+	Grants []FieldPermissionGrant `json:"grants"`
+}
+
 // ForgotPasswordRequest defines model for ForgotPasswordRequest.
 type ForgotPasswordRequest struct {
 	Email            openapi_types.Email `json:"email"`
@@ -6155,6 +6296,16 @@ type MeMembership struct {
 	TeamName  *string             `json:"team_name,omitempty"`
 }
 
+// MePermission defines model for MePermission.
+type MePermission struct {
+	// Permission Kunci hak akses (lihat katalog di /admin/field-permissions).
+	Permission string `json:"permission"`
+
+	// Scope Jangkauan hak yang dimiliki seseorang. `SELF`: hanya catatannya sendiri. `TEAM`: catatan regu tempat ia memegang peran itu.
+	// `PROJECT`: catatan semua regu di proyek tempat ia memegang peran itu.
+	Scope PermissionScope `json:"scope"`
+}
+
 // MeResult defines model for MeResult.
 type MeResult struct {
 	// Memberships Regu tempat orang ini bertugas hari ini (kosong bila tidak ada).
@@ -6165,9 +6316,16 @@ type MeResult struct {
 		Id   *int64  `json:"id,omitempty"`
 		Name *string `json:"name,omitempty"`
 	} `json:"organization,omitempty"`
-	Roles    *[]string         `json:"roles,omitempty"`
-	TeamRole *MeResultTeamRole `json:"team_role,omitempty"`
-	User     *Personnel        `json:"user,omitempty"`
+
+	// Permissions Hak akses lapangan orang ini hari ini, untuk menampilkan atau menyembunyikan menu. Selalu ada; kosong bila orang
+	// ini tidak bertugas di regu mana pun (admin web tidak memakai hak lapangan). Tiap kunci muncul sekali, dengan jangkauan
+	// terluas dari semua keanggotaan yang masih berjalan; kunci tanpa jangkauan tidak dikirim. Hak yang khusus satu bidang
+	// usaha (mis. `ememo.use`, hanya cleaning) dihitung hanya dari keanggotaan di proyek bidang itu.
+	// Daftar ini hanya untuk tampilan: setiap fitur memeriksa haknya sendiri di server.
+	Permissions *[]MePermission   `json:"permissions,omitempty"`
+	Roles       *[]string         `json:"roles,omitempty"`
+	TeamRole    *MeResultTeamRole `json:"team_role,omitempty"`
+	User        *Personnel        `json:"user,omitempty"`
 
 	// WebRole Penugasan peran web (admin) milik SiAPP; null untuk petugas lapangan.
 	WebRole *struct {
@@ -6344,6 +6502,7 @@ type OrganizationCreateEnabledBusinessLines string
 // - `SCHEDULE_NOT_FOUND`: 404. Jadwal tidak ada.
 // - `SCHEDULE_EXISTS`: 409. Personil sudah punya jadwal pada tanggal itu.
 // - `SCHEDULE_TIMEZONE_AMBIGUOUS`: 422 UNPROCESSABLE. Pada tanggal itu personil bertugas di proyek dengan zona waktu berbeda, sehingga jam shift berarti dua waktu. Hanya menolak shift kerja; hari OFF tidak.
+// - `PERMISSION_UNKNOWN`: 422 VALIDATION_ERROR. Daftar hak yang dikirim memuat kunci yang tidak ada di katalog; `errors[]` menyebut hak yang mana.
 type OrganizationErrorReason string
 
 // OrganizationProfileUpdate Update profil + branding organisasi (WEB-37).
@@ -6585,6 +6744,10 @@ type PermissionCreate struct {
 	DateTo     openapi_types.Date `json:"date_to"`
 	Reason     *string            `json:"reason,omitempty"`
 }
+
+// PermissionScope Jangkauan hak yang dimiliki seseorang. `SELF`: hanya catatannya sendiri. `TEAM`: catatan regu tempat ia memegang peran itu.
+// `PROJECT`: catatan semua regu di proyek tempat ia memegang peran itu.
+type PermissionScope string
 
 // Personnel defines model for Personnel.
 type Personnel struct {
@@ -7870,6 +8033,9 @@ type TeamIdParam = int64
 // TeamMembershipIdPath defines model for TeamMembershipIdPath.
 type TeamMembershipIdPath = int64
 
+// TeamRolePath Peran lapangan di regu (DL-04). Satu DANRU per regu per tanggal (BR-RULE-02).
+type TeamRolePath = TeamRole
+
 // XRequestIdHeader defines model for XRequestIdHeader.
 type XRequestIdHeader = string
 
@@ -8202,6 +8368,12 @@ type GetAdminClientsByCode200JSONResponseBodySuccess bool
 
 // PatchAdminClientsByCode200JSONResponseBodySuccess defines parameters for PatchAdminClientsByCode.
 type PatchAdminClientsByCode200JSONResponseBodySuccess bool
+
+// GetAdminFieldPermissions200JSONResponseBodySuccess defines parameters for GetAdminFieldPermissions.
+type GetAdminFieldPermissions200JSONResponseBodySuccess bool
+
+// PutAdminFieldPermissionsByTeamRole200JSONResponseBodySuccess defines parameters for PutAdminFieldPermissionsByTeamRole.
+type PutAdminFieldPermissionsByTeamRole200JSONResponseBodySuccess bool
 
 // GetAdminInstructionCategoriesParams defines parameters for GetAdminInstructionCategories.
 type GetAdminInstructionCategoriesParams struct {
@@ -10466,6 +10638,9 @@ type PostAdminClientsJSONRequestBody = ClientInput
 
 // PatchAdminClientsByCodeJSONRequestBody defines body for PatchAdminClientsByCode for application/json ContentType.
 type PatchAdminClientsByCodeJSONRequestBody = ClientUpdate
+
+// PutAdminFieldPermissionsByTeamRoleJSONRequestBody defines body for PutAdminFieldPermissionsByTeamRole for application/json ContentType.
+type PutAdminFieldPermissionsByTeamRoleJSONRequestBody = FieldPermissionsInput
 
 // PostAdminInstructionCategoriesJSONRequestBody defines body for PostAdminInstructionCategories for application/json ContentType.
 type PostAdminInstructionCategoriesJSONRequestBody = CodedMasterInput

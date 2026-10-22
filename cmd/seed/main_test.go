@@ -117,3 +117,48 @@ func TestGrantAdminRefusesWhatItCannotFind(t *testing.T) {
 func TestWithoutArgumentsItPrintsTheAccounts(t *testing.T) {
 	require.NoError(t, run(nil))
 }
+
+func permissionRows(t *testing.T, org int64) (n int) {
+	t.Helper()
+	require.NoError(t, database.WithTenantTx(t.Context(), testkit.Pool(t), org, func(tx pgx.Tx) error {
+		return tx.QueryRow(t.Context(), "SELECT count(*) FROM role_permissions").Scan(&n)
+	}))
+	return n
+}
+
+func TestSeedPermissionsGivesTheGroupTheDefaultMatrix(t *testing.T) {
+	configure(t)
+	want := len(access.Catalog()) * len(access.TeamRoles())
+
+	// An organization nobody has signed in to is not registered: say so, and write nothing.
+	require.Error(t, run([]string{"permissions"}))
+	require.Equal(t, 0, permissionRows(t, groupOrg))
+
+	_, err := testkit.OwnerPool(t).Exec(t.Context(), "INSERT INTO organizations (id, name) VALUES ($1, 'Grup Test')", groupOrg)
+	require.NoError(t, err)
+	require.NoError(t, run([]string{"permissions"}))
+	require.Equal(t, want, permissionRows(t, groupOrg))
+
+	// An admin's edit, and a permission the catalog gained since: a re-run keeps the one and
+	// adds the other.
+	require.NoError(t, database.WithTenantTx(t.Context(), testkit.Pool(t), groupOrg, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(t.Context(), "UPDATE role_permissions SET scope = 'NONE' WHERE team_role = 'DANRU' AND permission = 'attendance.leave.approve'"); err != nil {
+			return err
+		}
+		_, err := tx.Exec(t.Context(), "DELETE FROM role_permissions WHERE permission = 'cctv.view'")
+		return err
+	}))
+	require.NoError(t, run([]string{"permissions"}))
+	require.Equal(t, want, permissionRows(t, groupOrg))
+	require.NoError(t, database.WithTenantTx(t.Context(), testkit.Pool(t), groupOrg, func(tx pgx.Tx) error {
+		var scope string
+		require.NoError(t, tx.QueryRow(t.Context(),
+			"SELECT scope::text FROM role_permissions WHERE team_role = 'DANRU' AND permission = 'attendance.leave.approve'").Scan(&scope))
+		require.Equal(t, "NONE", scope, "a re-seed never gives back what an admin took away")
+		return nil
+	}))
+
+	// Safe to run again with nothing missing.
+	require.NoError(t, run([]string{"permissions"}))
+	require.Equal(t, want, permissionRows(t, groupOrg))
+}

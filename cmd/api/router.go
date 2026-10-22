@@ -62,7 +62,7 @@ func newRouter(d deps) *chi.Mux {
 	identityHandler := identity.NewHandler(identityUsecase, d.ClientIP, failures, idempotency.Middleware(false))
 	identityHandler.Mount(router)
 
-	accessHandler := access.NewHandler(access.NewWebRoles(d.Pool, d.Clock))
+	accessHandler := access.NewHandler(access.NewWebRoles(d.Pool, d.Clock), access.NewFieldPermissions(d.Pool, d.Clock))
 	organizationHandler := organization.NewHandler(organization.NewUsecases(d.Pool, d.Clock, identity.NewPeople(d.Pool, d.Personel, d.Clock)))
 	// The Regu screens: any signed-in person, scoped by the regu they serve in.
 	organizationHandler.MountField(router)

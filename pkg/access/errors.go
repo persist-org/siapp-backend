@@ -18,6 +18,9 @@ const (
 	// ReasonOutsideScope keeps the wire value it shipped with in Phase 01.3, when the scope
 	// was a list of projects; it now means "outside your region".
 	ReasonOutsideScope = "ACCESS_OUTSIDE_ADMIN_SCOPE"
+	// ReasonPermissionUnknown keeps the name the plan gives it (Phase 03), without the module
+	// prefix, like NOT_ADMIN.
+	ReasonPermissionUnknown = "PERMISSION_UNKNOWN"
 )
 
 // ErrNotAdmin is returned to a person with no web role assignment: field staff, who cannot
@@ -34,6 +37,11 @@ var ErrOrgAdminOnly = apperr.New(http.StatusForbidden, apperr.CodeRoleDenied,
 // their region. It is a scope check, so SCOPE_DENIED.
 var ErrOutsideAdminScope = apperr.New(http.StatusForbidden, apperr.CodeScopeDenied,
 	ReasonOutsideScope, "Data ini berada di luar wilayah yang Anda kelola.")
+
+// ErrPermissionUnknown is returned when a request names a permission that is not in the
+// catalog. The fields say which grants.
+var ErrPermissionUnknown = apperr.New(http.StatusUnprocessableEntity, apperr.CodeValidation,
+	ReasonPermissionUnknown, "Ada hak akses yang tidak dikenal.")
 
 // ErrOwnRoleProtected is returned when an admin tries to remove or narrow their own
 // assignment, so that the last admin cannot lock everyone out.

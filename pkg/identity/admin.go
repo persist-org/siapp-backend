@@ -26,8 +26,11 @@ type Membership struct {
 	TeamName    string
 	ProjectCode string
 	ProjectName string
-	Role        string
-	StartDate   timeutil.Date
+	// BusinessLine is the line of the project ("security" or "cleaning"). Permissions that
+	// belong to one line (E-Memo) are counted only through memberships of that line.
+	BusinessLine string
+	Role         string
+	StartDate    timeutil.Date
 }
 
 // MembershipLookup lists the regu a person serves in today (each in its project's own

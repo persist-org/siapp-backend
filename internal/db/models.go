@@ -139,6 +139,50 @@ func (ns NullOrganizationStatus) Value() (driver.Value, error) {
 	return string(ns.OrganizationStatus), nil
 }
 
+type PermissionScope string
+
+const (
+	PermissionScopeNONE    PermissionScope = "NONE"
+	PermissionScopeSELF    PermissionScope = "SELF"
+	PermissionScopeTEAM    PermissionScope = "TEAM"
+	PermissionScopePROJECT PermissionScope = "PROJECT"
+)
+
+func (e *PermissionScope) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PermissionScope(s)
+	case string:
+		*e = PermissionScope(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PermissionScope: %T", src)
+	}
+	return nil
+}
+
+type NullPermissionScope struct {
+	PermissionScope PermissionScope
+	Valid           bool // Valid is true if PermissionScope is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPermissionScope) Scan(value interface{}) error {
+	if value == nil {
+		ns.PermissionScope, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PermissionScope.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPermissionScope) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PermissionScope), nil
+}
+
 type PersonnelStatus string
 
 const (
@@ -567,6 +611,15 @@ type Region struct {
 	CreatedAt      pgtype.Timestamptz
 	UpdatedAt      pgtype.Timestamptz
 	DeletedAt      pgtype.Timestamptz
+}
+
+type RolePermission struct {
+	OrganizationID int64
+	TeamRole       TeamRole
+	Permission     string
+	Scope          PermissionScope
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
 }
 
 type Schedule struct {

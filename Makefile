@@ -2,7 +2,7 @@
 -include .env
 export
 
-.PHONY: contract test-personel-live up up-app up-cctv down reset-db logs ps psql psql-app run worker migrate seed grant-admin seed-shifts generate lint test check
+.PHONY: contract test-personel-live up up-app up-cctv down reset-db logs ps psql psql-app run worker migrate seed grant-admin seed-shifts seed-permissions generate lint test check
 
 # postgres, redis, minio
 up:
@@ -66,6 +66,12 @@ grant-admin:
 # Run after make migrate and make grant-admin. Safe to run again: existing names are kept.
 seed-shifts:
 	go run ./cmd/seed shifts
+
+# The default field permission matrix (Phase 03.1) in GROUP_ORGANIZATION_ID. It is also seeded at
+# the organization's first login; run this after make migrate on a fresh environment, or after
+# a release that adds a permission. Adds only what is missing, so an admin's edits stay.
+seed-permissions:
+	go run ./cmd/seed permissions
 
 # Where the PERSIST contract lives (set CONTRACT_SRC in .env to override).
 CONTRACT_SRC ?= ../persist-ecosystem/contracts/openapi.yaml

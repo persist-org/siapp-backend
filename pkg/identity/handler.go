@@ -78,7 +78,11 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 			Role: &role, StartDate: &openapi_types.Date{Time: m.StartDate.Time()},
 		})
 	}
-	result := apigen.MeResult{User: &user, Memberships: &memberships}
+	permissions := make([]apigen.MePermission, 0, len(me.Permissions))
+	for _, p := range me.Permissions {
+		permissions = append(permissions, apigen.MePermission{Permission: string(p.Permission), Scope: apigen.PermissionScope(p.Scope)})
+	}
+	result := apigen.MeResult{User: &user, Memberships: &memberships, Permissions: &permissions}
 	result.Organization = &struct {
 		Id   *int64  `json:"id,omitempty"`   //nolint:revive // must match the generated anonymous type
 		Name *string `json:"name,omitempty"` //nolint:revive // must match the generated anonymous type

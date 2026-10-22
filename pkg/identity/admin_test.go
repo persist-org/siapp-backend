@@ -388,6 +388,7 @@ type meData struct {
 	} `json:"web_role"`
 	Roles       []string `json:"roles"`
 	Memberships []any    `json:"memberships"`
+	Permissions []any    `json:"permissions"`
 }
 
 func TestMe(t *testing.T) {
@@ -407,6 +408,9 @@ func TestMe(t *testing.T) {
 		require.Empty(t, me.Roles)
 		require.NotNil(t, me.Memberships)
 		require.Empty(t, me.Memberships)
+		require.NotNil(t, me.Permissions, "always a list, never missing or null")
+		require.Empty(t, me.Permissions, "a person in no regu holds no field permission")
+		require.Contains(t, string(res.Raw), `"permissions":[]`)
 
 		// Never the full NIK, and never anything about the phone binding.
 		require.NotContains(t, string(res.Raw), personeltest.NIKAnggota1Satu)
@@ -421,6 +425,7 @@ func TestMe(t *testing.T) {
 		require.Equal(t, "ORG_ADMIN", me.WebRole.Role)
 		require.Nil(t, me.WebRole.RegionCode, "an ORG_ADMIN has no region")
 		require.Equal(t, []string{"ORG_ADMIN"}, me.Roles)
+		require.Empty(t, me.Permissions, "an admin uses the web admin routes, not the field permissions")
 	})
 
 	t.Run("a REGION_ADMIN shows their koordinator wilayah", func(t *testing.T) {

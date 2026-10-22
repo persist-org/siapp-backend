@@ -12,13 +12,16 @@ import (
 	"siapp/pkg/platform/httpx"
 )
 
-// Handler serves the web role endpoints under /api/v1/admin.
+// Handler serves the web role and field permission endpoints under /api/v1/admin.
 type Handler struct {
-	roles *WebRoles
+	roles  *WebRoles
+	fields *FieldPermissions
 }
 
 // NewHandler returns the access Handler.
-func NewHandler(roles *WebRoles) *Handler { return &Handler{roles: roles} }
+func NewHandler(roles *WebRoles, fields *FieldPermissions) *Handler {
+	return &Handler{roles: roles, fields: fields}
+}
 
 // MountAdmin adds the routes to the /api/v1/admin group, behind RequireAdmin (cmd/api mounts
 // it once on the group). The paths are relative to the group.
@@ -26,6 +29,8 @@ func (h *Handler) MountAdmin(r chi.Router) {
 	r.Get("/web-roles", h.list)
 	r.Put("/web-roles/{personnel_id}", h.put)
 	r.Delete("/web-roles/{personnel_id}", h.delete)
+	r.Get("/field-permissions", h.listFieldPermissions)
+	r.Put("/field-permissions/{team_role}", h.putFieldPermissions)
 }
 
 // caller returns who is asking and what they may reach. Both are set by auth.Require and
