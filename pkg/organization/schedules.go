@@ -230,32 +230,39 @@ func (s *Schedules) SetAssignment(ctx context.Context, actor auth.Principal, sco
 				deleteFrom = dateValue(previous.EffectiveDate)
 			}
 			deleteFrom = laterDate(deleteFrom, guard)
-			// ⚠ The delete and the generation below reach every date from deleteFrom to the
-			// horizon, including manual entries, so a REGION_ADMIN needs the person in their
-			// region on each of them (as for one entry): someone moving in from another region
-			// has days that are not theirs.
-			if err := s.reachRange(ctx, q, scope, personnelID, deleteFrom, horizonEnd); err != nil {
+			// ⚠ The window ends at the horizon, or at what the previous assignment generated if that
+			// is later: the nightly extension fills one day beyond the horizon, and a row left there
+			// would be skipped for good (the next extension starts after generated_until).
+			windowEnd := horizonEnd
+			if hadPrevious && previous.ScheduleType == db.ScheduleTypeFIXED && previous.GeneratedUntil.Valid {
+				windowEnd = laterDate(windowEnd, dateValue(previous.GeneratedUntil))
+			}
+			// The delete and the generation below reach every date from deleteFrom to windowEnd,
+			// including manual entries, so a REGION_ADMIN needs the person in their region on each
+			// of them (as for one entry): someone moving in from another region has days that are
+			// not theirs.
+			if err := s.reachRange(ctx, q, scope, personnelID, deleteFrom, windowEnd); err != nil {
 				return err
 			}
 			// Every date about to be generated must have one timezone, as a manual entry must.
-			if genFrom := laterDate(in.EffectiveDate, guard); !horizonEnd.Before(genFrom) {
-				zones, err := zonesBetween(ctx, q, personnelID, genFrom, horizonEnd)
+			if genFrom := laterDate(in.EffectiveDate, guard); !windowEnd.Before(genFrom) {
+				zones, err := zonesBetween(ctx, q, personnelID, genFrom, windowEnd)
 				if err != nil {
 					return err
 				}
-				for d := genFrom; !horizonEnd.Before(d); d = d.AddDays(1) {
+				for d := genFrom; !windowEnd.Before(d); d = d.AddDays(1) {
 					if zones[d].ambiguous != nil {
 						return zones[d].ambiguous
 					}
 				}
 			}
-			if out.Deleted, err = q.DeleteSchedulesOfPersonnelBetween(ctx, db.DeleteSchedulesOfPersonnelBetweenParams{PersonnelID: personnelID, FromDate: dateParam(deleteFrom), ToDate: dateParam(horizonEnd)}); err != nil {
+			if out.Deleted, err = q.DeleteSchedulesOfPersonnelBetween(ctx, db.DeleteSchedulesOfPersonnelBetweenParams{PersonnelID: personnelID, FromDate: dateParam(deleteFrom), ToDate: dateParam(windowEnd)}); err != nil {
 				return fmt.Errorf("delete schedules: %w", err)
 			}
-			if out.Generated, err = generate(ctx, q, personnelID, *in.ShiftGroupID, in.EffectiveDate, laterDate(in.EffectiveDate, guard), horizonEnd, personnelRef(actor), now); err != nil {
+			if out.Generated, err = generate(ctx, q, personnelID, *in.ShiftGroupID, in.EffectiveDate, laterDate(in.EffectiveDate, guard), windowEnd, personnelRef(actor), now); err != nil {
 				return err
 			}
-			generatedUntil = dateParam(horizonEnd)
+			generatedUntil = dateParam(windowEnd)
 		}
 		row, err := q.UpsertShiftAssignment(ctx, db.UpsertShiftAssignmentParams{
 			PersonnelID: personnelID, ScheduleType: db.ScheduleType(in.ScheduleType), ShiftGroupID: int8OrNull(in.ShiftGroupID),

@@ -427,6 +427,47 @@ func TestTheNightlyExtensionKeepsTheWindowAndManualEntries(t *testing.T) {
 	require.Equal(t, "2026-05-11", got.str("generated_until"))
 }
 
+// The nightly extension fills one day past the horizon a reassignment works to. Whatever the
+// extension left there must be replaced too, or the next extension (which starts after
+// generated_until) would skip it and keep the old group's shift for good.
+func TestAReassignmentReplacesTheDayTheExtensionFilledPastTheHorizon(t *testing.T) {
+	e := newMemberEnv(t)
+	org := testkit.NewOrg(t)
+	admin := e.person(org, "ORG_ADMIN", "")
+	e.fixture(admin)
+	budi := e.personNIK(org, "N-BUDI", "Budi", "ACTIVE")
+	e.mustAdd(admin, "1K-IBMI-S1", "N-BUDI", "MEMBER", "2026-01-01")
+	day := e.shift(admin, "Day", "08:00", "17:00")
+	night := e.shift(admin, "Night", "22:00", "06:00")
+	everyDay := func(name string, shift int64) int64 {
+		days := map[string]any{}
+		for _, d := range []string{"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"} {
+			days[d] = shift
+		}
+		return id(e.mustCreate(admin, "/admin/shift-groups", map[string]any{"name": name, "days": days}))
+	}
+	groupA, groupB := everyDay("Semua Siang", day), everyDay("Semua Malam", night)
+	extender := organization.NewScheduleExtender(testkit.Pool(t), clock.Fixed{T: now})
+
+	require.Equal(t, http.StatusOK, e.assign(admin, budi, map[string]any{"schedule_type": "FIXED", "shift_group_id": groupA, "effective_date": "2026-03-10"}).Status)
+	_, err := extender.Extend(t.Context()) // the same day: fills 05-10, one past the horizon (05-09)
+	require.NoError(t, err)
+	filled := e.scheduleOf(org, budi)
+	require.Equal(t, "2026-05-10 Day group", filled[len(filled)-1])
+
+	require.Equal(t, http.StatusOK, e.assign(admin, budi, map[string]any{"schedule_type": "FIXED", "shift_group_id": groupB, "effective_date": "2026-03-11"}).Status)
+	_, err = organization.NewScheduleExtender(testkit.Pool(t), clock.Fixed{T: now.Add(24 * time.Hour)}).Extend(t.Context())
+	require.NoError(t, err)
+
+	rows := e.scheduleOf(org, budi)
+	require.Contains(t, rows, "2026-05-10 Night group", "the day past the horizon follows the new group")
+	for _, r := range rows {
+		if r >= "2026-03-11" {
+			require.Contains(t, r, "Night", "no day of the old group is left: %s", r)
+		}
+	}
+}
+
 func TestManualSchedulesLikePJ48(t *testing.T) {
 	e := newMemberEnv(t)
 	org := testkit.NewOrg(t)
