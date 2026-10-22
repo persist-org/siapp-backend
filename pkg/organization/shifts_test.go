@@ -577,6 +577,18 @@ func TestARegionAdminSchedulesOnlyTheirPeople(t *testing.T) {
 		require.Equal(t, before, e.scheduleOf(org, eka), "the region 2 days are untouched")
 		require.Equal(t, http.StatusOK, e.assign(admin, eka, map[string]any{"schedule_type": "FIXED", "shift_group_id": group, "effective_date": "2026-03-01"}).Status, "an ORG_ADMIN is not bound by regions")
 	})
+
+	t.Run("a manual entry after the horizon, of the region the person moves to, survives", func(t *testing.T) {
+		// Fani leaves region 1 for region 2 on 05-19, past the horizon (today 03-10, 60 days
+		// ahead is 05-09). Region 2's entry of 05-24 is not region 1's to replace.
+		fani := e.personNIK(org, "N-FANI", "Fani", "ACTIVE")
+		membership := id(e.mustAdd(admin, "1K-IBMI-S1", "N-FANI", "MEMBER", "2026-01-01"))
+		require.Equal(t, http.StatusOK, e.move(admin, membership, "2K-IBMI-S1", "2026-05-19").Status)
+		require.Equal(t, http.StatusCreated, e.manual(admin, fani, entry("2026-05-24", day)).Status)
+
+		require.Equal(t, http.StatusOK, e.assign(regionAdmin, fani, map[string]any{"schedule_type": "FIXED", "shift_group_id": group, "effective_date": "2026-03-01"}).Status)
+		require.Contains(t, e.scheduleOf(org, fani), "2026-05-24 Day manual", "the entry after the horizon is kept")
+	})
 }
 
 func TestTwoTimezonesOnOneDayAreRefused(t *testing.T) {

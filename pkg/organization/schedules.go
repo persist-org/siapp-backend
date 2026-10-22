@@ -166,7 +166,8 @@ func (s *Schedules) GetAssignment(ctx context.Context, actor auth.Principal, sco
 // to today + ScheduleHorizonDays. Like PJ48's ScheduleGeneratorService it first deletes what
 // would be replaced, from the earliest of the new and the old effective date, but never a past
 // date, and never today once today's shift has started: those days are history (attendance
-// will hang on them). Dates entered by hand in that range are replaced too, as in PJ48.
+// will hang on them). Dates entered by hand in that range are replaced too, as in PJ48; those
+// after the horizon were never generated and are left alone.
 //
 // FLEXIBLE: nothing is generated and nothing is deleted; the admin enters each date.
 func (s *Schedules) SetAssignment(ctx context.Context, actor auth.Principal, scope access.AdminScope, personnelID int64, in AssignmentInput) (AssignmentResult, error) {
@@ -248,7 +249,7 @@ func (s *Schedules) SetAssignment(ctx context.Context, actor auth.Principal, sco
 					}
 				}
 			}
-			if out.Deleted, err = q.DeleteSchedulesOfPersonnelFrom(ctx, db.DeleteSchedulesOfPersonnelFromParams{PersonnelID: personnelID, FromDate: dateParam(deleteFrom)}); err != nil {
+			if out.Deleted, err = q.DeleteSchedulesOfPersonnelBetween(ctx, db.DeleteSchedulesOfPersonnelBetweenParams{PersonnelID: personnelID, FromDate: dateParam(deleteFrom), ToDate: dateParam(horizonEnd)}); err != nil {
 				return fmt.Errorf("delete schedules: %w", err)
 			}
 			if out.Generated, err = generate(ctx, q, personnelID, *in.ShiftGroupID, in.EffectiveDate, laterDate(in.EffectiveDate, guard), horizonEnd, personnelRef(actor), now); err != nil {

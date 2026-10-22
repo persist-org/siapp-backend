@@ -43,8 +43,10 @@ ORDER BY a.personnel_id;
 -- name: LockPersonnelForSchedule :one
 SELECT id, status FROM personnels WHERE id = $1 FOR NO KEY UPDATE;
 
--- name: DeleteSchedulesOfPersonnelFrom :execrows
-DELETE FROM schedules WHERE personnel_id = @personnel_id AND work_date >= @from_date;
+-- Bounded above by the generator's horizon: a date after it was never generated, so it can only
+-- be a manual entry, possibly of the regu the person moves to later, and it is left alone.
+-- name: DeleteSchedulesOfPersonnelBetween :execrows
+DELETE FROM schedules WHERE personnel_id = @personnel_id AND work_date BETWEEN @from_date AND @to_date;
 
 -- Generates one row per date of [from, to] from the group's weekly pattern (ISO weekday:
 -- Monday 1 .. Sunday 7). A date that already has a schedule keeps it: an admin's own entry is

@@ -64,17 +64,20 @@ func (q *Queries) DeleteSchedule(ctx context.Context, id int64) (int64, error) {
 	return result.RowsAffected(), nil
 }
 
-const deleteSchedulesOfPersonnelFrom = `-- name: DeleteSchedulesOfPersonnelFrom :execrows
-DELETE FROM schedules WHERE personnel_id = $1 AND work_date >= $2
+const deleteSchedulesOfPersonnelBetween = `-- name: DeleteSchedulesOfPersonnelBetween :execrows
+DELETE FROM schedules WHERE personnel_id = $1 AND work_date BETWEEN $2 AND $3
 `
 
-type DeleteSchedulesOfPersonnelFromParams struct {
+type DeleteSchedulesOfPersonnelBetweenParams struct {
 	PersonnelID int64
 	FromDate    pgtype.Date
+	ToDate      pgtype.Date
 }
 
-func (q *Queries) DeleteSchedulesOfPersonnelFrom(ctx context.Context, arg DeleteSchedulesOfPersonnelFromParams) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteSchedulesOfPersonnelFrom, arg.PersonnelID, arg.FromDate)
+// Bounded above by the generator's horizon: a date after it was never generated, so it can only
+// be a manual entry, possibly of the regu the person moves to later, and it is left alone.
+func (q *Queries) DeleteSchedulesOfPersonnelBetween(ctx context.Context, arg DeleteSchedulesOfPersonnelBetweenParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteSchedulesOfPersonnelBetween, arg.PersonnelID, arg.FromDate, arg.ToDate)
 	if err != nil {
 		return 0, err
 	}
