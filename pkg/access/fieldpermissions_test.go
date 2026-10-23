@@ -657,6 +657,9 @@ func TestOnlyAnOrgAdminMayReadOrChangeTheMatrix(t *testing.T) {
 		{"read", http.MethodGet, "/admin/field-permissions", nil},
 		{"replace", http.MethodPut, "/admin/field-permissions/DANRU", grantsBody(access.RoleDanru, map[access.Permission]access.Scope{access.CCTVView: access.ScopeNone})},
 		{"replace of a role that does not exist", http.MethodPut, "/admin/field-permissions/NOPE", grantsBody(access.RoleDanru, nil)},
+		// Authorization answers before the body is checked: a body with no list is a 422 for an
+		// ORG_ADMIN, but a REGION_ADMIN never gets that far.
+		{"replace with a body that has no list", http.MethodPut, "/admin/field-permissions/DANRU", map[string]any{}},
 	}
 	for _, route := range routes {
 		t.Run("a REGION_ADMIN may not "+route.name, func(t *testing.T) {

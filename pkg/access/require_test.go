@@ -227,9 +227,8 @@ func TestRequireBusinessLineKeepsACleaningRouteToCleaningProjects(t *testing.T) 
 }
 
 func TestTheMiddlewareRefusesAMistakeAtStartUp(t *testing.T) {
-	e := newEnv(t)
-	_ = e
-	svc := access.NewService(testkit.Pool(t), clock.System{})
+	// The checks run when the middleware is built, before any database is touched.
+	svc := access.NewService(nil, clock.System{})
 	require.Panics(t, func() { svc.Require("attendance.checkn") }, "a permission that is not in the catalog")
 	require.Panics(t, func() { svc.RequireBusinessLine("janitorial", access.ProjectParam("p")) }, "a business line that does not exist")
 	require.NotPanics(t, func() { svc.Require(access.AttendanceCheckin) })

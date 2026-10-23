@@ -61,6 +61,13 @@ func (h *Handler) putFieldPermissions(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// Authorization comes before the body is read: a REGION_ADMIN gets the same 403 whatever
+	// they send, and never learns from a 422 what a valid matrix looks like. Replace checks
+	// again, for any caller that is not this handler.
+	if !scope.All {
+		httpx.Error(w, r, ErrOrgAdminOnly)
+		return
+	}
 	var req apigen.FieldPermissionsInput
 	if err := httpx.Decode(r, &req); err != nil {
 		httpx.Error(w, r, err)
@@ -81,8 +88,7 @@ func (h *Handler) putFieldPermissions(w http.ResponseWriter, r *http.Request) {
 	for _, g := range in.Grants {
 		grants = append(grants, Grant{Permission: Permission(g.Permission), Scope: Scope(g.Scope)})
 	}
-	// The role is not checked here: Replace answers a REGION_ADMIN with 403 before it looks at
-	// anything else, and a role that is not DANRU or MEMBER with 404.
+	// The role is not checked here: Replace answers a role that is not DANRU or MEMBER with 404.
 	out, err := h.fields.Replace(r.Context(), p, scope, TeamRole(chi.URLParam(r, "team_role")), grants)
 	if err != nil {
 		httpx.Error(w, r, err)

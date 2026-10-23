@@ -77,6 +77,11 @@ func (s *Service) Require(perm Permission) func(http.Handler) http.Handler {
 }
 
 // ProjectOf says which project a request is about, by its code. "" means it names none.
+//
+// ⚠ The ones below read a chi path parameter, which chi fills in only once it has matched the
+// route that declares it. Mount RequireBusinessLine on that route (r.With(...).Get("/{x}", h))
+// or inside r.Route("/{x}", ...), never with r.Use above it: there the parameter is still
+// empty, and every request would be refused with FEATURE_NOT_ENABLED.
 type ProjectOf func(r *http.Request) string
 
 // ProjectParam reads the project code from a path parameter ({project_code}).

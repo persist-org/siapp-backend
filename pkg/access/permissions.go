@@ -55,7 +55,8 @@ func EnsureDefaultsTx(ctx context.Context, q *db.Queries, now time.Time) (int64,
 	}
 
 	// The catalog's order, role by role inside a key: every caller inserts in this order, so
-	// two organizations' first logins at once wait on the same row and never on each other's.
+	// two first logins of the same organization at once queue on the same first row and cannot
+	// deadlock. (Two organizations never meet: the organization is part of every key.)
 	roles, permissions, scopes := make([]string, 0, want), make([]string, 0, want), make([]string, 0, want)
 	for _, e := range catalog {
 		for _, role := range teamRoles {
