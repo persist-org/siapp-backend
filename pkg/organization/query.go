@@ -185,7 +185,7 @@ func (d *Directory) MembershipsOf(ctx context.Context, q *db.Queries, personnelI
 	for _, r := range rows {
 		out = append(out, identity.Membership{
 			TeamCode: r.TeamCode, TeamName: r.TeamName, ProjectCode: r.ProjectCode, ProjectName: r.ProjectName,
-			Role: string(r.Role), StartDate: dateValue(r.StartDate),
+			BusinessLine: string(r.BusinessLine), Role: string(r.Role), StartDate: dateValue(r.StartDate),
 		})
 	}
 	return out, nil

@@ -386,7 +386,7 @@ func (q *Queries) IsMemberOfProjectOn(ctx context.Context, arg IsMemberOfProject
 
 const listCurrentMembershipsOfPersonnel = `-- name: ListCurrentMembershipsOfPersonnel :many
 SELECT tm.id, tm.team_code, t.description AS team_name, t.project_code, pr.description AS project_name,
-       tm.role, tm.start_date, tm.end_date
+       pr.business_line, tm.role, tm.start_date, tm.end_date
 FROM team_members tm
 JOIN teams t    ON t.organization_id = tm.organization_id AND t.code = tm.team_code
 JOIN projects pr ON pr.organization_id = t.organization_id AND pr.code = t.project_code
@@ -402,14 +402,15 @@ type ListCurrentMembershipsOfPersonnelParams struct {
 }
 
 type ListCurrentMembershipsOfPersonnelRow struct {
-	ID          int64
-	TeamCode    string
-	TeamName    string
-	ProjectCode string
-	ProjectName string
-	Role        TeamRole
-	StartDate   pgtype.Date
-	EndDate     pgtype.Date
+	ID           int64
+	TeamCode     string
+	TeamName     string
+	ProjectCode  string
+	ProjectName  string
+	BusinessLine BusinessLine
+	Role         TeamRole
+	StartDate    pgtype.Date
+	EndDate      pgtype.Date
 }
 
 // The same for "now": the date is each project's own today, because a business date is the
@@ -430,6 +431,7 @@ func (q *Queries) ListCurrentMembershipsOfPersonnel(ctx context.Context, arg Lis
 			&i.TeamName,
 			&i.ProjectCode,
 			&i.ProjectName,
+			&i.BusinessLine,
 			&i.Role,
 			&i.StartDate,
 			&i.EndDate,

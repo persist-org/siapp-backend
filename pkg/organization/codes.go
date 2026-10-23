@@ -4,6 +4,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"siapp/pkg/access"
 )
 
 // ⚠ D19. Every row of the hierarchy is identified by a code that contains its parent's code,
@@ -26,7 +28,6 @@ const (
 var (
 	branchCodePattern   = regexp.MustCompile(`^([1-9][0-9]*)([A-Z])$`)
 	clientPrefixPattern = regexp.MustCompile(`^[A-Z0-9]{2,10}$`)
-	regionNumberPattern = regexp.MustCompile(`^[0-9]+`)
 )
 
 // companyLetters are the employing PTs of the group: K = PT Kharisma Potensia Indonesia (KPI),
@@ -36,14 +37,9 @@ const companyLetters = "KIP"
 // RegionOfCode returns the koordinator wilayah a code sits under: OS plus the number the
 // code starts with (1K-IBMI-S1 is under OS1). It is "" for a code that does not start with a
 // number. An admin's scope is checked against it, so a row is reached through its region
-// without a join.
-func RegionOfCode(code string) string {
-	n := regionNumberPattern.FindString(code)
-	if n == "" {
-		return ""
-	}
-	return "OS" + n
-}
+// without a join. The rule itself lives in access.RegionOfCode, because access reads it too
+// and cannot import this package; this is the same function under the name this file's callers use.
+func RegionOfCode(code string) string { return access.RegionOfCode(code) }
 
 // BuildBranchCode returns the code of a kantor cabang: the region's number and the company
 // letter, so OS1 + K is 1K. The letter must be K, I or P (BRANCH_LETTER_INVALID).

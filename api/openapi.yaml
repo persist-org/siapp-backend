@@ -440,6 +440,12 @@ components:
       required: true
       description: "Identitas lokal orang (personnels.id), bukan id Personalia. Harus angka positif; selain itu 404 (id seperti itu tidak mungkin ada)."
       schema: { type: integer, format: int64, minimum: 1 }
+    TeamRolePath:
+      name: team_role
+      in: path
+      required: true
+      description: "Peran regu yang hak-haknya dibaca atau diganti: DANRU atau MEMBER. Selain itu 404."
+      schema: { $ref: '#/components/schemas/TeamRole' }
     IdempotencyKeyHeader:
       name: Idempotency-Key
       in: header
@@ -776,6 +782,92 @@ components:
           type: array
           description: Regu tempat orang ini bertugas hari ini (kosong bila tidak ada).
           items: { $ref: '#/components/schemas/MeMembership' }
+        permissions:
+          type: array
+          description: |
+            Hak akses lapangan orang ini hari ini, untuk menampilkan atau menyembunyikan menu. Selalu ada; kosong bila orang
+            ini tidak bertugas di regu mana pun (admin web tidak memakai hak lapangan). Tiap kunci muncul sekali, dengan jangkauan
+            terluas dari semua keanggotaan yang masih berjalan; kunci tanpa jangkauan tidak dikirim. Hak yang khusus satu bidang
+            usaha (mis. `ememo.use`, hanya cleaning) dihitung hanya dari keanggotaan di proyek bidang itu.
+            Daftar ini hanya untuk tampilan: setiap fitur memeriksa haknya sendiri di server.
+          items: { $ref: '#/components/schemas/MePermission' }
+    PermissionScope:
+      type: string
+      enum: [SELF, TEAM, PROJECT]
+      description: |
+        Jangkauan hak yang dimiliki seseorang. `SELF`: hanya catatannya sendiri. `TEAM`: catatan regu tempat ia memegang peran itu.
+        `PROJECT`: catatan semua regu di proyek tempat ia memegang peran itu.
+    MePermission:
+      type: object
+      required: [permission, scope]
+      properties:
+        permission: { type: string, maxLength: 64, example: attendance.leave.approve, description: Kunci hak akses (lihat katalog di /admin/field-permissions). }
+        scope: { $ref: '#/components/schemas/PermissionScope' }
+    FieldPermissionScope:
+      type: string
+      enum: [NONE, SELF, TEAM, PROJECT]
+      description: |
+        Jangkauan satu hak di matriks. `NONE`: peran itu tidak boleh. Selebihnya sama dengan `PermissionScope`.
+        `NONE` disimpan sebagai nilai, bukan sebagai baris yang tidak ada, supaya hak yang dicabut admin tidak kembali saat seed ulang.
+    FieldPermissionGrant:
+      type: object
+      additionalProperties: false
+      required: [permission, scope]
+      properties:
+        permission: { type: string, minLength: 1, maxLength: 64, example: attendance.leave.approve }
+        scope: { $ref: '#/components/schemas/FieldPermissionScope' }
+    FieldPermissionDefaults:
+      type: object
+      description: Jangkauan bawaan tiap peran, dari Tabel 8 manual.
+      required: [DANRU, MEMBER]
+      properties:
+        DANRU: { $ref: '#/components/schemas/FieldPermissionScope' }
+        MEMBER: { $ref: '#/components/schemas/FieldPermissionScope' }
+    FieldPermissionDefinition:
+      type: object
+      description: Satu hak akses di katalog. Katalog ditetapkan oleh aplikasi; admin hanya mengubah jangkauannya per peran.
+      required: [permission, module, description, business_lines, defaults]
+      properties:
+        permission: { type: string, maxLength: 64, example: attendance.leave.approve }
+        module: { type: string, example: attendance, description: Modul pemilik hak ini, untuk mengelompokkan di layar. }
+        description: { type: string, example: Persetujuan izin, description: Nama hak di Tabel 8 manual (Bahasa Indonesia). }
+        business_lines:
+          type: array
+          description: Hak ini hanya berlaku di proyek bidang usaha ini. Kosong berarti semua bidang.
+          items: { $ref: '#/components/schemas/BusinessLine' }
+        defaults: { $ref: '#/components/schemas/FieldPermissionDefaults' }
+    FieldPermissionRole:
+      type: object
+      description: Semua hak satu peran regu, satu per hak di katalog, urut seperti katalog.
+      required: [team_role, grants]
+      properties:
+        team_role: { $ref: '#/components/schemas/TeamRole' }
+        grants:
+          type: array
+          items: { $ref: '#/components/schemas/FieldPermissionGrant' }
+    FieldPermissionMatrix:
+      type: object
+      required: [catalog, roles]
+      properties:
+        catalog:
+          type: array
+          items: { $ref: '#/components/schemas/FieldPermissionDefinition' }
+        roles:
+          type: array
+          description: Satu entri per peran regu (DANRU, MEMBER).
+          items: { $ref: '#/components/schemas/FieldPermissionRole' }
+    FieldPermissionsInput:
+      type: object
+      additionalProperties: false
+      required: [grants]
+      properties:
+        grants:
+          type: array
+          maxItems: 200
+          description: |
+            WAJIB: setiap hak di katalog tepat satu kali. Ini penggantian seluruh hak satu peran, jadi hak yang tidak disebut
+            ditolak (422 `REQUIRED`), bukan dianggap dicabut.
+          items: { $ref: '#/components/schemas/FieldPermissionGrant' }
     WebRoleAssignment:
       type: object
       properties:
@@ -1192,7 +1284,10 @@ components:
         - `SCHEDULE_NOT_FOUND`: 404. Jadwal tidak ada.
         - `SCHEDULE_EXISTS`: 409. Personil sudah punya jadwal pada tanggal itu.
         - `SCHEDULE_TIMEZONE_AMBIGUOUS`: 422 UNPROCESSABLE. Pada tanggal itu personil bertugas di proyek dengan zona waktu berbeda, sehingga jam shift berarti dua waktu. Hanya menolak shift kerja; hari OFF tidak.
-      enum: [NOT_ADMIN, ACCESS_ORG_ADMIN_ONLY, ACCESS_OUTSIDE_ADMIN_SCOPE, REGION_NOT_FOUND, BRANCH_NOT_FOUND, CLIENT_NOT_FOUND, PROJECT_NOT_FOUND, TEAM_NOT_FOUND, CODE_TAKEN, HAS_ACTIVE_CHILDREN, BRANCH_LETTER_INVALID, BRANCH_REGION_MISMATCH, CLIENT_PREFIX_INVALID, PROJECT_NOT_CONFIGURED, MEMBERSHIP_NOT_FOUND, MEMBERSHIP_OVERLAP, TEAM_HAS_DANRU, PERSONNEL_NOT_FOUND, PERSONNEL_INACTIVE, SHIFT_NOT_FOUND, SHIFT_GROUP_NOT_FOUND, SHIFT_INVALID_TIME, SHIFT_NAME_TAKEN, SHIFT_GROUP_NAME_TAKEN, SHIFT_IN_USE, SHIFT_GROUP_IN_USE, SHIFT_ASSIGNMENT_NOT_FOUND, SCHEDULE_NOT_FOUND, SCHEDULE_EXISTS, SCHEDULE_TIMEZONE_AMBIGUOUS, NOT_PROJECT_MEMBER]
+        - `PERMISSION_UNKNOWN`: 422 VALIDATION_ERROR. Daftar hak yang dikirim memuat kunci yang tidak ada di katalog; `errors[]` menyebut hak yang mana.
+        - `PERMISSION_DENIED`: 403 FORBIDDEN. Peran orang itu di regunya tidak memberi hak ini, atau hak itu tidak mencakup regu yang ditanyakan (regu yang tidak ada atau milik organisasi lain dijawab sama).
+        - `FEATURE_NOT_ENABLED`: 403 FORBIDDEN. Fitur hanya ada untuk satu bidang usaha (mis. E-Memo hanya cleaning) dan proyeknya bukan bidang itu. Proyek yang tidak ada dijawab sama.
+      enum: [NOT_ADMIN, ACCESS_ORG_ADMIN_ONLY, ACCESS_OUTSIDE_ADMIN_SCOPE, REGION_NOT_FOUND, BRANCH_NOT_FOUND, CLIENT_NOT_FOUND, PROJECT_NOT_FOUND, TEAM_NOT_FOUND, CODE_TAKEN, HAS_ACTIVE_CHILDREN, BRANCH_LETTER_INVALID, BRANCH_REGION_MISMATCH, CLIENT_PREFIX_INVALID, PROJECT_NOT_CONFIGURED, MEMBERSHIP_NOT_FOUND, MEMBERSHIP_OVERLAP, TEAM_HAS_DANRU, PERSONNEL_NOT_FOUND, PERSONNEL_INACTIVE, SHIFT_NOT_FOUND, SHIFT_GROUP_NOT_FOUND, SHIFT_INVALID_TIME, SHIFT_NAME_TAKEN, SHIFT_GROUP_NAME_TAKEN, SHIFT_IN_USE, SHIFT_GROUP_IN_USE, SHIFT_ASSIGNMENT_NOT_FOUND, SCHEDULE_NOT_FOUND, SCHEDULE_EXISTS, SCHEDULE_TIMEZONE_AMBIGUOUS, NOT_PROJECT_MEMBER, PERMISSION_UNKNOWN, PERMISSION_DENIED, FEATURE_NOT_ENABLED]
 
     # ---------- 7. team memberships (keanggotaan regu, 02.3) ----------
     # Riwayat dijaga: keluar, pindah, dan ganti peran MENGAKHIRI baris (end_date) dan, untuk dua
@@ -2939,6 +3034,111 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /admin/field-permissions:
+    get:
+      operationId: getAdminFieldPermissions
+      tags: [Auth]
+      summary: Katalog hak akses lapangan dan matriks per peran regu (hanya ORG_ADMIN)
+      description: |
+        Hak akses petugas lapangan adalah data organisasi: tiap peran regu (DANRU, MEMBER) punya jangkauan per hak
+        (`NONE`, `SELF`, `TEAM`, `PROJECT`). Katalog (daftar hak, deskripsi, bidang usaha, dan nilai bawaan dari Tabel 8 manual)
+        ditetapkan oleh aplikasi; matriks adalah nilai yang berlaku sekarang. Organisasi yang belum pernah diisi mendapat
+        nilai bawaan saat dibaca, jadi matriks tidak pernah kosong.
+        Wewenang: hanya ORG_ADMIN. REGION_ADMIN: 403 `ROLE_DENIED` (`ACCESS_ORG_ADMIN_ONLY`), karena matriks berlaku untuk seluruh organisasi.
+        Admin web tidak melewati hak lapangan; jalur `/admin` dijaga web role.
+      x-roles: [ORG_ADMIN]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { $ref: '#/components/schemas/FieldPermissionMatrix' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: "FORBIDDEN `NOT_ADMIN` (staf lapangan) atau ROLE_DENIED `ACCESS_ORG_ADMIN_ONLY` (REGION_ADMIN)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                notAdmin:
+                  summary: Staf lapangan
+                  value: { success: false, error: { code: FORBIDDEN, message: "Anda bukan admin. Akses ini hanya untuk admin.", details: { reason: NOT_ADMIN } }, meta: { request_id: req_abc123 } }
+                orgAdminOnly:
+                  summary: REGION_ADMIN
+                  value: { success: false, error: { code: ROLE_DENIED, message: "Hanya admin organisasi yang dapat melakukan ini.", details: { reason: ACCESS_ORG_ADMIN_ONLY } }, meta: { request_id: req_abc123 } }
+  /admin/field-permissions/{team_role}:
+    parameters: [ { $ref: '#/components/parameters/TeamRolePath' } ]
+    put:
+      operationId: putAdminFieldPermissionsByTeamRole
+      tags: [Auth]
+      summary: Ganti semua hak lapangan satu peran regu (hanya ORG_ADMIN)
+      description: |
+        Mengganti seluruh hak satu peran dalam satu transaksi (gagal berarti tidak ada yang berubah) dan mengembalikan hak peran itu
+        sekarang. `grants` harus memuat setiap hak di katalog tepat satu kali: ini penggantian, jadi hak yang tidak disebut ditolak
+        (422 `REQUIRED`) dan bukan dianggap dicabut, dan daftar yang pendek tidak dapat melucuti peran. Kunci yang tidak ada di
+        katalog: 422 `PERMISSION_UNKNOWN`. Kunci ganda atau jangkauan di luar `NONE`, `SELF`, `TEAM`, `PROJECT`: 422 `VALIDATION_ERROR`.
+        `errors[]` menyebut grant yang mana (`grants[3].scope`).
+        Hak yang berubah dicatat di audit log dengan jangkauan lama dan baru; penggantian yang tidak mengubah apa pun tidak mencatat
+        apa-apa. Perubahan berlaku pada permintaan berikutnya orang-orang yang memegang peran itu (hak dibaca dari database, bukan dari token).
+        Wewenang: hanya ORG_ADMIN. REGION_ADMIN: 403 `ROLE_DENIED` (`ACCESS_ORG_ADMIN_ONLY`).
+      x-roles: [ORG_ADMIN]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FieldPermissionsInput' }
+      responses:
+        '200':
+          description: OK (hak peran itu sekarang)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { $ref: '#/components/schemas/FieldPermissionRole' } }
+        '400':
+          description: "BAD_REQUEST: body kosong, bukan JSON yang valid, lebih dari satu objek, atau memuat karakter NUL."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                empty:
+                  summary: Body kosong
+                  value: { success: false, error: { code: BAD_REQUEST, message: "Body wajib diisi." }, meta: { request_id: req_abc123 } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: "FORBIDDEN `NOT_ADMIN` (staf lapangan) atau ROLE_DENIED `ACCESS_ORG_ADMIN_ONLY` (REGION_ADMIN)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                orgAdminOnly:
+                  summary: REGION_ADMIN
+                  value: { success: false, error: { code: ROLE_DENIED, message: "Hanya admin organisasi yang dapat melakukan ini.", details: { reason: ACCESS_ORG_ADMIN_ONLY } }, meta: { request_id: req_abc123 } }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '413':
+          description: "PAYLOAD_TOO_LARGE: body lebih dari 1 MB."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                tooLarge:
+                  value: { success: false, error: { code: PAYLOAD_TOO_LARGE, message: "Body terlalu besar." }, meta: { request_id: req_abc123 } }
+        '422':
+          description: "VALIDATION_ERROR: daftar hak tidak valid. Reason `PERMISSION_UNKNOWN` bila ada kunci yang tidak dikenal."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                unknownPermission:
+                  summary: Kunci tidak dikenal
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Ada hak akses yang tidak dikenal.", details: { reason: PERMISSION_UNKNOWN }, errors: [ { field: "grants[2].permission", code: UNKNOWN, message: "Hak akses tidak dikenal." } ] }, meta: { request_id: req_abc123 } }
+                missing:
+                  summary: Hak yang tidak disebut
+                  value: { success: false, error: { code: VALIDATION_ERROR, message: "Validasi gagal pada beberapa field.", errors: [ { field: grants, code: REQUIRED, message: "Hak akses cctv.view wajib ada di daftar." } ] }, meta: { request_id: req_abc123 } }
   /admin/personnel/{personnel_id}/device-binding:
     parameters: [ { $ref: '#/components/parameters/PersonnelIdPath' } ]
     delete:

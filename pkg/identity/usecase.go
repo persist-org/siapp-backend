@@ -53,7 +53,9 @@ func NewUsecase(pool *pgxpool.Pool, p personelClient, tokens *auth.Tokens, revoc
 //  1. Personalia checks the password. Nothing is written before it has answered, so a
 //     wrong password costs nothing and changes nothing.
 //  2. The organization row is upserted before any tenant insert, because every tenant
-//     table has a foreign key to it. A suspended organization stops here.
+//     table has a foreign key to it. A suspended organization stops here. Then the
+//     organization's default field permissions are seeded if they are missing (Phase 03.1,
+//     access.EnsureDefaults), in a transaction of their own.
 //  3. In ONE tenant transaction: upsert the person, apply the phone rule, create the
 //     session. If the phone is bound elsewhere the whole transaction rolls back, so a
 //     refused login leaves no session, and no half-refreshed person, behind.
@@ -107,6 +109,13 @@ func (u *Usecase) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 	}
 	if org.Status == db.OrganizationStatusSUSPENDED {
 		return LoginResult{}, ErrOrganizationSuspended
+	}
+	// The organization's field permissions (Phase 03.1) are seeded the first time anyone of it
+	// signs in. It is a transaction of its own, before the person's: that one holds the person's
+	// row lock, and the matrix rows have nothing to do with the person. A call that finds the
+	// rows there writes nothing, so this costs one read on every other login.
+	if _, err := access.EnsureDefaults(ctx, u.pool, u.clock, id.OrganizationID); err != nil {
+		return LoginResult{}, fmt.Errorf("seed field permissions: %w", err)
 	}
 
 	var out LoginResult

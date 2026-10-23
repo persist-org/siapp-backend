@@ -106,7 +106,7 @@ func newEnvWithGroup(t *testing.T, clientIPHeader string, group personel.Group) 
 	failures := httpx.NewFailureLimiter(testkit.Redis(t), testkit.RandomPrefix(t), logger)
 	idempotency := idem.New(idem.Config{Pool: testkit.Pool(t), Identity: auth.Identity})
 	handler := identity.NewHandler(usecase, httpx.ClientIPFunc(clientIPHeader), failures, idempotency.Middleware(false))
-	roles := access.NewHandler(access.NewWebRoles(testkit.Pool(t), clock.System{}))
+	roles := access.NewHandler(access.NewWebRoles(testkit.Pool(t), clock.System{}), access.NewFieldPermissions(testkit.Pool(t), clock.System{}))
 
 	srv := testkit.NewServer(t, testkit.Deps{Logger: logger, Revocations: revocations, Mount: func(r chi.Router) {
 		handler.Mount(r)

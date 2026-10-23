@@ -3,6 +3,7 @@
 //	seed                                      print who can log in (the Personalia dev accounts)
 //	seed grant-admin --nik <nik>              make a person the first ORG_ADMIN of the group
 //	seed shifts                               give the group PJ48's starting shifts and shift group
+//	seed permissions                          give the group the default field permission matrix
 //
 // For identity it seeds nothing: people come from Persist Personalia, and SiAPP only caches
 // them. Without arguments it prints the accounts of the real kpi-personalia-api seed
@@ -12,6 +13,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -24,6 +26,10 @@ import (
 	// Embeds the timezone database, like cmd/api, for the same distroless image.
 	_ "time/tzdata"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"siapp/internal/db"
 	"siapp/pkg/access"
 	"siapp/pkg/identity"
 	"siapp/pkg/organization"
@@ -52,8 +58,10 @@ func run(args []string) error {
 		return grantAdmin(args[1:])
 	case "shifts":
 		return seedShifts()
+	case "permissions":
+		return seedPermissions()
 	default:
-		return fmt.Errorf("unknown command %q; use: seed | seed grant-admin --nik <nik> | seed shifts", args[0])
+		return fmt.Errorf("unknown command %q; use: seed | seed grant-admin --nik <nik> | seed shifts | seed permissions", args[0])
 	}
 }
 
@@ -156,6 +164,51 @@ func seedShifts() error {
 	return nil
 }
 
+// seedPermissions gives the group's organization (GROUP_ORGANIZATION_ID) the default field
+// permission matrix (Phase 03.1, the catalog in pkg/access). The matrix is also seeded at the
+// first login of the organization, so this is for a fresh environment and for after a release
+// that adds a permission to the catalog: it adds only what is missing, so an admin's edits
+// stay. It runs as the owner (MIGRATE_DSN), like grant-admin, inside the organization's tenant
+// transaction.
+func seedPermissions() error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	if cfg.MigrateDSN == "" {
+		return fmt.Errorf("MIGRATE_DSN (the owner role) is required to seed permissions")
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	ctx, cancel := context.WithTimeout(ctx, grantTimeout)
+	defer cancel()
+
+	pool, err := database.Open(ctx, cfg.MigrateDSN)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+	added, err := seedPermissionsOf(ctx, pool, cfg.GroupOrganizationID)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("done: organization %d; permissions added: %d (existing ones are kept)\n", cfg.GroupOrganizationID, added)
+	return nil
+}
+
+// seedPermissionsOf is seedPermissions for a pool the caller opened.
+func seedPermissionsOf(ctx context.Context, pool *pgxpool.Pool, organizationID int64) (int64, error) {
+	if err := database.WithoutTenant(ctx, pool, func(q *db.Queries) error {
+		_, err := q.GetOrganization(ctx, organizationID)
+		return err
+	}); errors.Is(err, pgx.ErrNoRows) {
+		return 0, fmt.Errorf("organization %d is not registered yet: sign in once, or run make grant-admin first", organizationID)
+	} else if err != nil {
+		return 0, fmt.Errorf("get organization: %w", err)
+	}
+	return access.EnsureDefaults(ctx, pool, clock.System{}, organizationID)
+}
+
 func printAccounts() error {
 	fmt.Println("SiAPP signs people in with their Personalia account. These accounts come from")
 	fmt.Println("kpi-personalia-api's dev seed (run its `make seed` first). Every password is:")
@@ -164,6 +217,9 @@ func printAccounts() error {
 	fmt.Println("    make grant-admin NIK=SIAPPA0001")
 	fmt.Println("Then the starting shifts (OFF, Day Shift, Night Shift, group 5 Hari Kerja):")
 	fmt.Println("    make seed-shifts")
+	fmt.Println("The default field permissions (who may do what, per DANRU and MEMBER) are seeded at the")
+	fmt.Println("first login; to add them by hand, or the ones a release added:")
+	fmt.Println("    make seed-permissions")
 	fmt.Println()
 
 	accounts := []struct{ email, nik, note string }{

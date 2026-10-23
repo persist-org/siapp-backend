@@ -93,7 +93,7 @@ ORDER BY tm.team_code;
 -- three Indonesian zones).
 -- name: ListCurrentMembershipsOfPersonnel :many
 SELECT tm.id, tm.team_code, t.description AS team_name, t.project_code, pr.description AS project_name,
-       tm.role, tm.start_date, tm.end_date
+       pr.business_line, tm.role, tm.start_date, tm.end_date
 FROM team_members tm
 JOIN teams t    ON t.organization_id = tm.organization_id AND t.code = tm.team_code
 JOIN projects pr ON pr.organization_id = t.organization_id AND pr.code = t.project_code
