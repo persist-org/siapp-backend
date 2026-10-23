@@ -23,7 +23,12 @@ func WithResolution(ctx context.Context, r Resolution) context.Context {
 }
 
 // From returns the resolution Require put in ctx. ok is false outside a route Require guards.
-// A usecase reads it here and does not resolve again for the same permission.
+//
+// ⚠ It answers for "today" (each membership's own business date), not for the date of the
+// record a request is about. Use it for what is true today: to know early that the caller holds
+// the permission, or to scope a list of today's records. Do not use it to authorize a record of
+// another date: someone who moved regu this morning still has yesterday's records in the old
+// one. For those, call Resolve with the record's date, or AssertTeam (see Require).
 func From(ctx context.Context) (r Resolution, ok bool) {
 	r, ok = ctx.Value(resolutionKey{}).(Resolution)
 	return r, ok

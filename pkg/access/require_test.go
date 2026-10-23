@@ -23,7 +23,8 @@ func newRouteEnv(t *testing.T) *env {
 	testkit.Reset(t)
 	svc := access.NewService(testkit.Pool(t), clock.System{})
 
-	// What a usecase does with the Resolution the middleware left: it never resolves again.
+	// What a usecase may do with the Resolution the middleware left: read what holds today. A
+	// record of another date is checked again with Resolve or AssertTeam.
 	scopeOf := func(w http.ResponseWriter, r *http.Request) {
 		res, ok := access.From(r.Context())
 		if !ok {
