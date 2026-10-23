@@ -21,6 +21,10 @@ const (
 	// ReasonPermissionUnknown keeps the name the plan gives it (Phase 03), without the module
 	// prefix, like NOT_ADMIN.
 	ReasonPermissionUnknown = "PERMISSION_UNKNOWN"
+	// ReasonPermissionDenied and ReasonFeatureNotEnabled are what the field routes answer
+	// (Phase 03.2); same naming as the plan.
+	ReasonPermissionDenied  = "PERMISSION_DENIED"
+	ReasonFeatureNotEnabled = "FEATURE_NOT_ENABLED"
 )
 
 // ErrNotAdmin is returned to a person with no web role assignment: field staff, who cannot
@@ -42,6 +46,16 @@ var ErrOutsideAdminScope = apperr.New(http.StatusForbidden, apperr.CodeScopeDeni
 // catalog. The fields say which grants.
 var ErrPermissionUnknown = apperr.New(http.StatusUnprocessableEntity, apperr.CodeValidation,
 	ReasonPermissionUnknown, "Ada hak akses yang tidak dikenal.")
+
+// ErrPermissionDenied is returned to a person whose role in their regu does not give them a
+// permission, or does not cover the regu they ask about.
+var ErrPermissionDenied = apperr.New(http.StatusForbidden, apperr.CodeForbidden,
+	ReasonPermissionDenied, "Anda tidak memiliki izin untuk tindakan ini.")
+
+// ErrFeatureNotEnabled is returned when a feature is used on a project whose business line does
+// not have it (E-Memo exists for cleaning projects only).
+var ErrFeatureNotEnabled = apperr.New(http.StatusForbidden, apperr.CodeForbidden,
+	ReasonFeatureNotEnabled, "Fitur ini tidak tersedia untuk proyek ini.")
 
 // ErrOwnRoleProtected is returned when an admin tries to remove or narrow their own
 // assignment, so that the last admin cannot lock everyone out.

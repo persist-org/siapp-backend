@@ -532,11 +532,13 @@ const (
 	CLIENTNOTFOUND            OrganizationErrorReason = "CLIENT_NOT_FOUND"
 	CLIENTPREFIXINVALID       OrganizationErrorReason = "CLIENT_PREFIX_INVALID"
 	CODETAKEN                 OrganizationErrorReason = "CODE_TAKEN"
+	FEATURENOTENABLED         OrganizationErrorReason = "FEATURE_NOT_ENABLED"
 	HASACTIVECHILDREN         OrganizationErrorReason = "HAS_ACTIVE_CHILDREN"
 	MEMBERSHIPNOTFOUND        OrganizationErrorReason = "MEMBERSHIP_NOT_FOUND"
 	MEMBERSHIPOVERLAP         OrganizationErrorReason = "MEMBERSHIP_OVERLAP"
 	NOTADMIN                  OrganizationErrorReason = "NOT_ADMIN"
 	NOTPROJECTMEMBER          OrganizationErrorReason = "NOT_PROJECT_MEMBER"
+	PERMISSIONDENIED          OrganizationErrorReason = "PERMISSION_DENIED"
 	PERMISSIONUNKNOWN         OrganizationErrorReason = "PERMISSION_UNKNOWN"
 	PERSONNELINACTIVE         OrganizationErrorReason = "PERSONNEL_INACTIVE"
 	PERSONNELNOTFOUND         OrganizationErrorReason = "PERSONNEL_NOT_FOUND"
@@ -577,6 +579,8 @@ func (e OrganizationErrorReason) Valid() bool {
 		return true
 	case CODETAKEN:
 		return true
+	case FEATURENOTENABLED:
+		return true
 	case HASACTIVECHILDREN:
 		return true
 	case MEMBERSHIPNOTFOUND:
@@ -586,6 +590,8 @@ func (e OrganizationErrorReason) Valid() bool {
 	case NOTADMIN:
 		return true
 	case NOTPROJECTMEMBER:
+		return true
+	case PERMISSIONDENIED:
 		return true
 	case PERMISSIONUNKNOWN:
 		return true
@@ -6503,6 +6509,8 @@ type OrganizationCreateEnabledBusinessLines string
 // - `SCHEDULE_EXISTS`: 409. Personil sudah punya jadwal pada tanggal itu.
 // - `SCHEDULE_TIMEZONE_AMBIGUOUS`: 422 UNPROCESSABLE. Pada tanggal itu personil bertugas di proyek dengan zona waktu berbeda, sehingga jam shift berarti dua waktu. Hanya menolak shift kerja; hari OFF tidak.
 // - `PERMISSION_UNKNOWN`: 422 VALIDATION_ERROR. Daftar hak yang dikirim memuat kunci yang tidak ada di katalog; `errors[]` menyebut hak yang mana.
+// - `PERMISSION_DENIED`: 403 FORBIDDEN. Peran orang itu di regunya tidak memberi hak ini, atau hak itu tidak mencakup regu yang ditanyakan (regu yang tidak ada atau milik organisasi lain dijawab sama).
+// - `FEATURE_NOT_ENABLED`: 403 FORBIDDEN. Fitur hanya ada untuk satu bidang usaha (mis. E-Memo hanya cleaning) dan proyeknya bukan bidang itu. Proyek yang tidak ada dijawab sama.
 type OrganizationErrorReason string
 
 // OrganizationProfileUpdate Update profil + branding organisasi (WEB-37).
