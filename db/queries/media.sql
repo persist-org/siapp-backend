@@ -42,9 +42,15 @@ WHERE id = ANY(@ids::bigint[])
 -- uploaded or confirmed, and UPLOADED ones no record claimed. The rows are LOCKED, skipping
 -- those another transaction holds: an Attach that runs at the same moment waits for the
 -- delete, then finds no row, instead of attaching a photo whose file is already gone.
+--
+-- Keyset paging: a batch starts after the (created_at, id) of the last row of the one before,
+-- so rows a batch could not remove (their file refused to go) are passed over instead of being
+-- picked again, and the rows behind them are still reached. The partial index
+-- media_unattached_created_idx serves exactly this predicate and order.
 -- name: ListStaleMediaForUpdate :many
-SELECT id, storage_key FROM media
+SELECT id, storage_key, created_at FROM media
 WHERE attached_entity_id IS NULL AND created_at < @cutoff
+  AND (created_at, id) > (@after_created_at::timestamptz, @after_id::bigint)
 ORDER BY created_at, id
 LIMIT @batch
 FOR UPDATE SKIP LOCKED;

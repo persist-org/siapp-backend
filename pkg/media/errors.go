@@ -15,11 +15,12 @@ import (
 // Error reasons (details.reason). A reason that has shipped is never renamed. They keep the
 // names the plan (docs/plan/04-media.md) gives them; Phase 04.2 adds the ones about attaching.
 const (
-	ReasonNotFound       = "MEDIA_NOT_FOUND"
-	ReasonTypeNotAllowed = "MEDIA_TYPE_NOT_ALLOWED"
-	ReasonTooLarge       = "MEDIA_TOO_LARGE"
-	ReasonNotUploaded    = "MEDIA_NOT_UPLOADED"
-	ReasonURLInvalid     = "MEDIA_URL_INVALID"
+	ReasonNotFound        = "MEDIA_NOT_FOUND"
+	ReasonTypeNotAllowed  = "MEDIA_TYPE_NOT_ALLOWED"
+	ReasonTooLarge        = "MEDIA_TOO_LARGE"
+	ReasonNotUploaded     = "MEDIA_NOT_UPLOADED"
+	ReasonURLInvalid      = "MEDIA_URL_INVALID"
+	ReasonAlreadyUploaded = "MEDIA_ALREADY_UPLOADED"
 
 	// Reasons of Attach (Phase 04.2).
 	ReasonAlreadyAttached = "MEDIA_ALREADY_ATTACHED"
@@ -47,6 +48,11 @@ var ErrTooLarge = apperr.New(http.StatusRequestEntityTooLarge, apperr.CodePayloa
 var ErrNotUploaded = apperr.New(http.StatusConflict, apperr.CodeConflict,
 	ReasonNotUploaded, "Foto belum terunggah atau tidak sesuai dengan yang didaftarkan.")
 
+// ErrAlreadyUploaded is returned when a new upload URL is asked for a photo that was already
+// confirmed: there is nothing left to upload.
+var ErrAlreadyUploaded = apperr.New(http.StatusConflict, apperr.CodeConflict,
+	ReasonAlreadyUploaded, "Foto sudah terunggah dan dikonfirmasi.")
+
 // ErrAlreadyAttached is returned by Attach for a photo that a record already claimed.
 var ErrAlreadyAttached = apperr.New(http.StatusConflict, apperr.CodeConflict,
 	ReasonAlreadyAttached, "Foto sudah dilampirkan ke catatan lain.")
@@ -70,6 +76,10 @@ var errURLInvalid = apperr.New(http.StatusForbidden, apperr.CodeForbidden,
 // errURLTooLarge is the same reason for a body over the signed size: 413, as the plan says.
 var errURLTooLarge = apperr.New(http.StatusRequestEntityTooLarge, apperr.CodePayloadTooLarge,
 	ReasonURLInvalid, "Ukuran foto melebihi yang didaftarkan.")
+
+// errSizeMismatchAPI is what the blob route answers for a body that is not the registered size.
+// Nothing was stored, so the same URL still works with the right bytes.
+var errSizeMismatchAPI = apperr.ErrBadRequest.WithMessage("Ukuran unggahan harus sama dengan yang didaftarkan.")
 
 // errAlreadyUploaded is the same reason for an upload URL whose photo is already stored: an
 // upload URL works once (see LocalStorage.store). 412, the status S3 and MinIO answer for the

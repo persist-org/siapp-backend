@@ -28,7 +28,7 @@ func TestViews(t *testing.T) {
 				MediaIDs: []int64{first, second}, OwnerID: owner, Purpose: media.PurposeReport, EntityType: "REPORT", EntityID: 7}))
 
 			t.Run("one URL per photo, in the order asked, each serving the photo", func(t *testing.T) {
-				views := f.views(f.orgA, []int64{second, first})
+				views := f.views(f.orgA, "REPORT", 7, []int64{second, first})
 				require.Len(t, views, 2)
 				require.Equal(t, []int64{second, first}, []int64{views[0].ID, views[1].ID})
 
@@ -56,7 +56,7 @@ func TestViews(t *testing.T) {
 				require.NoError(t, f.attach(f.orgA, media.AttachInput{
 					MediaIDs: []int64{reg.Data.ID}, OwnerID: owner, Purpose: media.PurposeReport, EntityType: "REPORT", EntityID: 8}))
 
-				views := f.views(f.orgA, []int64{reg.Data.ID})
+				views := f.views(f.orgA, "REPORT", 8, []int64{reg.Data.ID})
 				require.Len(t, views, 1)
 				require.NotNil(t, views[0].CapturedAt)
 				require.True(t, captured.Equal(*views[0].CapturedAt))
@@ -64,18 +64,27 @@ func TestViews(t *testing.T) {
 
 			t.Run("leaves out what cannot be shown instead of failing the record", func(t *testing.T) {
 				unclaimed, _ := f.photo(token, "REPORT", true)
-				views := f.views(f.orgA, []int64{first, pending, foreign, 987654, unclaimed, second})
+				views := f.views(f.orgA, "REPORT", 7, []int64{first, pending, foreign, 987654, unclaimed, second})
 				require.Len(t, views, 2, "a photo never confirmed, another organization's, a missing one and one no record attached are skipped")
 				require.Equal(t, []int64{first, second}, []int64{views[0].ID, views[1].ID})
 			})
 
+			t.Run("only the photos of the record asked for", func(t *testing.T) {
+				// first and second belong to REPORT 7: another report, or another kind of record
+				// with the same number, gets none of them, even when its module passes their ids.
+				require.Empty(t, f.views(f.orgA, "REPORT", 8, []int64{first, second}))
+				require.Empty(t, f.views(f.orgA, "PATROL_SCAN", 7, []int64{first, second}))
+				views := f.views(f.orgA, "REPORT", 7, []int64{first, second})
+				require.Len(t, views, 2)
+			})
+
 			t.Run("nothing asked, nothing returned", func(t *testing.T) {
-				require.Empty(t, f.views(f.orgA, nil))
-				require.NotNil(t, f.views(f.orgA, []int64{}), "an empty list, not null, so it encodes as []")
+				require.Empty(t, f.views(f.orgA, "REPORT", 7, nil))
+				require.NotNil(t, f.views(f.orgA, "REPORT", 7, []int64{}), "an empty list, not null, so it encodes as []")
 			})
 
 			t.Run("another organization cannot see them", func(t *testing.T) {
-				require.Empty(t, f.views(f.orgB, []int64{first, second}))
+				require.Empty(t, f.views(f.orgB, "REPORT", 7, []int64{first, second}))
 			})
 		})
 	}
@@ -90,7 +99,7 @@ func TestViewURLsExpire(t *testing.T) {
 	require.NoError(t, f.attach(f.orgA, media.AttachInput{
 		MediaIDs: []int64{photo}, OwnerID: owner, Purpose: media.PurposeReport, EntityType: "REPORT", EntityID: 1}))
 
-	views := f.views(f.orgA, []int64{photo})
+	views := f.views(f.orgA, "REPORT", 1, []int64{photo})
 	require.Len(t, views, 1)
 	status, _, _ := storagetest.Download(t, views[0].URL)
 	require.Equal(t, http.StatusOK, status)

@@ -64,6 +64,15 @@ func (f *flow) age(org, id int64, by time.Duration) {
 	}))
 }
 
+// ageAllExcept moves every photo of an organization except one into the past.
+func (f *flow) ageAllExcept(org, keep int64, by time.Duration) {
+	f.t.Helper()
+	require.NoError(f.t, database.WithTenantTx(f.t.Context(), testkit.Pool(f.t), org, func(tx pgx.Tx) error {
+		_, err := tx.Exec(f.t.Context(), "UPDATE media SET created_at = created_at - make_interval(secs => $2) WHERE id <> $1", keep, by.Seconds())
+		return err
+	}))
+}
+
 // attachedTo reads what a photo is attached to: its type and id, or "" and 0.
 func (f *flow) attachedTo(org, id int64) (entityType string, entityID int64) {
 	f.t.Helper()
@@ -93,12 +102,12 @@ func (f *flow) attach(org int64, in media.AttachInput) error {
 	})
 }
 
-// views runs Views in a tenant transaction.
-func (f *flow) views(org int64, ids []int64) []media.View {
+// views runs Views for the record entityType/entityID in a tenant transaction.
+func (f *flow) views(org int64, entityType string, entityID int64, ids []int64) []media.View {
 	f.t.Helper()
 	var out []media.View
 	require.NoError(f.t, database.WithTenant(f.t.Context(), testkit.Pool(f.t), org, func(q *db.Queries) (err error) {
-		out, err = f.service.Views(f.t.Context(), q, ids)
+		out, err = f.service.Views(f.t.Context(), q, entityType, entityID, ids)
 		return err
 	}))
 	return out

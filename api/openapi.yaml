@@ -2022,7 +2022,7 @@ components:
           type: object
           additionalProperties: { type: string }
           description: Header yang HARUS dikirim bersama byte (di antaranya `Content-Type`). Header lain tidak boleh ditambahkan.
-        expires_at: { type: string, format: date-time, description: Setelah ini `upload_url` ditolak. Daftarkan ulang untuk URL baru. }
+        expires_at: { type: string, format: date-time, description: "Setelah ini `upload_url` ditolak. Minta URL baru lewat `POST /media/{id}/upload-url` (id tetap sama)." }
     Media:
       type: object
       required: [id, purpose, content_type, size_bytes, status, capture_source, created_at]
@@ -2045,6 +2045,7 @@ components:
         - `MEDIA_TYPE_NOT_ALLOWED`: 422 UNPROCESSABLE. Jenis berkas bukan `image/jpeg`, `image/png`, atau `image/webp`.
         - `MEDIA_TOO_LARGE`: 413 PAYLOAD_TOO_LARGE. Ukuran lebih dari 10 MB.
         - `MEDIA_NOT_UPLOADED`: 409 CONFLICT. Pada `complete`: byte belum ada, ukurannya tidak sama dengan yang didaftarkan, atau isinya bukan gambar dari jenis yang didaftarkan. Bila belum diunggah: unggah lalu konfirmasi lagi. Bila yang terunggah salah: daftarkan ulang (URL unggahan tidak dapat menimpa). Saat melampirkan: foto belum dikonfirmasi.
+        - `MEDIA_ALREADY_UPLOADED`: 409 CONFLICT. Pada `upload-url`: media sudah dikonfirmasi, tidak perlu URL unggah lagi.
         - `MEDIA_ALREADY_ATTACHED`: 409 CONFLICT. Saat melampirkan: foto itu sudah dilampirkan ke catatan lain.
         - `MEDIA_PURPOSE_MISMATCH`: 422 UNPROCESSABLE. Saat melampirkan: tujuan foto tidak cocok dengan catatan itu.
         - `MEDIA_LIMIT_EXCEEDED`: 422 UNPROCESSABLE. Saat melampirkan: lebih banyak foto daripada batas satu catatan (umumnya 5; `details.max`).
@@ -9398,6 +9399,9 @@ paths:
         Siapa pun yang sudah masuk boleh mendaftarkan; fitur yang melampirkan foto menilai haknya
         atas catatannya sendiri. `Idempotency-Key` WAJIB: antrean media offline mengulang permintaan
         ini, dan ulangan dengan kunci yang sama mengembalikan id dan `upload_url` yang sama.
+        `upload_url` hanya berlaku 30 menit (`expires_at`), sedangkan ulangan tetap menjawab URL
+        yang sama: antrean yang mengulang setelah itu meminta URL baru lewat
+        `POST /media/{id}/upload-url` (id tetap), bukan mendaftarkan ulang.
 
         Media yang tidak pernah dikonfirmasi atau tidak pernah dilampirkan dihapus otomatis
         sesudah 24 jam.
@@ -9430,6 +9434,36 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+  /media/{id}/upload-url:
+    parameters: [ { $ref: '#/components/parameters/IdPath' } ]
+    post:
+      operationId: postMediaUploadUrl
+      tags: [Media]
+      summary: Minta URL unggah baru untuk media yang belum dikonfirmasi
+      description: |
+        Hanya pemilik, dan hanya selama media masih `PENDING`. `upload_url` dari `POST /media`
+        berlaku 30 menit, dan ulangan `POST /media` dengan `Idempotency-Key` yang sama menjawab URL
+        lama itu; endpoint ini menerbitkan URL baru untuk id yang sama, dengan jenis dan ukuran
+        yang didaftarkan. Tidak ada body dan tidak butuh `Idempotency-Key`: setiap panggilan
+        menandatangani URL baru.
+
+        Bila byte sudah sampai tetapi jawabannya hilang, URL baru dijawab 412 saat dipakai
+        (satu URL hanya membuat, tidak menimpa): panggil `complete`.
+
+        Media orang lain, milik organisasi lain, atau yang tidak ada: 404 `MEDIA_NOT_FOUND`.
+        Media yang sudah `UPLOADED`: 409 `MEDIA_ALREADY_UPLOADED`.
+      responses:
+        '200': { description: URL baru, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/MediaUpload' } } } ] } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: "CONFLICT dengan reason `MEDIA_ALREADY_UPLOADED`: media sudah dikonfirmasi, tidak ada yang perlu diunggah."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                alreadyUploaded:
+                  value: { success: false, error: { code: CONFLICT, message: "Foto sudah terunggah dan dikonfirmasi.", details: { reason: MEDIA_ALREADY_UPLOADED } }, meta: { request_id: req_abc123 } }
   /media/{id}/complete:
     parameters: [ { $ref: '#/components/parameters/IdPath' } ]
     post:
@@ -9474,7 +9508,7 @@ paths:
 
         Tanpa bearer token: tanda tangan di token adalah izinnya. Token memuat operasi (put),
         kunci objek, jenis, ukuran paling besar dan waktu kedaluwarsa, sehingga token baca tidak
-        bisa dipakai menulis. Body paling besar sebesar yang ditandatangani (bukan batas 1 MB
+        bisa dipakai menulis. Body harus tepat sebesar yang ditandatangani (bukan batas 1 MB
         milik JSON). Berkas ditulis ke file sementara lalu dipindah, jadi unggahan yang terputus
         tidak meninggalkan berkas.
 
@@ -9493,7 +9527,7 @@ paths:
       responses:
         '204': { description: Tersimpan }
         '400':
-          description: "BAD_REQUEST: body kosong, atau unggahan terputus (tidak ada yang disimpan)."
+          description: "BAD_REQUEST: body kosong, unggahan terputus, atau ukuran body tidak sama dengan yang didaftarkan (tidak ada yang disimpan, URL yang sama masih bisa dipakai dengan byte yang benar)."
           content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
         '403':
           description: "FORBIDDEN dengan reason `MEDIA_URL_INVALID`."

@@ -96,6 +96,39 @@ func (s *Service) Register(ctx context.Context, p auth.Principal, in RegisterInp
 	return out, nil
 }
 
+// ReissueUpload signs a new upload URL for a photo that is still PENDING.
+//
+// ⚠ Why this exists next to Register: POST /media is idempotent, and a replay returns the first
+// response as it was stored, URL included. The offline queue retries with the same
+// Idempotency-Key, so a retry after uploadURLTTL would get the same dead URL for ever. The id
+// is what stays stable; the URL is short-lived and is asked for again here. Only the owner may
+// ask, and only while the photo is PENDING: a confirmed photo has nothing left to upload.
+//
+// The URL signs the type and size that were registered, never anything the caller sends. If the
+// bytes already reached the storage and only complete was lost, the new URL answers 412 (the
+// upload is write-once) and the client just calls complete.
+func (s *Service) ReissueUpload(ctx context.Context, p auth.Principal, id int64) (Registration, error) {
+	var m Media
+	err := database.WithTenant(ctx, s.pool, p.OrganizationID, func(q *db.Queries) (err error) {
+		m, err = s.repo.get(ctx, q, id)
+		return err
+	})
+	if err != nil {
+		return Registration{}, err
+	}
+	if m.OwnerPersonnelID != p.PersonnelID {
+		return Registration{}, ErrNotFound
+	}
+	if m.Status != StatusPending {
+		return Registration{}, ErrAlreadyUploaded
+	}
+	upload, err := s.storage.PresignPut(ctx, m.StorageKey, PutInput{ContentType: m.ContentType, SizeBytes: m.SizeBytes, TTL: uploadURLTTL})
+	if err != nil {
+		return Registration{}, fmt.Errorf("presign upload: %w", err)
+	}
+	return Registration{ID: m.ID, Upload: upload}, nil
+}
+
 // Complete confirms that the owner's bytes are in storage and moves the photo to UPLOADED.
 //
 // The storage is asked OUTSIDE any transaction: a slow or unreachable object store must not

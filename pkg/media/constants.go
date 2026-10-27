@@ -45,9 +45,14 @@ const (
 	// staleTempFileAge is how old a half-written file of the local driver must be before the
 	// cleanup job removes it. A PUT takes minutes at the very most.
 	staleTempFileAge = time.Hour
-	// cleanupBatchSize is how many photos one cleanup transaction removes, so that it never
+	// cleanupBatchSize is how many photos one cleanup transaction handles, so that it never
 	// holds a long list of row locks while it talks to the storage.
-	cleanupBatchSize = 100
+	cleanupBatchSize = 50
+	// cleanupBatchBudget bounds the time one batch spends deleting files while it holds its row
+	// locks. A batch that runs out of it keeps the rest of its rows for the next run, so an
+	// Attach waiting on one of them waits this long at most, not batch size times the delete
+	// timeout.
+	cleanupBatchBudget = 30 * time.Second
 	// cleanupTimeout bounds one run of the job.
 	cleanupTimeout = 30 * time.Minute
 	// cleanupDeleteTimeout bounds one file deletion of the job.

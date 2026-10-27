@@ -286,7 +286,10 @@ func (l *LocalStorage) Delete(_ context.Context, key string) error {
 // errObjectExists is returned by store for a key that already has its photo.
 var errObjectExists = errors.New("media: object already exists")
 
-// store writes body as the object of key, once.
+// errSizeMismatch is returned by store when the body is not exactly the size that was signed.
+var errSizeMismatch = errors.New("media: body is not the registered size")
+
+// store writes body as the object of key, once. body must be exactly size bytes.
 //
 // ⚠ The bytes go to a temporary file in the same directory, are fsynced, and only then linked
 // onto the key. Why: the key either has no file or the whole one. An upload that is cut off
@@ -301,7 +304,13 @@ var errObjectExists = errors.New("media: object already exists")
 // checked. os.Link fails when the name exists, which makes the commit itself the check, with
 // no window between "is it there" and "write it" for a second upload to slip through. The S3
 // driver gets the same rule from a signed If-None-Match: * header.
-func (l *LocalStorage) store(key string, body io.Reader) (err error) {
+//
+// ⚠ The byte count is checked before the commit, not left to complete. A body shorter than the
+// registered size (a short file, or an empty chunked body that has no Content-Length to refuse
+// up front) would otherwise be linked in for good: complete would then reject its size, and
+// write-once would turn every retry on the same URL into a 412, leaving the photo stuck. S3
+// refuses the same upload itself, because it signs the exact Content-Length.
+func (l *LocalStorage) store(key string, body io.Reader, size int64) (err error) {
 	full, err := l.path(key)
 	if err != nil {
 		return err
@@ -327,8 +336,12 @@ func (l *LocalStorage) store(key string, body io.Reader) (err error) {
 		}
 	}()
 
-	if _, err := io.Copy(tmp, body); err != nil {
+	n, err := io.Copy(tmp, body)
+	if err != nil {
 		return err
+	}
+	if n != size {
+		return errSizeMismatch
 	}
 	if err := tmp.Sync(); err != nil {
 		return fmt.Errorf("sync temp file: %w", err)

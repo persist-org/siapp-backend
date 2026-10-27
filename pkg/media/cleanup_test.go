@@ -175,7 +175,43 @@ func TestCleanupKeepsTheRowWhenTheFileCannotBeDeleted(t *testing.T) {
 	require.False(t, f.exists(fineKey))
 }
 
-// ⚠ An Attach that is running at the same moment as the cleanup must not lose its photo to it.
+// failingExcept is a storage that refuses to delete every key but one.
+type failingExcept struct {
+	media.Storage
+	allowed string
+}
+
+func (s failingExcept) Delete(ctx context.Context, key string) error {
+	if key == s.allowed {
+		return s.Storage.Delete(ctx, key)
+	}
+	return errors.New("storage unavailable")
+}
+
+// Rows whose file cannot be deleted stay, and they are the oldest ones, so they sort first. A
+// batch that always started from the top would pick the same rows every run and never reach the
+// orphans behind them, however the comment on it reads.
+func TestCleanupReachesOrphansBehindStuckRows(t *testing.T) {
+	f := newFlow(t, drivers[0])
+	token, owner := f.person(f.orgA)
+	const stuck = 120 // more than two batches
+	for range stuck {
+		f.insert(f.orgA, owner, "REPORT", "PENDING")
+	}
+	reachable, reachableKey := f.photo(token, "REPORT", true)
+	f.ageAllExcept(f.orgA, reachable, 26*time.Hour)
+	f.age(f.orgA, reachable, dayAndMore)
+	f.storage = failingExcept{Storage: f.storage, allowed: reachableKey}
+
+	err := f.runJob()
+	require.Error(t, err, "the stuck files fail the task, so asynq retries it")
+
+	require.False(t, f.hasRow(f.orgA, reachable), "the orphan behind the stuck rows is still removed")
+	require.False(t, f.exists(reachableKey))
+	require.Len(t, f.rows(f.orgA), stuck, "and the stuck rows stay for the next run")
+}
+
+// An Attach that is running at the same moment as the cleanup must not lose its photo to it.
 // The cleanup locks the rows it is about to delete and skips rows another transaction holds.
 func TestCleanupSkipsAPhotoThatIsBeingAttached(t *testing.T) {
 	f := newFlow(t, drivers[0])

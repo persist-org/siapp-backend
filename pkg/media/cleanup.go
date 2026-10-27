@@ -96,53 +96,87 @@ func (c *Cleaner) CleanupOrganization(ctx context.Context, org int64) (int, erro
 	// stuck file must not hold up every orphan behind it. Its error is reported at the end so
 	// that asynq retries the task.
 	var firstFileErr error
+	// ⚠ Each batch starts after the last row of the one before (keyset paging), not at the top
+	// again. A row that stays (its file would not go) is therefore passed over once per run,
+	// and the orphans behind it are still reached however many rows are stuck. The run ends
+	// when a batch comes back short, so it always terminates.
+	var after staleCursor
 	for {
 		if err := ctx.Err(); err != nil {
 			return total, err
 		}
-		removed, batch, fileErr, err := c.removeBatch(ctx, org, cutoff)
-		total += removed
+		res, err := c.removeBatch(ctx, org, cutoff, after)
+		total += res.removed
 		if err != nil {
 			return total, err
 		}
-		if fileErr != nil && firstFileErr == nil {
-			firstFileErr = fileErr
+		if res.fileErr != nil && firstFileErr == nil {
+			firstFileErr = res.fileErr
 		}
-		// A short batch is the last one. A batch where nothing could be removed (the storage
-		// refused every file) also ends the run: asking again would only find the same rows.
-		if batch < cleanupBatchSize || removed == 0 {
+		if res.found < cleanupBatchSize {
 			return total, firstFileErr
 		}
+		after = res.last
 	}
 }
 
-// removeBatch removes one batch in one transaction and returns how many photos it removed, how
-// many it found, the first file the storage refused to delete (fileErr), and err when the
-// batch itself failed.
+// batchResult is what one cleanup batch did.
+type batchResult struct {
+	// removed is how many photos (rows and files) it removed.
+	removed int
+	// found is how many photos it looked at; fewer than the batch size means it was the last.
+	found int
+	// last is the cursor of the last photo it looked at, removed or not.
+	last staleCursor
+	// fileErr is the first file the storage refused to delete.
+	fileErr error
+}
+
+// removeBatch removes one batch in one transaction. err is set when the batch itself failed,
+// in which case nothing was removed (the transaction rolled back).
 //
 // ⚠ The file goes first, then the row, and the rows are locked (FOR UPDATE SKIP LOCKED) for the
-// whole time. If the row went first and the file deletion failed, the file would be an orphan
-// with nothing left that knows its key, forever. In this order the worst case is a file that is
-// already gone while its row is still there: the next run deletes the missing file again, which
-// is not an error, and then the row. The lock is what keeps an Attach that arrives right now
-// from claiming a photo whose file this transaction is deleting: Attach waits for the commit,
-// then finds no row.
-func (c *Cleaner) removeBatch(ctx context.Context, org int64, cutoff time.Time) (removed, found int, fileErr, err error) {
+// whole time. If the row went first and the file deletion failed, or the storage was down for
+// the run, the file would be an orphan with nothing left that knows its key, forever: no job
+// lists objects without rows. In this order the worst case is a file that is already gone while
+// its row is still there: the next run deletes the missing file again, which is not an error,
+// and then the row. That worst case needs the database to fail between the file deletion and
+// the commit, and costs a photo that no record attached for a day and that the next hourly run
+// removes; deleting rows first would trade it for files that leak for good whenever the storage
+// is unavailable at cleanup time. The lock is what keeps an Attach that arrives right now from
+// claiming a photo whose file this transaction is deleting: Attach waits for the commit, then
+// finds no row.
+//
+// The locks are held while the files go, so the batch is small (cleanupBatchSize) and has a
+// time budget (cleanupBatchBudget): what it has not reached when the budget is spent stays for
+// the next run.
+func (c *Cleaner) removeBatch(ctx context.Context, org int64, cutoff time.Time, after staleCursor) (res batchResult, err error) {
 	err = database.WithTenant(ctx, c.pool, org, func(q *db.Queries) error {
-		stale, err := c.repo.lockStale(ctx, q, cutoff, cleanupBatchSize)
+		stale, err := c.repo.lockStale(ctx, q, cutoff, after, cleanupBatchSize)
 		if err != nil {
 			return err
 		}
-		found = len(stale)
+		res = batchResult{found: len(stale)}
+		if len(stale) > 0 {
+			last := stale[len(stale)-1]
+			res.last = staleCursor{CreatedAt: last.CreatedAt, ID: last.ID}
+		}
 
+		budget, cancel := context.WithTimeout(ctx, cleanupBatchBudget)
+		defer cancel()
 		gone := make([]int64, 0, len(stale))
 		for _, m := range stale {
-			if err := c.deleteFile(ctx, m.Key); err != nil {
+			if budget.Err() != nil {
+				c.logger.WarnContext(ctx, "media cleanup: batch out of time, leaving the rest for the next run",
+					slog.Int64("organizationId", org))
+				break
+			}
+			if err := c.deleteFile(budget, m.Key); err != nil {
 				// Keep the row so the next run tries again, and go on with the others.
 				c.logger.WarnContext(ctx, "media cleanup: delete file failed, keeping the row",
 					slog.Int64("organizationId", org), slog.Int64("mediaId", m.ID), slog.String("error", err.Error()))
-				if fileErr == nil {
-					fileErr = fmt.Errorf("delete file of media %d: %w", m.ID, err)
+				if res.fileErr == nil {
+					res.fileErr = fmt.Errorf("delete file of media %d: %w", m.ID, err)
 				}
 				continue
 			}
@@ -152,13 +186,13 @@ func (c *Cleaner) removeBatch(ctx context.Context, org int64, cutoff time.Time) 
 			return nil
 		}
 		n, err := c.repo.deleteRows(ctx, q, gone)
-		removed = int(n)
+		res.removed = int(n)
 		return err
 	})
 	if err != nil {
-		return 0, found, fileErr, err
+		res.removed = 0
 	}
-	return removed, found, fileErr, nil
+	return res, err
 }
 
 // deleteFile deletes one object with a deadline of its own. The batch holds row locks while it

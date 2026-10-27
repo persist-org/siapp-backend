@@ -196,29 +196,43 @@ func (q *Queries) GetMediaByIDs(ctx context.Context, ids []int64) ([]Medium, err
 }
 
 const listStaleMediaForUpdate = `-- name: ListStaleMediaForUpdate :many
-SELECT id, storage_key FROM media
+SELECT id, storage_key, created_at FROM media
 WHERE attached_entity_id IS NULL AND created_at < $1
+  AND (created_at, id) > ($2::timestamptz, $3::bigint)
 ORDER BY created_at, id
-LIMIT $2
+LIMIT $4
 FOR UPDATE SKIP LOCKED
 `
 
 type ListStaleMediaForUpdateParams struct {
-	Cutoff pgtype.Timestamptz
-	Batch  int32
+	Cutoff         pgtype.Timestamptz
+	AfterCreatedAt pgtype.Timestamptz
+	AfterID        int64
+	Batch          int32
 }
 
 type ListStaleMediaForUpdateRow struct {
 	ID         int64
 	StorageKey string
+	CreatedAt  pgtype.Timestamptz
 }
 
 // Photos nobody attached, a day after they were registered: PENDING ones that were never
 // uploaded or confirmed, and UPLOADED ones no record claimed. The rows are LOCKED, skipping
 // those another transaction holds: an Attach that runs at the same moment waits for the
 // delete, then finds no row, instead of attaching a photo whose file is already gone.
+//
+// Keyset paging: a batch starts after the (created_at, id) of the last row of the one before,
+// so rows a batch could not remove (their file refused to go) are passed over instead of being
+// picked again, and the rows behind them are still reached. The partial index
+// media_unattached_created_idx serves exactly this predicate and order.
 func (q *Queries) ListStaleMediaForUpdate(ctx context.Context, arg ListStaleMediaForUpdateParams) ([]ListStaleMediaForUpdateRow, error) {
-	rows, err := q.db.Query(ctx, listStaleMediaForUpdate, arg.Cutoff, arg.Batch)
+	rows, err := q.db.Query(ctx, listStaleMediaForUpdate,
+		arg.Cutoff,
+		arg.AfterCreatedAt,
+		arg.AfterID,
+		arg.Batch,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -226,7 +240,7 @@ func (q *Queries) ListStaleMediaForUpdate(ctx context.Context, arg ListStaleMedi
 	items := []ListStaleMediaForUpdateRow{}
 	for rows.Next() {
 		var i ListStaleMediaForUpdateRow
-		if err := rows.Scan(&i.ID, &i.StorageKey); err != nil {
+		if err := rows.Scan(&i.ID, &i.StorageKey, &i.CreatedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

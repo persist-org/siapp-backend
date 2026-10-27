@@ -219,6 +219,62 @@ func TestLocalBlobRoutes(t *testing.T) {
 		require.Empty(t, files(t, f.root))
 	})
 
+	// A body shorter than registered must not be stored: write-once would make it permanent,
+	// complete would refuse its size, and every retry on the same URL would get 412.
+	t.Run("a body shorter than registered is refused and the URL stays usable", func(t *testing.T) {
+		f := newFlow(t, drivers[0])
+		token, _ := f.person(f.orgA)
+		up := f.registered(token, 1000)
+		tok := tokenOf(up.UploadURL)
+
+		// Announced shorter: refused before a byte is read.
+		status, _, raw := f.blob(http.MethodPut, tok, bytes.NewReader(storagetest.JPEG(600)), "image/jpeg")
+		require.Equal(t, http.StatusBadRequest, status, string(raw))
+		// Not announced (chunked) and shorter, or empty: counted as it is stored.
+		status, _, raw = f.blob(http.MethodPut, tok, io.NopCloser(bytes.NewReader(storagetest.JPEG(600))), "image/jpeg")
+		require.Equal(t, http.StatusBadRequest, status, string(raw))
+		status, _, raw = f.blob(http.MethodPut, tok, io.NopCloser(bytes.NewReader(nil)), "image/jpeg")
+		require.Equal(t, http.StatusBadRequest, status, string(raw))
+		require.Empty(t, files(t, f.root), "neither an object nor a temporary file is left")
+
+		// The same URL still takes the right bytes, and the photo completes.
+		status, _, raw = f.blob(http.MethodPut, tok, bytes.NewReader(storagetest.JPEG(1000)), "image/jpeg")
+		require.Equal(t, http.StatusNoContent, status, string(raw))
+		status, out := f.complete(token, up.ID)
+		require.Equal(t, http.StatusOK, status)
+		require.Equal(t, "UPLOADED", out.Data.Status)
+	})
+
+	// The offline queue retries POST /media with the same Idempotency-Key and gets the stored
+	// answer: the same id and the same, by now dead, URL. The way out is a new URL for that id.
+	t.Run("a replay after the URL expired gets the dead URL, and upload-url is the way out", func(t *testing.T) {
+		f := newFlow(t, drivers[0])
+		token, _ := f.person(f.orgA)
+		key := map[string]string{"Idempotency-Key": newIdempotencyKey()}
+		status, _, raw := f.api(token, http.MethodPost, "/media", validBody(1000), key)
+		require.Equal(t, http.StatusCreated, status)
+		first := decode[uploadInfo](t, status, raw).Data
+
+		f.clock.Advance(31 * time.Minute)
+		status, _, raw = f.api(token, http.MethodPost, "/media", validBody(1000), key)
+		require.Equal(t, http.StatusCreated, status)
+		replayed := decode[uploadInfo](t, status, raw).Data
+		require.Equal(t, first.UploadURL, replayed.UploadURL, "a replay is the stored answer")
+		status, _, raw = f.blob(http.MethodPut, tokenOf(replayed.UploadURL), bytes.NewReader(storagetest.JPEG(1000)), "image/jpeg")
+		requireURLInvalid(t, status, raw, http.StatusForbidden)
+
+		status, fresh := f.reissue(token, first.ID)
+		require.Equal(t, http.StatusOK, status)
+		require.Equal(t, first.ID, fresh.Data.ID)
+		require.NotEqual(t, first.UploadURL, fresh.Data.UploadURL)
+		require.True(t, fresh.Data.ExpiresAt.After(f.clock.Now()), "alive again")
+		uploaded, answer := storagetest.Upload(t, fresh.Data.asUpload(), storagetest.JPEG(1000), nil)
+		require.Less(t, uploaded, 300, "%s", answer)
+		status, out := f.complete(token, first.ID)
+		require.Equal(t, http.StatusOK, status)
+		require.Equal(t, "UPLOADED", out.Data.Status)
+	})
+
 	t.Run("an upload cut off halfway leaves no file", func(t *testing.T) {
 		f := newFlow(t, drivers[0])
 		token, _ := f.person(f.orgA)

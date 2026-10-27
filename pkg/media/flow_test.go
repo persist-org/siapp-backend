@@ -28,6 +28,8 @@ func TestUploadFlow(t *testing.T) {
 			t.Run("an idempotent replay returns the same id", func(t *testing.T) { testIdempotentReplay(t, d) })
 			t.Run("authentication is required", func(t *testing.T) { testAuthentication(t, d) })
 			t.Run("an id that cannot exist is not found", func(t *testing.T) { testImpossibleID(t, d) })
+			t.Run("a new upload URL for a photo still PENDING", func(t *testing.T) { testReissueUpload(t, d) })
+			t.Run("a new upload URL is for the owner of a PENDING photo only", func(t *testing.T) { testReissueRefusals(t, d) })
 		})
 	}
 }
@@ -114,19 +116,27 @@ func testCompleteWithoutUpload(t *testing.T, d driver) {
 	require.Equal(t, "UPLOADED", out.Data.Status)
 }
 
-// Sending fewer bytes than were registered is refused by S3 itself (the signed length) and
-// accepted by the local route (it only caps); either way complete refuses the photo.
+// Sending fewer bytes than were registered is refused by both drivers (S3 by the signed length,
+// the local route by counting); and even if one were stored, complete refuses the photo.
 func testWrongSizeUpload(t *testing.T, d driver) {
 	f := newFlow(t, d)
 	token, _ := f.person(f.orgA)
 	_, reg := f.register(token, validBody(1000))
 
-	_, _ = storagetest.Upload(t, reg.Data.asUpload(), storagetest.JPEG(600), nil)
+	refused, _ := storagetest.Upload(t, reg.Data.asUpload(), storagetest.JPEG(600), nil)
+	require.GreaterOrEqual(t, refused, 400, "the short body is not stored")
 
 	status, out := f.complete(token, reg.Data.ID)
 	require.Equal(t, http.StatusConflict, status)
 	require.Equal(t, "MEDIA_NOT_UPLOADED", out.reason())
 	require.Equal(t, "PENDING", f.rows(f.orgA)[0].Status)
+
+	// The refused attempt did not use the URL up: the right bytes still go through it.
+	uploaded, answer := storagetest.Upload(t, reg.Data.asUpload(), storagetest.JPEG(1000), nil)
+	require.Less(t, uploaded, 300, "%s", answer)
+	status, out = f.complete(token, reg.Data.ID)
+	require.Equal(t, http.StatusOK, status)
+	require.Equal(t, "UPLOADED", out.Data.Status)
 }
 
 // The bytes decide what a file is, with either driver: a text file sent as image/jpeg is
@@ -261,6 +271,66 @@ func testIdempotentReplay(t *testing.T, d driver) {
 	require.Equal(t, http.StatusConflict, status)
 	require.Equal(t, "IDEMPOTENCY_KEY_REUSED", decode[any](t, status, raw).reason())
 	require.Len(t, f.rows(f.orgA), 1)
+}
+
+// reissue asks for a new upload URL through the contract client.
+func (f *flow) reissue(token string, id int64) (int, envelope[uploadInfo]) {
+	f.t.Helper()
+	status, _, raw := f.api(token, http.MethodPost, "/media/"+itoa(id)+"/upload-url", nil, nil)
+	return status, decode[uploadInfo](f.t, status, raw)
+}
+
+func testReissueUpload(t *testing.T, d driver) {
+	f := newFlow(t, d)
+	token, _ := f.person(f.orgA)
+	_, reg := f.register(token, validBody(1500))
+
+	status, again := f.reissue(token, reg.Data.ID)
+	require.Equal(t, http.StatusOK, status)
+	require.Equal(t, reg.Data.ID, again.Data.ID, "the id stays: only the URL is new")
+	require.Equal(t, "PUT", again.Data.UploadMethod)
+	require.Equal(t, reg.Data.UploadHeaders, again.Data.UploadHeaders, "same registered type")
+	require.WithinDuration(t, time.Now().Add(30*time.Minute), again.Data.ExpiresAt, time.Minute)
+	require.Len(t, f.rows(f.orgA), 1, "it registers nothing")
+
+	// The new URL is for the registered size and type: the bytes go through it and complete.
+	uploaded, answer := storagetest.Upload(t, again.Data.asUpload(), storagetest.JPEG(1500), nil)
+	require.Less(t, uploaded, 300, "upload refused: %s", answer)
+	status, done := f.complete(token, reg.Data.ID)
+	require.Equal(t, http.StatusOK, status)
+	require.Equal(t, "UPLOADED", done.Data.Status)
+
+	// Nothing is left to upload once the photo is confirmed.
+	status, out := f.reissue(token, reg.Data.ID)
+	require.Equal(t, http.StatusConflict, status)
+	require.Equal(t, "CONFLICT", out.Error.Code)
+	require.Equal(t, "MEDIA_ALREADY_UPLOADED", out.reason())
+}
+
+func testReissueRefusals(t *testing.T, d driver) {
+	f := newFlow(t, d)
+	token, _ := f.person(f.orgA)
+	colleague, _ := f.person(f.orgA)
+	inB, _ := f.person(f.orgB)
+	_, reg := f.register(token, validBody(512))
+
+	status, out := f.reissue(colleague, reg.Data.ID)
+	require.Equal(t, http.StatusNotFound, status, "a photo of another person")
+	require.Equal(t, "MEDIA_NOT_FOUND", out.reason())
+	status, out = f.reissue(inB, reg.Data.ID)
+	require.Equal(t, http.StatusNotFound, status, "a photo of another organization")
+	require.Equal(t, "MEDIA_NOT_FOUND", out.reason())
+	status, out = f.reissue(token, 987654)
+	require.Equal(t, http.StatusNotFound, status, "an id nobody registered")
+	require.Equal(t, "MEDIA_NOT_FOUND", out.reason())
+
+	for _, id := range []string{"0", "-4", "abc", "1.5"} {
+		status, _, raw := f.raw(http.MethodPost, "/media/"+id+"/upload-url", token, nil, nil)
+		require.Equal(t, http.StatusNotFound, status, id)
+		require.Equal(t, "MEDIA_NOT_FOUND", decode[any](t, status, raw).reason(), id)
+	}
+	status, _, _ = f.raw(http.MethodPost, "/media/"+itoa(reg.Data.ID)+"/upload-url", "", nil, nil)
+	require.Equal(t, http.StatusUnauthorized, status)
 }
 
 func testAuthentication(t *testing.T, d driver) {

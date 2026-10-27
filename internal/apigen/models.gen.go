@@ -4266,6 +4266,21 @@ func (e PostMediaComplete200JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
+// Defines values for PostMediaUploadUrl200JSONResponseBodySuccess.
+const (
+	PostMediaUploadUrl200JSONResponseBodySuccessTrue PostMediaUploadUrl200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostMediaUploadUrl200JSONResponseBodySuccess enum.
+func (e PostMediaUploadUrl200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostMediaUploadUrl200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetNotifications200JSONResponseBodySuccess.
 const (
 	GetNotifications200JSONResponseBodySuccessTrue GetNotifications200JSONResponseBodySuccess = true
@@ -6550,6 +6565,7 @@ type MediaCreateContentType string
 // - `MEDIA_TYPE_NOT_ALLOWED`: 422 UNPROCESSABLE. Jenis berkas bukan `image/jpeg`, `image/png`, atau `image/webp`.
 // - `MEDIA_TOO_LARGE`: 413 PAYLOAD_TOO_LARGE. Ukuran lebih dari 10 MB.
 // - `MEDIA_NOT_UPLOADED`: 409 CONFLICT. Pada `complete`: byte belum ada, ukurannya tidak sama dengan yang didaftarkan, atau isinya bukan gambar dari jenis yang didaftarkan. Bila belum diunggah: unggah lalu konfirmasi lagi. Bila yang terunggah salah: daftarkan ulang (URL unggahan tidak dapat menimpa). Saat melampirkan: foto belum dikonfirmasi.
+// - `MEDIA_ALREADY_UPLOADED`: 409 CONFLICT. Pada `upload-url`: media sudah dikonfirmasi, tidak perlu URL unggah lagi.
 // - `MEDIA_ALREADY_ATTACHED`: 409 CONFLICT. Saat melampirkan: foto itu sudah dilampirkan ke catatan lain.
 // - `MEDIA_PURPOSE_MISMATCH`: 422 UNPROCESSABLE. Saat melampirkan: tujuan foto tidak cocok dengan catatan itu.
 // - `MEDIA_LIMIT_EXCEEDED`: 422 UNPROCESSABLE. Saat melampirkan: lebih banyak foto daripada batas satu catatan (umumnya 5; `details.max`).
@@ -6566,7 +6582,7 @@ type MediaStatus string
 
 // MediaUpload defines model for MediaUpload.
 type MediaUpload struct {
-	// ExpiresAt Setelah ini `upload_url` ditolak. Daftarkan ulang untuk URL baru.
+	// ExpiresAt Setelah ini `upload_url` ditolak. Minta URL baru lewat `POST /media/{id}/upload-url` (id tetap sama).
 	ExpiresAt time.Time `json:"expires_at"`
 
 	// Id Dipakai di `POST /media/{id}/complete` dan di `media_ids`.
@@ -10119,6 +10135,9 @@ type PostMedia201JSONResponseBodySuccess bool
 
 // PostMediaComplete200JSONResponseBodySuccess defines parameters for PostMediaComplete.
 type PostMediaComplete200JSONResponseBodySuccess bool
+
+// PostMediaUploadUrl200JSONResponseBodySuccess defines parameters for PostMediaUploadUrl.
+type PostMediaUploadUrl200JSONResponseBodySuccess bool
 
 // GetNotificationsParams defines parameters for GetNotifications.
 type GetNotificationsParams struct {

@@ -138,19 +138,33 @@ func (repo) attach(ctx context.Context, q *db.Queries, in AttachInput, now time.
 
 // staleMedia is a photo the cleanup job is about to remove.
 type staleMedia struct {
-	ID  int64
-	Key string
+	ID        int64
+	Key       string
+	CreatedAt time.Time
 }
 
-// lockStale returns, and locks, up to batch unattached photos registered before cutoff.
-func (repo) lockStale(ctx context.Context, q *db.Queries, cutoff time.Time, batch int32) ([]staleMedia, error) {
-	rows, err := q.ListStaleMediaForUpdate(ctx, db.ListStaleMediaForUpdateParams{Cutoff: timestamptz(cutoff), Batch: batch})
+// staleCursor is where a cleanup batch starts: after the photo with this (created_at, id). The
+// zero value starts at the oldest photo.
+type staleCursor struct {
+	CreatedAt time.Time
+	ID        int64
+}
+
+// lockStale returns, and locks, up to batch unattached photos registered before cutoff, oldest
+// first, starting after the cursor.
+func (repo) lockStale(ctx context.Context, q *db.Queries, cutoff time.Time, after staleCursor, batch int32) ([]staleMedia, error) {
+	rows, err := q.ListStaleMediaForUpdate(ctx, db.ListStaleMediaForUpdateParams{
+		Cutoff:         timestamptz(cutoff),
+		AfterCreatedAt: timestamptz(after.CreatedAt),
+		AfterID:        after.ID,
+		Batch:          batch,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("list stale media: %w", err)
 	}
 	out := make([]staleMedia, len(rows))
 	for i, row := range rows {
-		out[i] = staleMedia{ID: row.ID, Key: row.StorageKey}
+		out[i] = staleMedia{ID: row.ID, Key: row.StorageKey, CreatedAt: row.CreatedAt.Time}
 	}
 	return out, nil
 }

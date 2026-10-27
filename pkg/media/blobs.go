@@ -41,7 +41,8 @@ func MountBlobs(r chi.Router, storage Storage) {
 // put receives the bytes of an upload.
 //
 // The checks run cheapest and most decisive first: the signature and expiry, then the signed
-// content type, then the size, before a single byte of the body is read.
+// content type, then the size, before a single byte of the body is read. The body must be
+// exactly the registered size: the token's size is both the cap and the requirement.
 func (b *blobs) put(w http.ResponseWriter, r *http.Request) {
 	if b.local == nil {
 		httpx.Error(w, r, apperr.ErrNotFound)
@@ -66,19 +67,29 @@ func (b *blobs) put(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, r, apperr.ErrBadRequest.WithMessage("Body wajib diisi."))
 		return
 	}
+	// Announced shorter than registered: refused before a byte is read, like S3 does with the
+	// signed length. A body with no announced length is counted as it is stored.
+	if r.ContentLength > 0 && r.ContentLength != claims.MaxBytes {
+		httpx.Error(w, r, errSizeMismatchAPI)
+		return
+	}
 
 	extendDeadlines(w, blobUploadTimeout)
 	// ⚠ The body is capped at the signed size, outside the API's 1 MB JSON cap: this route is
 	// the only one that takes more. A client that sends no Content-Length (chunked) is still
 	// stopped at the cap, which is what MaxBytesReader is for.
 	body := http.MaxBytesReader(w, r.Body, claims.MaxBytes)
-	if err := b.local.store(claims.Key, body); err != nil {
+	if err := b.local.store(claims.Key, body, claims.MaxBytes); err != nil {
 		if _, tooLarge := errors.AsType[*http.MaxBytesError](err); tooLarge {
 			httpx.Error(w, r, errURLTooLarge)
 			return
 		}
 		if errors.Is(err, errObjectExists) {
 			httpx.Error(w, r, errAlreadyUploaded)
+			return
+		}
+		if errors.Is(err, errSizeMismatch) {
+			httpx.Error(w, r, errSizeMismatchAPI)
 			return
 		}
 		// The client went away or sent fewer bytes than it announced: nothing was kept, and

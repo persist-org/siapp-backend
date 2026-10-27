@@ -108,7 +108,7 @@ func (s *Service) whyShort(ctx context.Context, q *db.Queries, in AttachInput) e
 			reason = ErrNotUploaded
 		case m.Purpose != in.Purpose:
 			reason = ErrPurposeMismatch
-		case m.AttachedEntityID != nil && !attachedTo(m, in):
+		case m.AttachedEntityID != nil && !attachedTo(m, in.EntityType, in.EntityID):
 			reason = ErrAlreadyAttached
 		default:
 			continue
@@ -122,14 +122,14 @@ func (s *Service) whyShort(ctx context.Context, q *db.Queries, in AttachInput) e
 	return ErrAlreadyAttached
 }
 
-// attachedTo reports whether m is attached to the very record in names.
+// attachedTo reports whether m is attached to the record entityType/entityID.
 //
 // ⚠ The re-read in whyShort runs in the same transaction as the UPDATE, so it sees the rows
 // that statement DID attach, which are attached to this record. Counting those as "already
 // attached" would blame a photo that was fine and hide the one that was not.
-func attachedTo(m Media, in AttachInput) bool {
-	return m.AttachedEntityType != nil && *m.AttachedEntityType == in.EntityType &&
-		m.AttachedEntityID != nil && *m.AttachedEntityID == in.EntityID
+func attachedTo(m Media, entityType string, entityID int64) bool {
+	return m.AttachedEntityType != nil && *m.AttachedEntityType == entityType &&
+		m.AttachedEntityID != nil && *m.AttachedEntityID == entityID
 }
 
 func firstDuplicate(ids []int64) (int64, bool) {
@@ -155,11 +155,13 @@ type View struct {
 	CaptureSource CaptureSource
 }
 
-// Views returns the viewable form of photos, in the order of ids. Only photos that a record has
-// attached are returned: a record's photos always are, and a photo nobody claimed is still its
-// owner's private draft, which a module that passed ids straight from a request must not be
-// able to hand to someone else. A photo that is not visible (another organization's,
-// nonexistent), not confirmed or not attached is left out rather than failing the whole record.
+// Views returns the viewable form of photos, in the order of ids. Only photos attached to THE
+// record named by entityType and entityID are returned (the same pair that was given to
+// Attach): a record's photos always are. A photo nobody claimed is still its owner's private
+// draft, and one attached to another record belongs to that record's audience, so a module
+// that passed ids straight from a request must not be able to hand either to someone else. A
+// photo that is not visible (another organization's, nonexistent), not confirmed or not
+// attached to this record is left out rather than failing the whole record.
 //
 // ⚠ There is deliberately NO endpoint that serves a photo by media id, and Views does not ask
 // who is looking. The module that owns the record decides whether the caller may see the
@@ -170,7 +172,7 @@ type View struct {
 //
 // q is the caller's tenant transaction, like Attach's: the read is scoped to the caller's
 // organization by row-level security.
-func (s *Service) Views(ctx context.Context, q *db.Queries, ids []int64) ([]View, error) {
+func (s *Service) Views(ctx context.Context, q *db.Queries, entityType string, entityID int64, ids []int64) ([]View, error) {
 	if len(ids) == 0 {
 		return []View{}, nil
 	}
@@ -186,7 +188,7 @@ func (s *Service) Views(ctx context.Context, q *db.Queries, ids []int64) ([]View
 	out := make([]View, 0, len(ids))
 	for _, id := range ids {
 		m, ok := byID[id]
-		if !ok || m.Status != StatusUploaded || m.AttachedEntityID == nil {
+		if !ok || m.Status != StatusUploaded || !attachedTo(m, entityType, entityID) {
 			continue
 		}
 		url, err := s.storage.PresignGet(ctx, m.StorageKey, m.ContentType, viewURLTTL)
