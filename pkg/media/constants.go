@@ -27,7 +27,39 @@ const (
 
 	// maxTokenLength caps what the blob routes will even try to decode.
 	maxTokenLength = 2048
+
+	// minSigningKeyBytes is the shortest key LocalStorage signs with: the size of an
+	// HMAC-SHA256 key. config.Parse enforces the same for STORAGE_LOCAL_SIGNING_KEY.
+	minSigningKeyBytes = 32
+
+	// defaultAttachLimit is how many photos one record may hold when its module does not
+	// say otherwise.
+	defaultAttachLimit = 5
+
+	// viewURLTTL is how long a photo URL handed out by Views works.
+	viewURLTTL = time.Hour
+
+	// orphanAge is how long a registered photo may stay unattached before the cleanup job
+	// removes it, with its file.
+	orphanAge = 24 * time.Hour
+	// staleTempFileAge is how old a half-written file of the local driver must be before the
+	// cleanup job removes it. A PUT takes minutes at the very most.
+	staleTempFileAge = time.Hour
+	// cleanupBatchSize is how many photos one cleanup transaction removes, so that it never
+	// holds a long list of row locks while it talks to the storage.
+	cleanupBatchSize = 100
+	// cleanupTimeout bounds one run of the job.
+	cleanupTimeout = 30 * time.Minute
+	// cleanupDeleteTimeout bounds one file deletion of the job.
+	cleanupDeleteTimeout = 10 * time.Second
 )
+
+// CleanupSchedule runs the job hourly, at minute 40 UTC, clear of the other periodic tasks
+// (the scheduler runs in UTC, see cmd/worker).
+const CleanupSchedule = "40 * * * *"
+
+// TaskCleanup is the worker task that runs Cleaner.Cleanup.
+const TaskCleanup = "media:cleanup"
 
 // TempFilePrefix starts the name of a file that LocalStorage is still writing. A file with
 // this prefix is never an object: the cleanup job (Phase 04.2) deletes the ones an abandoned

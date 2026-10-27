@@ -130,9 +130,9 @@ func (s *Service) Complete(ctx context.Context, p auth.Principal, id int64) (Med
 	}
 	// ⚠ The stored object is compared with what was registered, not just checked for
 	// existence: the size must be the declared one, and the TYPE must be an image of the
-	// declared type. For the local driver that type comes from the bytes (Head sniffs them), so
-	// a text file or an executable uploaded as image/jpeg is refused here instead of being
-	// attached to a report as a "photo".
+	// declared type. That type comes from the bytes (every driver's Head sniffs them), so a text
+	// file or an executable uploaded as image/jpeg is refused here instead of being attached to
+	// a report as a "photo".
 	if obj.SizeBytes != m.SizeBytes || normalizeType(obj.ContentType) != m.ContentType {
 		s.logger.InfoContext(ctx, "media: stored object does not match the registration",
 			slog.Int64("mediaId", m.ID),

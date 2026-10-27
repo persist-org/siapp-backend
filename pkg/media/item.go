@@ -16,9 +16,8 @@ type Status = db.MediaStatus
 // CaptureSource is where a picture came from (the capture_source enum).
 type CaptureSource = db.CaptureSource
 
-// The purposes a photo is registered for. Feature modules pass theirs to Attach (Phase 04.2).
+// The purposes a photo is registered for. Feature modules pass theirs to Attach.
 const (
-	PurposeProfilePhoto     = db.MediaPurposePROFILEPHOTO
 	PurposeAttendanceSelfie = db.MediaPurposeATTENDANCESELFIE
 	PurposeReport           = db.MediaPurposeREPORT
 	PurposeInstruction      = db.MediaPurposeINSTRUCTION
@@ -50,14 +49,22 @@ type Media struct {
 	Longitude     *float64
 	CaptureSource CaptureSource
 
+	// AttachedEntityType and AttachedEntityID name the record that claimed the photo; both nil
+	// until Attach.
+	AttachedEntityType *string
+	AttachedEntityID   *int64
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
 
 // RegisterInput is the body of POST /media. The enums are checked by the validator; the type
 // and the size are checked by the usecase, because each has its own reason code.
+//
+// PROFILE_PHOTO is in the table's enum but not accepted here: a person's profile photo comes
+// from Personalia (personnels.photo_url), and no SiAPP record would ever attach one.
 type RegisterInput struct {
-	Purpose       string     `json:"purpose" validate:"required,oneof=PROFILE_PHOTO ATTENDANCE_SELFIE REPORT INSTRUCTION PATROL_SCAN PANIC_REPORT ASSET_REPORT EMEMO"`
+	Purpose       string     `json:"purpose" validate:"required,oneof=ATTENDANCE_SELFIE REPORT INSTRUCTION PATROL_SCAN PANIC_REPORT ASSET_REPORT EMEMO"`
 	ContentType   string     `json:"content_type" validate:"required,notblank"`
 	SizeBytes     int64      `json:"size_bytes" validate:"required,gte=1"`
 	CapturedAt    *time.Time `json:"captured_at"`

@@ -155,20 +155,26 @@ func Run(t *testing.T, newStorage func(t *testing.T) media.Storage) {
 	t.Run("an expired URL is refused", func(t *testing.T) {
 		s := newStorage(t)
 		key, _ := stored(t, s, 1024)
+		// The put is for a key with nothing behind it yet, so that the only thing wrong with it
+		// later is its age (a key that has its object is refused for that reason first).
+		fresh := Key(t)
+		t.Cleanup(func() { _ = s.Delete(t.Context(), fresh) })
 
-		put, err := s.PresignPut(t.Context(), key, media.PutInput{ContentType: "image/jpeg", SizeBytes: 1024, TTL: time.Second})
+		put, err := s.PresignPut(t.Context(), fresh, media.PutInput{ContentType: "image/jpeg", SizeBytes: 1024, TTL: time.Second})
 		require.NoError(t, err)
 		get, err := s.PresignGet(t.Context(), key, "image/jpeg", time.Second)
 		require.NoError(t, err)
 
-		// Both work while they are alive...
+		// The view works while it is alive...
 		status, _, _ := Download(t, get)
 		require.Equal(t, http.StatusOK, status)
 
-		// ...and neither does once their second is over.
+		// ...and neither URL does once its second is over.
 		time.Sleep(2500 * time.Millisecond)
 		status, _ = Upload(t, put, JPEG(1024), nil)
 		require.Equal(t, http.StatusForbidden, status, "an expired put")
+		_, err = s.Head(t.Context(), fresh)
+		require.ErrorIs(t, err, media.ErrObjectNotFound, "and it stored nothing")
 		status, _, _ = Download(t, get)
 		require.Equal(t, http.StatusForbidden, status, "an expired get")
 	})
@@ -224,6 +230,46 @@ func Run(t *testing.T, newStorage func(t *testing.T) media.Storage) {
 		require.GreaterOrEqual(t, status, 400, "the declared size is a cap")
 		_, err = s.Head(t.Context(), key)
 		require.ErrorIs(t, err, media.ErrObjectNotFound, "an oversize upload leaves no object")
+	})
+
+	// ⚠ A photo is evidence: once stored, the URL that stored it must not be able to replace it
+	// (it is still valid for half an hour), or a checked and attached photo could be swapped.
+	t.Run("an upload URL only creates: a second upload is refused and the photo stays", func(t *testing.T) {
+		s := newStorage(t)
+		key := Key(t)
+		t.Cleanup(func() { _ = s.Delete(t.Context(), key) })
+		up, err := s.PresignPut(t.Context(), key, media.PutInput{ContentType: "image/jpeg", SizeBytes: 800, TTL: time.Minute})
+		require.NoError(t, err)
+
+		first := JPEG(800)
+		status, answer := Upload(t, up, first, nil)
+		require.Less(t, status, 300, "the first upload works: %s", answer)
+
+		second := JPEG(800)
+		second[799] ^= 0xFF // same size and type, other content: a swapped photo
+		status, _ = Upload(t, up, second, nil)
+		require.Equal(t, http.StatusPreconditionFailed, status, "the same URL cannot overwrite, and every driver says so with 412")
+
+		url, err := s.PresignGet(t.Context(), key, "image/jpeg", time.Minute)
+		require.NoError(t, err)
+		_, _, got := Download(t, url)
+		require.Equal(t, first, got, "the stored photo is still the first one")
+	})
+
+	t.Run("head reports the type of the bytes, not the declared one", func(t *testing.T) {
+		s := newStorage(t)
+		key := Key(t)
+		t.Cleanup(func() { _ = s.Delete(t.Context(), key) })
+		notAnImage := bytes.Repeat([]byte("plain text, not a photo. "), 20)
+		up, err := s.PresignPut(t.Context(), key, media.PutInput{ContentType: "image/jpeg", SizeBytes: int64(len(notAnImage)), TTL: time.Minute})
+		require.NoError(t, err)
+		status, answer := Upload(t, up, notAnImage, nil)
+		require.Less(t, status, 300, "the store takes any bytes: %s", answer)
+
+		obj, err := s.Head(t.Context(), key)
+		require.NoError(t, err)
+		require.EqualValues(t, len(notAnImage), obj.SizeBytes)
+		require.Equal(t, "text/plain; charset=utf-8", obj.ContentType, "declared image/jpeg, but the bytes say otherwise")
 	})
 
 	t.Run("a get URL cannot be used to write", func(t *testing.T) {

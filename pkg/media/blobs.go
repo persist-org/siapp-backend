@@ -77,6 +77,10 @@ func (b *blobs) put(w http.ResponseWriter, r *http.Request) {
 			httpx.Error(w, r, errURLTooLarge)
 			return
 		}
+		if errors.Is(err, errObjectExists) {
+			httpx.Error(w, r, errAlreadyUploaded)
+			return
+		}
 		// The client went away or sent fewer bytes than it announced: nothing was kept, and
 		// nobody is left to read the answer, so this is not a server fault.
 		if errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF) || isClientAbort(err) {
@@ -123,7 +127,7 @@ func (b *blobs) get(w http.ResponseWriter, r *http.Request) {
 	h.Set("Content-Disposition", "inline")
 	h.Set("Content-Security-Policy", "default-src 'none'; sandbox")
 	// A cache may keep it only as long as the URL itself works, and only the viewer's own.
-	remaining := max(time.Until(time.Unix(claims.Expires, 0)), 0)
+	remaining := max(time.Unix(claims.Expires, 0).Sub(b.local.clock.Now()), 0)
 	h.Set("Cache-Control", "private, max-age="+strconv.FormatInt(int64(remaining/time.Second), 10))
 
 	// ServeContent answers Range and conditional requests, so a large photo resumes.

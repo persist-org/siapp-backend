@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
 	"time"
 
@@ -90,6 +92,11 @@ func NewS3(ctx context.Context, cfg config.Storage, clk clock.Clock) (*S3Storage
 // PresignPut signs a PUT of exactly in.SizeBytes bytes of in.ContentType. Both are signed
 // headers, so the store itself refuses a different length or type; complete checks the stored
 // object again, since a signed header is a promise of the store, not of this code.
+//
+// ⚠ The PUT is also signed with If-None-Match: *, so it can only CREATE the object: once the
+// photo is stored, the same URL (valid for half an hour) cannot replace it, and the store
+// answers 412. Without it, the owner could swap a photo after complete checked it or a record
+// attached it. The header is in upload_headers, which the client sends as given.
 func (s *S3Storage) PresignPut(ctx context.Context, key string, in PutInput) (Upload, error) {
 	if !ValidKey(key) {
 		return Upload{}, ErrInvalidKey
@@ -102,6 +109,7 @@ func (s *S3Storage) PresignPut(ctx context.Context, key string, in PutInput) (Up
 		Key:           aws.String(key),
 		ContentType:   aws.String(in.ContentType),
 		ContentLength: aws.Int64(in.SizeBytes),
+		IfNoneMatch:   aws.String("*"),
 	}, s3.WithPresignExpires(in.TTL))
 	if err != nil {
 		return Upload{}, fmt.Errorf("presign put: %w", err)
@@ -144,7 +152,13 @@ func (s *S3Storage) PresignGet(ctx context.Context, key, contentType string, ttl
 	return req.URL, nil
 }
 
-// Head returns the stored size and the content type the object was uploaded with.
+// Head returns the stored size, and the type sniffed from the first 512 bytes
+// (http.DetectContentType), like the local driver.
+//
+// ⚠ The Content-Type the object was stored with is only what the client said: the signature
+// makes it the registered type, whatever the bytes are. So the bytes are read too (a ranged
+// GET of 512 bytes, at complete only) and complete refuses a text file sent as image/jpeg on
+// S3 exactly as it does on local disk.
 func (s *S3Storage) Head(ctx context.Context, key string) (Object, error) {
 	if !ValidKey(key) {
 		return Object{}, ErrInvalidKey
@@ -156,7 +170,28 @@ func (s *S3Storage) Head(ctx context.Context, key string) (Object, error) {
 		}
 		return Object{}, fmt.Errorf("head object: %w", err)
 	}
-	return Object{SizeBytes: aws.ToInt64(out.ContentLength), ContentType: aws.ToString(out.ContentType)}, nil
+	size := aws.ToInt64(out.ContentLength)
+	if size == 0 {
+		// A range of an empty object is an error in S3; there is nothing to sniff anyway.
+		return Object{SizeBytes: 0, ContentType: http.DetectContentType(nil)}, nil
+	}
+
+	part, err := s.api.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(s.bucket), Key: aws.String(key),
+		Range: aws.String(fmt.Sprintf("bytes=0-%d", sniffBytes-1)),
+	})
+	if err != nil {
+		if isNotFound(err) {
+			return Object{}, ErrObjectNotFound
+		}
+		return Object{}, fmt.Errorf("read object head: %w", err)
+	}
+	defer func() { _ = part.Body.Close() }()
+	head, err := io.ReadAll(io.LimitReader(part.Body, sniffBytes))
+	if err != nil {
+		return Object{}, fmt.Errorf("read object head: %w", err)
+	}
+	return Object{SizeBytes: size, ContentType: http.DetectContentType(head)}, nil
 }
 
 // Delete removes the object. S3 answers success for a key that does not exist, so a missing

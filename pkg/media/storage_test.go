@@ -187,7 +187,8 @@ func TestS3UploadHeadersAreOnlyWhatTheClientMustSend(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, http.MethodPut, up.Method)
-	require.Equal(t, map[string]string{"Content-Type": "image/webp"}, up.Headers, "no Host, no Content-Length: the client's HTTP stack sets those")
+	require.Equal(t, map[string]string{"Content-Type": "image/webp", "If-None-Match": "*"}, up.Headers,
+		"the type, and the create-only condition; no Host, no Content-Length: the client's HTTP stack sets those")
 	require.NotContains(t, up.URL, "x-amz-checksum", "no checksum for the phone to compute")
 }
 

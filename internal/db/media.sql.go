@@ -11,6 +11,43 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const attachMedia = `-- name: AttachMedia :execrows
+UPDATE media SET attached_entity_type = $1, attached_entity_id = $2, updated_at = $3
+WHERE id = ANY($4::bigint[])
+  AND owner_personnel_id = $5
+  AND status = 'UPLOADED'
+  AND purpose = $6
+  AND attached_entity_id IS NULL
+`
+
+type AttachMediaParams struct {
+	EntityType       pgtype.Text
+	EntityID         pgtype.Int8
+	Now              pgtype.Timestamptz
+	Ids              []int64
+	OwnerPersonnelID int64
+	Purpose          MediaPurpose
+}
+
+// Attaches every item in ONE statement. The conditions are the rule: the photo is the owner's,
+// it was confirmed, it is for this kind of record, and nobody attached it yet. The caller
+// compares the affected row count with the number of ids it sent; a short count means at
+// least one condition failed, and it re-reads to find out which.
+func (q *Queries) AttachMedia(ctx context.Context, arg AttachMediaParams) (int64, error) {
+	result, err := q.db.Exec(ctx, attachMedia,
+		arg.EntityType,
+		arg.EntityID,
+		arg.Now,
+		arg.Ids,
+		arg.OwnerPersonnelID,
+		arg.Purpose,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const createMedia = `-- name: CreateMedia :one
 INSERT INTO media (id, owner_personnel_id, purpose, content_type, size_bytes, storage_key,
                    captured_at, capture_latitude, capture_longitude, capture_source,
@@ -72,6 +109,20 @@ func (q *Queries) CreateMedia(ctx context.Context, arg CreateMediaParams) (Mediu
 	return i, err
 }
 
+const deleteMediaByIDs = `-- name: DeleteMediaByIDs :execrows
+DELETE FROM media WHERE id = ANY($1::bigint[]) AND attached_entity_id IS NULL
+`
+
+// The attached_entity_id condition repeats the rule that attached media is never deleted, so
+// it holds even if a caller passes the wrong ids.
+func (q *Queries) DeleteMediaByIDs(ctx context.Context, ids []int64) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteMediaByIDs, ids)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getMedia = `-- name: GetMedia :one
 SELECT id, organization_id, owner_personnel_id, purpose, content_type, size_bytes, storage_key, status, captured_at, capture_latitude, capture_longitude, capture_source, attached_entity_type, attached_entity_id, created_at, updated_at FROM media WHERE id = $1
 `
@@ -98,6 +149,92 @@ func (q *Queries) GetMedia(ctx context.Context, id int64) (Medium, error) {
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const getMediaByIDs = `-- name: GetMediaByIDs :many
+SELECT id, organization_id, owner_personnel_id, purpose, content_type, size_bytes, storage_key, status, captured_at, capture_latitude, capture_longitude, capture_source, attached_entity_type, attached_entity_id, created_at, updated_at FROM media WHERE id = ANY($1::bigint[])
+`
+
+// The photos of a record, or the rows behind an Attach that came up short. Several ids in one
+// statement; an id that is not visible (another organization's, or nonexistent) is simply
+// absent from the answer.
+func (q *Queries) GetMediaByIDs(ctx context.Context, ids []int64) ([]Medium, error) {
+	rows, err := q.db.Query(ctx, getMediaByIDs, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Medium{}
+	for rows.Next() {
+		var i Medium
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrganizationID,
+			&i.OwnerPersonnelID,
+			&i.Purpose,
+			&i.ContentType,
+			&i.SizeBytes,
+			&i.StorageKey,
+			&i.Status,
+			&i.CapturedAt,
+			&i.CaptureLatitude,
+			&i.CaptureLongitude,
+			&i.CaptureSource,
+			&i.AttachedEntityType,
+			&i.AttachedEntityID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listStaleMediaForUpdate = `-- name: ListStaleMediaForUpdate :many
+SELECT id, storage_key FROM media
+WHERE attached_entity_id IS NULL AND created_at < $1
+ORDER BY created_at, id
+LIMIT $2
+FOR UPDATE SKIP LOCKED
+`
+
+type ListStaleMediaForUpdateParams struct {
+	Cutoff pgtype.Timestamptz
+	Batch  int32
+}
+
+type ListStaleMediaForUpdateRow struct {
+	ID         int64
+	StorageKey string
+}
+
+// Photos nobody attached, a day after they were registered: PENDING ones that were never
+// uploaded or confirmed, and UPLOADED ones no record claimed. The rows are LOCKED, skipping
+// those another transaction holds: an Attach that runs at the same moment waits for the
+// delete, then finds no row, instead of attaching a photo whose file is already gone.
+func (q *Queries) ListStaleMediaForUpdate(ctx context.Context, arg ListStaleMediaForUpdateParams) ([]ListStaleMediaForUpdateRow, error) {
+	rows, err := q.db.Query(ctx, listStaleMediaForUpdate, arg.Cutoff, arg.Batch)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListStaleMediaForUpdateRow{}
+	for rows.Next() {
+		var i ListStaleMediaForUpdateRow
+		if err := rows.Scan(&i.ID, &i.StorageKey); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const markMediaUploaded = `-- name: MarkMediaUploaded :one

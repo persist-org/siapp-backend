@@ -1973,7 +1973,7 @@ components:
     MediaPurpose:
       type: string
       enum: [PROFILE_PHOTO, ATTENDANCE_SELFIE, REPORT, INSTRUCTION, PATROL_SCAN, PANIC_REPORT, ASSET_REPORT, EMEMO]
-      description: Untuk apa foto itu. Fitur yang melampirkannya menolak tujuan yang tidak cocok (MEDIA_PURPOSE_MISMATCH).
+      description: "Untuk apa foto itu. Fitur yang melampirkannya menolak tujuan yang tidak cocok (MEDIA_PURPOSE_MISMATCH). `PROFILE_PHOTO` tidak dapat didaftarkan (422): foto profil berasal dari Persist Personalia."
     MediaStatus:
       type: string
       enum: [PENDING, UPLOADED]
@@ -2012,6 +2012,8 @@ components:
             Alamat tujuan byte. Klien memakainya apa adanya dan tidak pernah menyusun alamat sendiri.
             Bisa alamat penyimpanan objek (S3/MinIO) atau `/media/blobs/{token}` di server ini,
             tergantung lingkungan. Token di dalamnya adalah kredensial: jangan dicatat di log.
+            Satu URL untuk satu foto: sesudah berhasil, URL yang sama tidak dapat menimpanya dan
+            dijawab 412 (oleh penyimpanan mana pun). Bila jawaban unggahan hilang, langsung panggil `complete`.
         upload_method:
           type: string
           enum: [PUT]
@@ -2042,11 +2044,13 @@ components:
         - `MEDIA_NOT_FOUND`: 404 NOT_FOUND. Media tidak ada, milik organisasi lain, atau milik orang lain (tidak dibedakan agar id tidak dapat ditebak).
         - `MEDIA_TYPE_NOT_ALLOWED`: 422 UNPROCESSABLE. Jenis berkas bukan `image/jpeg`, `image/png`, atau `image/webp`.
         - `MEDIA_TOO_LARGE`: 413 PAYLOAD_TOO_LARGE. Ukuran lebih dari 10 MB.
-        - `MEDIA_NOT_UPLOADED`: 409 CONFLICT. Pada `complete`: byte belum ada, ukurannya tidak sama dengan yang didaftarkan, atau isinya bukan gambar dari jenis yang didaftarkan. Unggah ulang lalu konfirmasi lagi.
-        - `MEDIA_ALREADY_ATTACHED`: 409 CONFLICT. Foto itu sudah dilampirkan ke catatan lain (04.2).
-        - `MEDIA_PURPOSE_MISMATCH`: 422 UNPROCESSABLE. Tujuan foto tidak cocok dengan catatan yang melampirkannya (04.2).
-        - `MEDIA_LIMIT_EXCEEDED`: 422 UNPROCESSABLE. Lebih banyak foto daripada batas satu catatan (04.2).
-        - `MEDIA_URL_INVALID`: 403 FORBIDDEN, atau 413 PAYLOAD_TOO_LARGE bila byte melebihi ukuran yang ditandatangani. Hanya pada `/media/blobs/{token}` (penyimpanan `local`): token rusak, kedaluwarsa, untuk operasi lain, atau dipakai dengan jenis atau ukuran yang salah.
+        - `MEDIA_NOT_UPLOADED`: 409 CONFLICT. Pada `complete`: byte belum ada, ukurannya tidak sama dengan yang didaftarkan, atau isinya bukan gambar dari jenis yang didaftarkan. Bila belum diunggah: unggah lalu konfirmasi lagi. Bila yang terunggah salah: daftarkan ulang (URL unggahan tidak dapat menimpa). Saat melampirkan: foto belum dikonfirmasi.
+        - `MEDIA_ALREADY_ATTACHED`: 409 CONFLICT. Saat melampirkan: foto itu sudah dilampirkan ke catatan lain.
+        - `MEDIA_PURPOSE_MISMATCH`: 422 UNPROCESSABLE. Saat melampirkan: tujuan foto tidak cocok dengan catatan itu.
+        - `MEDIA_LIMIT_EXCEEDED`: 422 UNPROCESSABLE. Saat melampirkan: lebih banyak foto daripada batas satu catatan (umumnya 5; `details.max`).
+
+        Saat melampirkan (`media_ids` pada create fitur), `details.media_id` menyebut foto pertama yang gagal, dan tidak ada foto yang dilampirkan. Id yang sama dua kali: 422 VALIDATION_ERROR pada `media_ids`.
+        - `MEDIA_URL_INVALID`: 403 FORBIDDEN, 413 PAYLOAD_TOO_LARGE bila byte melebihi ukuran yang ditandatangani, atau 412 (code CONFLICT) bila foto untuk URL itu sudah tersimpan. Hanya pada `/media/blobs/{token}` (penyimpanan `local`): token rusak, kedaluwarsa, untuk operasi lain, atau dipakai dengan jenis atau ukuran yang salah.
 
     # ---------- 25. reports + report_categories ----------
     Report:
@@ -9476,7 +9480,9 @@ paths:
 
         Kegagalan: 403 `MEDIA_URL_INVALID` (token rusak, kedaluwarsa, untuk operasi lain, atau
         `Content-Type` tidak sama dengan yang ditandatangani), 413 `MEDIA_URL_INVALID` (body lebih
-        besar dari yang ditandatangani).
+        besar dari yang ditandatangani), 412 `MEDIA_URL_INVALID` (foto untuk URL ini sudah
+        tersimpan: satu URL hanya membuat, tidak pernah menimpa, agar foto yang sudah diperiksa
+        atau dilampirkan tidak dapat diganti).
       security: []
       requestBody:
         required: true
@@ -9486,8 +9492,14 @@ paths:
           image/webp: { schema: { type: string, format: binary } }
       responses:
         '204': { description: Tersimpan }
+        '400':
+          description: "BAD_REQUEST: body kosong, atau unggahan terputus (tidak ada yang disimpan)."
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
         '403':
           description: "FORBIDDEN dengan reason `MEDIA_URL_INVALID`."
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '412':
+          description: "CONFLICT dengan reason `MEDIA_URL_INVALID`: foto untuk URL ini sudah tersimpan (status yang sama dengan S3/MinIO untuk kasus ini)."
           content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
         '404': { $ref: '#/components/responses/NotFound' }
         '413':

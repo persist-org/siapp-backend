@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -45,8 +46,8 @@ var _ Storage = (*LocalStorage)(nil)
 // NewLocal creates the storage directory if it is missing and proves it can be written to, so
 // that an unwritable directory fails the boot and not the first upload.
 func NewLocal(cfg config.Storage, clk clock.Clock) (*LocalStorage, error) {
-	if len(cfg.LocalSigningKey) < 32 {
-		return nil, errors.New("local storage: the signing key must be at least 32 bytes")
+	if len(cfg.LocalSigningKey) < minSigningKeyBytes {
+		return nil, fmt.Errorf("local storage: the signing key must be at least %d bytes", minSigningKeyBytes)
 	}
 	if cfg.PublicBaseURL == "" {
 		return nil, errors.New("local storage: MEDIA_PUBLIC_BASE_URL is empty")
@@ -70,7 +71,9 @@ func NewLocal(cfg config.Storage, clk clock.Clock) (*LocalStorage, error) {
 	return l, nil
 }
 
-// probe writes a file and deletes it again.
+// probe does what an upload does, on a throwaway file: write, link to a second name (store
+// commits with os.Link), and delete both. A mount that cannot hard-link (some network and FUSE
+// file systems) therefore fails the boot instead of every upload.
 func (l *LocalStorage) probe() error {
 	f, err := os.CreateTemp(l.root, ".probe-*")
 	if err != nil {
@@ -79,8 +82,16 @@ func (l *LocalStorage) probe() error {
 	name := f.Name()
 	_, writeErr := f.WriteString("ok")
 	closeErr := f.Close()
+	var linkErr, unlinkErr error
+	if writeErr == nil && closeErr == nil {
+		if linkErr = os.Link(name, name+".link"); linkErr == nil {
+			unlinkErr = os.Remove(name + ".link")
+		} else {
+			linkErr = fmt.Errorf("hard links are not supported here: %w", linkErr)
+		}
+	}
 	removeErr := os.Remove(name)
-	return errors.Join(writeErr, closeErr, removeErr)
+	return errors.Join(writeErr, closeErr, linkErr, unlinkErr, removeErr)
 }
 
 // path returns the file of key.
@@ -272,19 +283,33 @@ func (l *LocalStorage) Delete(_ context.Context, key string) error {
 	return nil
 }
 
-// store writes body as the object of key.
+// errObjectExists is returned by store for a key that already has its photo.
+var errObjectExists = errors.New("media: object already exists")
+
+// store writes body as the object of key, once.
 //
-// ⚠ The bytes go to a temporary file in the same directory, are fsynced, and only then
-// renamed onto the key. Why: rename within one directory is atomic, so the key either has the
-// whole previous content or the whole new one. An upload that is cut off halfway (the phone
-// loses signal, the request is aborted, the body hits its size cap) fails in the copy, the
-// temporary file is removed and the key was never touched, so there is no partial object that
-// complete could mistake for a finished photo. The temporary file is in the same directory
-// because rename does not work across file systems.
+// ⚠ The bytes go to a temporary file in the same directory, are fsynced, and only then linked
+// onto the key. Why: the key either has no file or the whole one. An upload that is cut off
+// halfway (the phone loses signal, the request is aborted, the body hits its size cap) fails in
+// the copy, the temporary file is removed and the key was never touched, so there is no partial
+// object that complete could mistake for a finished photo. The temporary file is in the same
+// directory because a link does not work across file systems.
+//
+// ⚠ Write-once: a key that already has a file is refused (errObjectExists), so an upload URL
+// that is still valid cannot replace a photo after complete checked it, or after a record
+// attached it. A photo is evidence: the selfie of a check-in must stay the selfie that was
+// checked. os.Link fails when the name exists, which makes the commit itself the check, with
+// no window between "is it there" and "write it" for a second upload to slip through. The S3
+// driver gets the same rule from a signed If-None-Match: * header.
 func (l *LocalStorage) store(key string, body io.Reader) (err error) {
 	full, err := l.path(key)
 	if err != nil {
 		return err
+	}
+	// Refuse early, before reading up to 10 MB that would be thrown away. The link below is
+	// still what decides when two uploads race.
+	if _, err := os.Lstat(full); err == nil {
+		return errObjectExists
 	}
 	dir := filepath.Dir(full)
 	if err := os.MkdirAll(dir, 0o750); err != nil {
@@ -311,15 +336,72 @@ func (l *LocalStorage) store(key string, body io.Reader) (err error) {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close temp file: %w", err)
 	}
-	if err := os.Rename(tmp.Name(), full); err != nil {
-		return fmt.Errorf("rename temp file: %w", err)
+	if err := os.Link(tmp.Name(), full); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return errObjectExists
+		}
+		return fmt.Errorf("link temp file: %w", err)
 	}
 	committed = true
+	// The object now has its own name; the temporary one goes. If that fails, the cleanup job
+	// removes it later like any abandoned temporary file.
+	_ = os.Remove(tmp.Name())
 	syncDir(dir)
 	return nil
 }
 
-// syncDir makes the rename itself durable. Best effort: not every file system allows it, and
+// RemoveStaleTempFiles deletes the half-written files of uploads that were abandoned: files
+// that start with TempFilePrefix and were last written before olderThan. It returns how many it
+// removed. store removes its own temporary file on every failure it can see, so what is left is
+// the work of a process that died mid-upload (a crash, a kill, a power cut). An upload takes
+// minutes at the very most, so the job only touches files an hour old: never one that is still
+// being written.
+//
+// It walks the whole root once, since the files sit in the folders of every organization. A
+// file that vanishes between the walk and the delete is not an error.
+func (l *LocalStorage) RemoveStaleTempFiles(ctx context.Context, olderThan time.Time) (int, error) {
+	// ⚠ Everything below goes through os.Root: a path it is given can never leave the storage
+	// directory, even if someone swaps a folder for a symlink between the walk and the delete.
+	root, err := os.OpenRoot(l.root)
+	if err != nil {
+		return 0, fmt.Errorf("open storage root: %w", err)
+	}
+	defer func() { _ = root.Close() }()
+
+	removed := 0
+	err = fs.WalkDir(root.FS(), ".", func(path string, d fs.DirEntry, err error) error {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return nil
+			}
+			return err
+		}
+		if d.IsDir() || !strings.HasPrefix(d.Name(), TempFilePrefix) {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return nil
+			}
+			return err
+		}
+		if !info.Mode().IsRegular() || !info.ModTime().Before(olderThan) {
+			return nil
+		}
+		if err := root.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("remove temporary file: %w", err)
+		}
+		removed++
+		return nil
+	})
+	return removed, err
+}
+
+// syncDir makes the new name itself durable. Best effort: not every file system allows it, and
 // the file is already complete either way.
 func syncDir(dir string) {
 	d, err := os.Open(dir) //nolint:gosec // G304: dir is the parent of a path that path() vetted

@@ -6510,7 +6510,7 @@ type Media struct {
 	Latitude      *float64      `json:"latitude,omitempty"`
 	Longitude     *float64      `json:"longitude,omitempty"`
 
-	// Purpose Untuk apa foto itu. Fitur yang melampirkannya menolak tujuan yang tidak cocok (MEDIA_PURPOSE_MISMATCH).
+	// Purpose Untuk apa foto itu. Fitur yang melampirkannya menolak tujuan yang tidak cocok (MEDIA_PURPOSE_MISMATCH). `PROFILE_PHOTO` tidak dapat didaftarkan (422): foto profil berasal dari Persist Personalia.
 	Purpose   MediaPurpose `json:"purpose"`
 	SizeBytes int64        `json:"size_bytes"`
 
@@ -6535,7 +6535,7 @@ type MediaCreate struct {
 	// Longitude Harus dikirim bersama `latitude`.
 	Longitude *float64 `json:"longitude,omitempty"`
 
-	// Purpose Untuk apa foto itu. Fitur yang melampirkannya menolak tujuan yang tidak cocok (MEDIA_PURPOSE_MISMATCH).
+	// Purpose Untuk apa foto itu. Fitur yang melampirkannya menolak tujuan yang tidak cocok (MEDIA_PURPOSE_MISMATCH). `PROFILE_PHOTO` tidak dapat didaftarkan (422): foto profil berasal dari Persist Personalia.
 	Purpose MediaPurpose `json:"purpose"`
 
 	// SizeBytes Ukuran tepat berkas dalam byte. Lebih dari 10485760 (10 MB) 413 `MEDIA_TOO_LARGE`. Byte yang diunggah harus sebesar ini, atau konfirmasi gagal.
@@ -6549,14 +6549,16 @@ type MediaCreateContentType string
 // - `MEDIA_NOT_FOUND`: 404 NOT_FOUND. Media tidak ada, milik organisasi lain, atau milik orang lain (tidak dibedakan agar id tidak dapat ditebak).
 // - `MEDIA_TYPE_NOT_ALLOWED`: 422 UNPROCESSABLE. Jenis berkas bukan `image/jpeg`, `image/png`, atau `image/webp`.
 // - `MEDIA_TOO_LARGE`: 413 PAYLOAD_TOO_LARGE. Ukuran lebih dari 10 MB.
-// - `MEDIA_NOT_UPLOADED`: 409 CONFLICT. Pada `complete`: byte belum ada, ukurannya tidak sama dengan yang didaftarkan, atau isinya bukan gambar dari jenis yang didaftarkan. Unggah ulang lalu konfirmasi lagi.
-// - `MEDIA_ALREADY_ATTACHED`: 409 CONFLICT. Foto itu sudah dilampirkan ke catatan lain (04.2).
-// - `MEDIA_PURPOSE_MISMATCH`: 422 UNPROCESSABLE. Tujuan foto tidak cocok dengan catatan yang melampirkannya (04.2).
-// - `MEDIA_LIMIT_EXCEEDED`: 422 UNPROCESSABLE. Lebih banyak foto daripada batas satu catatan (04.2).
-// - `MEDIA_URL_INVALID`: 403 FORBIDDEN, atau 413 PAYLOAD_TOO_LARGE bila byte melebihi ukuran yang ditandatangani. Hanya pada `/media/blobs/{token}` (penyimpanan `local`): token rusak, kedaluwarsa, untuk operasi lain, atau dipakai dengan jenis atau ukuran yang salah.
+// - `MEDIA_NOT_UPLOADED`: 409 CONFLICT. Pada `complete`: byte belum ada, ukurannya tidak sama dengan yang didaftarkan, atau isinya bukan gambar dari jenis yang didaftarkan. Bila belum diunggah: unggah lalu konfirmasi lagi. Bila yang terunggah salah: daftarkan ulang (URL unggahan tidak dapat menimpa). Saat melampirkan: foto belum dikonfirmasi.
+// - `MEDIA_ALREADY_ATTACHED`: 409 CONFLICT. Saat melampirkan: foto itu sudah dilampirkan ke catatan lain.
+// - `MEDIA_PURPOSE_MISMATCH`: 422 UNPROCESSABLE. Saat melampirkan: tujuan foto tidak cocok dengan catatan itu.
+// - `MEDIA_LIMIT_EXCEEDED`: 422 UNPROCESSABLE. Saat melampirkan: lebih banyak foto daripada batas satu catatan (umumnya 5; `details.max`).
+//
+// Saat melampirkan (`media_ids` pada create fitur), `details.media_id` menyebut foto pertama yang gagal, dan tidak ada foto yang dilampirkan. Id yang sama dua kali: 422 VALIDATION_ERROR pada `media_ids`.
+// - `MEDIA_URL_INVALID`: 403 FORBIDDEN, 413 PAYLOAD_TOO_LARGE bila byte melebihi ukuran yang ditandatangani, atau 412 (code CONFLICT) bila foto untuk URL itu sudah tersimpan. Hanya pada `/media/blobs/{token}` (penyimpanan `local`): token rusak, kedaluwarsa, untuk operasi lain, atau dipakai dengan jenis atau ukuran yang salah.
 type MediaErrorReason = string
 
-// MediaPurpose Untuk apa foto itu. Fitur yang melampirkannya menolak tujuan yang tidak cocok (MEDIA_PURPOSE_MISMATCH).
+// MediaPurpose Untuk apa foto itu. Fitur yang melampirkannya menolak tujuan yang tidak cocok (MEDIA_PURPOSE_MISMATCH). `PROFILE_PHOTO` tidak dapat didaftarkan (422): foto profil berasal dari Persist Personalia.
 type MediaPurpose string
 
 // MediaStatus `PENDING` sudah didaftarkan tetapi byte belum dikonfirmasi; `UPLOADED` sudah dikonfirmasi dan boleh dilampirkan.
@@ -6579,6 +6581,8 @@ type MediaUpload struct {
 	// UploadUrl Alamat tujuan byte. Klien memakainya apa adanya dan tidak pernah menyusun alamat sendiri.
 	// Bisa alamat penyimpanan objek (S3/MinIO) atau `/media/blobs/{token}` di server ini,
 	// tergantung lingkungan. Token di dalamnya adalah kredensial: jangan dicatat di log.
+	// Satu URL untuk satu foto: sesudah berhasil, URL yang sama tidak dapat menimpanya dan
+	// dijawab 412 (oleh penyimpanan mana pun). Bila jawaban unggahan hilang, langsung panggil `complete`.
 	UploadUrl string `json:"upload_url"`
 }
 

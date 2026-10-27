@@ -21,6 +21,7 @@ func TestUploadFlow(t *testing.T) {
 			t.Run("register, upload, complete", func(t *testing.T) { testHappyPath(t, d) })
 			t.Run("complete without an upload fails", func(t *testing.T) { testCompleteWithoutUpload(t, d) })
 			t.Run("an upload of another size does not complete", func(t *testing.T) { testWrongSizeUpload(t, d) })
+			t.Run("a file that is not an image does not complete", func(t *testing.T) { testNotAnImage(t, d) })
 			t.Run("a wrong type or an oversize file is rejected", func(t *testing.T) { testRegisterRejections(t, d) })
 			t.Run("another person cannot complete someone else's upload", func(t *testing.T) { testOtherPerson(t, d) })
 			t.Run("cross-tenant: org B gets 404 for org A's media", func(t *testing.T) { testCrossTenant(t, d) })
@@ -128,6 +129,23 @@ func testWrongSizeUpload(t *testing.T, d driver) {
 	require.Equal(t, "PENDING", f.rows(f.orgA)[0].Status)
 }
 
+// The bytes decide what a file is, with either driver: a text file sent as image/jpeg is
+// stored, because the store cannot tell, and complete refuses it.
+func testNotAnImage(t *testing.T, d driver) {
+	f := newFlow(t, d)
+	token, _ := f.person(f.orgA)
+	notAnImage := []byte(strings.Repeat("<script>alert(1)</script>", 4))
+	_, reg := f.register(token, validBody(len(notAnImage)))
+
+	uploaded, answer := storagetest.Upload(t, reg.Data.asUpload(), notAnImage, nil)
+	require.Less(t, uploaded, 300, "%s", answer)
+
+	status, out := f.complete(token, reg.Data.ID)
+	require.Equal(t, http.StatusConflict, status)
+	require.Equal(t, "MEDIA_NOT_UPLOADED", out.reason())
+	require.Equal(t, "PENDING", f.rows(f.orgA)[0].Status)
+}
+
 func testRegisterRejections(t *testing.T, d driver) {
 	f := newFlow(t, d)
 	token, _ := f.person(f.orgA)
@@ -154,6 +172,7 @@ func testRegisterRejections(t *testing.T, d driver) {
 		{"a size of zero", with(func(b map[string]any) { b["size_bytes"] = 0 }), key(), 422, "VALIDATION_ERROR", "", "size_bytes"},
 		{"a negative size", with(func(b map[string]any) { b["size_bytes"] = -5 }), key(), 422, "VALIDATION_ERROR", "", "size_bytes"},
 		{"an unknown purpose", with(func(b map[string]any) { b["purpose"] = "SELFIE" }), key(), 422, "VALIDATION_ERROR", "", "purpose"},
+		{"a profile photo, which Personalia owns", with(func(b map[string]any) { b["purpose"] = "PROFILE_PHOTO" }), key(), 422, "VALIDATION_ERROR", "", "purpose"},
 		{"no capture source", with(func(b map[string]any) { delete(b, "capture_source") }), key(), 422, "VALIDATION_ERROR", "", "capture_source"},
 		{"an unknown capture source", with(func(b map[string]any) { b["capture_source"] = "DRONE" }), key(), 422, "VALIDATION_ERROR", "", "capture_source"},
 		{"a latitude without a longitude", with(func(b map[string]any) { b["latitude"] = -6.2 }), key(), 422, "VALIDATION_ERROR", "", "latitude"},

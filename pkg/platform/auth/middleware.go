@@ -142,7 +142,7 @@ func Require(tokens *Tokens, revocations *Revocations) func(http.Handler) http.H
 	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if IsPublic(r.Method, r.URL.Path) {
+			if IsPublic(r.Method, routingPath(r)) {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -164,6 +164,21 @@ func Require(tokens *Tokens, revocations *Revocations) func(http.Handler) http.H
 			next.ServeHTTP(w, r.WithContext(WithPrincipal(r.Context(), Principal(claims))))
 		})
 	}
+}
+
+// routingPath is the path the router matches routes on: chi uses the escaped form when the
+// request has one (RawPath), and the decoded Path otherwise.
+//
+// ⚠ The allowlist must judge the SAME path the router will route. Judged on the decoded path,
+// "/api/v1/media/blobs%2Fx" would look like the public "/api/v1/media/blobs/{token}" while chi
+// routes the raw "/api/v1/media/blobs%2Fx", which a route such as "/api/v1/media/{id}" would
+// match: that route would then run without a token. Judged on the raw path, "blobs%2Fx" is one
+// segment that matches no public route, and the request needs a token like any other.
+func routingPath(r *http.Request) string {
+	if r.URL.RawPath != "" {
+		return r.URL.RawPath
+	}
+	return r.URL.Path
 }
 
 func authenticate(tokens *Tokens, r *http.Request) (Claims, error) {

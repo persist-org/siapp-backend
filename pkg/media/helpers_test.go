@@ -139,6 +139,7 @@ func itoa(n int64) string { return strconv.FormatInt(n, 10) }
 type flow struct {
 	t       *testing.T
 	srv     *httptest.Server
+	service *media.Service
 	storage media.Storage
 	clock   *testClock
 	logs    *lockedBuffer
@@ -155,9 +156,9 @@ func newFlow(t *testing.T, d driver) *flow {
 	f.srv = testkit.NewServerAt(t, func(baseURL string) testkit.Deps {
 		f.storage, f.root = d.build(t, baseURL, f.clock)
 		logger := slog.New(slog.NewJSONHandler(f.logs, nil))
-		service := media.NewService(testkit.Pool(t), f.storage, f.clock, logger)
+		f.service = media.NewService(testkit.Pool(t), f.storage, f.clock, logger)
 		idempotency := idem.New(idem.Config{Pool: testkit.Pool(t), Identity: auth.Identity})
-		handler := media.NewHandler(service, f.storage, idempotency.Middleware(true))
+		handler := media.NewHandler(f.service, f.storage, idempotency.Middleware(true))
 		return testkit.Deps{Logger: logger, Mount: handler.Mount}
 	})
 	f.orgA, f.orgB = testkit.NewOrg(t), testkit.NewOrg(t)

@@ -165,6 +165,34 @@ func TestRequireIsDefaultDeny(t *testing.T) {
 	})
 }
 
+// ⚠ An escaped slash must not make a protected route look like a public one. Decoded,
+// "/api/v1/media/blobs%2Fx" is "/api/v1/media/blobs/x" (the public blob route), but the router
+// routes the raw path, which a route like "/api/v1/media/{id}" matches.
+func TestAnEscapedSlashDoesNotOpenAProtectedRoute(t *testing.T) {
+	tokens, err := auth.NewTokens([]byte(testSecret), clock.System{})
+	require.NoError(t, err)
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	router := httpx.NewRouter(httpx.RouterConfig{
+		Logger:       logger,
+		Authenticate: auth.Require(tokens, auth.NewRevocations(testkit.Redis(t), testkit.RandomPrefix(t), logger)),
+	})
+	reached := false
+	router.Get("/api/v1/media/{id}", func(w http.ResponseWriter, _ *http.Request) {
+		reached = true
+		w.WriteHeader(http.StatusOK)
+	})
+	router.Get("/api/v1/media/blobs/{token}", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	srv := httptest.NewServer(router)
+	t.Cleanup(srv.Close)
+
+	require.Equal(t, http.StatusUnauthorized, get(t, srv, http.MethodGet, "/api/v1/media/blobs%2Fx", "").status)
+	require.False(t, reached, "the protected route never ran without a token")
+
+	// The public route itself still works, escaped characters in its token included.
+	require.Equal(t, http.StatusOK, get(t, srv, http.MethodGet, "/api/v1/media/blobs/abc.def", "").status)
+	require.Equal(t, http.StatusOK, get(t, srv, http.MethodGet, "/api/v1/media/blobs/a%20b", "").status)
+}
+
 func TestPublicRoutes(t *testing.T) {
 	require.True(t, auth.IsPublic(http.MethodGet, "/api/v1/health"))
 	require.True(t, auth.IsPublic(http.MethodPost, "/api/v1/auth/login"))

@@ -37,6 +37,12 @@ func toMedia(m db.Medium) Media {
 		t := m.CapturedAt.Time
 		out.CapturedAt = &t
 	}
+	if m.AttachedEntityType.Valid {
+		out.AttachedEntityType = &m.AttachedEntityType.String
+	}
+	if m.AttachedEntityID.Valid {
+		out.AttachedEntityID = &m.AttachedEntityID.Int64
+	}
 	return out
 }
 
@@ -99,6 +105,63 @@ func (repo) get(ctx context.Context, q *db.Queries, id int64) (Media, error) {
 		return Media{}, fmt.Errorf("get media: %w", err)
 	}
 	return toMedia(row), nil
+}
+
+// getByIDs returns the visible photos among ids, in no particular order.
+func (repo) getByIDs(ctx context.Context, q *db.Queries, ids []int64) ([]Media, error) {
+	rows, err := q.GetMediaByIDs(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("get media by ids: %w", err)
+	}
+	out := make([]Media, len(rows))
+	for i, row := range rows {
+		out[i] = toMedia(row)
+	}
+	return out, nil
+}
+
+// attach runs the one conditional UPDATE and returns how many rows it attached.
+func (repo) attach(ctx context.Context, q *db.Queries, in AttachInput, now time.Time) (int64, error) {
+	n, err := q.AttachMedia(ctx, db.AttachMediaParams{
+		EntityType:       pgtype.Text{String: in.EntityType, Valid: true},
+		EntityID:         pgtype.Int8{Int64: in.EntityID, Valid: true},
+		Now:              timestamptz(now),
+		Ids:              in.MediaIDs,
+		OwnerPersonnelID: in.OwnerID,
+		Purpose:          in.Purpose,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("attach media: %w", err)
+	}
+	return n, nil
+}
+
+// staleMedia is a photo the cleanup job is about to remove.
+type staleMedia struct {
+	ID  int64
+	Key string
+}
+
+// lockStale returns, and locks, up to batch unattached photos registered before cutoff.
+func (repo) lockStale(ctx context.Context, q *db.Queries, cutoff time.Time, batch int32) ([]staleMedia, error) {
+	rows, err := q.ListStaleMediaForUpdate(ctx, db.ListStaleMediaForUpdateParams{Cutoff: timestamptz(cutoff), Batch: batch})
+	if err != nil {
+		return nil, fmt.Errorf("list stale media: %w", err)
+	}
+	out := make([]staleMedia, len(rows))
+	for i, row := range rows {
+		out[i] = staleMedia{ID: row.ID, Key: row.StorageKey}
+	}
+	return out, nil
+}
+
+// deleteRows removes the rows of ids that are still unattached.
+func (repo) deleteRows(ctx context.Context, q *db.Queries, ids []int64) (int64, error) {
+	n, err := q.DeleteMediaByIDs(ctx, ids)
+	if err != nil {
+		return 0, fmt.Errorf("delete media: %w", err)
+	}
+	return n, nil
 }
 
 // markUploaded moves a PENDING photo of this owner to UPLOADED. updated is false when there

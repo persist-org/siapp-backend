@@ -192,6 +192,23 @@ func TestLocalBlobRoutes(t *testing.T) {
 		require.Equal(t, http.StatusNoContent, status, string(raw))
 	})
 
+	t.Run("a second upload to the same URL is refused with 412, as S3 does", func(t *testing.T) {
+		f := newFlow(t, drivers[0])
+		token, _ := f.person(f.orgA)
+		up := f.registered(token, 1000)
+
+		status, _, raw := f.blob(http.MethodPut, tokenOf(up.UploadURL), bytes.NewReader(storagetest.JPEG(1000)), "image/jpeg")
+		require.Equal(t, http.StatusNoContent, status, string(raw))
+		status, _, raw = f.blob(http.MethodPut, tokenOf(up.UploadURL), bytes.NewReader(storagetest.JPEG(1000)), "image/jpeg")
+		requireURLInvalid(t, status, raw, http.StatusPreconditionFailed)
+		require.Len(t, files(t, f.root), 1, "one object, and no temporary file left by the refused one")
+
+		// The client that lost the first answer just completes.
+		status, out := f.complete(token, up.ID)
+		require.Equal(t, http.StatusOK, status)
+		require.Equal(t, "UPLOADED", out.Data.Status)
+	})
+
 	t.Run("an empty body is refused", func(t *testing.T) {
 		f := newFlow(t, drivers[0])
 		token, _ := f.person(f.orgA)

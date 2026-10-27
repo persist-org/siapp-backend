@@ -20,6 +20,11 @@ const (
 	ReasonTooLarge       = "MEDIA_TOO_LARGE"
 	ReasonNotUploaded    = "MEDIA_NOT_UPLOADED"
 	ReasonURLInvalid     = "MEDIA_URL_INVALID"
+
+	// Reasons of Attach (Phase 04.2).
+	ReasonAlreadyAttached = "MEDIA_ALREADY_ATTACHED"
+	ReasonPurposeMismatch = "MEDIA_PURPOSE_MISMATCH"
+	ReasonLimitExceeded   = "MEDIA_LIMIT_EXCEEDED"
 )
 
 // ErrNotFound is returned for a media id that does not exist, belongs to another
@@ -42,6 +47,19 @@ var ErrTooLarge = apperr.New(http.StatusRequestEntityTooLarge, apperr.CodePayloa
 var ErrNotUploaded = apperr.New(http.StatusConflict, apperr.CodeConflict,
 	ReasonNotUploaded, "Foto belum terunggah atau tidak sesuai dengan yang didaftarkan.")
 
+// ErrAlreadyAttached is returned by Attach for a photo that a record already claimed.
+var ErrAlreadyAttached = apperr.New(http.StatusConflict, apperr.CodeConflict,
+	ReasonAlreadyAttached, "Foto sudah dilampirkan ke catatan lain.")
+
+// ErrPurposeMismatch is returned by Attach for a photo registered for another kind of record
+// (a patrol photo on a report).
+var ErrPurposeMismatch = apperr.New(http.StatusUnprocessableEntity, apperr.CodeUnprocessable,
+	ReasonPurposeMismatch, "Tujuan foto tidak sesuai dengan catatan ini.")
+
+// ErrLimitExceeded is returned by Attach for more photos than one record may hold.
+var ErrLimitExceeded = apperr.New(http.StatusUnprocessableEntity, apperr.CodeUnprocessable,
+	ReasonLimitExceeded, "Jumlah foto melebihi batas.")
+
 // errURLInvalid is what the local blob routes answer for a token that is tampered with,
 // expired, for the other operation, or used with the wrong type: all one answer, because
 // telling them apart would only help someone forging tokens. 403, like the signature error
@@ -52,3 +70,11 @@ var errURLInvalid = apperr.New(http.StatusForbidden, apperr.CodeForbidden,
 // errURLTooLarge is the same reason for a body over the signed size: 413, as the plan says.
 var errURLTooLarge = apperr.New(http.StatusRequestEntityTooLarge, apperr.CodePayloadTooLarge,
 	ReasonURLInvalid, "Ukuran foto melebihi yang didaftarkan.")
+
+// errAlreadyUploaded is the same reason for an upload URL whose photo is already stored: an
+// upload URL works once (see LocalStorage.store). 412, the status S3 and MinIO answer for the
+// same case (the failed If-None-Match), so a client handles one status whatever the driver: a
+// client that retried after a lost answer just calls complete; one that wants another photo
+// registers again. The code is CONFLICT: the contract's ErrorCode has no precondition code.
+var errAlreadyUploaded = apperr.New(http.StatusPreconditionFailed, apperr.CodeConflict,
+	ReasonURLInvalid, "Foto untuk URL ini sudah terunggah. Daftarkan ulang untuk foto lain.")

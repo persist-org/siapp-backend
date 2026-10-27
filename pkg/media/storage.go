@@ -22,13 +22,15 @@ import (
 // not match the key pattern with ErrInvalidKey, so a driver never has to trust its caller.
 type Storage interface {
 	// PresignPut returns what a client needs to upload the object: a URL, the method (always
-	// PUT today) and the headers it must send. The URL stops working at Upload.ExpiresAt.
+	// PUT today) and the headers it must send. The URL stops working at Upload.ExpiresAt, and
+	// it only creates the object: once the photo is stored it cannot replace it.
 	PresignPut(ctx context.Context, key string, in PutInput) (Upload, error)
 	// PresignGet returns a URL that serves the object with the given content type until ttl
 	// has passed.
 	PresignGet(ctx context.Context, key, contentType string, ttl time.Duration) (string, error)
-	// Head reports the size and type of a stored object, or ErrObjectNotFound. For the local
-	// driver the type is sniffed from the bytes, not taken from what the client said.
+	// Head reports the size and type of a stored object, or ErrObjectNotFound. The type is
+	// sniffed from the first bytes (http.DetectContentType), never taken from what the client
+	// said, by every driver.
 	Head(ctx context.Context, key string) (Object, error)
 	// Delete removes an object. An object that is already gone is not an error, like S3.
 	Delete(ctx context.Context, key string) error
