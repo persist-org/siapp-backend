@@ -13,8 +13,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 
+	"siapp/pkg/media"
 	"siapp/pkg/platform/auth"
 	"siapp/pkg/platform/clock"
+	"siapp/pkg/platform/config"
 	"siapp/pkg/platform/httpx"
 	"siapp/pkg/platform/testkit"
 )
@@ -30,6 +32,14 @@ func productionRouter(t *testing.T) *chi.Mux {
 	t.Helper()
 	testkit.Reset(t)
 	_, personelClient := testkit.NewPersonel(t)
+	// The local driver is the default one: it needs no service, and its blob routes are the
+	// public ones the guard tests below must see mounted.
+	storage, err := media.NewLocal(config.Storage{
+		LocalDir:        t.TempDir(),
+		LocalSigningKey: "guard-test-signing-key-guard-test-signing-key",
+		PublicBaseURL:   "http://localhost:8080",
+	}, clock.System{})
+	require.NoError(t, err)
 	return newRouter(deps{
 		Logger:      slog.New(slog.NewJSONHandler(io.Discard, nil)),
 		Pool:        testkit.Pool(t),
@@ -39,6 +49,8 @@ func productionRouter(t *testing.T) *chi.Mux {
 		Tokens:      testkit.Tokens(t),
 		Clock:       clock.System{},
 		ClientIP:    httpx.ClientIPFunc(""),
+
+		MediaStorage: storage,
 	})
 }
 

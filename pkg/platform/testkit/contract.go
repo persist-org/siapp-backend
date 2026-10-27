@@ -96,6 +96,13 @@ func (r *Response) JSON(t testing.TB, dst any) {
 // JSON-encoded when not nil.
 func (c *Client) Do(method, path string, body any) *Response {
 	c.t.Helper()
+	return c.DoWithHeaders(method, path, body, nil)
+}
+
+// DoWithHeaders is Do with extra request headers, such as Idempotency-Key. The contract
+// validates them too: a header it requires and the test left out fails the request.
+func (c *Client) DoWithHeaders(method, path string, body any, headers map[string]string) *Response {
+	c.t.Helper()
 	var reader io.Reader
 	if body != nil {
 		raw, err := json.Marshal(body)
@@ -109,6 +116,9 @@ func (c *Client) Do(method, path string, body any) *Response {
 	}
 	if c.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.Token)
+	}
+	for name, value := range headers {
+		req.Header.Set(name, value)
 	}
 
 	_, routes := loadContract(c.t)

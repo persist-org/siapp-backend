@@ -26,7 +26,9 @@ var (
 		"Sesi sudah kedaluwarsa. Perbarui sesi Anda.")
 )
 
-// Route identifies an endpoint by its exact method and path.
+// Route identifies an endpoint by its exact method and path. A path segment written {name}
+// stands for exactly one segment of any value (the token of a blob URL); every other segment
+// is literal.
 type Route struct {
 	Method string
 	Path   string
@@ -45,16 +47,47 @@ var PublicRoutes = []Route{
 	// Refresh authenticates with the refresh token in its body; the access token has usually
 	// expired by the time it is needed.
 	{http.MethodPost, "/api/v1/auth/refresh"},
+	// The local storage's blob routes (Phase 04.1) are authorized by the signed token in their
+	// URL, like a presigned S3 URL: a phone uploads straight to the URL it was given. With the
+	// minio and s3 drivers they exist but answer 404.
+	{http.MethodPut, "/api/v1/media/blobs/{token}"},
+	{http.MethodGet, "/api/v1/media/blobs/{token}"},
 }
 
 // IsPublic reports whether method and path are exactly on the allowlist.
 func IsPublic(method, path string) bool {
 	for _, r := range PublicRoutes {
-		if r.Method == method && r.Path == path {
+		if r.Method == method && pathMatches(r.Path, path) {
 			return true
 		}
 	}
 	return false
+}
+
+// pathMatches compares a path with a route's path. It is still an exact match, never a prefix:
+// a {name} segment matches ONE non-empty segment, so "/media/blobs/{token}" admits
+// "/media/blobs/abc" but neither "/media/blobs/", nor "/media/blobs/abc/def", nor anything
+// longer, and a public route can never expose a sub-route.
+func pathMatches(pattern, path string) bool {
+	if !strings.Contains(pattern, "{") {
+		return pattern == path
+	}
+	want, got := strings.Split(pattern, "/"), strings.Split(path, "/")
+	if len(want) != len(got) {
+		return false
+	}
+	for i, segment := range want {
+		if strings.HasPrefix(segment, "{") && strings.HasSuffix(segment, "}") {
+			if got[i] == "" {
+				return false
+			}
+			continue
+		}
+		if segment != got[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // Principal is the authenticated caller, taken from the access token.

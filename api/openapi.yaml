@@ -93,6 +93,20 @@ tags:
     description: Izin & tukar jaga
   - name: Instruction
     description: Instruksi + acknowledgement
+  - name: Media
+    description: |
+      Unggahan foto (swafoto absensi, laporan, instruksi, scan patroli, panik, aset, E-Memo).
+      Alurnya sama untuk semua penyimpanan: daftarkan (`POST /media`), kirim byte dengan `PUT`
+      ke `upload_url` memakai `upload_headers`, lalu konfirmasi (`POST /media/{id}/complete`).
+      Klien tidak pernah menyusun URL sendiri dan tidak perlu tahu penyimpanan di baliknya.
+
+      - Berkas yang sudah `UPLOADED` dilampirkan ke catatan lewat `media_ids` pada input
+        create fitur (laporan, scan patroli, laporan aset, dst.).
+      - Tidak ada endpoint baca per id media. Fitur pemilik catatan yang memberi akses, dan
+        `photos` di responsnya berisi URL bertanda tangan berumur pendek (sekitar 1 jam).
+        Jangan menyimpan URL itu; minta ulang catatannya.
+      - Jenis yang diizinkan `image/jpeg`, `image/png`, `image/webp`; paling besar 10 MB.
+      - Metadata pengambilan (waktu, GPS, sumber) disimpan sebagai bukti anti-kecurangan.
   - name: Report
     description: Laporan lapangan (offline-capable)
   - name: Patrol
@@ -1955,6 +1969,85 @@ components:
         swap_date: { type: string, format: date }
         reason: { type: string }
 
+    # ---------- media: unggahan foto (Phase 04.1) ----------
+    MediaPurpose:
+      type: string
+      enum: [PROFILE_PHOTO, ATTENDANCE_SELFIE, REPORT, INSTRUCTION, PATROL_SCAN, PANIC_REPORT, ASSET_REPORT, EMEMO]
+      description: Untuk apa foto itu. Fitur yang melampirkannya menolak tujuan yang tidak cocok (MEDIA_PURPOSE_MISMATCH).
+    MediaStatus:
+      type: string
+      enum: [PENDING, UPLOADED]
+      description: "`PENDING` sudah didaftarkan tetapi byte belum dikonfirmasi; `UPLOADED` sudah dikonfirmasi dan boleh dilampirkan."
+    CaptureSource:
+      type: string
+      enum: [CAMERA, GALLERY, UNKNOWN]
+      description: Dari mana foto berasal. Swafoto absensi hanya boleh `CAMERA` (manual §3.2.3.1).
+    MediaCreate:
+      type: object
+      required: [purpose, content_type, size_bytes, capture_source]
+      properties:
+        purpose: { $ref: '#/components/schemas/MediaPurpose' }
+        content_type:
+          type: string
+          enum: [image/jpeg, image/png, image/webp]
+          description: Jenis lain 422 `MEDIA_TYPE_NOT_ALLOWED`.
+        size_bytes:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Ukuran tepat berkas dalam byte. Lebih dari 10485760 (10 MB) 413 `MEDIA_TOO_LARGE`. Byte yang diunggah harus sebesar ini, atau konfirmasi gagal.
+        captured_at: { type: string, format: date-time, nullable: true, description: Waktu foto diambil menurut perangkat (UTC). Paling jauh 5 menit di depan waktu server. }
+        latitude: { type: number, format: double, minimum: -90, maximum: 90, nullable: true, description: "Harus dikirim bersama `longitude`." }
+        longitude: { type: number, format: double, minimum: -180, maximum: 180, nullable: true, description: "Harus dikirim bersama `latitude`." }
+        capture_source: { $ref: '#/components/schemas/CaptureSource' }
+    MediaUpload:
+      type: object
+      required: [id, upload_url, upload_method, upload_headers, expires_at]
+      properties:
+        id: { type: integer, format: int64, description: "Dipakai di `POST /media/{id}/complete` dan di `media_ids`." }
+        upload_url:
+          type: string
+          format: uri
+          description: |
+            Alamat tujuan byte. Klien memakainya apa adanya dan tidak pernah menyusun alamat sendiri.
+            Bisa alamat penyimpanan objek (S3/MinIO) atau `/media/blobs/{token}` di server ini,
+            tergantung lingkungan. Token di dalamnya adalah kredensial: jangan dicatat di log.
+        upload_method:
+          type: string
+          enum: [PUT]
+          description: Selalu `PUT`. Ada di respons agar metode lain (misalnya POST bertanda tangan) tidak memerlukan rilis aplikasi.
+        upload_headers:
+          type: object
+          additionalProperties: { type: string }
+          description: Header yang HARUS dikirim bersama byte (di antaranya `Content-Type`). Header lain tidak boleh ditambahkan.
+        expires_at: { type: string, format: date-time, description: Setelah ini `upload_url` ditolak. Daftarkan ulang untuk URL baru. }
+    Media:
+      type: object
+      required: [id, purpose, content_type, size_bytes, status, capture_source, created_at]
+      properties:
+        id: { type: integer, format: int64 }
+        purpose: { $ref: '#/components/schemas/MediaPurpose' }
+        content_type: { type: string }
+        size_bytes: { type: integer, format: int64 }
+        status: { $ref: '#/components/schemas/MediaStatus' }
+        captured_at: { type: string, format: date-time, nullable: true }
+        latitude: { type: number, format: double, nullable: true }
+        longitude: { type: number, format: double, nullable: true }
+        capture_source: { $ref: '#/components/schemas/CaptureSource' }
+        created_at: { type: string, format: date-time }
+    MediaErrorReason:
+      type: string
+      description: |
+        Dikirim di error.details.reason. Satu reason yang sudah rilis tidak pernah diganti namanya.
+        - `MEDIA_NOT_FOUND`: 404 NOT_FOUND. Media tidak ada, milik organisasi lain, atau milik orang lain (tidak dibedakan agar id tidak dapat ditebak).
+        - `MEDIA_TYPE_NOT_ALLOWED`: 422 UNPROCESSABLE. Jenis berkas bukan `image/jpeg`, `image/png`, atau `image/webp`.
+        - `MEDIA_TOO_LARGE`: 413 PAYLOAD_TOO_LARGE. Ukuran lebih dari 10 MB.
+        - `MEDIA_NOT_UPLOADED`: 409 CONFLICT. Pada `complete`: byte belum ada, ukurannya tidak sama dengan yang didaftarkan, atau isinya bukan gambar dari jenis yang didaftarkan. Unggah ulang lalu konfirmasi lagi.
+        - `MEDIA_ALREADY_ATTACHED`: 409 CONFLICT. Foto itu sudah dilampirkan ke catatan lain (04.2).
+        - `MEDIA_PURPOSE_MISMATCH`: 422 UNPROCESSABLE. Tujuan foto tidak cocok dengan catatan yang melampirkannya (04.2).
+        - `MEDIA_LIMIT_EXCEEDED`: 422 UNPROCESSABLE. Lebih banyak foto daripada batas satu catatan (04.2).
+        - `MEDIA_URL_INVALID`: 403 FORBIDDEN, atau 413 PAYLOAD_TOO_LARGE bila byte melebihi ukuran yang ditandatangani. Hanya pada `/media/blobs/{token}` (penyimpanan `local`): token rusak, kedaluwarsa, untuk operasi lain, atau dipakai dengan jenis atau ukuran yang salah.
+
     # ---------- 25. reports + report_categories ----------
     Report:
       type: object
@@ -1970,6 +2063,7 @@ components:
           type: array
           nullable: true
           items: { type: string, format: uri }
+          description: URL foto bertanda tangan yang berumur pendek (sekitar 1 jam). Jangan disimpan; muat ulang catatannya untuk URL baru. Isinya foto yang dilampirkan lewat `media_ids`.
         only_to_danru: { type: boolean }
         local_id: { type: string, nullable: true }
         synced_at: { type: string, format: date-time, nullable: true }
@@ -1987,6 +2081,12 @@ components:
         photos:
           type: array
           items: { type: string, format: uri }
+          deprecated: true
+          description: Tidak lagi dipakai server. Unggah foto lewat `POST /media` lalu kirim `media_ids`.
+        media_ids:
+          type: array
+          items: { type: integer, format: int64 }
+          description: Foto berstatus `UPLOADED` milik pengirim dengan tujuan `REPORT` yang belum dilampirkan ke catatan lain. Tiap id hanya sekali.
 
     # ---------- 26. instructions + recipients ----------
     Instruction:
@@ -2085,7 +2185,7 @@ components:
         longitude: { type: number, format: double, nullable: true, example: 106.8 }
         checklist: { type: array, nullable: true, items: { type: object, additionalProperties: true } }
         note: { type: string, nullable: true }
-        photos: { type: array, nullable: true, items: { type: string, format: uri } }
+        photos: { type: array, nullable: true, items: { type: string, format: uri }, description: URL foto bertanda tangan yang berumur pendek (sekitar 1 jam). Jangan disimpan; muat ulang catatannya untuk URL baru. Isinya foto yang dilampirkan lewat `media_ids`. }
         is_approved: { type: boolean }
         approved_by: { type: integer, format: int64, nullable: true }
         approved_at: { type: string, format: date-time, nullable: true }
@@ -2101,7 +2201,8 @@ components:
         lng: { type: number, format: double }
         checklist: { type: array, items: { type: object, additionalProperties: true } }
         note: { type: string }
-        photos: { type: array, items: { type: string, format: uri } }
+        photos: { type: array, items: { type: string, format: uri }, deprecated: true, description: "Tidak lagi dipakai server. Unggah foto lewat `POST /media` lalu kirim `media_ids`." }
+        media_ids: { type: array, items: { type: integer, format: int64 }, description: "Foto berstatus `UPLOADED` milik pengirim dengan tujuan `PATROL_SCAN` yang belum dilampirkan ke catatan lain. Tiap id hanya sekali." }
     ZoneCheckInInput:
       type: object
       required: [lat, lng]
@@ -2395,7 +2496,7 @@ components:
         stock: { type: integer, nullable: true, minimum: 0 }
         title: { type: string }
         content: { type: string, nullable: true }
-        photos: { type: array, nullable: true, items: { type: string, format: uri } }
+        photos: { type: array, nullable: true, items: { type: string, format: uri }, description: URL foto bertanda tangan yang berumur pendek (sekitar 1 jam). Jangan disimpan; muat ulang catatannya untuk URL baru. Isinya foto yang dilampirkan lewat `media_ids`. }
         reported_at: { type: string, format: date-time }
         local_id: { type: string, nullable: true }
         synced_at: { type: string, format: date-time, nullable: true }
@@ -2409,7 +2510,8 @@ components:
         stock: { type: integer, minimum: 0 }
         title: { type: string }
         content: { type: string }
-        photos: { type: array, items: { type: string, format: uri } }
+        photos: { type: array, items: { type: string, format: uri }, deprecated: true, description: "Tidak lagi dipakai server. Unggah foto lewat `POST /media` lalu kirim `media_ids`." }
+        media_ids: { type: array, items: { type: integer, format: int64 }, description: "Foto berstatus `UPLOADED` milik pengirim dengan tujuan `ASSET_REPORT` yang belum dilampirkan ke catatan lain. Tiap id hanya sekali." }
 
     # ---------- Penilaian (Master + Personil) — DL-59 (un-HOLD DL-46, discovery live) ----------
     MasterReview:
@@ -9280,6 +9382,139 @@ paths:
       responses:
         '200': { description: File biner, content: { application/octet-stream: { schema: { type: string, format: binary } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # ============ MEDIA ============
+  /media:
+    post:
+      operationId: postMedia
+      tags: [Media]
+      summary: Daftarkan unggahan foto (offline-capable)
+      description: |
+        Langkah pertama dari tiga: daftarkan, `PUT` byte ke `upload_url`, lalu `POST /media/{id}/complete`.
+        Siapa pun yang sudah masuk boleh mendaftarkan; fitur yang melampirkan foto menilai haknya
+        atas catatannya sendiri. `Idempotency-Key` WAJIB: antrean media offline mengulang permintaan
+        ini, dan ulangan dengan kunci yang sama mengembalikan id dan `upload_url` yang sama.
+
+        Media yang tidak pernah dikonfirmasi atau tidak pernah dilampirkan dihapus otomatis
+        sesudah 24 jam.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: UUID stabil seumur item antrean. Tanpa header ini 422.
+          schema: { type: string, format: uuid }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/MediaCreate' } } } }
+      responses:
+        '201': { description: "Terdaftar. Ulangan dengan Idempotency-Key dan body yang sama dijawab 201 juga, berisi respons pertama apa adanya, dengan header `Idempotent-Replayed: true`.", content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/MediaUpload' } } } ] } } } }
+        '400':
+          description: "BAD_REQUEST: body kosong, bukan JSON yang valid, lebih dari satu objek, atau memuat karakter NUL."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413':
+          description: "PAYLOAD_TOO_LARGE: body JSON lebih dari 1 MB, atau `size_bytes` lebih dari 10 MB (reason `MEDIA_TOO_LARGE`)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                tooLarge:
+                  value: { success: false, error: { code: PAYLOAD_TOO_LARGE, message: "Ukuran foto melebihi 10 MB.", details: { reason: MEDIA_TOO_LARGE } }, meta: { request_id: req_abc123 } }
+        '422':
+          description: "VALIDATION_ERROR (field salah, atau `Idempotency-Key` tidak ada) atau UNPROCESSABLE dengan reason `MEDIA_TYPE_NOT_ALLOWED`."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+  /media/{id}/complete:
+    parameters: [ { $ref: '#/components/parameters/IdPath' } ]
+    post:
+      operationId: postMediaComplete
+      tags: [Media]
+      summary: Konfirmasi byte sudah terunggah
+      description: |
+        Hanya pemilik. Server memeriksa bahwa objeknya ada, ukurannya sama dengan yang didaftarkan,
+        dan isinya benar-benar gambar dari jenis yang didaftarkan (bukan sekadar yang diakui klien),
+        lalu mengubah status menjadi `UPLOADED`. Boleh diulang: media yang sudah `UPLOADED`
+        dijawab 200 tanpa memeriksa lagi.
+
+        Media orang lain, milik organisasi lain, atau yang tidak ada: 404 `MEDIA_NOT_FOUND`.
+        Pemeriksaan gagal: 409 `MEDIA_NOT_UPLOADED`.
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/Media' } } } ] } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: "CONFLICT dengan reason `MEDIA_NOT_UPLOADED`: byte belum ada, ukurannya berbeda, atau isinya bukan gambar dari jenis yang didaftarkan."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                notUploaded:
+                  value: { success: false, error: { code: CONFLICT, message: "Foto belum terunggah atau tidak sesuai dengan yang didaftarkan.", details: { reason: MEDIA_NOT_UPLOADED } }, meta: { request_id: req_abc123 } }
+  /media/blobs/{token}:
+    parameters:
+      - name: token
+        in: path
+        required: true
+        description: Token bertanda tangan dari `upload_url` atau dari URL foto. Kredensial selama berlaku, jangan dicatat di log.
+        schema: { type: string }
+    put:
+      operationId: putMediaBlob
+      tags: [Media]
+      summary: Unggah byte ke penyimpanan server (hanya STORAGE_DRIVER=local)
+      description: |
+        Hanya ada bila server menyimpan berkas sendiri (`STORAGE_DRIVER=local`); dengan `minio` atau
+        `s3` byte langsung ke penyimpanan objek dan rute ini dijawab 404. Klien tidak pernah
+        menyusun alamat ini: ia memakai `upload_url` dan `upload_headers` dari `POST /media`.
+
+        Tanpa bearer token: tanda tangan di token adalah izinnya. Token memuat operasi (put),
+        kunci objek, jenis, ukuran paling besar dan waktu kedaluwarsa, sehingga token baca tidak
+        bisa dipakai menulis. Body paling besar sebesar yang ditandatangani (bukan batas 1 MB
+        milik JSON). Berkas ditulis ke file sementara lalu dipindah, jadi unggahan yang terputus
+        tidak meninggalkan berkas.
+
+        Kegagalan: 403 `MEDIA_URL_INVALID` (token rusak, kedaluwarsa, untuk operasi lain, atau
+        `Content-Type` tidak sama dengan yang ditandatangani), 413 `MEDIA_URL_INVALID` (body lebih
+        besar dari yang ditandatangani).
+      security: []
+      requestBody:
+        required: true
+        content:
+          image/jpeg: { schema: { type: string, format: binary } }
+          image/png: { schema: { type: string, format: binary } }
+          image/webp: { schema: { type: string, format: binary } }
+      responses:
+        '204': { description: Tersimpan }
+        '403':
+          description: "FORBIDDEN dengan reason `MEDIA_URL_INVALID`."
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '413':
+          description: "PAYLOAD_TOO_LARGE dengan reason `MEDIA_URL_INVALID`: body lebih besar dari ukuran yang ditandatangani."
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+    get:
+      operationId: getMediaBlob
+      tags: [Media]
+      summary: Lihat foto di penyimpanan server (hanya STORAGE_DRIVER=local)
+      description: |
+        URL ini muncul di `photos` respons fitur, bukan untuk disusun klien. Tanpa bearer token:
+        token bertanda tangan (operasi get, kunci, jenis, kedaluwarsa) adalah izinnya, dan umurnya
+        pendek (sekitar 1 jam). Dikirim dengan `Content-Type` yang ditandatangani,
+        `X-Content-Type-Options: nosniff`, `Content-Disposition: inline` dan
+        `Cache-Control: private` yang tidak lebih lama dari umur token. Mendukung `Range`.
+      security: []
+      responses:
+        '200':
+          description: Isi foto
+          content:
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/png: { schema: { type: string, format: binary } }
+            image/webp: { schema: { type: string, format: binary } }
+        '403':
+          description: "FORBIDDEN dengan reason `MEDIA_URL_INVALID`: token rusak, kedaluwarsa, atau untuk operasi lain."
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   # ============ INSTRUCTION ============
   /instructions/inbox:

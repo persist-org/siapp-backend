@@ -14,6 +14,9 @@ x-app: &app
     MIGRATE_DSN: postgres://siapp_owner:siapp_owner@postgres:5432/siapp?sslmode=disable
     REDIS_URL: redis://redis:6379/0
     S3_ENDPOINT: http://minio:9000
+    # The folder of the local storage driver inside the containers: the media-data volume below.
+    # .env holds the laptop's ./data/media, which means nothing in a container.
+    STORAGE_LOCAL_DIR: /var/lib/siapp/media
     # kpi-personalia-api runs on the host (see docs/dev-setup.md), not in this stack.
     PERSONEL_BASE_URL: http://host.docker.internal:8081/api/v3/integrations/siapp
   extra_hosts:
@@ -71,6 +74,11 @@ services:
     <<: *app
     profiles: [app]
     ports: ["8080:8080"]
+    # ⚠ The API and the worker mount the SAME volume: with STORAGE_DRIVER=local the worker's
+    # media:cleanup deletes the files the API stored. On a server, replace the named volume
+    # with a bind mount of a host folder (for example /srv/siapp/media, owned by uid 65532) in
+    # both services, so the photos survive the containers and can be backed up.
+    volumes: [media-data:/var/lib/siapp/media]
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
@@ -79,6 +87,7 @@ services:
     <<: *app
     profiles: [app]
     entrypoint: ["/worker"]
+    volumes: [media-data:/var/lib/siapp/media]
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
@@ -92,3 +101,5 @@ services:
 volumes:
   postgres-data:
   minio-data:
+  # Photos of the local storage driver (api and worker, same folder).
+  media-data:

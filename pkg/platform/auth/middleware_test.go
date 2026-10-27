@@ -174,6 +174,26 @@ func TestPublicRoutes(t *testing.T) {
 	require.False(t, auth.IsPublic(http.MethodGet, "/api/v1/auth/me"))
 }
 
+// A {name} segment of a public route matches one segment, so the blob routes are public for
+// any token and for nothing else: not their parent, not a sub-route, not another method.
+func TestPublicRoutesWithAParameter(t *testing.T) {
+	const token = "eyJvIjoicHV0In0.c2lnbmF0dXJl"
+
+	require.True(t, auth.IsPublic(http.MethodPut, "/api/v1/media/blobs/"+token))
+	require.True(t, auth.IsPublic(http.MethodGet, "/api/v1/media/blobs/"+token))
+
+	require.False(t, auth.IsPublic(http.MethodDelete, "/api/v1/media/blobs/"+token), "only put and get")
+	require.False(t, auth.IsPublic(http.MethodPost, "/api/v1/media/blobs/"+token))
+	require.False(t, auth.IsPublic(http.MethodGet, "/api/v1/media/blobs/"), "an empty token is no token")
+	require.False(t, auth.IsPublic(http.MethodGet, "/api/v1/media/blobs"))
+	require.False(t, auth.IsPublic(http.MethodGet, "/api/v1/media/blobs/"+token+"/extra"), "never a sub-route")
+	require.False(t, auth.IsPublic(http.MethodGet, "/api/v1/media/blobs/"+token+"/"), "a trailing slash is another path")
+	require.False(t, auth.IsPublic(http.MethodGet, "/api/v1/media/"+token), "the literal segments must match")
+	require.False(t, auth.IsPublic(http.MethodGet, "/api/v1/media/blobs/a/b"))
+	require.False(t, auth.IsPublic(http.MethodPost, "/api/v1/media"), "registering needs a token")
+	require.False(t, auth.IsPublic(http.MethodPost, "/api/v1/media/1/complete"), "completing needs a token")
+}
+
 func TestFromIsEmptyOnAPublicRoute(t *testing.T) {
 	_, ok := auth.From(t.Context())
 	require.False(t, ok)

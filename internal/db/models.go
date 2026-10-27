@@ -54,6 +54,49 @@ func (ns NullBusinessLine) Value() (driver.Value, error) {
 	return string(ns.BusinessLine), nil
 }
 
+type CaptureSource string
+
+const (
+	CaptureSourceCAMERA  CaptureSource = "CAMERA"
+	CaptureSourceGALLERY CaptureSource = "GALLERY"
+	CaptureSourceUNKNOWN CaptureSource = "UNKNOWN"
+)
+
+func (e *CaptureSource) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = CaptureSource(s)
+	case string:
+		*e = CaptureSource(s)
+	default:
+		return fmt.Errorf("unsupported scan type for CaptureSource: %T", src)
+	}
+	return nil
+}
+
+type NullCaptureSource struct {
+	CaptureSource CaptureSource
+	Valid         bool // Valid is true if CaptureSource is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullCaptureSource) Scan(value interface{}) error {
+	if value == nil {
+		ns.CaptureSource, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.CaptureSource.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullCaptureSource) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.CaptureSource), nil
+}
+
 type DevicePlatform string
 
 const (
@@ -95,6 +138,96 @@ func (ns NullDevicePlatform) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return string(ns.DevicePlatform), nil
+}
+
+type MediaPurpose string
+
+const (
+	MediaPurposePROFILEPHOTO     MediaPurpose = "PROFILE_PHOTO"
+	MediaPurposeATTENDANCESELFIE MediaPurpose = "ATTENDANCE_SELFIE"
+	MediaPurposeREPORT           MediaPurpose = "REPORT"
+	MediaPurposeINSTRUCTION      MediaPurpose = "INSTRUCTION"
+	MediaPurposePATROLSCAN       MediaPurpose = "PATROL_SCAN"
+	MediaPurposePANICREPORT      MediaPurpose = "PANIC_REPORT"
+	MediaPurposeASSETREPORT      MediaPurpose = "ASSET_REPORT"
+	MediaPurposeEMEMO            MediaPurpose = "EMEMO"
+)
+
+func (e *MediaPurpose) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = MediaPurpose(s)
+	case string:
+		*e = MediaPurpose(s)
+	default:
+		return fmt.Errorf("unsupported scan type for MediaPurpose: %T", src)
+	}
+	return nil
+}
+
+type NullMediaPurpose struct {
+	MediaPurpose MediaPurpose
+	Valid        bool // Valid is true if MediaPurpose is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullMediaPurpose) Scan(value interface{}) error {
+	if value == nil {
+		ns.MediaPurpose, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.MediaPurpose.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullMediaPurpose) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.MediaPurpose), nil
+}
+
+type MediaStatus string
+
+const (
+	MediaStatusPENDING  MediaStatus = "PENDING"
+	MediaStatusUPLOADED MediaStatus = "UPLOADED"
+)
+
+func (e *MediaStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = MediaStatus(s)
+	case string:
+		*e = MediaStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for MediaStatus: %T", src)
+	}
+	return nil
+}
+
+type NullMediaStatus struct {
+	MediaStatus MediaStatus
+	Valid       bool // Valid is true if MediaStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullMediaStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.MediaStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.MediaStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullMediaStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.MediaStatus), nil
 }
 
 type OrganizationStatus string
@@ -529,6 +662,25 @@ type IdempotencyKey struct {
 	ResponseBody     json.RawMessage
 	CreatedAt        pgtype.Timestamptz
 	ResponseOmitted  bool
+}
+
+type Medium struct {
+	ID                 int64
+	OrganizationID     int64
+	OwnerPersonnelID   int64
+	Purpose            MediaPurpose
+	ContentType        string
+	SizeBytes          int64
+	StorageKey         string
+	Status             MediaStatus
+	CapturedAt         pgtype.Timestamptz
+	CaptureLatitude    *float64
+	CaptureLongitude   *float64
+	CaptureSource      CaptureSource
+	AttachedEntityType pgtype.Text
+	AttachedEntityID   pgtype.Int8
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
 }
 
 type Organization struct {

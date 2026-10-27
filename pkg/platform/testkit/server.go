@@ -66,6 +66,19 @@ func NewRevocations(t testing.TB, logger *slog.Logger) *auth.Revocations {
 // token from Token, unless it is one of auth.PublicRoutes.
 func NewServer(t testing.TB, deps Deps) *httptest.Server {
 	t.Helper()
+	return NewServerAt(t, func(string) Deps { return deps })
+}
+
+// NewServerAt is NewServer for a module that has to know the server's own address before its
+// routes exist (the local media storage builds its URLs from it). The listener is opened
+// first, deps is called with the base URL it will answer on (http://127.0.0.1:port), and only
+// then is the router built and the server started.
+func NewServerAt(t testing.TB, makeDeps func(baseURL string) Deps) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewUnstartedServer(nil)
+	t.Cleanup(srv.Close)
+	deps := makeDeps("http://" + srv.Listener.Addr().String())
+
 	logger := deps.Logger
 	if logger == nil {
 		logger = slog.New(slog.NewJSONHandler(io.Discard, nil))
@@ -82,7 +95,7 @@ func NewServer(t testing.TB, deps Deps) *httptest.Server {
 	if deps.Mount != nil {
 		deps.Mount(router)
 	}
-	srv := httptest.NewServer(router)
-	t.Cleanup(srv.Close)
+	srv.Config.Handler = router
+	srv.Start()
 	return srv
 }

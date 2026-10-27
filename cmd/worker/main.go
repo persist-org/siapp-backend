@@ -20,6 +20,7 @@ import (
 	_ "time/tzdata"
 
 	"siapp/pkg/identity"
+	"siapp/pkg/media"
 	"siapp/pkg/organization"
 	"siapp/pkg/platform/audit"
 	"siapp/pkg/platform/auth"
@@ -80,6 +81,15 @@ func run() error {
 	rdb := redis.NewClient(redisClientOpts)
 	defer func() { _ = rdb.Close() }()
 	resyncer := identity.NewResyncer(pool, personelClient, auth.NewRevocations(rdb, config.RedisKeyPrefix, logger), clock.System{}, logger)
+
+	// ⚠ The worker checks the storage at start-up like the API does. With the local driver the
+	// two must see the SAME directory (one host, or a volume shared by both containers):
+	// media:cleanup (Phase 04.2) deletes through this storage, and a worker looking at an empty
+	// folder of its own would "delete" nothing and report success. The write-and-delete probe
+	// at least proves the folder is there and writable from here.
+	if _, err := media.NewStorage(ctx, cfg.Storage, clock.System{}, logger); err != nil {
+		return fmt.Errorf("media storage: %w", err)
+	}
 
 	srv := asynq.NewServer(redisOpt, asynq.Config{Concurrency: workerConcurrency})
 	mux := asynq.NewServeMux()
