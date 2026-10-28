@@ -21,6 +21,7 @@ const (
 	ReasonNotUploaded     = "MEDIA_NOT_UPLOADED"
 	ReasonURLInvalid      = "MEDIA_URL_INVALID"
 	ReasonAlreadyUploaded = "MEDIA_ALREADY_UPLOADED"
+	ReasonExpired         = "MEDIA_EXPIRED"
 
 	// Reasons of Attach (Phase 04.2).
 	ReasonAlreadyAttached = "MEDIA_ALREADY_ATTACHED"
@@ -52,6 +53,13 @@ var ErrNotUploaded = apperr.New(http.StatusConflict, apperr.CodeConflict,
 // confirmed: there is nothing left to upload.
 var ErrAlreadyUploaded = apperr.New(http.StatusConflict, apperr.CodeConflict,
 	ReasonAlreadyUploaded, "Foto sudah terunggah dan dikonfirmasi.")
+
+// ErrExpired is returned when a new upload URL is asked for a photo too close to the age at
+// which the cleanup job removes it: a URL signed now could outlive its row, and the bytes would
+// land in storage with nothing that knows them. The client registers the photo again, with a
+// new Idempotency-Key.
+var ErrExpired = apperr.New(http.StatusConflict, apperr.CodeConflict,
+	ReasonExpired, "Pendaftaran foto sudah kedaluwarsa. Daftarkan ulang foto ini.")
 
 // ErrAlreadyAttached is returned by Attach for a photo that a record already claimed.
 var ErrAlreadyAttached = apperr.New(http.StatusConflict, apperr.CodeConflict,

@@ -30,6 +30,7 @@ func TestUploadFlow(t *testing.T) {
 			t.Run("an id that cannot exist is not found", func(t *testing.T) { testImpossibleID(t, d) })
 			t.Run("a new upload URL for a photo still PENDING", func(t *testing.T) { testReissueUpload(t, d) })
 			t.Run("a new upload URL is for the owner of a PENDING photo only", func(t *testing.T) { testReissueRefusals(t, d) })
+			t.Run("no new upload URL for a photo near the cleanup age", func(t *testing.T) { testReissueNearOrphanAge(t, d) })
 		})
 	}
 }
@@ -305,6 +306,38 @@ func testReissueUpload(t *testing.T, d driver) {
 	require.Equal(t, http.StatusConflict, status)
 	require.Equal(t, "CONFLICT", out.Error.Code)
 	require.Equal(t, "MEDIA_ALREADY_UPLOADED", out.reason())
+}
+
+// A photo close to the age at which the cleanup job removes it gets no new URL: the URL could
+// outlive the row, and the bytes would be stored with nothing that knows them.
+func testReissueNearOrphanAge(t *testing.T, d driver) {
+	f := newFlow(t, d)
+	token, _ := f.person(f.orgA)
+	_, reg := f.register(token, validBody(1500))
+
+	// The last moment inside the window still gets a URL, and it dies before the job's cutoff.
+	registered := f.clock.Now()
+	f.clock.Advance(22*time.Hour + 29*time.Minute)
+	status, again := f.reissue(token, reg.Data.ID)
+	require.Equal(t, http.StatusOK, status)
+	require.False(t, again.Data.ExpiresAt.After(registered.Add(23*time.Hour)),
+		"the URL is dead at least one cleanup period before the row is old enough to remove")
+
+	f.clock.Advance(2 * time.Minute)
+	status, out := f.reissue(token, reg.Data.ID)
+	require.Equal(t, http.StatusConflict, status)
+	require.Equal(t, "CONFLICT", out.Error.Code)
+	require.Equal(t, "MEDIA_EXPIRED", out.reason())
+	require.Len(t, f.rows(f.orgA), 1, "it registers nothing and removes nothing")
+
+	// Once old enough, the job removes the row; the id is gone for good and the client
+	// registers again.
+	f.clock.Advance(90 * time.Minute)
+	_, err := f.cleaner().Cleanup(t.Context())
+	require.NoError(t, err)
+	status, out =f.reissue(token, reg.Data.ID)
+	require.Equal(t, http.StatusNotFound, status)
+	require.Equal(t, "MEDIA_NOT_FOUND", out.reason())
 }
 
 func testReissueRefusals(t *testing.T, d driver) {

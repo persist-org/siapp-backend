@@ -6566,6 +6566,7 @@ type MediaCreateContentType string
 // - `MEDIA_TOO_LARGE`: 413 PAYLOAD_TOO_LARGE. Ukuran lebih dari 10 MB.
 // - `MEDIA_NOT_UPLOADED`: 409 CONFLICT. Pada `complete`: byte belum ada, ukurannya tidak sama dengan yang didaftarkan, atau isinya bukan gambar dari jenis yang didaftarkan. Bila belum diunggah: unggah lalu konfirmasi lagi. Bila yang terunggah salah: daftarkan ulang (URL unggahan tidak dapat menimpa). Saat melampirkan: foto belum dikonfirmasi.
 // - `MEDIA_ALREADY_UPLOADED`: 409 CONFLICT. Pada `upload-url`: media sudah dikonfirmasi, tidak perlu URL unggah lagi.
+// - `MEDIA_EXPIRED`: 409 CONFLICT. Pada `upload-url`: media sudah lebih dari 22,5 jam sejak didaftarkan dan sebentar lagi dihapus otomatis, jadi URL baru tidak diterbitkan. Daftarkan ulang lewat `POST /media` dengan `Idempotency-Key` baru.
 // - `MEDIA_ALREADY_ATTACHED`: 409 CONFLICT. Saat melampirkan: foto itu sudah dilampirkan ke catatan lain.
 // - `MEDIA_PURPOSE_MISMATCH`: 422 UNPROCESSABLE. Saat melampirkan: tujuan foto tidak cocok dengan catatan itu.
 // - `MEDIA_LIMIT_EXCEEDED`: 422 UNPROCESSABLE. Saat melampirkan: lebih banyak foto daripada batas satu catatan (umumnya 5; `details.max`).

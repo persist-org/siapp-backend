@@ -87,8 +87,8 @@ func (c *Cleaner) Cleanup(ctx context.Context) (CleanupResult, error) {
 //
 // "Unattached after a day" covers both kinds of waste: a PENDING photo whose upload was never
 // finished or confirmed, and an UPLOADED one that no record claimed (the report was never
-// sent). The upload URL lives half an hour, so nothing younger than a day can still be in
-// flight. Attached photos are never touched.
+// sent). Register's URL lives half an hour, and ReissueUpload stops signing new ones at
+// reissueWindow after registration, so no upload URL is alive for a photo older than a day. Attached photos are never touched.
 func (c *Cleaner) CleanupOrganization(ctx context.Context, org int64) (int, error) {
 	cutoff := c.clock.Now().Add(-orphanAge)
 	total := 0

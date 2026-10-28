@@ -42,6 +42,13 @@ const (
 	// orphanAge is how long a registered photo may stay unattached before the cleanup job
 	// removes it, with its file.
 	orphanAge = 24 * time.Hour
+	// cleanupPeriod is how often the job runs (CleanupSchedule).
+	cleanupPeriod = time.Hour
+	// reissueWindow is how long after registration a new upload URL may still be signed. A URL
+	// signed at the end of it dies uploadURLTTL later, and the job needs up to one cleanupPeriod
+	// to notice the row is old, so no URL outlives the row it uploads for. Past this, the photo
+	// is registered again.
+	reissueWindow = orphanAge - uploadURLTTL - cleanupPeriod
 	// staleTempFileAge is how old a half-written file of the local driver must be before the
 	// cleanup job removes it. A PUT takes minutes at the very most.
 	staleTempFileAge = time.Hour

@@ -2046,6 +2046,7 @@ components:
         - `MEDIA_TOO_LARGE`: 413 PAYLOAD_TOO_LARGE. Ukuran lebih dari 10 MB.
         - `MEDIA_NOT_UPLOADED`: 409 CONFLICT. Pada `complete`: byte belum ada, ukurannya tidak sama dengan yang didaftarkan, atau isinya bukan gambar dari jenis yang didaftarkan. Bila belum diunggah: unggah lalu konfirmasi lagi. Bila yang terunggah salah: daftarkan ulang (URL unggahan tidak dapat menimpa). Saat melampirkan: foto belum dikonfirmasi.
         - `MEDIA_ALREADY_UPLOADED`: 409 CONFLICT. Pada `upload-url`: media sudah dikonfirmasi, tidak perlu URL unggah lagi.
+        - `MEDIA_EXPIRED`: 409 CONFLICT. Pada `upload-url`: media sudah lebih dari 22,5 jam sejak didaftarkan dan sebentar lagi dihapus otomatis, jadi URL baru tidak diterbitkan. Daftarkan ulang lewat `POST /media` dengan `Idempotency-Key` baru.
         - `MEDIA_ALREADY_ATTACHED`: 409 CONFLICT. Saat melampirkan: foto itu sudah dilampirkan ke catatan lain.
         - `MEDIA_PURPOSE_MISMATCH`: 422 UNPROCESSABLE. Saat melampirkan: tujuan foto tidak cocok dengan catatan itu.
         - `MEDIA_LIMIT_EXCEEDED`: 422 UNPROCESSABLE. Saat melampirkan: lebih banyak foto daripada batas satu catatan (umumnya 5; `details.max`).
@@ -9404,7 +9405,10 @@ paths:
         `POST /media/{id}/upload-url` (id tetap), bukan mendaftarkan ulang.
 
         Media yang tidak pernah dikonfirmasi atau tidak pernah dilampirkan dihapus otomatis
-        sesudah 24 jam.
+        sesudah 24 jam. Ulangan dengan `Idempotency-Key` yang sama tetap menjawab id lama walau
+        barisnya sudah dihapus: `upload-url` dan `complete` lalu menjawab 404 `MEDIA_NOT_FOUND`
+        (atau `upload-url` menjawab 409 `MEDIA_EXPIRED` menjelang batas itu). Antrean yang
+        menemukan salah satunya mendaftarkan ulang dengan `Idempotency-Key` baru.
       parameters:
         - name: Idempotency-Key
           in: header
@@ -9452,18 +9456,25 @@ paths:
 
         Media orang lain, milik organisasi lain, atau yang tidak ada: 404 `MEDIA_NOT_FOUND`.
         Media yang sudah `UPLOADED`: 409 `MEDIA_ALREADY_UPLOADED`.
+
+        Media yang sudah lebih dari 22,5 jam sejak didaftarkan: 409 `MEDIA_EXPIRED`. Media yang
+        belum dilampirkan dihapus otomatis sesudah 24 jam, dan URL baru tidak boleh hidup lebih
+        lama dari barisnya (byte yang masuk sesudah baris dihapus tidak akan pernah dibersihkan).
+        Daftarkan ulang lewat `POST /media` dengan `Idempotency-Key` baru.
       responses:
         '200': { description: URL baru, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/MediaUpload' } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409':
-          description: "CONFLICT dengan reason `MEDIA_ALREADY_UPLOADED`: media sudah dikonfirmasi, tidak ada yang perlu diunggah."
+          description: "CONFLICT dengan reason `MEDIA_ALREADY_UPLOADED` (media sudah dikonfirmasi, tidak ada yang perlu diunggah) atau `MEDIA_EXPIRED` (terlalu dekat dengan batas hapus otomatis: daftarkan ulang)."
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorEnvelope' }
               examples:
                 alreadyUploaded:
                   value: { success: false, error: { code: CONFLICT, message: "Foto sudah terunggah dan dikonfirmasi.", details: { reason: MEDIA_ALREADY_UPLOADED } }, meta: { request_id: req_abc123 } }
+                expired:
+                  value: { success: false, error: { code: CONFLICT, message: "Pendaftaran foto sudah kedaluwarsa. Daftarkan ulang foto ini.", details: { reason: MEDIA_EXPIRED } }, meta: { request_id: req_abc123 } }
   /media/{id}/complete:
     parameters: [ { $ref: '#/components/parameters/IdPath' } ]
     post:

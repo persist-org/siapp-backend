@@ -102,7 +102,9 @@ func (s *Service) Register(ctx context.Context, p auth.Principal, in RegisterInp
 // response as it was stored, URL included. The offline queue retries with the same
 // Idempotency-Key, so a retry after uploadURLTTL would get the same dead URL for ever. The id
 // is what stays stable; the URL is short-lived and is asked for again here. Only the owner may
-// ask, and only while the photo is PENDING: a confirmed photo has nothing left to upload.
+// ask, and only while the photo is PENDING: a confirmed photo has nothing left to upload. It is
+// also refused (ErrExpired) once the photo is older than reissueWindow, so that the new URL
+// always dies before the cleanup job can remove the row.
 //
 // The URL signs the type and size that were registered, never anything the caller sends. If the
 // bytes already reached the storage and only complete was lost, the new URL answers 412 (the
@@ -121,6 +123,13 @@ func (s *Service) ReissueUpload(ctx context.Context, p auth.Principal, id int64)
 	}
 	if m.Status != StatusPending {
 		return Registration{}, ErrAlreadyUploaded
+	}
+	// ⚠ A photo this old is about to be removed by the cleanup job (it removes unattached rows
+	// older than orphanAge, whatever their status). A URL signed now would let the bytes land
+	// after the row and file are gone, and nothing lists objects without rows. The caller
+	// registers again instead.
+	if s.clock.Now().After(m.CreatedAt.Add(reissueWindow)) {
+		return Registration{}, ErrExpired
 	}
 	upload, err := s.storage.PresignPut(ctx, m.StorageKey, PutInput{ContentType: m.ContentType, SizeBytes: m.SizeBytes, TTL: uploadURLTTL})
 	if err != nil {
