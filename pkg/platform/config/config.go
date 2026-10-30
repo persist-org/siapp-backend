@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
@@ -69,7 +70,63 @@ type Config struct {
 	GroupOrganizationID int64 `env:"GROUP_ORGANIZATION_ID" envDefault:"1"`
 	// GroupOrganizationName is its display name.
 	GroupOrganizationName string `env:"GROUP_ORGANIZATION_NAME" envDefault:"KPI Group"`
+
+	// Storage is where uploaded photos live (Phase 04.1).
+	Storage Storage
 }
+
+// Storage drivers accepted in STORAGE_DRIVER.
+const (
+	// StorageLocal keeps files on the disk of the machine the API runs on.
+	StorageLocal = "local"
+	// StorageMinIO and StorageS3 are the same S3 protocol with different defaults.
+	StorageMinIO = "minio"
+	StorageS3    = "s3"
+)
+
+var storageDrivers = []string{StorageLocal, StorageMinIO, StorageS3}
+
+// Storage is the object storage configuration. Only the variables of the chosen driver are
+// required: a laptop running `local` needs no S3 variables, and a deployment on S3 needs no
+// signing key.
+type Storage struct {
+	Driver string `env:"STORAGE_DRIVER" envDefault:"local"`
+
+	// LocalDir is the root of the files with STORAGE_DRIVER=local. Parse resolves it to an
+	// absolute path, so a relative value means "relative to the working directory the
+	// process started in", once, and the log line at boot shows where that was.
+	LocalDir string `env:"STORAGE_LOCAL_DIR" envDefault:"./data/media"`
+	// LocalSigningKey keys the HMAC of the blob URLs. Never logged. At least minSigningKeyBytes.
+	LocalSigningKey string `env:"STORAGE_LOCAL_SIGNING_KEY"`
+	// PublicBaseURL is the API's origin AS THE DEVICE SEES IT: blob URLs are built from it.
+	//
+	// ⚠ The local-dev catch: "localhost" on a phone is the phone itself. An Android emulator
+	// reaches the laptop at http://10.0.2.2:8080, and a real phone on the same Wi-Fi needs the
+	// laptop's LAN address (for example http://192.168.1.10:8080). On a server it is the
+	// public HTTPS origin behind the proxy (for example https://siapp.example.com).
+	PublicBaseURL string `env:"MEDIA_PUBLIC_BASE_URL"`
+
+	S3Endpoint string `env:"S3_ENDPOINT"`
+	// S3PublicEndpoint is the host presigned URLs are signed for, when it differs from the
+	// host the API itself talks to (S3Endpoint). Optional.
+	S3PublicEndpoint string `env:"S3_PUBLIC_ENDPOINT"`
+	S3Region         string `env:"S3_REGION"`
+	S3Bucket         string `env:"S3_BUCKET" envDefault:"persist-media"`
+	S3AccessKey      string `env:"S3_ACCESS_KEY"`
+	S3SecretKey      string `env:"S3_SECRET_KEY"`
+	// S3ForcePathStyle overrides the driver's default (true for minio, false for s3).
+	S3ForcePathStyle *bool `env:"S3_FORCE_PATH_STYLE"`
+}
+
+// defaultPublicBaseURL is where a laptop's API listens, used when nothing else is configured
+// outside production.
+const defaultPublicBaseURL = "http://localhost:8080"
+
+// defaultMinIORegion is what MinIO signs for when no region is configured.
+const defaultMinIORegion = "us-east-1"
+
+// minSigningKeyBytes is the shortest STORAGE_LOCAL_SIGNING_KEY: the size of an HMAC-SHA256 key.
+const minSigningKeyBytes = 32
 
 // minJWTSecretBytes mirrors auth.MinSecretBytes. It is repeated here, not imported, so that
 // the config package depends on nothing: auth depends on httpx, which must not pull config in.
@@ -153,6 +210,8 @@ func Parse(environ map[string]string) (Config, error) {
 		problems = append(problems, "JWT_SECRET looks like a placeholder or a low-entropy value, which is refused in production (generate one with: openssl rand -base64 48)")
 	}
 
+	problems = append(problems, checkStorage(&cfg)...)
+
 	if cfg.MigrateOnStart {
 		if cfg.AppEnv == EnvProduction {
 			problems = append(problems, "MIGRATE_ON_START is development only and is refused when APP_ENV=production")
@@ -166,6 +225,99 @@ func Parse(environ map[string]string) (Config, error) {
 		return Config{}, fmt.Errorf("invalid configuration:\n  - %s", strings.Join(problems, "\n  - "))
 	}
 	return cfg, nil
+}
+
+// checkStorage judges the storage settings of the chosen driver and fills in what they
+// default to: the public base URL outside production, the absolute directory, and MinIO's
+// region. Variables of the other drivers are ignored, even when they are set (the example
+// .env carries the MinIO block commented, and compose sets S3_ENDPOINT for every service).
+func checkStorage(cfg *Config) []string {
+	s := &cfg.Storage
+	switch s.Driver {
+	case StorageLocal:
+		return checkLocalStorage(cfg)
+	case StorageMinIO, StorageS3:
+		return checkS3Storage(s)
+	default:
+		return []string{fmt.Sprintf("STORAGE_DRIVER must be one of %s, got %q", strings.Join(storageDrivers, ", "), s.Driver)}
+	}
+}
+
+func checkLocalStorage(cfg *Config) []string {
+	s := &cfg.Storage
+	var problems []string
+
+	// The key is never echoed in a problem: it signs every blob URL, so whoever has it can
+	// mint a URL that reads or writes any file.
+	switch {
+	case s.LocalSigningKey == "":
+		problems = append(problems, "STORAGE_LOCAL_SIGNING_KEY is required when STORAGE_DRIVER=local (generate one with: openssl rand -base64 48)")
+	case len(s.LocalSigningKey) < minSigningKeyBytes:
+		problems = append(problems, fmt.Sprintf("STORAGE_LOCAL_SIGNING_KEY must be at least %d bytes (generate one with: openssl rand -base64 48)", minSigningKeyBytes))
+	case cfg.AppEnv == EnvProduction && weakSecret(s.LocalSigningKey):
+		problems = append(problems, "STORAGE_LOCAL_SIGNING_KEY looks like a placeholder or a low-entropy value, which is refused in production (generate one with: openssl rand -base64 48)")
+	}
+
+	if strings.TrimSpace(s.LocalDir) == "" {
+		problems = append(problems, "STORAGE_LOCAL_DIR must not be empty")
+	} else if abs, err := filepath.Abs(s.LocalDir); err != nil {
+		problems = append(problems, "STORAGE_LOCAL_DIR cannot be resolved to an absolute path")
+	} else {
+		s.LocalDir = abs
+	}
+
+	if s.PublicBaseURL == "" {
+		if cfg.AppEnv == EnvProduction {
+			problems = append(problems, "MEDIA_PUBLIC_BASE_URL is required in production with STORAGE_DRIVER=local: the public https origin of the API, as devices see it")
+		} else {
+			s.PublicBaseURL = defaultPublicBaseURL
+		}
+	}
+	if s.PublicBaseURL != "" {
+		if origin, ok := originOf(s.PublicBaseURL); ok {
+			s.PublicBaseURL = origin
+		} else {
+			problems = append(problems, "MEDIA_PUBLIC_BASE_URL must be an origin like https://siapp.example.com, with no path, query or credentials")
+		}
+	}
+	return problems
+}
+
+func checkS3Storage(s *Storage) []string {
+	var problems []string
+	if s.Driver == StorageMinIO && s.S3Endpoint == "" {
+		problems = append(problems, "S3_ENDPOINT is required when STORAGE_DRIVER=minio")
+	}
+	if s.S3Region == "" {
+		if s.Driver == StorageS3 {
+			problems = append(problems, "S3_REGION is required when STORAGE_DRIVER=s3")
+		} else {
+			s.S3Region = defaultMinIORegion
+		}
+	}
+	if strings.TrimSpace(s.S3Bucket) == "" {
+		problems = append(problems, "S3_BUCKET must not be empty")
+	}
+	if s.S3AccessKey == "" {
+		problems = append(problems, "S3_ACCESS_KEY is required when STORAGE_DRIVER is minio or s3")
+	}
+	if s.S3SecretKey == "" {
+		problems = append(problems, "S3_SECRET_KEY is required when STORAGE_DRIVER is minio or s3")
+	}
+	problems = append(problems, checkURL("S3_ENDPOINT", s.S3Endpoint, httpSchemes)...)
+	problems = append(problems, checkURL("S3_PUBLIC_ENDPOINT", s.S3PublicEndpoint, httpSchemes)...)
+	return problems
+}
+
+// originOf returns raw as scheme://host[:port], and false when it is anything more than that
+// (a path, a query, credentials) or not an http(s) URL. One trailing slash is tolerated.
+func originOf(raw string) (string, bool) {
+	u, err := url.Parse(raw)
+	if err != nil || !slices.Contains(httpSchemes, u.Scheme) || u.Host == "" || u.User != nil ||
+		u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
+		return "", false
+	}
+	return u.Scheme + "://" + u.Host, true
 }
 
 // checkGroup judges the group settings. A missing GROUP_COMPANY_IDS is already reported by
@@ -208,10 +360,28 @@ func checkURL(name, value string, schemes []string) []string {
 func describe(err error) string {
 	var pe env.ParseError
 	if errors.As(err, &pe) {
-		if f, ok := reflect.TypeFor[Config]().FieldByName(pe.Name); ok {
-			key, _, _ := strings.Cut(f.Tag.Get("env"), ",")
+		if key, ok := envKey(reflect.TypeFor[Config](), pe.Name); ok {
 			return fmt.Sprintf("%s is invalid: %v", key, pe.Err)
 		}
 	}
 	return strings.TrimPrefix(err.Error(), "env: ")
+}
+
+// envKey finds the environment variable of the field called name, looking inside nested
+// structs such as Storage. Field names are unique across Config for this reason.
+func envKey(t reflect.Type, name string) (string, bool) {
+	for f := range t.Fields() {
+		if f.Name == name {
+			if tag, has := f.Tag.Lookup("env"); has {
+				key, _, _ := strings.Cut(tag, ",")
+				return key, true
+			}
+		}
+		if f.Type.Kind() == reflect.Struct {
+			if key, ok := envKey(f.Type, name); ok {
+				return key, true
+			}
+		}
+	}
+	return "", false
 }

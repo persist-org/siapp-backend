@@ -108,6 +108,27 @@ func (e BusinessLine) Valid() bool {
 	}
 }
 
+// Defines values for CaptureSource.
+const (
+	CAMERA  CaptureSource = "CAMERA"
+	GALLERY CaptureSource = "GALLERY"
+	UNKNOWN CaptureSource = "UNKNOWN"
+)
+
+// Valid indicates whether the value is a known member of the CaptureSource enum.
+func (e CaptureSource) Valid() bool {
+	switch e {
+	case CAMERA:
+		return true
+	case GALLERY:
+		return true
+	case UNKNOWN:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CompanyLetter.
 const (
 	I CompanyLetter = "I"
@@ -369,6 +390,96 @@ func (e MeResultWebRoleRole) Valid() bool {
 	case MeResultWebRoleRoleORGADMIN:
 		return true
 	case MeResultWebRoleRoleREGIONADMIN:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MediaCreateContentType.
+const (
+	Imagejpeg MediaCreateContentType = "image/jpeg"
+	Imagepng  MediaCreateContentType = "image/png"
+	Imagewebp MediaCreateContentType = "image/webp"
+)
+
+// Valid indicates whether the value is a known member of the MediaCreateContentType enum.
+func (e MediaCreateContentType) Valid() bool {
+	switch e {
+	case Imagejpeg:
+		return true
+	case Imagepng:
+		return true
+	case Imagewebp:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MediaPurpose.
+const (
+	ASSETREPORT      MediaPurpose = "ASSET_REPORT"
+	ATTENDANCESELFIE MediaPurpose = "ATTENDANCE_SELFIE"
+	EMEMO            MediaPurpose = "EMEMO"
+	INSTRUCTION      MediaPurpose = "INSTRUCTION"
+	PANICREPORT      MediaPurpose = "PANIC_REPORT"
+	PATROLSCAN       MediaPurpose = "PATROL_SCAN"
+	PROFILEPHOTO     MediaPurpose = "PROFILE_PHOTO"
+	REPORT           MediaPurpose = "REPORT"
+)
+
+// Valid indicates whether the value is a known member of the MediaPurpose enum.
+func (e MediaPurpose) Valid() bool {
+	switch e {
+	case ASSETREPORT:
+		return true
+	case ATTENDANCESELFIE:
+		return true
+	case EMEMO:
+		return true
+	case INSTRUCTION:
+		return true
+	case PANICREPORT:
+		return true
+	case PATROLSCAN:
+		return true
+	case PROFILEPHOTO:
+		return true
+	case REPORT:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MediaStatus.
+const (
+	MediaStatusPENDING  MediaStatus = "PENDING"
+	MediaStatusUPLOADED MediaStatus = "UPLOADED"
+)
+
+// Valid indicates whether the value is a known member of the MediaStatus enum.
+func (e MediaStatus) Valid() bool {
+	switch e {
+	case MediaStatusPENDING:
+		return true
+	case MediaStatusUPLOADED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MediaUploadUploadMethod.
+const (
+	PUT MediaUploadUploadMethod = "PUT"
+)
+
+// Valid indicates whether the value is a known member of the MediaUploadUploadMethod enum.
+func (e MediaUploadUploadMethod) Valid() bool {
+	switch e {
+	case PUT:
 		return true
 	default:
 		return false
@@ -4125,6 +4236,51 @@ func (e GetMasterReviews200JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
+// Defines values for PostMedia201JSONResponseBodySuccess.
+const (
+	PostMedia201JSONResponseBodySuccessTrue PostMedia201JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostMedia201JSONResponseBodySuccess enum.
+func (e PostMedia201JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostMedia201JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostMediaComplete200JSONResponseBodySuccess.
+const (
+	PostMediaComplete200JSONResponseBodySuccessTrue PostMediaComplete200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostMediaComplete200JSONResponseBodySuccess enum.
+func (e PostMediaComplete200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostMediaComplete200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostMediaUploadUrl200JSONResponseBodySuccess.
+const (
+	PostMediaUploadUrl200JSONResponseBodySuccessTrue PostMediaUploadUrl200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostMediaUploadUrl200JSONResponseBodySuccess enum.
+func (e PostMediaUploadUrl200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostMediaUploadUrl200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetNotifications200JSONResponseBodySuccess.
 const (
 	GetNotifications200JSONResponseBodySuccessTrue GetNotifications200JSONResponseBodySuccess = true
@@ -5481,22 +5637,24 @@ type AssetInput struct {
 
 // AssetReport defines model for AssetReport.
 type AssetReport struct {
-	AssetId        *int64     `json:"asset_id,omitempty"`
-	ConditionId    *int64     `json:"condition_id,omitempty"`
-	Content        *string    `json:"content,omitempty"`
-	GroupId        *int64     `json:"group_id,omitempty"`
-	Id             *int64     `json:"id,omitempty"`
-	LocalId        *string    `json:"local_id,omitempty"`
-	OrganizationId *int64     `json:"organization_id,omitempty"`
-	PersonnelId    *int64     `json:"personnel_id,omitempty"`
-	Photos         *[]string  `json:"photos,omitempty"`
-	PositionId     *int64     `json:"position_id,omitempty"`
-	ProjectId      *int64     `json:"project_id,omitempty"`
-	ReportedAt     *time.Time `json:"reported_at,omitempty"`
-	Stock          *int       `json:"stock,omitempty"`
-	SyncedAt       *time.Time `json:"synced_at,omitempty"`
-	Title          *string    `json:"title,omitempty"`
-	TransactionNo  *string    `json:"transaction_no,omitempty"`
+	AssetId        *int64  `json:"asset_id,omitempty"`
+	ConditionId    *int64  `json:"condition_id,omitempty"`
+	Content        *string `json:"content,omitempty"`
+	GroupId        *int64  `json:"group_id,omitempty"`
+	Id             *int64  `json:"id,omitempty"`
+	LocalId        *string `json:"local_id,omitempty"`
+	OrganizationId *int64  `json:"organization_id,omitempty"`
+	PersonnelId    *int64  `json:"personnel_id,omitempty"`
+
+	// Photos URL foto bertanda tangan yang berumur pendek (sekitar 1 jam). Jangan disimpan; muat ulang catatannya untuk URL baru. Isinya foto yang dilampirkan lewat `media_ids`.
+	Photos        *[]string  `json:"photos,omitempty"`
+	PositionId    *int64     `json:"position_id,omitempty"`
+	ProjectId     *int64     `json:"project_id,omitempty"`
+	ReportedAt    *time.Time `json:"reported_at,omitempty"`
+	Stock         *int       `json:"stock,omitempty"`
+	SyncedAt      *time.Time `json:"synced_at,omitempty"`
+	Title         *string    `json:"title,omitempty"`
+	TransactionNo *string    `json:"transaction_no,omitempty"`
 }
 
 // AssetReportCreate defines model for AssetReportCreate.
@@ -5507,9 +5665,15 @@ type AssetReportCreate struct {
 
 	// LocalId Dedup offline (= Idempotency-Key, DL-34).
 	LocalId *openapi_types.UUID `json:"local_id,omitempty"`
-	Photos  *[]string           `json:"photos,omitempty"`
-	Stock   *int                `json:"stock,omitempty"`
-	Title   string              `json:"title"`
+
+	// MediaIds Foto berstatus `UPLOADED` milik pengirim dengan tujuan `ASSET_REPORT` yang belum dilampirkan ke catatan lain. Tiap id hanya sekali.
+	MediaIds *[]int64 `json:"media_ids,omitempty"`
+
+	// Photos Tidak lagi dipakai server. Unggah foto lewat `POST /media` lalu kirim `media_ids`.
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
+	Photos *[]string `json:"photos,omitempty"`
+	Stock  *int      `json:"stock,omitempty"`
+	Title  string    `json:"title"`
 }
 
 // Attendance defines model for Attendance.
@@ -5663,6 +5827,9 @@ type BranchUpdate struct {
 
 // BusinessLine Bidang usaha proyek (DL-20). security membentuk kode berakhiran S, cleaning berakhiran C; satu klien paling banyak satu proyek per bidang.
 type BusinessLine string
+
+// CaptureSource Dari mana foto berasal. Swafoto absensi hanya boleh `CAMERA` (manual §3.2.3.1).
+type CaptureSource string
 
 // Cctv defines model for Cctv.
 type Cctv struct {
@@ -6347,6 +6514,98 @@ type MeResultTeamRole string
 // MeResultWebRoleRole defines model for MeResult.WebRole.Role.
 type MeResultWebRoleRole string
 
+// Media defines model for Media.
+type Media struct {
+	// CaptureSource Dari mana foto berasal. Swafoto absensi hanya boleh `CAMERA` (manual §3.2.3.1).
+	CaptureSource CaptureSource `json:"capture_source"`
+	CapturedAt    *time.Time    `json:"captured_at,omitempty"`
+	ContentType   string        `json:"content_type"`
+	CreatedAt     time.Time     `json:"created_at"`
+	Id            int64         `json:"id"`
+	Latitude      *float64      `json:"latitude,omitempty"`
+	Longitude     *float64      `json:"longitude,omitempty"`
+
+	// Purpose Untuk apa foto itu. Fitur yang melampirkannya menolak tujuan yang tidak cocok (MEDIA_PURPOSE_MISMATCH). `PROFILE_PHOTO` tidak dapat didaftarkan (422): foto profil berasal dari Persist Personalia.
+	Purpose   MediaPurpose `json:"purpose"`
+	SizeBytes int64        `json:"size_bytes"`
+
+	// Status `PENDING` sudah didaftarkan tetapi byte belum dikonfirmasi; `UPLOADED` sudah dikonfirmasi dan boleh dilampirkan.
+	Status MediaStatus `json:"status"`
+}
+
+// MediaCreate defines model for MediaCreate.
+type MediaCreate struct {
+	// CaptureSource Dari mana foto berasal. Swafoto absensi hanya boleh `CAMERA` (manual §3.2.3.1).
+	CaptureSource CaptureSource `json:"capture_source"`
+
+	// CapturedAt Waktu foto diambil menurut perangkat (UTC). Paling jauh 5 menit di depan waktu server.
+	CapturedAt *time.Time `json:"captured_at,omitempty"`
+
+	// ContentType Jenis lain 422 `MEDIA_TYPE_NOT_ALLOWED`.
+	ContentType MediaCreateContentType `json:"content_type"`
+
+	// Latitude Harus dikirim bersama `longitude`.
+	Latitude *float64 `json:"latitude,omitempty"`
+
+	// Longitude Harus dikirim bersama `latitude`.
+	Longitude *float64 `json:"longitude,omitempty"`
+
+	// Purpose Untuk apa foto itu. Fitur yang melampirkannya menolak tujuan yang tidak cocok (MEDIA_PURPOSE_MISMATCH). `PROFILE_PHOTO` tidak dapat didaftarkan (422): foto profil berasal dari Persist Personalia.
+	Purpose MediaPurpose `json:"purpose"`
+
+	// SizeBytes Ukuran tepat berkas dalam byte. Lebih dari 10485760 (10 MB) 413 `MEDIA_TOO_LARGE`. Byte yang diunggah harus sebesar ini, atau konfirmasi gagal.
+	SizeBytes int64 `json:"size_bytes"`
+}
+
+// MediaCreateContentType Jenis lain 422 `MEDIA_TYPE_NOT_ALLOWED`.
+type MediaCreateContentType string
+
+// MediaErrorReason Dikirim di error.details.reason. Satu reason yang sudah rilis tidak pernah diganti namanya.
+// - `MEDIA_NOT_FOUND`: 404 NOT_FOUND. Media tidak ada, milik organisasi lain, atau milik orang lain (tidak dibedakan agar id tidak dapat ditebak).
+// - `MEDIA_TYPE_NOT_ALLOWED`: 422 UNPROCESSABLE. Jenis berkas bukan `image/jpeg`, `image/png`, atau `image/webp`.
+// - `MEDIA_TOO_LARGE`: 413 PAYLOAD_TOO_LARGE. Ukuran lebih dari 10 MB.
+// - `MEDIA_NOT_UPLOADED`: 409 CONFLICT. Pada `complete`: byte belum ada, ukurannya tidak sama dengan yang didaftarkan, atau isinya bukan gambar dari jenis yang didaftarkan. Bila belum diunggah: unggah lalu konfirmasi lagi. Bila yang terunggah salah: daftarkan ulang (URL unggahan tidak dapat menimpa). Saat melampirkan: foto belum dikonfirmasi.
+// - `MEDIA_ALREADY_UPLOADED`: 409 CONFLICT. Pada `upload-url`: media sudah dikonfirmasi, tidak perlu URL unggah lagi.
+// - `MEDIA_EXPIRED`: 409 CONFLICT. Pada `upload-url`: media sudah lebih dari 22,5 jam sejak didaftarkan dan sebentar lagi dihapus otomatis, jadi URL baru tidak diterbitkan. Daftarkan ulang lewat `POST /media` dengan `Idempotency-Key` baru.
+// - `MEDIA_ALREADY_ATTACHED`: 409 CONFLICT. Saat melampirkan: foto itu sudah dilampirkan ke catatan lain.
+// - `MEDIA_PURPOSE_MISMATCH`: 422 UNPROCESSABLE. Saat melampirkan: tujuan foto tidak cocok dengan catatan itu.
+// - `MEDIA_LIMIT_EXCEEDED`: 422 UNPROCESSABLE. Saat melampirkan: lebih banyak foto daripada batas satu catatan (umumnya 5; `details.max`).
+//
+// Saat melampirkan (`media_ids` pada create fitur), `details.media_id` menyebut foto pertama yang gagal, dan tidak ada foto yang dilampirkan. Id yang sama dua kali: 422 VALIDATION_ERROR pada `media_ids`.
+// - `MEDIA_URL_INVALID`: 403 FORBIDDEN, 413 PAYLOAD_TOO_LARGE bila byte melebihi ukuran yang ditandatangani, atau 412 (code CONFLICT) bila foto untuk URL itu sudah tersimpan. Hanya pada `/media/blobs/{token}` (penyimpanan `local`): token rusak, kedaluwarsa, untuk operasi lain, atau dipakai dengan jenis atau ukuran yang salah.
+type MediaErrorReason = string
+
+// MediaPurpose Untuk apa foto itu. Fitur yang melampirkannya menolak tujuan yang tidak cocok (MEDIA_PURPOSE_MISMATCH). `PROFILE_PHOTO` tidak dapat didaftarkan (422): foto profil berasal dari Persist Personalia.
+type MediaPurpose string
+
+// MediaStatus `PENDING` sudah didaftarkan tetapi byte belum dikonfirmasi; `UPLOADED` sudah dikonfirmasi dan boleh dilampirkan.
+type MediaStatus string
+
+// MediaUpload defines model for MediaUpload.
+type MediaUpload struct {
+	// ExpiresAt Setelah ini `upload_url` ditolak. Minta URL baru lewat `POST /media/{id}/upload-url` (id tetap sama).
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// Id Dipakai di `POST /media/{id}/complete` dan di `media_ids`.
+	Id int64 `json:"id"`
+
+	// UploadHeaders Header yang HARUS dikirim bersama byte (di antaranya `Content-Type`). Header lain tidak boleh ditambahkan.
+	UploadHeaders map[string]string `json:"upload_headers"`
+
+	// UploadMethod Selalu `PUT`. Ada di respons agar metode lain (misalnya POST bertanda tangan) tidak memerlukan rilis aplikasi.
+	UploadMethod MediaUploadUploadMethod `json:"upload_method"`
+
+	// UploadUrl Alamat tujuan byte. Klien memakainya apa adanya dan tidak pernah menyusun alamat sendiri.
+	// Bisa alamat penyimpanan objek (S3/MinIO) atau `/media/blobs/{token}` di server ini,
+	// tergantung lingkungan. Token di dalamnya adalah kredensial: jangan dicatat di log.
+	// Satu URL untuk satu foto: sesudah berhasil, URL yang sama tidak dapat menimpanya dan
+	// dijawab 412 (oleh penyimpanan mana pun). Bila jawaban unggahan hilang, langsung panggil `complete`.
+	UploadUrl string `json:"upload_url"`
+}
+
+// MediaUploadUploadMethod Selalu `PUT`. Ada di respons agar metode lain (misalnya POST bertanda tangan) tidak memerlukan rilis aplikasi.
+type MediaUploadUploadMethod string
+
 // Meta defines model for Meta.
 type Meta struct {
 	// RequestId Korelasi audit.
@@ -6634,10 +6893,12 @@ type PatrolScan struct {
 	Note           *string                   `json:"note,omitempty"`
 	OrganizationId *int64                    `json:"organization_id,omitempty"`
 	PersonnelId    *int64                    `json:"personnel_id,omitempty"`
-	Photos         *[]string                 `json:"photos,omitempty"`
-	ScannedAt      *time.Time                `json:"scanned_at,omitempty"`
-	SyncedAt       *time.Time                `json:"synced_at,omitempty"`
-	ZoneId         *int64                    `json:"zone_id,omitempty"`
+
+	// Photos URL foto bertanda tangan yang berumur pendek (sekitar 1 jam). Jangan disimpan; muat ulang catatannya untuk URL baru. Isinya foto yang dilampirkan lewat `media_ids`.
+	Photos    *[]string  `json:"photos,omitempty"`
+	ScannedAt *time.Time `json:"scanned_at,omitempty"`
+	SyncedAt  *time.Time `json:"synced_at,omitempty"`
+	ZoneId    *int64     `json:"zone_id,omitempty"`
 }
 
 // PatrolScanCreate defines model for PatrolScanCreate.
@@ -6648,8 +6909,14 @@ type PatrolScanCreate struct {
 
 	// LocalId Dedup offline; SEBAIKNYA = Idempotency-Key.
 	LocalId *openapi_types.UUID `json:"local_id,omitempty"`
-	Note    *string             `json:"note,omitempty"`
-	Photos  *[]string           `json:"photos,omitempty"`
+
+	// MediaIds Foto berstatus `UPLOADED` milik pengirim dengan tujuan `PATROL_SCAN` yang belum dilampirkan ke catatan lain. Tiap id hanya sekali.
+	MediaIds *[]int64 `json:"media_ids,omitempty"`
+	Note     *string  `json:"note,omitempty"`
+
+	// Photos Tidak lagi dipakai server. Unggah foto lewat `POST /media` lalu kirim `media_ids`.
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
+	Photos *[]string `json:"photos,omitempty"`
 }
 
 // PatrolZone defines model for PatrolZone.
@@ -7157,13 +7424,15 @@ type RejectionNote struct {
 
 // Report defines model for Report.
 type Report struct {
-	Body             *string    `json:"body,omitempty"`
-	CreatedAt        *time.Time `json:"created_at,omitempty"`
-	Id               *int64     `json:"id,omitempty"`
-	LocalId          *string    `json:"local_id,omitempty"`
-	OnlyToDanru      *bool      `json:"only_to_danru,omitempty"`
-	OrganizationId   *int64     `json:"organization_id,omitempty"`
-	PersonnelId      *int64     `json:"personnel_id,omitempty"`
+	Body           *string    `json:"body,omitempty"`
+	CreatedAt      *time.Time `json:"created_at,omitempty"`
+	Id             *int64     `json:"id,omitempty"`
+	LocalId        *string    `json:"local_id,omitempty"`
+	OnlyToDanru    *bool      `json:"only_to_danru,omitempty"`
+	OrganizationId *int64     `json:"organization_id,omitempty"`
+	PersonnelId    *int64     `json:"personnel_id,omitempty"`
+
+	// Photos URL foto bertanda tangan yang berumur pendek (sekitar 1 jam). Jangan disimpan; muat ulang catatannya untuk URL baru. Isinya foto yang dilampirkan lewat `media_ids`.
 	Photos           *[]string  `json:"photos,omitempty"`
 	ProjectId        *int64     `json:"project_id,omitempty"`
 	ReportCategoryId *int64     `json:"report_category_id,omitempty"`
@@ -7181,10 +7450,16 @@ type ReportCreate struct {
 	CategoryId int64   `json:"category_id"`
 
 	// LocalId Dedup offline; SEBAIKNYA = Idempotency-Key.
-	LocalId     *openapi_types.UUID `json:"local_id,omitempty"`
-	OnlyToDanru *bool               `json:"only_to_danru,omitempty"`
-	Photos      *[]string           `json:"photos,omitempty"`
-	Subject     string              `json:"subject"`
+	LocalId *openapi_types.UUID `json:"local_id,omitempty"`
+
+	// MediaIds Foto berstatus `UPLOADED` milik pengirim dengan tujuan `REPORT` yang belum dilampirkan ke catatan lain. Tiap id hanya sekali.
+	MediaIds    *[]int64 `json:"media_ids,omitempty"`
+	OnlyToDanru *bool    `json:"only_to_danru,omitempty"`
+
+	// Photos Tidak lagi dipakai server. Unggah foto lewat `POST /media` lalu kirim `media_ids`.
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
+	Photos  *[]string `json:"photos,omitempty"`
+	Subject string    `json:"subject"`
 }
 
 // ReportSummaryResult Hasil agregasi Ringkasan Laporan (struktur per-type).
@@ -9850,6 +10125,21 @@ type GetMasterReviewsParamsType string
 // GetMasterReviews200JSONResponseBodySuccess defines parameters for GetMasterReviews.
 type GetMasterReviews200JSONResponseBodySuccess bool
 
+// PostMediaParams defines parameters for PostMedia.
+type PostMediaParams struct {
+	// IdempotencyKey UUID stabil seumur item antrean. Tanpa header ini 422.
+	IdempotencyKey openapi_types.UUID `json:"Idempotency-Key"`
+}
+
+// PostMedia201JSONResponseBodySuccess defines parameters for PostMedia.
+type PostMedia201JSONResponseBodySuccess bool
+
+// PostMediaComplete200JSONResponseBodySuccess defines parameters for PostMediaComplete.
+type PostMediaComplete200JSONResponseBodySuccess bool
+
+// PostMediaUploadUrl200JSONResponseBodySuccess defines parameters for PostMediaUploadUrl.
+type PostMediaUploadUrl200JSONResponseBodySuccess bool
+
 // GetNotificationsParams defines parameters for GetNotifications.
 type GetNotificationsParams struct {
 	UnreadOnly *bool `form:"unread_only,omitempty" json:"unread_only,omitempty"`
@@ -10859,6 +11149,9 @@ type PostInstructionsJSONRequestBody = InstructionCreate
 
 // PostInstructionsByIdAckJSONRequestBody defines body for PostInstructionsByIdAck for application/json ContentType.
 type PostInstructionsByIdAckJSONRequestBody = InstructionFeedback
+
+// PostMediaJSONRequestBody defines body for PostMedia for application/json ContentType.
+type PostMediaJSONRequestBody = MediaCreate
 
 // DeleteNotificationsTokenJSONRequestBody defines body for DeleteNotificationsToken for application/json ContentType.
 type DeleteNotificationsTokenJSONRequestBody = NotificationTokenDelete

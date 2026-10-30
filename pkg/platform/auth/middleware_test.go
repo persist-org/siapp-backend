@@ -165,6 +165,34 @@ func TestRequireIsDefaultDeny(t *testing.T) {
 	})
 }
 
+// ⚠ An escaped slash must not make a protected route look like a public one. Decoded,
+// "/api/v1/media/blobs%2Fx" is "/api/v1/media/blobs/x" (the public blob route), but the router
+// routes the raw path, which a route like "/api/v1/media/{id}" matches.
+func TestAnEscapedSlashDoesNotOpenAProtectedRoute(t *testing.T) {
+	tokens, err := auth.NewTokens([]byte(testSecret), clock.System{})
+	require.NoError(t, err)
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	router := httpx.NewRouter(httpx.RouterConfig{
+		Logger:       logger,
+		Authenticate: auth.Require(tokens, auth.NewRevocations(testkit.Redis(t), testkit.RandomPrefix(t), logger)),
+	})
+	reached := false
+	router.Get("/api/v1/media/{id}", func(w http.ResponseWriter, _ *http.Request) {
+		reached = true
+		w.WriteHeader(http.StatusOK)
+	})
+	router.Get("/api/v1/media/blobs/{token}", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	srv := httptest.NewServer(router)
+	t.Cleanup(srv.Close)
+
+	require.Equal(t, http.StatusUnauthorized, get(t, srv, http.MethodGet, "/api/v1/media/blobs%2Fx", "").status)
+	require.False(t, reached, "the protected route never ran without a token")
+
+	// The public route itself still works, escaped characters in its token included.
+	require.Equal(t, http.StatusOK, get(t, srv, http.MethodGet, "/api/v1/media/blobs/abc.def", "").status)
+	require.Equal(t, http.StatusOK, get(t, srv, http.MethodGet, "/api/v1/media/blobs/a%20b", "").status)
+}
+
 func TestPublicRoutes(t *testing.T) {
 	require.True(t, auth.IsPublic(http.MethodGet, "/api/v1/health"))
 	require.True(t, auth.IsPublic(http.MethodPost, "/api/v1/auth/login"))
@@ -172,6 +200,26 @@ func TestPublicRoutes(t *testing.T) {
 	require.True(t, auth.IsPublic(http.MethodPost, "/api/v1/auth/refresh"))
 	require.False(t, auth.IsPublic(http.MethodPost, "/api/v1/auth/logout"), "logout needs a token")
 	require.False(t, auth.IsPublic(http.MethodGet, "/api/v1/auth/me"))
+}
+
+// A {name} segment of a public route matches one segment, so the blob routes are public for
+// any token and for nothing else: not their parent, not a sub-route, not another method.
+func TestPublicRoutesWithAParameter(t *testing.T) {
+	const token = "eyJvIjoicHV0In0.c2lnbmF0dXJl"
+
+	require.True(t, auth.IsPublic(http.MethodPut, "/api/v1/media/blobs/"+token))
+	require.True(t, auth.IsPublic(http.MethodGet, "/api/v1/media/blobs/"+token))
+
+	require.False(t, auth.IsPublic(http.MethodDelete, "/api/v1/media/blobs/"+token), "only put and get")
+	require.False(t, auth.IsPublic(http.MethodPost, "/api/v1/media/blobs/"+token))
+	require.False(t, auth.IsPublic(http.MethodGet, "/api/v1/media/blobs/"), "an empty token is no token")
+	require.False(t, auth.IsPublic(http.MethodGet, "/api/v1/media/blobs"))
+	require.False(t, auth.IsPublic(http.MethodGet, "/api/v1/media/blobs/"+token+"/extra"), "never a sub-route")
+	require.False(t, auth.IsPublic(http.MethodGet, "/api/v1/media/blobs/"+token+"/"), "a trailing slash is another path")
+	require.False(t, auth.IsPublic(http.MethodGet, "/api/v1/media/"+token), "the literal segments must match")
+	require.False(t, auth.IsPublic(http.MethodGet, "/api/v1/media/blobs/a/b"))
+	require.False(t, auth.IsPublic(http.MethodPost, "/api/v1/media"), "registering needs a token")
+	require.False(t, auth.IsPublic(http.MethodPost, "/api/v1/media/1/complete"), "completing needs a token")
 }
 
 func TestFromIsEmptyOnAPublicRoute(t *testing.T) {

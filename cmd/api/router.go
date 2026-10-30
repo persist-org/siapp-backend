@@ -10,6 +10,7 @@ import (
 
 	"siapp/pkg/access"
 	"siapp/pkg/identity"
+	"siapp/pkg/media"
 	"siapp/pkg/organization"
 	"siapp/pkg/platform/auth"
 	"siapp/pkg/platform/clock"
@@ -32,6 +33,8 @@ type deps struct {
 	Tokens      *auth.Tokens
 	Clock       clock.Clock
 	ClientIP    func(*http.Request) string
+	// MediaStorage is the driver STORAGE_DRIVER chose, already checked at start-up.
+	MediaStorage media.Storage
 }
 
 // adminPrefix is the group every web admin route lives under. access.RequireAdmin guards the
@@ -66,6 +69,11 @@ func newRouter(d deps) *chi.Mux {
 	organizationHandler := organization.NewHandler(organization.NewUsecases(d.Pool, d.Clock, identity.NewPeople(d.Pool, d.Personel, d.Clock)))
 	// The Regu screens: any signed-in person, scoped by the regu they serve in.
 	organizationHandler.MountField(router)
+
+	// Photo uploads (module 04). Registering and completing need a signed-in person; the two
+	// blob routes of the local driver are public and authorized by the token in their URL.
+	mediaHandler := media.NewHandler(media.NewService(d.Pool, d.MediaStorage, d.Clock, d.Logger), d.MediaStorage, idempotency.Middleware(true))
+	mediaHandler.Mount(router)
 
 	// ⚠ The admin group: access.RequireAdmin is mounted ONCE here, so every route a module
 	// adds under /api/v1/admin is protected without anyone having to remember it.

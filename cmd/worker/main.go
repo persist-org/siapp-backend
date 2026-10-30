@@ -20,6 +20,7 @@ import (
 	_ "time/tzdata"
 
 	"siapp/pkg/identity"
+	"siapp/pkg/media"
 	"siapp/pkg/organization"
 	"siapp/pkg/platform/audit"
 	"siapp/pkg/platform/auth"
@@ -81,11 +82,22 @@ func run() error {
 	defer func() { _ = rdb.Close() }()
 	resyncer := identity.NewResyncer(pool, personelClient, auth.NewRevocations(rdb, config.RedisKeyPrefix, logger), clock.System{}, logger)
 
+	// ⚠ The worker checks the storage at start-up like the API does. With the local driver the
+	// two must see the SAME directory (one host, or a volume shared by both containers):
+	// media:cleanup deletes through this storage, and a worker looking at an empty folder of its
+	// own would "delete" nothing and report success. The write-and-delete probe at least proves
+	// the folder is there and writable from here.
+	mediaStorage, err := media.NewStorage(ctx, cfg.Storage, clock.System{}, logger)
+	if err != nil {
+		return fmt.Errorf("media storage: %w", err)
+	}
+
 	srv := asynq.NewServer(redisOpt, asynq.Config{Concurrency: workerConcurrency})
 	mux := asynq.NewServeMux()
 	identity.RegisterJobs(mux, identity.NewCleaner(pool, clock.System{}), logger)
 	identity.RegisterResyncJob(mux, resyncer, logger)
 	organization.RegisterScheduleJob(mux, organization.NewScheduleExtender(pool, clock.System{}), logger)
+	media.RegisterJobs(mux, media.NewCleaner(pool, mediaStorage, clock.System{}, logger), logger)
 	registerPlatformJobs(mux, pool, logger)
 
 	// ⚠ The scheduler runs in UTC, so the cron expressions below read the same on every host.
@@ -97,6 +109,9 @@ func run() error {
 		return err
 	}
 	if err := organization.RegisterScheduleSchedule(scheduler); err != nil {
+		return err
+	}
+	if err := media.RegisterSchedule(scheduler); err != nil {
 		return err
 	}
 	if err := registerPlatformSchedule(scheduler); err != nil {

@@ -19,6 +19,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
+	"siapp/pkg/media"
 	"siapp/pkg/platform/auth"
 	"siapp/pkg/platform/clock"
 	"siapp/pkg/platform/config"
@@ -86,6 +87,13 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	// Photo storage. NewStorage proves the driver can work (HeadBucket, or a write-and-delete
+	// probe in the directory), so a wrong bucket, wrong keys or an unwritable folder stop the
+	// boot here and not the first photo a guard takes.
+	mediaStorage, err := media.NewStorage(ctx, cfg.Storage, clock.System{}, logger)
+	if err != nil {
+		return fmt.Errorf("media storage: %w", err)
+	}
 
 	router := newRouter(deps{
 		Logger:      logger,
@@ -97,6 +105,8 @@ func run() error {
 		Tokens:      tokens,
 		Clock:       clock.System{},
 		ClientIP:    httpx.ClientIPFunc(cfg.ClientIPHeader),
+
+		MediaStorage: mediaStorage,
 	})
 	srv := httpx.NewServer(cfg.HTTPAddr, router)
 

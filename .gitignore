@@ -11,3 +11,6 @@ coverage.out
 # Editors / OS
 .idea/
 .DS_Store
+
+# Photos uploaded to the local storage driver (STORAGE_DRIVER=local on a laptop)
+data/

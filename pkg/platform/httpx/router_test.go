@@ -174,6 +174,39 @@ func TestRecovererAndAccessLog(t *testing.T) {
 	require.NotContains(t, out, "secret-token")
 }
 
+// ⚠ The token of a blob URL is a credential while it lives, so the access log must not write it,
+// whatever the answer was (here: a 404 from a route nobody mounted).
+func TestAccessLogRedactsBlobTokens(t *testing.T) {
+	var logs bytes.Buffer
+	srv := newTestServer(t, &logs, nil)
+
+	for _, method := range []string{http.MethodGet, http.MethodPut} {
+		req, err := http.NewRequestWithContext(t.Context(), method, srv.URL+"/api/v1/media/blobs/SECRET-PAYLOAD.SECRET-SIGNATURE", nil)
+		require.NoError(t, err)
+		res, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		_ = res.Body.Close()
+	}
+
+	out := logs.String()
+	require.Contains(t, out, `"path":"/api/v1/media/blobs/{token}"`, "the line still says what was asked for")
+	require.NotContains(t, out, "SECRET-PAYLOAD")
+	require.NotContains(t, out, "SECRET-SIGNATURE")
+}
+
+func TestLoggedPath(t *testing.T) {
+	for path, want := range map[string]string{
+		"/api/v1/health":                      "/api/v1/health",
+		"/api/v1/media":                       "/api/v1/media",
+		"/api/v1/media/12/complete":           "/api/v1/media/12/complete",
+		"/api/v1/media/blobs/abc.def":         "/api/v1/media/blobs/{token}",
+		"/api/v1/media/blobs/":                "/api/v1/media/blobs/{token}",
+		"/api/v1/media/blobs/abc.def/extra/1": "/api/v1/media/blobs/{token}",
+	} {
+		require.Equal(t, want, loggedPath(path), path)
+	}
+}
+
 func TestCORS(t *testing.T) {
 	srv := newTestServer(t, io.Discard, nil)
 

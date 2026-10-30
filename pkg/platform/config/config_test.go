@@ -19,6 +19,10 @@ func validEnv() map[string]string {
 		"PERSONEL_BASE_URL":        "http://localhost:8081/api/v3/integrations/siapp",
 		"PERSONEL_INTEGRATION_KEY": "test-integration-key",
 		"GROUP_COMPANY_IDS":        "3,45,89",
+		// Generated-looking, so that production accepts it; the media variables are set in
+		// full so that the tests of other settings can also run with APP_ENV=production.
+		"STORAGE_LOCAL_SIGNING_KEY": "k3Jd8Qw1Zx7Vb2Nm5Lp9Rt4Yc6Hg0Fa3Se8Uo1Ik5Mn7Bv",
+		"MEDIA_PUBLIC_BASE_URL":     "http://localhost:8080",
 	}
 }
 

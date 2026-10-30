@@ -84,13 +84,30 @@ func accessLog(logger *slog.Logger) func(http.Handler) http.Handler {
 			}
 			logger.LogAttrs(r.Context(), slog.LevelInfo, "http request",
 				slog.String("method", r.Method),
-				slog.String("path", r.URL.Path),
+				slog.String("path", loggedPath(r.URL.Path)),
 				slog.Int("status", status),
 				slog.Duration("duration", time.Since(start)),
 				slog.String("requestId", RequestID(r.Context())),
 			)
 		})
 	}
+}
+
+// blobPathMarker is what precedes the token in the local storage's blob URLs
+// (/api/v1/media/blobs/{token}).
+const blobPathMarker = "/media/blobs/"
+
+// loggedPath is the path as the access log writes it.
+//
+// ⚠ The token of a blob URL is a credential for as long as it lives: whoever holds an upload
+// token can write that object, and whoever holds a view token can read that photo. The access
+// log is read by operators and shipped to log stores, so the token is replaced by a
+// placeholder; the rest of the path stays, so a log line still says what was asked for.
+func loggedPath(path string) string {
+	if i := strings.Index(path, blobPathMarker); i >= 0 {
+		return path[:i+len(blobPathMarker)] + "{token}"
+	}
+	return path
 }
 
 // recoverer turns a panic into a logged stack trace and a 500 INTERNAL_ERROR response.
