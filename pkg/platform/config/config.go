@@ -74,6 +74,11 @@ type Config struct {
 	// Storage is where uploaded photos live (Phase 04.1).
 	Storage Storage
 
+	// PersonelWebhookSecret signs the change events Personel posts to
+	// /api/v1/integrations/personel/events (HMAC-SHA256 of the body). Empty makes the receiver
+	// refuse every event. Never logged.
+	PersonelWebhookSecret string `env:"PERSONEL_WEBHOOK_SECRET"`
+
 	// FCMServiceAccountBase64 is the Firebase service account key (the JSON file), base64-encoded.
 	// Only the worker sends pushes. Empty means no push is sent: the worker logs them instead,
 	// which is what a development machine and the tests want. Never logged.

@@ -105,6 +105,14 @@ func (t *Tokens) NewAccessToken(personnelID, organizationID, sessionID int64) (s
 // ⚠ Only HS256 is accepted. Without WithValidMethods a token could pick its own algorithm,
 // including "none" (no signature at all), which is the classic JWT forgery.
 func (t *Tokens) ParseAccessToken(token string) (Claims, error) {
+	claims, _, err := t.ParseAccessTokenWithExpiry(token)
+	return claims, err
+}
+
+// ParseAccessTokenWithExpiry is ParseAccessToken that also returns when the token expires. A
+// WebSocket needs it: the connection outlives the request that authenticated it, and is closed
+// when the token runs out.
+func (t *Tokens) ParseAccessTokenWithExpiry(token string) (Claims, time.Time, error) {
 	var parsed accessClaims
 	_, err := jwt.ParseWithClaims(token, &parsed,
 		func(*jwt.Token) (any, error) { return t.secret, nil },
@@ -114,17 +122,17 @@ func (t *Tokens) ParseAccessToken(token string) (Claims, error) {
 	)
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
-			return Claims{}, fmt.Errorf("%w: %w", ErrExpiredToken, err)
+			return Claims{}, time.Time{}, fmt.Errorf("%w: %w", ErrExpiredToken, err)
 		}
-		return Claims{}, fmt.Errorf("%w: %w", ErrInvalidToken, err)
+		return Claims{}, time.Time{}, fmt.Errorf("%w: %w", ErrInvalidToken, err)
 	}
 
 	personnelID, err1 := strconv.ParseInt(parsed.Subject, 10, 64)
 	sessionID, err2 := strconv.ParseInt(parsed.SessionID, 10, 64)
 	if err1 != nil || err2 != nil || personnelID <= 0 || sessionID <= 0 || parsed.OrganizationID <= 0 {
-		return Claims{}, fmt.Errorf("%w: missing or malformed claims", ErrInvalidToken)
+		return Claims{}, time.Time{}, fmt.Errorf("%w: missing or malformed claims", ErrInvalidToken)
 	}
-	return Claims{PersonnelID: personnelID, OrganizationID: parsed.OrganizationID, SessionID: sessionID}, nil
+	return Claims{PersonnelID: personnelID, OrganizationID: parsed.OrganizationID, SessionID: sessionID}, parsed.ExpiresAt.Time, nil
 }
 
 // NewRefreshToken returns an opaque refresh token for a person of organizationID and the

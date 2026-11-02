@@ -24,8 +24,9 @@ import (
 func TestMain(m *testing.M) { os.Exit(testkit.NewDatabase(m)) }
 
 // platformRoutes are public routes that are not part of the PERSIST contract, so they carry
-// no `security: []` there: the health probe is infrastructure, not an API operation.
-var platformRoutes = map[string]bool{"GET /api/v1/health": true}
+// no `security: []` there: the health probe is infrastructure, not an API operation, and the
+// WebSocket's protocol lives in the realtime doc (only its ticket route is in the contract).
+var platformRoutes = map[string]bool{"GET /api/v1/health": true, "GET /api/v1/ws": true}
 
 // productionRouter builds the router exactly as main does, from the test kit's services.
 func productionRouter(t *testing.T) *chi.Mux {
@@ -71,6 +72,9 @@ func walk(t *testing.T, router chi.Routes) []mounted {
 
 var pathParam = regexp.MustCompile(`\{[^}]*\}`)
 
+// signedRoutes are public routes that authenticate by a request signature instead of a token.
+var signedRoutes = map[string]bool{"POST /api/v1/integrations/personel/events": true}
+
 func status(router http.Handler, method, path string) int {
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, httptest.NewRequest(method, path, nil))
@@ -87,6 +91,16 @@ func TestEveryRouteRequiresAuthentication(t *testing.T) {
 
 	for _, r := range routes {
 		path := pathParam.ReplaceAllString(r.route, "1")
+		if signedRoutes[r.key()] {
+			// Public, but authenticated by a signature: without one the route itself answers
+			// 401 WEBHOOK_SIGNATURE_INVALID. The reason proves it is not the token middleware
+			// speaking (that one says AUTH_TOKEN_INVALID).
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, httptest.NewRequest(r.method, path, nil))
+			require.Equal(t, http.StatusUnauthorized, rec.Code, r.key())
+			require.Contains(t, rec.Body.String(), "WEBHOOK_SIGNATURE_INVALID", r.key())
+			continue
+		}
 		if auth.IsPublic(r.method, path) {
 			require.NotEqual(t, http.StatusUnauthorized, status(router, r.method, path),
 				"public route %s must not demand a token", r.key())

@@ -177,6 +177,13 @@ components:
       description: |
         Session JWT (mobile/web) dari POST /auth/login. Klaim wajib: sub, organization_id,
         roles/scope, exp, iat. Middleware set app.current_org → RLS.
+    webhookSignature:
+      type: apiKey
+      in: header
+      name: X-Personel-Signature
+      description: |
+        HMAC-SHA256 (heksadesimal) dari body mentah dengan `PERSONEL_WEBHOOK_SECRET`. Dipakai
+        webhook Personel; operasi itu bertanda `security: []` karena tidak membawa token sesi.
     oauth2ClientCredentials:
       type: oauth2
       description: |
@@ -2927,6 +2934,35 @@ components:
         read_at: { type: string, format: date-time, nullable: true }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time, description: "Berubah saat dibaca; dasar delta-sync." }
+    WsTicket:
+      type: object
+      required: [ticket, expires_in]
+      properties:
+        ticket: { type: string, description: "Dipakai sekali pada GET /api/v1/ws?ticket=." }
+        expires_in: { type: integer, example: 300, description: "Detik." }
+    PersonelEvent:
+      type: object
+      required: [event_id, type, organization_id, timestamp]
+      properties:
+        event_id: { type: string, maxLength: 128, description: "Unik per event; dasar penolakan kiriman ulang (7 hari)." }
+        type:
+          type: string
+          example: employee.deactivated
+          description: "employee.updated | employee.deactivated | placement.changed | position.changed | leave.decided"
+        organization_id: { type: integer, format: int64 }
+        timestamp: { type: string, format: date-time }
+        data:
+          type: object
+          description: "employee.* dan position.changed membawa `nik` (position.changed juga `position_name`); placement.changed membawa `project_id`."
+          properties:
+            nik: { type: string }
+            position_name: { type: string }
+            project_id: { type: integer, format: int64 }
+    PersonelEventResult:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [processed, duplicate, ignored] }
     NotificationTokenInput:
       type: object
       required: [firebase_token, platform]
@@ -9900,6 +9936,84 @@ paths:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessEnvelope' } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '422': { $ref: '#/components/responses/ValidationError' }
+  /ws/ticket:
+    post:
+      operationId: postWsTicket
+      tags: [Notification]
+      summary: Tiket sekali pakai untuk membuka WebSocket dari browser
+      description: |
+        Browser tidak bisa mengirim header `Authorization` pada WebSocket, dan token akses di URL
+        akan tersimpan di log proxy. Tukarkan token akses dengan tiket yang berlaku 5 menit dan
+        hanya untuk satu koneksi, lalu buka `GET /api/v1/ws?ticket=...` dengan subprotocol
+        `persist.v1`. Aplikasi mobile cukup memakai `Authorization: Bearer`.
+
+        Koneksi ditutup dengan kode `4401` saat token akses yang meminta tiket kedaluwarsa atau
+        sesinya diakhiri; klien memperbarui token, meminta tiket baru, dan menyambung lagi.
+        Protokol WebSocket itu sendiri (room, frame) ada di dokumen realtime dan di luar kontrak
+        OpenAPI ini.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/WsTicket' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /integrations/personel/events:
+    post:
+      operationId: postIntegrationsPersonelEvents
+      tags: [Notification]
+      summary: Penerima event perubahan dari Persist Personel (webhook)
+      description: |
+        Dipanggil oleh Personel, bukan oleh aplikasi. Tidak memakai token; keasliannya dijamin
+        tanda tangan `X-Personel-Signature` (HMAC-SHA256 dari body mentah dengan
+        `PERSONEL_WEBHOOK_SECRET`, heksadesimal, boleh berawalan `sha256=`).
+
+        - `timestamp` lebih lama atau lebih baru dari 5 menit ditolak (401).
+        - `event_id` disimpan 7 hari; kiriman ulang dijawab 200 `duplicate` tanpa diproses lagi,
+          karena Personel mengirim minimal sekali.
+        - `organization_id` harus organisasi yang ada (404 jika tidak).
+        - Tipe: `employee.updated`, `employee.deactivated`, `placement.changed`,
+          `position.changed`. `leave.decided` diterima dan diabaikan di sini (ditangani modul
+          cuti). Tipe lain dijawab 200 `ignored` agar Personel tidak mengulang tanpa akhir.
+        - Kegagalan pemrosesan dijawab 5xx; Personel mengulang dan event diproses saat itu.
+      security: []
+      x-webhook-security: webhookSignature
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PersonelEvent' }
+      responses:
+        '200':
+          description: Diterima.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/PersonelEventResult' }
+        '400':
+          description: Isi event tidak valid (details.reason WEBHOOK_PAYLOAD_INVALID).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '401':
+          description: Tanda tangan tidak valid atau timestamp terlalu jauh (details.reason WEBHOOK_SIGNATURE_INVALID).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '404':
+          description: Organisasi tidak dikenal.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
   /notifications:
     get:
       operationId: getNotifications

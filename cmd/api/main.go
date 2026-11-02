@@ -27,6 +27,7 @@ import (
 	"siapp/pkg/platform/database"
 	"siapp/pkg/platform/httpx"
 	"siapp/pkg/platform/personel"
+	"siapp/pkg/realtime"
 )
 
 const shutdownTimeout = 20 * time.Second
@@ -100,6 +101,13 @@ func run() error {
 	// rdb, which main already closes.
 	pushQueue := asynq.NewClientFromRedisClient(rdb)
 
+	// Realtime: the hub holds this instance's sockets, and the subscriber feeds it what any
+	// instance publishes to Redis.
+	hub := realtime.NewHub(logger)
+	if err := realtime.Run(ctx, rdb, config.RedisKeyPrefix, hub, logger); err != nil {
+		return err
+	}
+
 	router := newRouter(deps{
 		Logger:      logger,
 		CORSOrigins: cfg.CORSOrigins,
@@ -113,6 +121,9 @@ func run() error {
 
 		MediaStorage: mediaStorage,
 		PushQueue:    pushQueue,
+
+		Hub:                   hub,
+		PersonelWebhookSecret: cfg.PersonelWebhookSecret,
 	})
 	srv := httpx.NewServer(cfg.HTTPAddr, router)
 

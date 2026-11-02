@@ -28,6 +28,9 @@ const (
 	RoleMember = "MEMBER"
 )
 
+// actionMove is the audit action of a move; replace tells a move from a role change by it.
+const actionMove = "team_member.move"
+
 // PeopleResolver finds or creates the local copy of a Personalia person by NIK (identity.People
 // does). A person who never signed in can be put in a regu this way.
 type PeopleResolver interface {
@@ -68,16 +71,44 @@ type ChangeRoleInput struct {
 	EffectiveDate timeutil.Date `json:"effective_date"`
 }
 
+// MemberChange describes a move or a role change after it has committed.
+type MemberChange struct {
+	PersonnelID int64
+	// TeamCode is the regu the person serves in now: the new regu after a move, the same regu
+	// after a role change.
+	TeamCode string
+	// Role is the person's field role now (DANRU or MEMBER).
+	Role string
+	// BusinessLine is that regu's project line ("security" or "cleaning"): it decides the words
+	// of the notification.
+	BusinessLine string
+	// ActorID is the admin who did it; they are not told about their own act.
+	ActorID int64
+}
+
+// Notifier tells the person that a move or a role change happened. The notification module
+// implements it (cmd/api adapts it), so this package does not import notifications. Both are
+// called after the commit and never fail the change: see notifications.Service.Notify.
+type Notifier interface {
+	MemberMoved(ctx context.Context, change MemberChange)
+	MemberRoleChanged(ctx context.Context, change MemberChange)
+}
+
 // Members manages who serves in which regu.
 //
 // ⚠ History is kept (see migration 00011). Nothing here overwrites a membership: leaving ends
 // it, and a move or a role change ends it the day before the new one starts, both in ONE
 // transaction. Past attendance and reports then keep their original regu.
 type Members struct {
-	pool   *pgxpool.Pool
-	clock  clock.Clock
-	people PeopleResolver
+	pool     *pgxpool.Pool
+	clock    clock.Clock
+	people   PeopleResolver
+	notifier Notifier
 }
+
+// UseNotifier plugs in who is told about a move or a role change. Call it while wiring, before
+// the usecase takes requests. Without one nobody is notified.
+func (m *Members) UseNotifier(n Notifier) { m.notifier = n }
 
 // NewMembers returns the Members usecase. people may be nil only where nobody is added by NIK.
 func NewMembers(pool *pgxpool.Pool, c clock.Clock, people PeopleResolver) *Members {
@@ -259,7 +290,7 @@ func (m *Members) Move(ctx context.Context, actor auth.Principal, scope access.A
 	if !scope.AllowsRegion(RegionOfCode(in.ToTeamCode)) {
 		return Member{}, access.ErrOutsideAdminScope
 	}
-	return m.replace(ctx, actor, scope, id, in.EffectiveDate, "team_member.move", func(old db.TeamMember) (string, db.TeamRole, error) {
+	return m.replace(ctx, actor, scope, id, in.EffectiveDate, actionMove, func(old db.TeamMember) (string, db.TeamRole, error) {
 		if in.ToTeamCode == old.TeamCode {
 			return "", "", validationError("to_team_code", "Harus regu yang berbeda dari regu sekarang.")
 		}
@@ -287,6 +318,7 @@ func (m *Members) replace(ctx context.Context, actor auth.Principal, scope acces
 	action string, target func(old db.TeamMember) (teamCode string, role db.TeamRole, err error),
 ) (Member, error) {
 	var out Member
+	var change MemberChange
 	err := database.WithTenant(ctx, m.pool, actor.OrganizationID, func(q *db.Queries) error {
 		peek, err := q.GetTeamMember(ctx, id)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -352,6 +384,14 @@ func (m *Members) replace(ctx context.Context, actor auth.Principal, scope acces
 		if err != nil {
 			return err
 		}
+		project, err := q.GetProject(ctx, access.ProjectCodeOfTeam(toTeam))
+		if err != nil {
+			return fmt.Errorf("get project of team %s: %w", toTeam, err)
+		}
+		change = MemberChange{
+			PersonnelID: old.PersonnelID, TeamCode: toTeam, Role: string(role),
+			BusinessLine: string(project.BusinessLine), ActorID: actor.PersonnelID,
+		}
 		return recordMemberAudit(ctx, q, actor, action, row.ID, map[string]any{
 			"previous_id": old.ID, "personnel_id": old.PersonnelID, "effective_date": effective.String(),
 			"from_team_code": old.TeamCode, "to_team_code": toTeam, "from_role": string(old.Role), "to_role": string(role),
@@ -359,6 +399,14 @@ func (m *Members) replace(ctx context.Context, actor auth.Principal, scope acces
 	})
 	if err != nil {
 		return Member{}, memberError(err, action)
+	}
+	// After the commit, like every side effect.
+	if m.notifier != nil {
+		if action == actionMove {
+			m.notifier.MemberMoved(ctx, change)
+		} else {
+			m.notifier.MemberRoleChanged(ctx, change)
+		}
 	}
 	return out, nil
 }
