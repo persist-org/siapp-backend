@@ -31,6 +31,16 @@ func (q *Queries) CountNotifications(ctx context.Context, recipientPersonnelID i
 	return i, err
 }
 
+const deleteDevicesByIDs = `-- name: DeleteDevicesByIDs :exec
+DELETE FROM devices WHERE id = ANY($1::bigint[])
+`
+
+// Tokens that FCM reported as unregistered or invalid.
+func (q *Queries) DeleteDevicesByIDs(ctx context.Context, ids []int64) error {
+	_, err := q.db.Exec(ctx, deleteDevicesByIDs, ids)
+	return err
+}
+
 const getNotification = `-- name: GetNotification :one
 SELECT id, organization_id, recipient_personnel_id, type, title, body, entity_type, entity_id, data, priority, read_at, created_at, updated_at, deleted_at FROM notifications
 WHERE id = $1 AND recipient_personnel_id = $2 AND deleted_at IS NULL
@@ -252,6 +262,92 @@ func (q *Queries) ListNotifications(ctx context.Context, arg ListNotificationsPa
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listNotificationsByIDs = `-- name: ListNotificationsByIDs :many
+
+SELECT id, organization_id, recipient_personnel_id, type, title, body, entity_type, entity_id, data, priority, read_at, created_at, updated_at, deleted_at FROM notifications
+WHERE id = ANY($1::bigint[]) AND deleted_at IS NULL
+ORDER BY id
+`
+
+// Push delivery (Phase 05.2) ---------------------------------------------------------------
+// The worker runs these inside database.WithTenant, so another organization's rows are not
+// there. Unlike the inbox queries they are not limited to one recipient: one push task serves
+// every recipient of one Notify call.
+// The rows a push task names. A row deleted since is skipped: nobody wants a push for it.
+func (q *Queries) ListNotificationsByIDs(ctx context.Context, ids []int64) ([]Notification, error) {
+	rows, err := q.db.Query(ctx, listNotificationsByIDs, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Notification{}
+	for rows.Next() {
+		var i Notification
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrganizationID,
+			&i.RecipientPersonnelID,
+			&i.Type,
+			&i.Title,
+			&i.Body,
+			&i.EntityType,
+			&i.EntityID,
+			&i.Data,
+			&i.Priority,
+			&i.ReadAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPushDevices = `-- name: ListPushDevices :many
+SELECT id, personnel_id, platform, push_token FROM devices
+WHERE personnel_id = ANY($1::bigint[])
+ORDER BY id
+`
+
+type ListPushDevicesRow struct {
+	ID          int64
+	PersonnelID int64
+	Platform    DevicePlatform
+	PushToken   string
+}
+
+// Where the recipients' pushes go: one row per signed-in app install.
+func (q *Queries) ListPushDevices(ctx context.Context, personnelIds []int64) ([]ListPushDevicesRow, error) {
+	rows, err := q.db.Query(ctx, listPushDevices, personnelIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPushDevicesRow{}
+	for rows.Next() {
+		var i ListPushDevicesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PersonnelID,
+			&i.Platform,
+			&i.PushToken,
 		); err != nil {
 			return nil, err
 		}

@@ -66,3 +66,24 @@ RETURNING *;
 -- name: MarkAllNotificationsRead :execrows
 UPDATE notifications SET read_at = @now, updated_at = @now
 WHERE recipient_personnel_id = @recipient_personnel_id AND deleted_at IS NULL AND read_at IS NULL;
+
+-- Push delivery (Phase 05.2) ---------------------------------------------------------------
+-- The worker runs these inside database.WithTenant, so another organization's rows are not
+-- there. Unlike the inbox queries they are not limited to one recipient: one push task serves
+-- every recipient of one Notify call.
+
+-- The rows a push task names. A row deleted since is skipped: nobody wants a push for it.
+-- name: ListNotificationsByIDs :many
+SELECT * FROM notifications
+WHERE id = ANY(@ids::bigint[]) AND deleted_at IS NULL
+ORDER BY id;
+
+-- Where the recipients' pushes go: one row per signed-in app install.
+-- name: ListPushDevices :many
+SELECT id, personnel_id, platform, push_token FROM devices
+WHERE personnel_id = ANY(@personnel_ids::bigint[])
+ORDER BY id;
+
+-- Tokens that FCM reported as unregistered or invalid.
+-- name: DeleteDevicesByIDs :exec
+DELETE FROM devices WHERE id = ANY(@ids::bigint[]);

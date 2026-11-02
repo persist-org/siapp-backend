@@ -36,6 +36,9 @@ type deps struct {
 	ClientIP    func(*http.Request) string
 	// MediaStorage is the driver STORAGE_DRIVER chose, already checked at start-up.
 	MediaStorage media.Storage
+	// PushQueue is where Notify queues its push tasks for the worker. Nil (the guard test) leaves
+	// the inbox as the only delivery.
+	PushQueue notifications.Enqueuer
 }
 
 // adminPrefix is the group every web admin route lives under. access.RequireAdmin guards the
@@ -78,8 +81,11 @@ func newRouter(d deps) *chi.Mux {
 
 	// The inbox (module 05): any signed-in person reads their own notifications. Modules that
 	// notify get this service through a small interface of their own, wired here when they land;
-	// Phases 05.2 and 05.3 plug push and realtime delivery into it with UseDispatcher.
+	// Phase 05.2 plugs push in with UseDispatcher; Phase 05.3 adds realtime.
 	notificationService := notifications.NewService(d.Pool, d.Clock, d.Logger)
+	if d.PushQueue != nil {
+		notificationService.UseDispatcher(notifications.NewPushDispatcher(d.PushQueue))
+	}
 	notifications.NewHandler(notificationService).Mount(router)
 
 	// ⚠ The admin group: access.RequireAdmin is mounted ONCE here, so every route a module

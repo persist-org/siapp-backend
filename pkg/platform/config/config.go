@@ -73,6 +73,11 @@ type Config struct {
 
 	// Storage is where uploaded photos live (Phase 04.1).
 	Storage Storage
+
+	// FCMServiceAccountBase64 is the Firebase service account key (the JSON file), base64-encoded.
+	// Only the worker sends pushes. Empty means no push is sent: the worker logs them instead,
+	// which is what a development machine and the tests want. Never logged.
+	FCMServiceAccountBase64 string `env:"FCM_SERVICE_ACCOUNT_BASE64"`
 }
 
 // Storage drivers accepted in STORAGE_DRIVER.

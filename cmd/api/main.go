@@ -17,6 +17,7 @@ import (
 	// there, which would break every business-date calculation in project timezones.
 	_ "time/tzdata"
 
+	"github.com/hibiken/asynq"
 	"github.com/redis/go-redis/v9"
 
 	"siapp/pkg/media"
@@ -95,6 +96,10 @@ func run() error {
 		return fmt.Errorf("media storage: %w", err)
 	}
 
+	// The push queue shares the API's Redis connection pool; closing the asynq client would close
+	// rdb, which main already closes.
+	pushQueue := asynq.NewClientFromRedisClient(rdb)
+
 	router := newRouter(deps{
 		Logger:      logger,
 		CORSOrigins: cfg.CORSOrigins,
@@ -107,6 +112,7 @@ func run() error {
 		ClientIP:    httpx.ClientIPFunc(cfg.ClientIPHeader),
 
 		MediaStorage: mediaStorage,
+		PushQueue:    pushQueue,
 	})
 	srv := httpx.NewServer(cfg.HTTPAddr, router)
 
