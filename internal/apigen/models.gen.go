@@ -486,6 +486,24 @@ func (e MediaUploadUploadMethod) Valid() bool {
 	}
 }
 
+// Defines values for NotificationPriority.
+const (
+	HIGH   NotificationPriority = "HIGH"
+	NORMAL NotificationPriority = "NORMAL"
+)
+
+// Valid indicates whether the value is a known member of the NotificationPriority enum.
+func (e NotificationPriority) Valid() bool {
+	switch e {
+	case HIGH:
+		return true
+	case NORMAL:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for NotificationTokenInputPlatform.
 const (
 	Android NotificationTokenInputPlatform = "android"
@@ -501,6 +519,66 @@ func (e NotificationTokenInputPlatform) Valid() bool {
 	case Ios:
 		return true
 	case Web:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NotificationType.
+const (
+	ABSENCEMARKED         NotificationType = "ABSENCE_MARKED"
+	GUARDAPPROVED         NotificationType = "GUARD_APPROVED"
+	GUARDSUBMITTED        NotificationType = "GUARD_SUBMITTED"
+	INSTRUCTIONFEEDBACK   NotificationType = "INSTRUCTION_FEEDBACK"
+	INSTRUCTIONRECEIVED   NotificationType = "INSTRUCTION_RECEIVED"
+	LEAVEDECIDED          NotificationType = "LEAVE_DECIDED"
+	LEAVEREQUESTED        NotificationType = "LEAVE_REQUESTED"
+	OFFLINESUBMISSIONSENT NotificationType = "OFFLINE_SUBMISSION_SENT"
+	PANICRESOLVED         NotificationType = "PANIC_RESOLVED"
+	PANICTRIGGERED        NotificationType = "PANIC_TRIGGERED"
+	PATROLAPPROVED        NotificationType = "PATROL_APPROVED"
+	PATROLSUBMITTED       NotificationType = "PATROL_SUBMITTED"
+	POSITIONCHANGED       NotificationType = "POSITION_CHANGED"
+	REPORTSUBMITTED       NotificationType = "REPORT_SUBMITTED"
+	SWAPASSIGNED          NotificationType = "SWAP_ASSIGNED"
+	TEAMCHANGED           NotificationType = "TEAM_CHANGED"
+)
+
+// Valid indicates whether the value is a known member of the NotificationType enum.
+func (e NotificationType) Valid() bool {
+	switch e {
+	case ABSENCEMARKED:
+		return true
+	case GUARDAPPROVED:
+		return true
+	case GUARDSUBMITTED:
+		return true
+	case INSTRUCTIONFEEDBACK:
+		return true
+	case INSTRUCTIONRECEIVED:
+		return true
+	case LEAVEDECIDED:
+		return true
+	case LEAVEREQUESTED:
+		return true
+	case OFFLINESUBMISSIONSENT:
+		return true
+	case PANICRESOLVED:
+		return true
+	case PANICTRIGGERED:
+		return true
+	case PATROLAPPROVED:
+		return true
+	case PATROLSUBMITTED:
+		return true
+	case POSITIONCHANGED:
+		return true
+	case REPORTSUBMITTED:
+		return true
+	case SWAPASSIGNED:
+		return true
+	case TEAMCHANGED:
 		return true
 	default:
 		return false
@@ -6618,22 +6696,34 @@ type Meta struct {
 // Money Nominal sebagai string desimal (DL-38) — jangan float.
 type Money = string
 
-// Notification Notifikasi mobile (12 event, AC-API-NTF-1).
+// Notification Satu notifikasi untuk satu penerima (AC-API-NTF-1). `title` dan `body` sudah dirender (Bahasa Indonesia, label mengikuti `business_line` proyek) dan tidak memuat NIK.
 type Notification struct {
-	Body      *string    `json:"body,omitempty"`
-	CreatedAt *time.Time `json:"created_at,omitempty"`
+	Body      string    `json:"body"`
+	CreatedAt time.Time `json:"created_at"`
 
 	// Data Payload deep-link (entity id/route).
-	Data           *map[string]interface{} `json:"data,omitempty"`
-	Id             *int64                  `json:"id,omitempty"`
-	IsRead         *bool                   `json:"is_read,omitempty"`
-	OrganizationId *int64                  `json:"organization_id,omitempty"`
-	PersonnelId    *int64                  `json:"personnel_id,omitempty"`
-	ReadAt         *time.Time              `json:"read_at,omitempty"`
-	Title          *string                 `json:"title,omitempty"`
+	Data     *map[string]interface{} `json:"data,omitempty"`
+	EntityId *int64                  `json:"entity_id,omitempty"`
 
-	// Type Jenis event (mis. izin, mangkir, laporan, instruksi, perpindahan_regu, pergantian_posisi, patroli, jaga, panik, laporan_offline).
-	Type *string `json:"type,omitempty"`
+	// EntityType Jenis record yang dituju (mis. `panic`), untuk deep-link.
+	EntityType     *string `json:"entity_type,omitempty"`
+	Id             int64   `json:"id"`
+	IsRead         bool    `json:"is_read"`
+	OrganizationId int64   `json:"organization_id"`
+
+	// PersonnelId Penerima.
+	PersonnelId int64 `json:"personnel_id"`
+
+	// Priority `HIGH` hanya untuk panik: dikirim lewat antrean prioritas dan kanal sirine di perangkat.
+	Priority NotificationPriority `json:"priority"`
+	ReadAt   *time.Time           `json:"read_at,omitempty"`
+	Title    string               `json:"title"`
+
+	// Type Jenis notifikasi. 12 yang pertama adalah event Tabel 7 manual (PERPINDAHAN_REGU = `TEAM_CHANGED`, PERGANTIAN_POSISI = `POSITION_CHANGED`); 4 yang terakhir tersirat dari alur manual (keputusan izin, umpan balik instruksi, tukar jaga, panik selesai).
+	Type NotificationType `json:"type"`
+
+	// UpdatedAt Berubah saat dibaca; dasar delta-sync.
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // NotificationCount defines model for NotificationCount.
@@ -6641,6 +6731,9 @@ type NotificationCount struct {
 	Total  int `json:"total"`
 	Unread int `json:"unread"`
 }
+
+// NotificationPriority `HIGH` hanya untuk panik: dikirim lewat antrean prioritas dan kanal sirine di perangkat.
+type NotificationPriority string
 
 // NotificationTokenDelete defines model for NotificationTokenDelete.
 type NotificationTokenDelete struct {
@@ -6658,6 +6751,9 @@ type NotificationTokenInput struct {
 
 // NotificationTokenInputPlatform defines model for NotificationTokenInput.Platform.
 type NotificationTokenInputPlatform string
+
+// NotificationType Jenis notifikasi. 12 yang pertama adalah event Tabel 7 manual (PERPINDAHAN_REGU = `TEAM_CHANGED`, PERGANTIAN_POSISI = `POSITION_CHANGED`); 4 yang terakhir tersirat dari alur manual (keputusan izin, umpan balik instruksi, tukar jaga, panik selesai).
+type NotificationType string
 
 // OAuthError Error token endpoint (kode RFC 6749 lowercase — KHUSUS /oauth/token).
 type OAuthError struct {

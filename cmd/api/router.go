@@ -11,6 +11,7 @@ import (
 	"siapp/pkg/access"
 	"siapp/pkg/identity"
 	"siapp/pkg/media"
+	"siapp/pkg/notifications"
 	"siapp/pkg/organization"
 	"siapp/pkg/platform/auth"
 	"siapp/pkg/platform/clock"
@@ -74,6 +75,12 @@ func newRouter(d deps) *chi.Mux {
 	// blob routes of the local driver are public and authorized by the token in their URL.
 	mediaHandler := media.NewHandler(media.NewService(d.Pool, d.MediaStorage, d.Clock, d.Logger), d.MediaStorage, idempotency.Middleware(true))
 	mediaHandler.Mount(router)
+
+	// The inbox (module 05): any signed-in person reads their own notifications. Modules that
+	// notify get this service through a small interface of their own, wired here when they land;
+	// Phases 05.2 and 05.3 plug push and realtime delivery into it with UseDispatcher.
+	notificationService := notifications.NewService(d.Pool, d.Clock, d.Logger)
+	notifications.NewHandler(notificationService).Mount(router)
 
 	// ⚠ The admin group: access.RequireAdmin is mounted ONCE here, so every route a module
 	// adds under /api/v1/admin is protected without anyone having to remember it.

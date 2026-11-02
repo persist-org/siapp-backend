@@ -29,7 +29,13 @@ type listEnvelope[T any] struct {
 	Success    bool       `json:"success"`
 	Data       []T        `json:"data"`
 	Pagination pagination `json:"pagination"`
-	Meta       meta       `json:"meta"`
+	Meta       listMeta   `json:"meta"`
+}
+
+// listMeta is meta, plus the server time of a list that also feeds a delta sync (ListAt).
+type listMeta struct {
+	RequestID  string `json:"request_id"`
+	ServerTime string `json:"server_time,omitempty"`
 }
 
 type pagination struct {
@@ -85,6 +91,18 @@ func OK(w http.ResponseWriter, r *http.Request, status int, data any) {
 
 // List writes a ListEnvelope with status 200. A nil data slice is sent as [], never null.
 func List[T any](w http.ResponseWriter, r *http.Request, data []T, page Page) {
+	writeList(w, r, data, page, "")
+}
+
+// ListAt is List for an endpoint that also answers delta pulls (Delta): the paged full pull
+// carries meta.server_time too, because it is where a client gets the watermark its first delta
+// pull starts from. The contract types the meta of such an endpoint as DeltaMeta, which
+// requires it.
+func ListAt[T any](w http.ResponseWriter, r *http.Request, data []T, page Page, serverTime time.Time) {
+	writeList(w, r, data, page, timeutil.FormatTimestamp(serverTime))
+}
+
+func writeList[T any](w http.ResponseWriter, r *http.Request, data []T, page Page, serverTime string) {
 	if data == nil {
 		data = []T{}
 	}
@@ -92,7 +110,7 @@ func List[T any](w http.ResponseWriter, r *http.Request, data []T, page Page) {
 		Success:    true,
 		Data:       data,
 		Pagination: pagination{Page: page.Page, Limit: page.Limit, Total: page.Total, TotalPages: page.TotalPages()},
-		Meta:       meta{RequestID: RequestID(r.Context())},
+		Meta:       listMeta{RequestID: RequestID(r.Context()), ServerTime: serverTime},
 	})
 }
 
