@@ -43,7 +43,8 @@ type fakeProvider struct {
 	mu      sync.Mutex
 	calls   [][]push.Message
 	invalid map[string]bool
-	failing map[string]bool
+	failing map[string]bool // a failure that may pass: worth a retry
+	refused map[string]bool // a failure that will not: FCM rejects it for good
 	err     error
 }
 
@@ -59,6 +60,9 @@ func (p *fakeProvider) Send(_ context.Context, msgs []push.Message) ([]push.Resu
 		out[i] = push.Result{InvalidToken: p.invalid[m.Token]}
 		if p.failing[m.Token] {
 			out[i].Err = errors.New("unavailable")
+		}
+		if p.refused[m.Token] {
+			out[i] = push.Result{Err: errors.New("sender id mismatch"), Permanent: true}
 		}
 	}
 	return out, nil
@@ -94,6 +98,7 @@ func newPushFlow(t *testing.T) *pushFlow {
 	pf := &pushFlow{flow: f, queue: &fakeQueue{}, provider: &fakeProvider{}}
 	f.service.UseDispatcher(notifications.NewPushDispatcher(pf.queue))
 	pf.deliverer = notifications.NewPushDeliverer(testkit.Pool(t), pf.provider, slog.New(slog.NewJSONHandler(f.logs, nil)))
+	pf.deliverer.UseSentLog(testkit.Redis(t), testkit.RandomPrefix(t))
 	return pf
 }
 
@@ -355,4 +360,68 @@ func retarget(t *testing.T, payload []byte, org int64) []byte {
 	out, err := json.Marshal(p)
 	require.NoError(t, err)
 	return out
+}
+
+// ⚠ A retry must not send again to the phones that already have the push: for a panic that would
+// sound the siren twice (a collapse key replaces the banner, not the sound).
+func TestPushRetryGoesOnlyToTheDevicesThatAreMissing(t *testing.T) {
+	f := newPushFlow(t)
+	_, actor := f.person(f.orgA)
+	_, a := f.person(f.orgA)
+	f.device(f.orgA, a, "tok-ok1")
+	f.device(f.orgA, a, "tok-flaky")
+	f.device(f.orgA, a, "tok-ok2")
+	f.provider.failing = map[string]bool{"tok-flaky": true}
+
+	f.notify(f.orgA, actor, notifications.Input{
+		Type: notifications.TypeTeamChanged, RecipientIDs: []int64{a}, Vars: notifications.Vars{TeamName: "R1"},
+	})
+	require.Error(t, f.run(), "the first attempt fails for one phone")
+	require.ElementsMatch(t, []string{"tok-ok1", "tok-flaky", "tok-ok2"}, f.provider.tokens())
+
+	f.provider.mu.Lock()
+	f.provider.failing, f.provider.calls = nil, nil // FCM recovers
+	f.provider.mu.Unlock()
+	require.NoError(t, f.run(), "asynq runs the same task again")
+	require.Equal(t, []string{"tok-flaky"}, f.provider.tokens(), "only the phone that is still missing is sent to")
+
+	f.provider.mu.Lock()
+	f.provider.calls = nil
+	f.provider.mu.Unlock()
+	require.NoError(t, f.run())
+	require.Empty(t, f.provider.tokens(), "everyone has it now: a third run sends nothing")
+}
+
+func TestPushDoesNotRetryAFailureThatCannotPass(t *testing.T) {
+	f := newPushFlow(t)
+	_, actor := f.person(f.orgA)
+	_, a := f.person(f.orgA)
+	f.device(f.orgA, a, "tok-ok")
+	f.device(f.orgA, a, "tok-refused")
+	f.provider.refused = map[string]bool{"tok-refused": true}
+
+	f.notify(f.orgA, actor, notifications.Input{
+		Type: notifications.TypePanicTriggered, RecipientIDs: []int64{a}, Vars: notifications.Vars{ActorName: "Budi"},
+		Priority: notifications.PriorityHigh,
+	})
+
+	require.NoError(t, f.run(), "a permanent failure does not fail the task, so asynq does not retry it")
+	require.Contains(t, f.logs.String(), "rejected for good")
+	require.ElementsMatch(t, []string{"tok-ok", "tok-refused"}, f.deviceTokens(f.orgA), "and no device is deleted for it")
+	require.Len(t, f.provider.sent(), 2, "each phone was sent to exactly once")
+}
+
+func TestPushWorksWithoutASentLog(t *testing.T) {
+	f := newPushFlow(t)
+	f.deliverer = notifications.NewPushDeliverer(testkit.Pool(t), f.provider, slog.New(slog.NewJSONHandler(f.logs, nil)))
+	_, actor := f.person(f.orgA)
+	_, a := f.person(f.orgA)
+	f.device(f.orgA, a, "tok-a")
+
+	f.notify(f.orgA, actor, notifications.Input{
+		Type: notifications.TypeTeamChanged, RecipientIDs: []int64{a}, Vars: notifications.Vars{TeamName: "R1"},
+	})
+	require.NoError(t, f.run())
+	require.NoError(t, f.run())
+	require.Equal(t, []string{"tok-a", "tok-a"}, f.provider.tokens(), "without the log a rerun sends again")
 }

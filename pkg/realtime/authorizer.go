@@ -46,31 +46,59 @@ func NewAuthorizer(pool *pgxpool.Pool, svc *access.Service, c clock.Clock) *Auth
 //     ORG_ADMIN, or the REGION_ADMIN of the region the project sits under).
 //     - personnel.{id}.notifications: only that person.
 func (a *Authorizer) Allow(ctx context.Context, p auth.Principal, room Room) (bool, error) {
-	if room.Scope == ScopePersonnel {
-		return room.Subject == strconv.FormatInt(p.PersonnelID, 10), nil
-	}
-	var allowed bool
-	err := database.WithTenant(ctx, a.pool, p.OrganizationID, func(q *db.Queries) error {
-		var err error
-		switch {
-		case room.Scope == ScopeTeam && room.Channel == ChannelPanic:
-			allowed, err = q.IsCurrentTeamMember(ctx, db.IsCurrentTeamMemberParams{
-				TeamCode: room.Subject, PersonnelID: p.PersonnelID,
-				Now: pgtype.Timestamptz{Time: a.clock.Now(), Valid: true},
-			})
-		case room.Scope == ScopeTeam && room.Channel == ChannelTracking:
-			var res access.Resolution
-			res, err = a.access.ResolveToday(ctx, q, p.PersonnelID, access.TeamPositionsView)
-			allowed = res.HasTeam(room.Subject)
-		case room.Scope == ScopeProject:
-			allowed, err = a.adminCoversProject(ctx, q, p.PersonnelID, room.Subject)
+	allowed, err := a.AllowedRooms(ctx, p, []Room{room})
+	return allowed[room.String()], err
+}
+
+// AllowedRooms asks Allow for several rooms in one transaction and returns the names of the
+// rooms that are allowed. The server uses it to re-check the rooms a connection already joined.
+func (a *Authorizer) AllowedRooms(ctx context.Context, p auth.Principal, rooms []Room) (map[string]bool, error) {
+	out := make(map[string]bool, len(rooms))
+	var needDB []Room
+	for _, room := range rooms {
+		if room.Scope == ScopePersonnel {
+			out[room.String()] = room.Subject == strconv.FormatInt(p.PersonnelID, 10)
+		} else {
+			needDB = append(needDB, room)
 		}
-		return err
+	}
+	if len(needDB) == 0 {
+		return out, nil
+	}
+	err := database.WithTenant(ctx, a.pool, p.OrganizationID, func(q *db.Queries) error {
+		var tracking *access.Resolution // resolved once, for every tracking room
+		for _, room := range needDB {
+			var allowed bool
+			var err error
+			switch {
+			case room.Scope == ScopeTeam && room.Channel == ChannelPanic:
+				allowed, err = q.IsCurrentTeamMember(ctx, db.IsCurrentTeamMemberParams{
+					TeamCode: room.Subject, PersonnelID: p.PersonnelID,
+					Now: pgtype.Timestamptz{Time: a.clock.Now(), Valid: true},
+				})
+			case room.Scope == ScopeTeam && room.Channel == ChannelTracking:
+				if tracking == nil {
+					res, err := a.access.ResolveToday(ctx, q, p.PersonnelID, access.TeamPositionsView)
+					if err != nil {
+						return err
+					}
+					tracking = &res
+				}
+				allowed = tracking.HasTeam(room.Subject)
+			case room.Scope == ScopeProject:
+				allowed, err = a.adminCoversProject(ctx, q, p.PersonnelID, room.Subject)
+			}
+			if err != nil {
+				return err
+			}
+			out[room.String()] = allowed
+		}
+		return nil
 	})
 	if err != nil {
-		return false, fmt.Errorf("realtime: authorize %s: %w", room, err)
+		return nil, fmt.Errorf("realtime: authorize rooms: %w", err)
 	}
-	return allowed, nil
+	return out, nil
 }
 
 func (a *Authorizer) adminCoversProject(ctx context.Context, q *db.Queries, personnelID int64, projectCode string) (bool, error) {

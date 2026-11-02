@@ -82,6 +82,9 @@ type MemberChange struct {
 	// BusinessLine is that regu's project line ("security" or "cleaning"): it decides the words
 	// of the notification.
 	BusinessLine string
+	// EffectiveDate is the day the change takes effect. It can be in the future: the person is
+	// told at once, and the text says from when.
+	EffectiveDate timeutil.Date
 	// ActorID is the admin who did it; they are not told about their own act.
 	ActorID int64
 }
@@ -390,7 +393,7 @@ func (m *Members) replace(ctx context.Context, actor auth.Principal, scope acces
 		}
 		change = MemberChange{
 			PersonnelID: old.PersonnelID, TeamCode: toTeam, Role: string(role),
-			BusinessLine: string(project.BusinessLine), ActorID: actor.PersonnelID,
+			BusinessLine: string(project.BusinessLine), EffectiveDate: effective, ActorID: actor.PersonnelID,
 		}
 		return recordMemberAudit(ctx, q, actor, action, row.ID, map[string]any{
 			"previous_id": old.ID, "personnel_id": old.PersonnelID, "effective_date": effective.String(),

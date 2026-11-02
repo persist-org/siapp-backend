@@ -170,7 +170,7 @@ func (p *FCMProvider) sendOne(ctx context.Context, accessToken string, m Message
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := p.client.Do(req)
 	if err != nil {
-		return Result{Err: fmt.Errorf("FCM send: %w", err)}
+		return Result{Err: fmt.Errorf("FCM send: %w", err)} // the network: worth a retry
 	}
 	defer func() { _ = resp.Body.Close() }()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, maxAnswerBody))
@@ -180,7 +180,29 @@ func (p *FCMProvider) sendOne(ctx context.Context, accessToken string, m Message
 	if isInvalidToken(resp.StatusCode, raw) {
 		return Result{InvalidToken: true}
 	}
-	return Result{Err: fmt.Errorf("FCM send: status %d", resp.StatusCode)}
+	err = fmt.Errorf("FCM send: status %d", resp.StatusCode)
+	switch {
+	case resp.StatusCode == http.StatusUnauthorized:
+		// The cached OAuth token was refused (revoked, or the clock drifted): drop it, so the next
+		// attempt asks Google for a new one, and let the task retry.
+		p.dropAccessToken(accessToken)
+		return Result{Err: err}
+	case resp.StatusCode == http.StatusTooManyRequests, resp.StatusCode == http.StatusRequestTimeout, resp.StatusCode >= 500:
+		return Result{Err: err}
+	}
+	// Every other answer (400 a payload FCM rejects, 403 SENDER_ID_MISMATCH or a disabled API, a
+	// 404 that is not UNREGISTERED) is about this message or this configuration, and the same
+	// request fails the same way again.
+	return Result{Err: err, Permanent: true}
+}
+
+// dropAccessToken forgets the cached token, if it is still the one that was refused.
+func (p *FCMProvider) dropAccessToken(refused string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.token == refused {
+		p.token = ""
+	}
 }
 
 // buildMessage is the FCM v1 message for one device.
@@ -214,9 +236,10 @@ func buildMessage(m Message) map[string]any {
 	}
 }
 
-// isInvalidToken tells a dead token from every other failure. A 400 INVALID_ARGUMENT is also
-// what a malformed payload gets, so it counts only when FCM names the token: a bug of ours must
-// not delete every device.
+// isInvalidToken tells a dead token from every other failure, and only by what FCM says about
+// the token: the errorCode UNREGISTERED, or an INVALID_ARGUMENT that names the registration
+// token. A bare 404 is not enough (a wrong project id or a proxy answers 404 too and would wipe
+// every device), and a 400 INVALID_ARGUMENT about the payload must not delete devices either.
 func isInvalidToken(status int, raw []byte) bool {
 	var e struct {
 		Error struct {
@@ -233,11 +256,6 @@ func isInvalidToken(status int, raw []byte) bool {
 			return true
 		}
 	}
-	switch {
-	case status == http.StatusNotFound || e.Error.Status == "NOT_FOUND":
-		return true
-	case status == http.StatusBadRequest && e.Error.Status == "INVALID_ARGUMENT":
-		return strings.Contains(strings.ToLower(e.Error.Message), "registration token")
-	}
-	return false
+	return status == http.StatusBadRequest && e.Error.Status == "INVALID_ARGUMENT" &&
+		strings.Contains(strings.ToLower(e.Error.Message), "registration token")
 }

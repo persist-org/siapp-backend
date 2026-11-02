@@ -14,10 +14,8 @@ import (
 	"siapp/pkg/platform/auth"
 )
 
-// TicketTTL is how long a ticket can be redeemed. The plan says 30 seconds; it is 5 minutes for
-// now so a ticket can be tried by hand in Postman. A ticket is still single-use, so the longer
-// window only matters for one that was never redeemed. Put it back to 30 seconds before release.
-const TicketTTL = 5 * time.Minute
+// TicketTTL is how long a ticket can be redeemed.
+const TicketTTL = 30 * time.Second
 
 const ticketBytes = 32
 
@@ -39,7 +37,7 @@ type ticketValue struct {
 //
 // ⚠ Why a ticket and not ?token= as the realtime doc allows: a browser cannot set an
 // Authorization header on a WebSocket, and an access token in a URL ends up in proxy and server
-// logs, where it is good for 15 minutes. A ticket is good for a few minutes (TicketTTL) and for one connection
+// logs, where it is good for 15 minutes. A ticket is good for 30 seconds (TicketTTL) and for one connection
 // (it is deleted by the read that redeems it), so what a log keeps is harmless.
 type Tickets struct {
 	rdb    redis.UniversalClient

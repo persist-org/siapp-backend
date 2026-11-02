@@ -68,7 +68,7 @@ func Render(t Type, v Vars) (title, body string) {
 			actor + " membalas instruksi Anda" + with(": ", v.Subject) + "."
 	case TypeTeamChanged:
 		return "Perpindahan " + strings.ToLower(l.team),
-			"Anda dipindahkan ke " + strings.ToLower(l.team) + " " + orDefault(v.TeamName, "lain") + "."
+			"Anda dipindahkan ke " + strings.ToLower(l.team) + " " + orDefault(v.TeamName, "lain") + onDate(" mulai ", date) + "."
 	case TypePositionChanged:
 		return "Pergantian posisi", positionChangedBody(l, v)
 	case TypePatrolSubmitted:
@@ -110,9 +110,9 @@ func Render(t Type, v Vars) (title, body string) {
 func positionChangedBody(l labels, v Vars) string {
 	switch v.TeamRole {
 	case db.TeamRoleDANRU:
-		return "Peran Anda di " + strings.ToLower(l.team) + with(" ", v.TeamName) + " sekarang " + l.danru + "."
+		return "Peran Anda di " + strings.ToLower(l.team) + with(" ", v.TeamName) + " sekarang " + l.danru + onDate(" mulai ", v.Date) + "."
 	case db.TeamRoleMEMBER:
-		return "Peran Anda di " + strings.ToLower(l.team) + with(" ", v.TeamName) + " sekarang " + l.member + "."
+		return "Peran Anda di " + strings.ToLower(l.team) + with(" ", v.TeamName) + " sekarang " + l.member + onDate(" mulai ", v.Date) + "."
 	}
 	if v.PositionName != "" {
 		return "Posisi Anda sekarang " + v.PositionName + "."

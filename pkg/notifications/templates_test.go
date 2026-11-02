@@ -224,3 +224,15 @@ func TestRenderHasATextForAnUnknownType(t *testing.T) {
 	require.Equal(t, "Notifikasi baru", title)
 	require.Equal(t, "Ada pembaruan untuk Anda.", body)
 }
+
+func TestAMoveOrRoleChangeSaysFromWhen(t *testing.T) {
+	d := timeutil.NewDate(2026, time.November, 3)
+
+	_, body := notifications.Render(notifications.TypeTeamChanged, notifications.Vars{TeamName: "1K-IBMI-S1", Date: d})
+	require.Equal(t, "Anda dipindahkan ke regu 1K-IBMI-S1 mulai 3 November 2026.", body)
+	_, body = notifications.Render(notifications.TypeTeamChanged, notifications.Vars{TeamName: "1K-IBMI-S1"})
+	require.Equal(t, "Anda dipindahkan ke regu 1K-IBMI-S1.", body, "without a date the text is as before")
+
+	_, body = notifications.Render(notifications.TypePositionChanged, notifications.Vars{TeamName: "1K-IBMI-S1", TeamRole: db.TeamRoleDANRU, Date: d})
+	require.Contains(t, body, "mulai 3 November 2026.")
+}

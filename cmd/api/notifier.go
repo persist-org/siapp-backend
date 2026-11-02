@@ -22,8 +22,10 @@ func (n notifier) MemberMoved(ctx context.Context, c organization.MemberChange) 
 	n.service.Notify(ctx, notifications.Input{
 		Type:         notifications.TypeTeamChanged,
 		RecipientIDs: []int64{c.PersonnelID},
-		Vars:         notifications.Vars{BusinessLine: notifications.BusinessLine(c.BusinessLine), TeamName: c.TeamCode},
-		Data:         map[string]any{"team_code": c.TeamCode},
+		Vars: notifications.Vars{
+			BusinessLine: notifications.BusinessLine(c.BusinessLine), TeamName: c.TeamCode, Date: c.EffectiveDate,
+		},
+		Data: map[string]any{"team_code": c.TeamCode},
 		// The admin who moved them knows.
 		ExcludePersonnelID: c.ActorID,
 	})
@@ -37,6 +39,7 @@ func (n notifier) MemberRoleChanged(ctx context.Context, c organization.MemberCh
 		RecipientIDs: []int64{c.PersonnelID},
 		Vars: notifications.Vars{
 			BusinessLine: notifications.BusinessLine(c.BusinessLine), TeamName: c.TeamCode, TeamRole: db.TeamRole(c.Role),
+			Date: c.EffectiveDate,
 		},
 		Data:               map[string]any{"team_code": c.TeamCode},
 		ExcludePersonnelID: c.ActorID,

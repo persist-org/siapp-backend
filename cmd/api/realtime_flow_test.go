@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 
 	"siapp/internal/db"
@@ -46,6 +47,8 @@ INSERT INTO teams (code, project_code, description, active) VALUES
 type flow struct {
 	t         *testing.T
 	srv       *httptest.Server
+	rdb       *redis.Client
+	prefix    string
 	fake      *personeltest.Fake
 	tokens    *auth.Tokens
 	org       int64
@@ -63,10 +66,10 @@ func newFlow(t *testing.T) *flow {
 		LocalDir: t.TempDir(), LocalSigningKey: "flow-test-signing-key-flow-test-signing-key", PublicBaseURL: "http://localhost:8080",
 	}, clock.System{})
 	require.NoError(t, err)
-	f := &flow{t: t, fake: fake, tokens: testkit.Tokens(t), org: personeltest.OrgSatu}
+	f := &flow{t: t, fake: fake, tokens: testkit.Tokens(t), org: personeltest.OrgSatu, rdb: testkit.Redis(t), prefix: testkit.RandomPrefix(t)}
 	router := newRouter(deps{
-		Logger: slog.New(slog.NewJSONHandler(io.Discard, nil)), Pool: testkit.Pool(t), Redis: testkit.Redis(t),
-		RedisPrefix: testkit.RandomPrefix(t), Personel: client, Tokens: f.tokens, Clock: clock.System{},
+		Logger: slog.New(slog.NewJSONHandler(io.Discard, nil)), Pool: testkit.Pool(t), Redis: f.rdb,
+		RedisPrefix: f.prefix, Personel: client, Tokens: f.tokens, Clock: clock.System{},
 		ClientIP: httpx.ClientIPFunc(""), MediaStorage: storage, PersonelWebhookSecret: webhookSecret,
 	})
 	f.srv = httptest.NewServer(router)
@@ -409,6 +412,7 @@ func TestAnAdminMoveAndRoleChangeCreateInboxRows(t *testing.T) {
 	require.Len(t, inbox, 1)
 	require.Equal(t, "TEAM_CHANGED", inbox[0].Type)
 	require.Contains(t, inbox[0].Body, "1K-IBMI-S2")
+	require.Contains(t, inbox[0].Body, "mulai", "the text says from when, the move can be planned for later")
 	var adminRows int
 	f.query([]any{&adminRows}, "SELECT count(*) FROM notifications WHERE recipient_personnel_id <> $1", f.person)
 	require.Zero(t, adminRows, "the admin who did it is not told")
@@ -441,4 +445,46 @@ func TestTheWebSocketRouteIsPublicAndTheTicketRouteIsNot(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, code)
 	code, raw := f.do(http.MethodPost, "/api/v1/ws/ticket", f.personTok, nil, nil)
 	require.Equal(t, http.StatusOK, code, string(raw))
+}
+
+// ⚠ A process that dies in the middle of an event leaves its claim behind. That claim must expire
+// in minutes, not stay for the 7 days of a "done" mark, or Personel's retry would be taken for a
+// replay and the event lost.
+func TestPersonelWebhookRecoversFromAnEventThatDiedHalfWay(t *testing.T) {
+	f := newFlow(t)
+	data := map[string]any{"nik": personeltest.NIKAnggota1Satu, "position_name": "Danru Pulih"}
+	key := f.prefix + "personel-event:" + strconv.FormatInt(f.org, 10) + ":crashed-event"
+
+	// What a handler that was killed after claiming the id leaves in Redis.
+	require.NoError(t, f.rdb.Set(t.Context(), key, "processing", 1500*time.Millisecond).Err())
+
+	code, reason := f.event("position.changed", data, eventOpts{id: "crashed-event"})
+	require.Equal(t, http.StatusConflict, code, "the claim is still held: not a duplicate, so Personel retries")
+	require.Equal(t, "WEBHOOK_EVENT_IN_PROGRESS", reason)
+	require.Empty(t, f.inbox(f.personTok))
+
+	require.Eventually(t, func() bool {
+		code, status := f.event("position.changed", data, eventOpts{id: "crashed-event"})
+		return code == http.StatusOK && status == "processed"
+	}, 5*time.Second, 300*time.Millisecond, "once the claim expires the retry is processed")
+	require.Len(t, f.inbox(f.personTok), 1)
+
+	// Done is remembered for days, so a later replay is a duplicate.
+	ttl := f.rdb.TTL(t.Context(), key).Val()
+	require.Greater(t, ttl, 6*24*time.Hour)
+	code, status := f.event("position.changed", data, eventOpts{id: "crashed-event"})
+	require.Equal(t, http.StatusOK, code)
+	require.Equal(t, "duplicate", status)
+	require.Len(t, f.inbox(f.personTok), 1)
+}
+
+func TestPersonelWebhookReleasesTheClaimOfARefusedEvent(t *testing.T) {
+	f := newFlow(t)
+	key := f.prefix + "personel-event:" + strconv.FormatInt(f.org, 10) + ":ttl-check"
+	// An event that fails after claiming releases the claim at once, so the retry is processed.
+	code, _ := f.event("position.changed", map[string]any{"nik": personeltest.NIKAnggota1Satu}, eventOpts{id: "ttl-check"})
+	require.Equal(t, http.StatusBadRequest, code, "a payload without position_name is refused")
+	exists, err := f.rdb.Exists(t.Context(), key).Result()
+	require.NoError(t, err)
+	require.Zero(t, exists, "a refused event releases its claim")
 }

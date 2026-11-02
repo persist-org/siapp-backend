@@ -46,8 +46,15 @@ const (
 	SignatureHeader = "X-Personel-Signature"
 	// EventMaxAge is how far the event's timestamp may be from now, in either direction.
 	EventMaxAge = 5 * time.Minute
-	// EventDedupTTL is how long a processed event id is remembered.
+	// EventDedupTTL is how long a PROCESSED event id is remembered.
 	EventDedupTTL = 7 * 24 * time.Hour
+	// EventClaimTTL is how long an event id stays claimed while it is being processed. It is far
+	// longer than any handler takes and short enough that a process that died mid-event does not
+	// make Personel's retry look like a replay for days.
+	EventClaimTTL = 2 * time.Minute
+
+	eventClaimed = "processing"
+	eventDone    = "done"
 
 	maxEventBody = 64 << 10
 
@@ -62,6 +69,8 @@ var (
 		"Waktu event terlalu jauh dari waktu server.")
 	errPayloadInvalid = apperr.New(http.StatusBadRequest, apperr.CodeBadRequest, reasonPayloadInvalid,
 		"Isi event tidak valid.")
+	errEventInProgress = apperr.New(http.StatusConflict, apperr.CodeConflict, "WEBHOOK_EVENT_IN_PROGRESS",
+		"Event ini sedang diproses. Kirim ulang beberapa saat lagi.")
 )
 
 // PositionNotifier tells a person that their position changed. The implementation sends
@@ -176,17 +185,29 @@ func (e *PersonelEvents) receive(w http.ResponseWriter, r *http.Request) {
 
 	// ⚠ Replays. Personel delivers at least once, so the same event_id can arrive twice (a
 	// timeout after we processed it, a retry). Without this a replayed position.changed would
-	// notify the person twice. The id is claimed BEFORE the work, atomically (SET NX), so two
-	// deliveries racing each other cannot both run; if the work fails the claim is released, so
-	// Personel's retry is processed and not mistaken for a replay.
+	// notify the person twice. The id is CLAIMED before the work, atomically (SET NX), so two
+	// deliveries racing each other cannot both run, and marked DONE only after it succeeded.
+	//   - A failed event releases its claim, so Personel's retry is processed.
+	//   - A process that dies mid-event leaves a claim that expires after EventClaimTTL (2
+	//     minutes), not the 7 days a "done" mark lives: the retry is processed then. Until it
+	//     expires a redelivery is answered 409 and not "duplicate", so Personel keeps retrying
+	//     and the event is never silently lost.
 	key := e.prefix + "personel-event:" + strconv.FormatInt(ev.OrganizationID, 10) + ":" + ev.EventID
-	claimed, err := e.rdb.SetNX(r.Context(), key, "1", EventDedupTTL).Result()
+	claimed, err := e.rdb.SetNX(r.Context(), key, eventClaimed, EventClaimTTL).Result()
 	if err != nil {
 		httpx.Error(w, r, apperr.New(http.StatusServiceUnavailable, apperr.CodeInternal, "", "Layanan sementara tidak tersedia."))
 		return
 	}
 	if !claimed {
-		httpx.OK(w, r, http.StatusOK, map[string]string{"status": "duplicate"})
+		state, err := e.rdb.Get(r.Context(), key).Result()
+		switch {
+		case err == nil && state == eventDone:
+			httpx.OK(w, r, http.StatusOK, map[string]string{"status": "duplicate"})
+		case err == nil || errors.Is(err, redis.Nil): // being processed, or the claim just expired
+			httpx.Error(w, r, errEventInProgress)
+		default:
+			httpx.Error(w, r, apperr.New(http.StatusServiceUnavailable, apperr.CodeInternal, "", "Layanan sementara tidak tersedia."))
+		}
 		return
 	}
 	status, err := e.handle(r.Context(), ev)
@@ -196,6 +217,12 @@ func (e *PersonelEvents) receive(w http.ResponseWriter, r *http.Request) {
 			slog.String("type", ev.Type), slog.String("event_id", ev.EventID), slog.Any("error", err))
 		httpx.Error(w, r, err)
 		return
+	}
+	if err := e.rdb.Set(context.WithoutCancel(r.Context()), key, eventDone, EventDedupTTL).Err(); err != nil {
+		// The event is processed; only the long memory failed. The claim expires, and a redelivery
+		// after that would be processed twice: logged, because it can be seen and fixed.
+		e.logger.ErrorContext(r.Context(), "personel event processed but not remembered",
+			slog.String("event_id", ev.EventID), slog.Any("error", err))
 	}
 	httpx.OK(w, r, http.StatusOK, map[string]string{"status": status})
 }

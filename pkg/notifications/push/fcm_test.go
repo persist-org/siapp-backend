@@ -73,6 +73,17 @@ func newFCMServer(t *testing.T) *fcmServer {
 				_, _ = io.WriteString(w, `{"error":{"code":400,"status":"INVALID_ARGUMENT","message":"Invalid value at message.data"}}`)
 			case "down":
 				w.WriteHeader(http.StatusServiceUnavailable)
+			case "throttled":
+				w.WriteHeader(http.StatusTooManyRequests)
+			case "bare404":
+				// What a wrong project id or a proxy answers: not FCM saying the token is dead.
+				w.WriteHeader(http.StatusNotFound)
+				_, _ = io.WriteString(w, `{"error":{"code":404,"status":"NOT_FOUND","message":"Requested entity was not found."}}`)
+			case "forbidden":
+				w.WriteHeader(http.StatusForbidden)
+				_, _ = io.WriteString(w, `{"error":{"code":403,"status":"PERMISSION_DENIED","details":[{"errorCode":"SENDER_ID_MISMATCH"}]}}`)
+			case "unauthorized":
+				w.WriteHeader(http.StatusUnauthorized)
 			default:
 				_, _ = io.WriteString(w, `{"name":"projects/demo/messages/1"}`)
 			}
@@ -111,9 +122,52 @@ func TestFCMClassifiesEveryAnswer(t *testing.T) {
 	require.True(t, results[2].InvalidToken, "INVALID_ARGUMENT that names the token")
 	require.False(t, results[3].InvalidToken, "a payload problem must not delete devices")
 	require.Error(t, results[3].Err)
+	require.True(t, results[3].Permanent, "and it will not pass by retrying")
 	require.False(t, results[4].InvalidToken)
 	require.Error(t, results[4].Err, "a 503 is retried")
+	require.False(t, results[4].Permanent)
 	require.NotContains(t, results[4].Err.Error(), "down", "the token stays out of errors")
+}
+
+func TestFCMTellsAPermanentFailureFromOneThatMayPass(t *testing.T) {
+	s := newFCMServer(t)
+	p := s.provider(t)
+
+	tokens := []string{"throttled", "down", "bare404", "forbidden", "badpayload"}
+	msgs := make([]push.Message, len(tokens))
+	for i, tok := range tokens {
+		msgs[i] = push.Message{Token: tok}
+	}
+	results, err := p.Send(t.Context(), msgs)
+	require.NoError(t, err)
+
+	for i, tok := range tokens {
+		require.False(t, results[i].InvalidToken, "%s must not delete a device", tok)
+		require.Error(t, results[i].Err, tok)
+	}
+	require.False(t, results[0].Permanent, "429 may pass")
+	require.False(t, results[1].Permanent, "503 may pass")
+	require.True(t, results[2].Permanent, "a 404 that does not say UNREGISTERED is not a dead token, and a retry cannot fix it")
+	require.True(t, results[3].Permanent, "403 SENDER_ID_MISMATCH")
+	require.True(t, results[4].Permanent, "400 about the payload")
+}
+
+func TestFCMGetsANewAccessTokenAfterBeingRefused(t *testing.T) {
+	s := newFCMServer(t)
+	p := s.provider(t)
+
+	_, err := p.Send(t.Context(), []push.Message{{Token: "good"}})
+	require.NoError(t, err)
+	require.EqualValues(t, 1, s.exchange.Load())
+
+	results, err := p.Send(t.Context(), []push.Message{{Token: "unauthorized"}})
+	require.NoError(t, err)
+	require.Error(t, results[0].Err)
+	require.False(t, results[0].Permanent, "a refused OAuth token is retried")
+
+	_, err = p.Send(t.Context(), []push.Message{{Token: "good"}})
+	require.NoError(t, err)
+	require.EqualValues(t, 2, s.exchange.Load(), "the refused token was dropped, so the next send asked Google again")
 }
 
 func TestFCMReusesTheAccessToken(t *testing.T) {

@@ -196,14 +196,15 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 
 // session is one accepted connection.
 type session struct {
-	h         *Handler
-	conn      *websocket.Conn
-	c         *Conn
-	principal auth.Principal
-	ctx       context.Context
-	cancel    context.CancelFunc
-	lastPong  atomic.Int64
-	closeOnce sync.Once
+	h          *Handler
+	conn       *websocket.Conn
+	c          *Conn
+	principal  auth.Principal
+	ctx        context.Context
+	cancel     context.CancelFunc
+	lastPong   atomic.Int64
+	rechecking atomic.Bool
+	closeOnce  sync.Once
 }
 
 // closeWith ends the connection with a close code, once. It does not wait for the peer.
@@ -276,6 +277,7 @@ func (s *session) keepAlive(expiresAt time.Time) {
 				s.closeWith(CloseUnauthorized, "session ended")
 				return
 			}
+			go s.recheckRooms()
 			go func() {
 				ctx, cancel := context.WithTimeout(s.ctx, s.h.cfg.IdleTimeout)
 				defer cancel()
@@ -284,6 +286,50 @@ func (s *session) keepAlive(expiresAt time.Time) {
 				}
 			}()
 		}
+	}
+}
+
+// recheckRooms asks the Authorizer again about every team and project room the connection joined,
+// and takes it out of the ones it may no longer be in: a person moved to another regu, a DANRU
+// who became an ordinary member, an admin whose role was withdrawn. Without it the permission
+// is only judged at subscribe time, and such a person would keep receiving the regu's panics and
+// the positions of everyone in it until the token ran out or the socket dropped.
+//
+// It runs on the keep-alive tick (every PingInterval, 20 s), one transaction per connection, and
+// only for connections that hold such rooms. If the database cannot answer, the rooms are kept:
+// a hiccup must not cut a phone off from a panic. A person who is deactivated is not left to
+// this check, their session ends (see keepAlive).
+func (s *session) recheckRooms() {
+	if !s.rechecking.CompareAndSwap(false, true) {
+		return // the previous check is still running
+	}
+	defer s.rechecking.Store(false)
+
+	var rooms []Room
+	for _, name := range s.h.hub.RoomsOf(s.c) {
+		if room, ok := ParseRoom(name); ok && room.Scope != ScopePersonnel {
+			rooms = append(rooms, room)
+		}
+	}
+	if len(rooms) == 0 {
+		return
+	}
+	allowed, err := s.h.authorizer.AllowedRooms(s.ctx, s.principal, rooms)
+	if err != nil {
+		if s.ctx.Err() == nil {
+			s.h.logger.Error("realtime: re-check rooms", slog.Any("error", err))
+		}
+		return
+	}
+	var revoked []string
+	for _, room := range rooms {
+		if !allowed[room.String()] {
+			s.h.hub.Leave(s.c, room.String())
+			revoked = append(revoked, room.String())
+		}
+	}
+	if len(revoked) > 0 {
+		s.reply("unsubscribed", "", map[string]any{"rooms": revoked, "reason": DeniedForbidden})
 	}
 }
 
@@ -308,6 +354,10 @@ func (s *session) readLoop() {
 		if err != nil {
 			return
 		}
+		// Any frame proves the client is alive, not only the answer to a protocol ping: a client
+		// or a proxy in between that does not pass control frames through but sends its own
+		// {"type":"ping"} must not be closed for it.
+		s.lastPong.Store(time.Now().UnixNano())
 		var f frame
 		if json.Unmarshal(raw, &f) != nil || f.Type == "" {
 			s.reply("error", "", map[string]any{"code": CloseBadFrame, "message": "frame is not valid JSON with a type"})

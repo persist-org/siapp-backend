@@ -42,9 +42,12 @@ type Result struct {
 	// InvalidToken means the provider said the token is unregistered or malformed: the app was
 	// uninstalled or the token rotated. The device is deleted.
 	InvalidToken bool
-	// Err is a failure that may pass, such as a timeout or a 5xx. Nil on success and on an
-	// invalid token.
+	// Err is why the push was not accepted. Nil on success and on an invalid token.
 	Err error
+	// Permanent says that sending the same message again will fail the same way: a rejected
+	// payload, a sender id that does not match, a disabled API. Only a failure that is NOT
+	// permanent (a timeout, a 5xx, a 429) is worth a retry.
+	Permanent bool
 }
 
 // Provider delivers messages.

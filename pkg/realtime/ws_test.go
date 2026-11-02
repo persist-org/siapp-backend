@@ -567,3 +567,94 @@ func TestPublishRefusesANameThatIsNotARoom(t *testing.T) {
 	require.Error(t, err)
 	require.False(t, bytes.Contains([]byte(err.Error()), []byte("rt:")))
 }
+
+// ⚠ Permission is not only judged at subscribe time: a person moved out of a regu stops receiving
+// its panics, without having to reconnect.
+func TestAPersonMovedOutOfTheirTeamLosesItsRooms(t *testing.T) {
+	r := newRig(t, realtime.Config{PingInterval: 50 * time.Millisecond})
+	token, me := r.person(r.orgA)
+	r.member(r.orgA, team1, me, "MEMBER")
+	conn := r.connect(token)
+	teamRoom, personal := "team."+team1+".panic", realtime.PersonalRoom(me)
+	require.Len(t, subscribe(t, conn, teamRoom, personal).Joined, 2)
+
+	r.exec(r.orgA, "UPDATE team_members SET end_date = current_date - 1 WHERE personnel_id = $1", me) // moved out
+
+	var gone frame
+	for {
+		gone = read(t, conn)
+		if gone.Type == "unsubscribed" {
+			break
+		}
+	}
+	var data struct {
+		Rooms  []string `json:"rooms"`
+		Reason string   `json:"reason"`
+	}
+	gone.into(t, &data)
+	require.Equal(t, []string{teamRoom}, data.Rooms, "only the room they may no longer be in")
+	require.Equal(t, realtime.DeniedForbidden, data.Reason)
+
+	r.publish(r.orgA, teamRoom, "panic.alert", map[string]any{"panic_id": 1})
+	r.expectNothingBefore(r.orgA, personal, conn) // the panic is not delivered; the personal room still works
+}
+
+func TestADanruWhoBecomesAMemberLosesTrackingButKeepsPanic(t *testing.T) {
+	r := newRig(t, realtime.Config{PingInterval: 50 * time.Millisecond})
+	token, me := r.person(r.orgA)
+	r.member(r.orgA, team1, me, "DANRU")
+	conn := r.connect(token)
+	panicRoom, tracking := "team."+team1+".panic", "team."+team1+".tracking"
+	require.Len(t, subscribe(t, conn, panicRoom, tracking).Joined, 2)
+
+	r.exec(r.orgA, "UPDATE team_members SET role = 'MEMBER' WHERE personnel_id = $1", me)
+
+	var gone frame
+	for {
+		gone = read(t, conn)
+		if gone.Type == "unsubscribed" {
+			break
+		}
+	}
+	var data struct {
+		Rooms []string `json:"rooms"`
+	}
+	gone.into(t, &data)
+	require.Equal(t, []string{tracking}, data.Rooms, "the map of everyone is for the DANRU; the regu's panics are for every member")
+
+	r.publish(r.orgA, panicRoom, "panic.alert", map[string]any{"panic_id": 2})
+	require.Equal(t, "panic.alert", read(t, conn).Type)
+}
+
+func TestRoomsThatAreStillAllowedSurviveTheRecheck(t *testing.T) {
+	r := newRig(t, realtime.Config{PingInterval: 40 * time.Millisecond})
+	token, me := r.person(r.orgA)
+	r.member(r.orgA, team1, me, "MEMBER")
+	conn := r.connect(token)
+	room := "team." + team1 + ".panic"
+	require.Len(t, subscribe(t, conn, room).Joined, 1)
+
+	time.Sleep(400 * time.Millisecond) // many re-checks
+	r.publish(r.orgA, room, "panic.alert", map[string]any{"panic_id": 3})
+	require.Equal(t, "panic.alert", read(t, conn).Type, "nothing was unsubscribed")
+}
+
+// A client that cannot answer protocol pings (or a proxy that eats them) but sends its own
+// {"type":"ping"} is alive: any frame counts.
+func TestAnyClientFrameCountsAsLiveness(t *testing.T) {
+	r := newRig(t, realtime.Config{PingInterval: 50 * time.Millisecond, IdleTimeout: 250 * time.Millisecond})
+	token, _ := r.person(r.orgA)
+	conn := r.dial(token, "") // never reads while it pings, so it never answers a protocol ping
+
+	for range 16 { // 800 ms: three idle timeouts
+		send(t, conn, map[string]any{"type": "ping"})
+		time.Sleep(50 * time.Millisecond)
+	}
+	send(t, conn, map[string]any{"type": "ping"})
+	for {
+		f := read(t, conn) // would be the close frame, 4408, if the connection had been dropped
+		if f.Type == "pong" {
+			return
+		}
+	}
+}

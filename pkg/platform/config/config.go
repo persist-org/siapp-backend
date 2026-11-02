@@ -76,7 +76,8 @@ type Config struct {
 
 	// PersonelWebhookSecret signs the change events Personel posts to
 	// /api/v1/integrations/personel/events (HMAC-SHA256 of the body). Empty makes the receiver
-	// refuse every event. Never logged.
+	// refuse every event; a set value must be at least 32 bytes, and not a placeholder in
+	// production. Never logged.
 	PersonelWebhookSecret string `env:"PERSONEL_WEBHOOK_SECRET"`
 
 	// FCMServiceAccountBase64 is the Firebase service account key (the JSON file), base64-encoded.
@@ -218,6 +219,18 @@ func Parse(environ map[string]string) (Config, error) {
 		problems = append(problems, fmt.Sprintf("JWT_SECRET must be at least %d bytes (generate one with: openssl rand -base64 48)", minJWTSecretBytes))
 	case cfg.AppEnv == EnvProduction && weakSecret(cfg.JWTSecret):
 		problems = append(problems, "JWT_SECRET looks like a placeholder or a low-entropy value, which is refused in production (generate one with: openssl rand -base64 48)")
+	}
+
+	// Unlike JWT_SECRET an empty webhook secret is allowed: the receiver then refuses every event,
+	// which is the safe way to leave it unconfigured. A value that IS set must be a real secret,
+	// because whoever holds it can sign events that end sessions and team memberships and change
+	// positions in any organization.
+	switch {
+	case cfg.PersonelWebhookSecret == "":
+	case len(cfg.PersonelWebhookSecret) < minJWTSecretBytes:
+		problems = append(problems, fmt.Sprintf("PERSONEL_WEBHOOK_SECRET must be at least %d bytes, or empty to refuse every event (generate one with: openssl rand -base64 48)", minJWTSecretBytes))
+	case cfg.AppEnv == EnvProduction && weakSecret(cfg.PersonelWebhookSecret):
+		problems = append(problems, "PERSONEL_WEBHOOK_SECRET looks like a placeholder or a low-entropy value, which is refused in production (generate one with: openssl rand -base64 48)")
 	}
 
 	problems = append(problems, checkStorage(&cfg)...)

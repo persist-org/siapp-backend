@@ -111,7 +111,9 @@ func run() error {
 	// without ever starving the default queue.
 	srv := asynq.NewServer(redisOpt, asynq.Config{Concurrency: workerConcurrency, Queues: notifications.Queues()})
 	mux := asynq.NewServeMux()
-	notifications.RegisterPushJob(mux, notifications.NewPushDeliverer(pool, pushProvider, logger))
+	pushDeliverer := notifications.NewPushDeliverer(pool, pushProvider, logger)
+	pushDeliverer.UseSentLog(rdb, config.RedisKeyPrefix) // a retry sends only to the devices still missing
+	notifications.RegisterPushJob(mux, pushDeliverer)
 	identity.RegisterJobs(mux, identity.NewCleaner(pool, clock.System{}), logger)
 	identity.RegisterResyncJob(mux, resyncer, logger)
 	organization.RegisterScheduleJob(mux, organization.NewScheduleExtender(pool, clock.System{}), logger)
