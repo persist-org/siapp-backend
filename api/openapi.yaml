@@ -177,6 +177,13 @@ components:
       description: |
         Session JWT (mobile/web) dari POST /auth/login. Klaim wajib: sub, organization_id,
         roles/scope, exp, iat. Middleware set app.current_org → RLS.
+    webhookSignature:
+      type: apiKey
+      in: header
+      name: X-Personel-Signature
+      description: |
+        HMAC-SHA256 (heksadesimal) dari body mentah dengan `PERSONEL_WEBHOOK_SECRET`. Dipakai
+        webhook Personel; operasi itu bertanda `security: []` karena tidak membawa token sesi.
     oauth2ClientCredentials:
       type: oauth2
       description: |
@@ -2879,23 +2886,83 @@ components:
         totals: { type: object, additionalProperties: true }
 
     # ---------- Notifications (mobile, 12 event) ----------
+    NotificationType:
+      type: string
+      description: >-
+        Jenis notifikasi. 12 yang pertama adalah event Tabel 7 manual (PERPINDAHAN_REGU = `TEAM_CHANGED`,
+        PERGANTIAN_POSISI = `POSITION_CHANGED`); 4 yang terakhir tersirat dari alur manual
+        (keputusan izin, umpan balik instruksi, tukar jaga, panik selesai).
+      enum:
+        - LEAVE_REQUESTED
+        - ABSENCE_MARKED
+        - REPORT_SUBMITTED
+        - INSTRUCTION_RECEIVED
+        - TEAM_CHANGED
+        - POSITION_CHANGED
+        - PATROL_SUBMITTED
+        - PATROL_APPROVED
+        - GUARD_SUBMITTED
+        - GUARD_APPROVED
+        - PANIC_TRIGGERED
+        - OFFLINE_SUBMISSION_SENT
+        - LEAVE_DECIDED
+        - INSTRUCTION_FEEDBACK
+        - SWAP_ASSIGNED
+        - PANIC_RESOLVED
+    NotificationPriority:
+      type: string
+      enum: [NORMAL, HIGH]
+      description: "`HIGH` hanya untuk panik: dikirim lewat antrean prioritas dan kanal sirine di perangkat."
     Notification:
       type: object
-      description: Notifikasi mobile (12 event, AC-API-NTF-1).
+      description: >-
+        Satu notifikasi untuk satu penerima (AC-API-NTF-1). `title` dan `body` sudah dirender
+        (Bahasa Indonesia, label mengikuti `business_line` proyek) dan tidak memuat NIK.
+      required: [id, organization_id, personnel_id, type, title, body, priority, is_read, created_at, updated_at]
       properties:
         id: { type: integer, format: int64 }
         organization_id: { type: integer, format: int64 }
-        personnel_id: { type: integer, format: int64 }
-        type:
-          type: string
-          description: "Jenis event (mis. izin, mangkir, laporan, instruksi, perpindahan_regu, pergantian_posisi, patroli, jaga, panik, laporan_offline)."
-          example: panik
+        personnel_id: { type: integer, format: int64, description: Penerima. }
+        type: { $ref: '#/components/schemas/NotificationType' }
         title: { type: string }
         body: { type: string }
+        priority: { $ref: '#/components/schemas/NotificationPriority' }
+        entity_type: { type: string, nullable: true, description: "Jenis record yang dituju (mis. `panic`), untuk deep-link." }
+        entity_id: { type: integer, format: int64, nullable: true }
         data: { type: object, nullable: true, additionalProperties: true, description: "Payload deep-link (entity id/route)." }
         is_read: { type: boolean }
         read_at: { type: string, format: date-time, nullable: true }
         created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time, description: "Berubah saat dibaca; dasar delta-sync." }
+    WsTicket:
+      type: object
+      required: [ticket, expires_in]
+      properties:
+        ticket: { type: string, description: "Dipakai sekali pada GET /api/v1/ws?ticket=." }
+        expires_in: { type: integer, example: 30, description: "Detik." }
+    PersonelEvent:
+      type: object
+      required: [event_id, type, organization_id, timestamp]
+      properties:
+        event_id: { type: string, maxLength: 128, description: "Unik per event; dasar penolakan kiriman ulang (7 hari)." }
+        type:
+          type: string
+          example: employee.deactivated
+          description: "employee.updated | employee.deactivated | placement.changed | position.changed | leave.decided"
+        organization_id: { type: integer, format: int64 }
+        timestamp: { type: string, format: date-time }
+        data:
+          type: object
+          description: "employee.* dan position.changed membawa `nik` (position.changed juga `position_name`); placement.changed membawa `project_id`."
+          properties:
+            nik: { type: string }
+            position_name: { type: string }
+            project_id: { type: integer, format: int64 }
+    PersonelEventResult:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [processed, duplicate, ignored] }
     NotificationTokenInput:
       type: object
       required: [firebase_token, platform]
@@ -9869,11 +9936,112 @@ paths:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessEnvelope' } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '422': { $ref: '#/components/responses/ValidationError' }
+  /ws/ticket:
+    post:
+      operationId: postWsTicket
+      tags: [Notification]
+      summary: Tiket sekali pakai untuk membuka WebSocket dari browser
+      description: |
+        Browser tidak bisa mengirim header `Authorization` pada WebSocket, dan token akses di URL
+        akan tersimpan di log proxy. Tukarkan token akses dengan tiket yang berlaku 30 detik dan
+        hanya untuk satu koneksi, lalu buka `GET /api/v1/ws?ticket=...` dengan subprotocol
+        `persist.v1`. Aplikasi mobile cukup memakai `Authorization: Bearer`.
+
+        Koneksi ditutup dengan kode `4401` saat token akses yang meminta tiket kedaluwarsa atau
+        sesinya diakhiri; klien memperbarui token, meminta tiket baru, dan menyambung lagi.
+        Protokol WebSocket itu sendiri (room, frame) ada di dokumen realtime dan di luar kontrak
+        OpenAPI ini.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/WsTicket' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /integrations/personel/events:
+    post:
+      operationId: postIntegrationsPersonelEvents
+      tags: [Notification]
+      summary: Penerima event perubahan dari Persist Personel (webhook)
+      description: |
+        Dipanggil oleh Personel, bukan oleh aplikasi. Tidak memakai token; keasliannya dijamin
+        tanda tangan `X-Personel-Signature` (HMAC-SHA256 dari body mentah dengan
+        `PERSONEL_WEBHOOK_SECRET`, heksadesimal, boleh berawalan `sha256=`).
+
+        - `timestamp` lebih lama atau lebih baru dari 5 menit ditolak (401).
+        - `event_id` diklaim saat diproses (2 menit) dan disimpan 7 hari setelah berhasil; kiriman
+          ulang dijawab 200 `duplicate` tanpa diproses lagi, karena Personel mengirim minimal
+          sekali. Kiriman ulang saat event yang sama masih diproses dijawab 409
+          `WEBHOOK_EVENT_IN_PROGRESS`: Personel mengulang, jadi event tidak hilang bila proses
+          pertama mati di tengah jalan.
+        - `organization_id` harus organisasi yang ada (404 jika tidak).
+        - Tipe: `employee.updated`, `employee.deactivated`, `placement.changed`,
+          `position.changed`. `leave.decided` diterima dan diabaikan di sini (ditangani modul
+          cuti). Tipe lain dijawab 200 `ignored` agar Personel tidak mengulang tanpa akhir.
+        - Kegagalan pemrosesan dijawab 5xx; Personel mengulang dan event diproses saat itu.
+      security: []
+      x-webhook-security: webhookSignature
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PersonelEvent' }
+      responses:
+        '200':
+          description: Diterima.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/PersonelEventResult' }
+        '400':
+          description: Isi event tidak valid (details.reason WEBHOOK_PAYLOAD_INVALID).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '401':
+          description: Tanda tangan tidak valid atau timestamp terlalu jauh (details.reason WEBHOOK_SIGNATURE_INVALID).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '404':
+          description: Organisasi tidak dikenal.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '409':
+          description: Event yang sama sedang diproses (details.reason WEBHOOK_EVENT_IN_PROGRESS). Kirim ulang nanti.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
   /notifications:
     get:
       operationId: getNotifications
       tags: [Notification]
       summary: List notifikasi (paginasi + delta-sync)
+      description: >-
+        Hanya notifikasi milik pemanggil. Dua bentuk jawaban:
+
+        - **Tanpa `since` dan `cursor`**: daftar berhalaman (`page`, `limit`, terbaru dulu) dengan
+          `pagination`, tanpa `deleted`. `unread_only=true` menyaring yang belum dibaca.
+          `meta.server_time` tetap dikirim: itulah watermark pertama klien. Pada tarikan penuh
+          berhalaman, simpan `server_time` dari halaman PERTAMA.
+        - **Dengan `since` dan/atau `cursor`** (delta-sync, DL-34/DL-57): baris yang berubah sejak
+          itu (dibuat atau dibaca) di `data`, tombstone baris yang dihapus di `deleted`, urut
+          `updated_at` naik, tanpa `pagination`. `has_more=true` → ulangi dengan
+          `cursor=next_cursor`. Simpan `meta.server_time` sebagai `since` berikutnya. Server
+          menarik batas bawah `since` mundur beberapa detik, jadi baris yang baru saja berubah
+          boleh datang dua kali: upsert berdasarkan `id`. `unread_only=true` tidak boleh
+          dikirim bersama `since`/`cursor` (422), karena baris yang berganti jadi dibaca akan
+          hilang dari aliran tanpa tombstone.
       parameters:
         - { name: unread_only, in: query, schema: { type: boolean, default: false } }
         - $ref: '#/components/parameters/PageParam'
@@ -9893,14 +10061,15 @@ paths:
                   - properties:
                       data: { type: array, items: { $ref: '#/components/schemas/Notification' } }
                       deleted: { type: array, items: { $ref: '#/components/schemas/Tombstone' } }
+                      pagination: { $ref: '#/components/schemas/Pagination' }
                       meta: { $ref: '#/components/schemas/DeltaMeta' }
               example:
                 success: true
-                data: [{ id: 4401, type: panik, title: "Sinyal Panik", body: "Panik di Pos 1", is_read: false }]
+                data: [{ id: 4401, organization_id: 1, personnel_id: 77, type: PANIC_TRIGGERED, title: "Sinyal Tombol Panik", body: "Budi menekan tombol panik.", priority: HIGH, entity_type: panic, entity_id: 12, data: {}, is_read: false, read_at: null, created_at: "2026-06-01T02:59:00Z", updated_at: "2026-06-01T02:59:00Z" }]
                 deleted: [{ id: 4300, deleted_at: "2026-06-01T02:00:00Z" }]
-                pagination: { page: 1, limit: 20, total: 1, total_pages: 1 }
-                meta: { request_id: "req_abc", server_time: "2026-06-01T03:00:00Z" }
+                meta: { request_id: "req_abc", server_time: "2026-06-01T03:00:00Z", has_more: false }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /notifications/count:
     get:
       operationId: getNotificationsCount

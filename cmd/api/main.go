@@ -17,6 +17,7 @@ import (
 	// there, which would break every business-date calculation in project timezones.
 	_ "time/tzdata"
 
+	"github.com/hibiken/asynq"
 	"github.com/redis/go-redis/v9"
 
 	"siapp/pkg/media"
@@ -26,6 +27,7 @@ import (
 	"siapp/pkg/platform/database"
 	"siapp/pkg/platform/httpx"
 	"siapp/pkg/platform/personel"
+	"siapp/pkg/realtime"
 )
 
 const shutdownTimeout = 20 * time.Second
@@ -95,6 +97,17 @@ func run() error {
 		return fmt.Errorf("media storage: %w", err)
 	}
 
+	// The push queue shares the API's Redis connection pool; closing the asynq client would close
+	// rdb, which main already closes.
+	pushQueue := asynq.NewClientFromRedisClient(rdb)
+
+	// Realtime: the hub holds this instance's sockets, and the subscriber feeds it what any
+	// instance publishes to Redis.
+	hub := realtime.NewHub(logger)
+	if err := realtime.Run(ctx, rdb, config.RedisKeyPrefix, hub, logger); err != nil {
+		return err
+	}
+
 	router := newRouter(deps{
 		Logger:      logger,
 		CORSOrigins: cfg.CORSOrigins,
@@ -107,6 +120,10 @@ func run() error {
 		ClientIP:    httpx.ClientIPFunc(cfg.ClientIPHeader),
 
 		MediaStorage: mediaStorage,
+		PushQueue:    pushQueue,
+
+		Hub:                   hub,
+		PersonelWebhookSecret: cfg.PersonelWebhookSecret,
 	})
 	srv := httpx.NewServer(cfg.HTTPAddr, router)
 

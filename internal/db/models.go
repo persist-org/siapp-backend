@@ -230,6 +230,104 @@ func (ns NullMediaStatus) Value() (driver.Value, error) {
 	return string(ns.MediaStatus), nil
 }
 
+type NotificationPriority string
+
+const (
+	NotificationPriorityNORMAL NotificationPriority = "NORMAL"
+	NotificationPriorityHIGH   NotificationPriority = "HIGH"
+)
+
+func (e *NotificationPriority) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = NotificationPriority(s)
+	case string:
+		*e = NotificationPriority(s)
+	default:
+		return fmt.Errorf("unsupported scan type for NotificationPriority: %T", src)
+	}
+	return nil
+}
+
+type NullNotificationPriority struct {
+	NotificationPriority NotificationPriority
+	Valid                bool // Valid is true if NotificationPriority is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullNotificationPriority) Scan(value interface{}) error {
+	if value == nil {
+		ns.NotificationPriority, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.NotificationPriority.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullNotificationPriority) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.NotificationPriority), nil
+}
+
+type NotificationType string
+
+const (
+	NotificationTypeLEAVEREQUESTED        NotificationType = "LEAVE_REQUESTED"
+	NotificationTypeABSENCEMARKED         NotificationType = "ABSENCE_MARKED"
+	NotificationTypeREPORTSUBMITTED       NotificationType = "REPORT_SUBMITTED"
+	NotificationTypeINSTRUCTIONRECEIVED   NotificationType = "INSTRUCTION_RECEIVED"
+	NotificationTypeTEAMCHANGED           NotificationType = "TEAM_CHANGED"
+	NotificationTypePOSITIONCHANGED       NotificationType = "POSITION_CHANGED"
+	NotificationTypePATROLSUBMITTED       NotificationType = "PATROL_SUBMITTED"
+	NotificationTypePATROLAPPROVED        NotificationType = "PATROL_APPROVED"
+	NotificationTypeGUARDSUBMITTED        NotificationType = "GUARD_SUBMITTED"
+	NotificationTypeGUARDAPPROVED         NotificationType = "GUARD_APPROVED"
+	NotificationTypePANICTRIGGERED        NotificationType = "PANIC_TRIGGERED"
+	NotificationTypeOFFLINESUBMISSIONSENT NotificationType = "OFFLINE_SUBMISSION_SENT"
+	NotificationTypeLEAVEDECIDED          NotificationType = "LEAVE_DECIDED"
+	NotificationTypeINSTRUCTIONFEEDBACK   NotificationType = "INSTRUCTION_FEEDBACK"
+	NotificationTypeSWAPASSIGNED          NotificationType = "SWAP_ASSIGNED"
+	NotificationTypePANICRESOLVED         NotificationType = "PANIC_RESOLVED"
+)
+
+func (e *NotificationType) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = NotificationType(s)
+	case string:
+		*e = NotificationType(s)
+	default:
+		return fmt.Errorf("unsupported scan type for NotificationType: %T", src)
+	}
+	return nil
+}
+
+type NullNotificationType struct {
+	NotificationType NotificationType
+	Valid            bool // Valid is true if NotificationType is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullNotificationType) Scan(value interface{}) error {
+	if value == nil {
+		ns.NotificationType, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.NotificationType.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullNotificationType) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.NotificationType), nil
+}
+
 type OrganizationStatus string
 
 const (
@@ -681,6 +779,23 @@ type Medium struct {
 	AttachedEntityID   pgtype.Int8
 	CreatedAt          pgtype.Timestamptz
 	UpdatedAt          pgtype.Timestamptz
+}
+
+type Notification struct {
+	ID                   int64
+	OrganizationID       int64
+	RecipientPersonnelID int64
+	Type                 NotificationType
+	Title                string
+	Body                 string
+	EntityType           pgtype.Text
+	EntityID             pgtype.Int8
+	Data                 json.RawMessage
+	Priority             NotificationPriority
+	ReadAt               pgtype.Timestamptz
+	CreatedAt            pgtype.Timestamptz
+	UpdatedAt            pgtype.Timestamptz
+	DeletedAt            pgtype.Timestamptz
 }
 
 type Organization struct {

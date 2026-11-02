@@ -53,6 +53,10 @@ func testRoutes(r chi.Router) {
 	r.Get("/test/empty-list", func(w http.ResponseWriter, r *http.Request) {
 		httpx.List[item](w, r, nil, httpx.Page{Page: 1, Limit: 20})
 	})
+	r.Get("/test/list-at", func(w http.ResponseWriter, r *http.Request) {
+		httpx.ListAt(w, r, []item{{ID: 1, Name: "a"}}, httpx.Page{Page: 1, Limit: 20, Total: 1},
+			time.Date(2026, 10, 12, 3, 0, 0, 0, time.UTC))
+	})
 	r.Get("/test/delta", func(w http.ResponseWriter, r *http.Request) {
 		httpx.Delta(w, r, []item{{ID: 9, Name: "n"}}, []map[string]any{{"id": 8, "deleted_at": "2026-10-12T02:00:00Z"}},
 			httpx.DeltaMeta{ServerTime: time.Date(2026, 10, 12, 3, 0, 0, 0, time.UTC), NextCursor: "abc", HasMore: true})
@@ -125,6 +129,18 @@ func TestEnvelopes(t *testing.T) {
 		require.Equal(t, http.StatusOK, res.status)
 		testkit.ValidateSchema(t, "ListEnvelope", res.raw)
 		require.Equal(t, map[string]any{"page": 2.0, "limit": 20.0, "total": 41.0, "total_pages": 3.0}, res.body["pagination"])
+	})
+
+	t.Run("a plain list has no server_time, a list that feeds a delta sync has", func(t *testing.T) {
+		plain := call(t, srv.URL, http.MethodGet, "/test/list", "", nil)
+		require.NotContains(t, plain.body["meta"], "server_time")
+
+		res := call(t, srv.URL, http.MethodGet, "/test/list-at", "", reqID)
+		testkit.ValidateSchema(t, "ListEnvelope", res.raw)
+		meta := res.body["meta"].(map[string]any)
+		testkit.ValidateSchema(t, "DeltaMeta", mustJSON(t, meta))
+		require.Equal(t, "2026-10-12T03:00:00.000Z", meta["server_time"])
+		require.Equal(t, map[string]any{"page": 1.0, "limit": 20.0, "total": 1.0, "total_pages": 1.0}, res.body["pagination"])
 	})
 
 	t.Run("empty list is [] not null", func(t *testing.T) {

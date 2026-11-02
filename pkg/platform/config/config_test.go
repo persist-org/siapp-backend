@@ -294,3 +294,47 @@ func TestParseClientIPHeader(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "X-Forwarded-For", cfg.ClientIPHeader)
 }
+
+// ⚠ Whoever holds the webhook secret can sign Personel events that end sessions and team
+// memberships and change positions in any organization, so a set value is held to the same bar
+// as the JWT secret; an empty one is fine because the receiver then refuses every event.
+func TestPersonelWebhookSecret(t *testing.T) {
+	const generated = "q8Vz3mN0rT1yLw7KfX2pH9cJ4dS6bG5uE0aZ8iO1nM3vR7tY"
+	example := readExampleValue(t, "PERSONEL_WEBHOOK_SECRET")
+
+	parse := func(env, secret string) error {
+		environ := validEnv()
+		environ["APP_ENV"] = env
+		environ["JWT_SECRET"] = strongJWTSecret // production judges every secret, not only this one
+		if secret != "" {
+			environ["PERSONEL_WEBHOOK_SECRET"] = secret
+		}
+		_, err := Parse(environ)
+		return err
+	}
+
+	t.Run("empty is allowed everywhere", func(t *testing.T) {
+		require.NoError(t, parse(EnvDevelopment, ""))
+		require.NoError(t, parse(EnvProduction, ""))
+	})
+	t.Run("too short is refused in every environment", func(t *testing.T) {
+		for _, env := range []string{EnvDevelopment, EnvProduction} {
+			err := parse(env, "change-me-webhook-secret") // the old example value, 24 bytes
+			require.ErrorContains(t, err, "PERSONEL_WEBHOOK_SECRET must be at least 32 bytes")
+			require.NotContains(t, err.Error(), "change-me-webhook-secret", "the secret is never echoed")
+		}
+	})
+	t.Run("the example value works in development and is refused in production", func(t *testing.T) {
+		require.GreaterOrEqual(t, len(example), 32, ".env.example must itself pass the length check")
+		require.NoError(t, parse(EnvDevelopment, example))
+		err := parse(EnvProduction, example)
+		require.ErrorContains(t, err, "PERSONEL_WEBHOOK_SECRET looks like a placeholder")
+		require.NotContains(t, err.Error(), example)
+	})
+	t.Run("a low-entropy value is refused in production", func(t *testing.T) {
+		require.ErrorContains(t, parse(EnvProduction, strings.Repeat("a", 40)), "PERSONEL_WEBHOOK_SECRET looks like a placeholder")
+	})
+	t.Run("a generated value is accepted in production", func(t *testing.T) {
+		require.NoError(t, parse(EnvProduction, generated))
+	})
+}

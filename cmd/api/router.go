@@ -11,12 +11,14 @@ import (
 	"siapp/pkg/access"
 	"siapp/pkg/identity"
 	"siapp/pkg/media"
+	"siapp/pkg/notifications"
 	"siapp/pkg/organization"
 	"siapp/pkg/platform/auth"
 	"siapp/pkg/platform/clock"
 	"siapp/pkg/platform/httpx"
 	"siapp/pkg/platform/idem"
 	"siapp/pkg/platform/personel"
+	"siapp/pkg/realtime"
 )
 
 // deps is everything the routes are built from. main fills it from the configuration; the
@@ -35,6 +37,14 @@ type deps struct {
 	ClientIP    func(*http.Request) string
 	// MediaStorage is the driver STORAGE_DRIVER chose, already checked at start-up.
 	MediaStorage media.Storage
+	// PushQueue is where Notify queues its push tasks for the worker. Nil (the guard test) leaves
+	// the inbox as the only delivery.
+	PushQueue notifications.Enqueuer
+	// Hub is the realtime hub; main starts the Redis subscriber that feeds it. Nil makes the
+	// router a private one.
+	Hub *realtime.Hub
+	// PersonelWebhookSecret is PERSONEL_WEBHOOK_SECRET.
+	PersonelWebhookSecret string
 }
 
 // adminPrefix is the group every web admin route lives under. access.RequireAdmin guards the
@@ -66,7 +76,8 @@ func newRouter(d deps) *chi.Mux {
 	identityHandler.Mount(router)
 
 	accessHandler := access.NewHandler(access.NewWebRoles(d.Pool, d.Clock), access.NewFieldPermissions(d.Pool, d.Clock))
-	organizationHandler := organization.NewHandler(organization.NewUsecases(d.Pool, d.Clock, identity.NewPeople(d.Pool, d.Personel, d.Clock)))
+	organizationUsecases := organization.NewUsecases(d.Pool, d.Clock, identity.NewPeople(d.Pool, d.Personel, d.Clock))
+	organizationHandler := organization.NewHandler(organizationUsecases)
 	// The Regu screens: any signed-in person, scoped by the regu they serve in.
 	organizationHandler.MountField(router)
 
@@ -74,6 +85,42 @@ func newRouter(d deps) *chi.Mux {
 	// blob routes of the local driver are public and authorized by the token in their URL.
 	mediaHandler := media.NewHandler(media.NewService(d.Pool, d.MediaStorage, d.Clock, d.Logger), d.MediaStorage, idempotency.Middleware(true))
 	mediaHandler.Mount(router)
+
+	// The inbox (module 05): any signed-in person reads their own notifications. Modules that
+	// notify get this service through a small interface of their own, wired here when they land;
+	// Delivery after the row is written: realtime (05.3) to the recipient's open app, and push
+	// (05.2) through the worker.
+	notificationService := notifications.NewService(d.Pool, d.Clock, d.Logger)
+	publisher := realtime.NewRedisPublisher(d.Redis, d.RedisPrefix, d.Clock)
+	dispatchers := notifications.Dispatchers{realtime.NewNotificationDispatcher(publisher)}
+	if d.PushQueue != nil {
+		dispatchers = append(dispatchers, notifications.NewPushDispatcher(d.PushQueue))
+	}
+	notificationService.UseDispatcher(dispatchers)
+	// The modules that notify depend on a small interface of their own and are given this
+	// adapter, so none of them imports notifications.
+	notifier := notifier{service: notificationService}
+	organizationUsecases.Members.UseNotifier(notifier)
+	notifications.NewHandler(notificationService).Mount(router)
+
+	// The Personel webhook (05.3): public, authenticated by the HMAC signature of its body. It
+	// invalidates the same Redis cache every reader of Personel data goes through.
+	personelCache := personel.NewCached(d.Personel, nil, d.Redis, d.Logger)
+	identity.NewPersonelEvents(identity.PersonelEventsConfig{
+		Pool: d.Pool, Directory: personelCache, Cache: personelCache, Revocations: revocations,
+		Redis: d.Redis, RedisPrefix: d.RedisPrefix, Secret: d.PersonelWebhookSecret,
+		Notifier: notifier, Clock: d.Clock, Logger: d.Logger,
+	}).Mount(router)
+
+	// The WebSocket (05.3). The hub is shared with the Redis subscriber main starts, which feeds
+	// it the events other instances publish.
+	hub := d.Hub
+	if hub == nil {
+		hub = realtime.NewHub(d.Logger)
+	}
+	realtime.NewHandler(d.Tokens, revocations, realtime.NewTickets(d.Redis, d.RedisPrefix), hub,
+		realtime.NewAuthorizer(d.Pool, access.NewService(d.Pool, d.Clock), d.Clock), d.Clock, d.Logger,
+		realtime.Config{OriginPatterns: realtime.OriginPatternsOf(d.CORSOrigins)}).Mount(router)
 
 	// ⚠ The admin group: access.RequireAdmin is mounted ONCE here, so every route a module
 	// adds under /api/v1/admin is protected without anyone having to remember it.

@@ -39,8 +39,7 @@ type Route struct {
 //
 // Adding an entry here also needs `security: []` on the operation in api/openapi.yaml,
 // except for platform routes the contract does not describe (the health probe); a guard
-// test in cmd/api checks that the two agree. Later phases add their entries: the Personel
-// webhook receiver (05.3).
+// test in cmd/api checks that the two agree.
 var PublicRoutes = []Route{
 	{http.MethodGet, "/api/v1/health"},
 	{http.MethodPost, "/api/v1/auth/login"},
@@ -52,6 +51,13 @@ var PublicRoutes = []Route{
 	// minio and s3 drivers they exist but answer 404.
 	{http.MethodPut, "/api/v1/media/blobs/{token}"},
 	{http.MethodGet, "/api/v1/media/blobs/{token}"},
+	// The WebSocket (Phase 05.3) authenticates itself, by a Bearer token or a single-use ticket
+	// in the query string, and answers a failure with the close code 4401 the realtime doc
+	// prescribes, which a plain 401 before the upgrade could not carry. It is outside the
+	// OpenAPI contract, like the health probe.
+	{http.MethodGet, "/api/v1/ws"},
+	// The Personel webhook is authenticated by an HMAC signature of its body, not by a token.
+	{http.MethodPost, "/api/v1/integrations/personel/events"},
 }
 
 // IsPublic reports whether method and path are exactly on the allowlist.

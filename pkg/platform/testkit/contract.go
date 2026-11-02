@@ -92,8 +92,8 @@ func (r *Response) JSON(t testing.TB, dst any) {
 	require.NoError(t, json.Unmarshal(r.Body, dst), "decode response body: %s", r.Body)
 }
 
-// Do sends method path (a contract path such as "/auth/login", without /api/v1). body is
-// JSON-encoded when not nil.
+// Do sends method path (a contract path such as "/auth/login", without /api/v1, optionally with
+// a query string). body is JSON-encoded when not nil.
 func (c *Client) Do(method, path string, body any) *Response {
 	c.t.Helper()
 	return c.DoWithHeaders(method, path, body, nil)
@@ -122,8 +122,11 @@ func (c *Client) DoWithHeaders(method, path string, body any, headers map[string
 	}
 
 	_, routes := loadContract(c.t)
-	route, pathParams, ok := findRoute(routes, method, path)
-	require.True(c.t, ok, "%s %s%s is not in the contract (api/openapi.yaml)", method, apiPrefix, path)
+	// The query string is not part of the route; the validator below still checks it against
+	// the operation's parameters, since it is part of the request URL.
+	routePath, _, _ := strings.Cut(path, "?")
+	route, pathParams, ok := findRoute(routes, method, routePath)
+	require.True(c.t, ok, "%s %s%s is not in the contract (api/openapi.yaml)", method, apiPrefix, routePath)
 	opts := &openapi3filter.Options{
 		// Security is enforced by the auth middleware and tested there.
 		AuthenticationFunc: func(context.Context, *openapi3filter.AuthenticationInput) error { return nil },

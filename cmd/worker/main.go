@@ -21,6 +21,8 @@ import (
 
 	"siapp/pkg/identity"
 	"siapp/pkg/media"
+	"siapp/pkg/notifications"
+	"siapp/pkg/notifications/push"
 	"siapp/pkg/organization"
 	"siapp/pkg/platform/audit"
 	"siapp/pkg/platform/auth"
@@ -92,8 +94,26 @@ func run() error {
 		return fmt.Errorf("media storage: %w", err)
 	}
 
-	srv := asynq.NewServer(redisOpt, asynq.Config{Concurrency: workerConcurrency})
+	// Push delivery (Phase 05.2). Without credentials the LogProvider stands in, so the queue
+	// still drains and a development machine needs no Firebase project.
+	var pushProvider push.Provider = push.LogProvider{Logger: logger}
+	if cfg.FCMServiceAccountBase64 != "" {
+		fcm, err := push.NewFCMProvider(cfg.FCMServiceAccountBase64)
+		if err != nil {
+			return err
+		}
+		pushProvider = fcm
+	} else {
+		logger.Warn("FCM_SERVICE_ACCOUNT_BASE64 is empty: pushes are logged, not sent")
+	}
+
+	// ⚠ Strict priority is off on purpose: the weights give critical (panic) most of the capacity
+	// without ever starving the default queue.
+	srv := asynq.NewServer(redisOpt, asynq.Config{Concurrency: workerConcurrency, Queues: notifications.Queues()})
 	mux := asynq.NewServeMux()
+	pushDeliverer := notifications.NewPushDeliverer(pool, pushProvider, logger)
+	pushDeliverer.UseSentLog(rdb, config.RedisKeyPrefix) // a retry sends only to the devices still missing
+	notifications.RegisterPushJob(mux, pushDeliverer)
 	identity.RegisterJobs(mux, identity.NewCleaner(pool, clock.System{}), logger)
 	identity.RegisterResyncJob(mux, resyncer, logger)
 	organization.RegisterScheduleJob(mux, organization.NewScheduleExtender(pool, clock.System{}), logger)
