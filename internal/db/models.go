@@ -97,6 +97,48 @@ func (ns NullCaptureSource) Value() (driver.Value, error) {
 	return string(ns.CaptureSource), nil
 }
 
+type CategoryKind string
+
+const (
+	CategoryKindREPORT      CategoryKind = "REPORT"
+	CategoryKindINSTRUCTION CategoryKind = "INSTRUCTION"
+)
+
+func (e *CategoryKind) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = CategoryKind(s)
+	case string:
+		*e = CategoryKind(s)
+	default:
+		return fmt.Errorf("unsupported scan type for CategoryKind: %T", src)
+	}
+	return nil
+}
+
+type NullCategoryKind struct {
+	CategoryKind CategoryKind
+	Valid        bool // Valid is true if CategoryKind is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullCategoryKind) Scan(value interface{}) error {
+	if value == nil {
+		ns.CategoryKind, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.CategoryKind.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullCategoryKind) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.CategoryKind), nil
+}
+
 type DevicePlatform string
 
 const (
@@ -629,6 +671,49 @@ func (ns NullTeamRole) Value() (driver.Value, error) {
 	return string(ns.TeamRole), nil
 }
 
+type Urgency string
+
+const (
+	UrgencyLOW    Urgency = "LOW"
+	UrgencyNORMAL Urgency = "NORMAL"
+	UrgencyHIGH   Urgency = "HIGH"
+)
+
+func (e *Urgency) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = Urgency(s)
+	case string:
+		*e = Urgency(s)
+	default:
+		return fmt.Errorf("unsupported scan type for Urgency: %T", src)
+	}
+	return nil
+}
+
+type NullUrgency struct {
+	Urgency Urgency
+	Valid   bool // Valid is true if Urgency is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullUrgency) Scan(value interface{}) error {
+	if value == nil {
+		ns.Urgency, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.Urgency.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullUrgency) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.Urgency), nil
+}
+
 type WebRole string
 
 const (
@@ -696,6 +781,20 @@ type Branch struct {
 	Address        pgtype.Text
 	ZipCode        pgtype.Text
 	Description    string
+	Active         bool
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+	DeletedAt      pgtype.Timestamptz
+}
+
+type Category struct {
+	ID             int64
+	OrganizationID int64
+	Kind           CategoryKind
+	Name           string
+	Urgency        NullUrgency
+	BusinessLines  []string
+	SortOrder      int32
 	Active         bool
 	CreatedAt      pgtype.Timestamptz
 	UpdatedAt      pgtype.Timestamptz
@@ -805,6 +904,19 @@ type Organization struct {
 	FirstSeenAt pgtype.Timestamptz
 	CreatedAt   pgtype.Timestamptz
 	UpdatedAt   pgtype.Timestamptz
+}
+
+type PanicType struct {
+	ID                int64
+	OrganizationID    int64
+	Code              string
+	Name              string
+	StakeholderTypeID pgtype.Int8
+	SortOrder         int32
+	Active            bool
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
+	DeletedAt         pgtype.Timestamptz
 }
 
 type Personnel struct {

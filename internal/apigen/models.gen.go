@@ -129,6 +129,123 @@ func (e CaptureSource) Valid() bool {
 	}
 }
 
+// Defines values for CategoryBusinessLines.
+const (
+	CategoryBusinessLinesCleaning CategoryBusinessLines = "cleaning"
+	CategoryBusinessLinesSecurity CategoryBusinessLines = "security"
+)
+
+// Valid indicates whether the value is a known member of the CategoryBusinessLines enum.
+func (e CategoryBusinessLines) Valid() bool {
+	switch e {
+	case CategoryBusinessLinesCleaning:
+		return true
+	case CategoryBusinessLinesSecurity:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CategoryUrgency.
+const (
+	CategoryUrgencyHIGH   CategoryUrgency = "HIGH"
+	CategoryUrgencyLOW    CategoryUrgency = "LOW"
+	CategoryUrgencyNORMAL CategoryUrgency = "NORMAL"
+)
+
+// Valid indicates whether the value is a known member of the CategoryUrgency enum.
+func (e CategoryUrgency) Valid() bool {
+	switch e {
+	case CategoryUrgencyHIGH:
+		return true
+	case CategoryUrgencyLOW:
+		return true
+	case CategoryUrgencyNORMAL:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CategoryCreateBusinessLines.
+const (
+	CategoryCreateBusinessLinesCleaning CategoryCreateBusinessLines = "cleaning"
+	CategoryCreateBusinessLinesSecurity CategoryCreateBusinessLines = "security"
+)
+
+// Valid indicates whether the value is a known member of the CategoryCreateBusinessLines enum.
+func (e CategoryCreateBusinessLines) Valid() bool {
+	switch e {
+	case CategoryCreateBusinessLinesCleaning:
+		return true
+	case CategoryCreateBusinessLinesSecurity:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CategoryCreateUrgency.
+const (
+	CategoryCreateUrgencyHIGH   CategoryCreateUrgency = "HIGH"
+	CategoryCreateUrgencyLOW    CategoryCreateUrgency = "LOW"
+	CategoryCreateUrgencyNORMAL CategoryCreateUrgency = "NORMAL"
+)
+
+// Valid indicates whether the value is a known member of the CategoryCreateUrgency enum.
+func (e CategoryCreateUrgency) Valid() bool {
+	switch e {
+	case CategoryCreateUrgencyHIGH:
+		return true
+	case CategoryCreateUrgencyLOW:
+		return true
+	case CategoryCreateUrgencyNORMAL:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CategoryPatchBusinessLines.
+const (
+	CategoryPatchBusinessLinesCleaning CategoryPatchBusinessLines = "cleaning"
+	CategoryPatchBusinessLinesSecurity CategoryPatchBusinessLines = "security"
+)
+
+// Valid indicates whether the value is a known member of the CategoryPatchBusinessLines enum.
+func (e CategoryPatchBusinessLines) Valid() bool {
+	switch e {
+	case CategoryPatchBusinessLinesCleaning:
+		return true
+	case CategoryPatchBusinessLinesSecurity:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CategoryPatchUrgency.
+const (
+	CategoryPatchUrgencyHIGH   CategoryPatchUrgency = "HIGH"
+	CategoryPatchUrgencyLOW    CategoryPatchUrgency = "LOW"
+	CategoryPatchUrgencyNORMAL CategoryPatchUrgency = "NORMAL"
+)
+
+// Valid indicates whether the value is a known member of the CategoryPatchUrgency enum.
+func (e CategoryPatchUrgency) Valid() bool {
+	switch e {
+	case CategoryPatchUrgencyHIGH:
+		return true
+	case CategoryPatchUrgencyLOW:
+		return true
+	case CategoryPatchUrgencyNORMAL:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CompanyLetter.
 const (
 	I CompanyLetter = "I"
@@ -488,16 +605,16 @@ func (e MediaUploadUploadMethod) Valid() bool {
 
 // Defines values for NotificationPriority.
 const (
-	HIGH   NotificationPriority = "HIGH"
-	NORMAL NotificationPriority = "NORMAL"
+	NotificationPriorityHIGH   NotificationPriority = "HIGH"
+	NotificationPriorityNORMAL NotificationPriority = "NORMAL"
 )
 
 // Valid indicates whether the value is a known member of the NotificationPriority enum.
 func (e NotificationPriority) Valid() bool {
 	switch e {
-	case HIGH:
+	case NotificationPriorityHIGH:
 		return true
-	case NORMAL:
+	case NotificationPriorityNORMAL:
 		return true
 	default:
 		return false
@@ -954,6 +1071,27 @@ func (e PermissionScope) Valid() bool {
 	case PermissionScopeSELF:
 		return true
 	case PermissionScopeTEAM:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PersonelEventResultStatus.
+const (
+	Duplicate PersonelEventResultStatus = "duplicate"
+	Ignored   PersonelEventResultStatus = "ignored"
+	Processed PersonelEventResultStatus = "processed"
+)
+
+// Valid indicates whether the value is a known member of the PersonelEventResultStatus enum.
+func (e PersonelEventResultStatus) Valid() bool {
+	switch e {
+	case Duplicate:
+		return true
+	case Ignored:
+		return true
+	case Processed:
 		return true
 	default:
 		return false
@@ -4221,6 +4359,21 @@ func (e PostEMemosByIdResponses201JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
+// Defines values for GetInstructionCategories200JSONResponseBodySuccess.
+const (
+	GetInstructionCategories200JSONResponseBodySuccessTrue GetInstructionCategories200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetInstructionCategories200JSONResponseBodySuccess enum.
+func (e GetInstructionCategories200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetInstructionCategories200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PostInstructions201JSONResponseBodySuccess.
 const (
 	PostInstructions201JSONResponseBodySuccessTrue PostInstructions201JSONResponseBodySuccess = true
@@ -4275,6 +4428,21 @@ const (
 func (e PostInstructionsByIdAck200JSONResponseBodySuccess) Valid() bool {
 	switch e {
 	case PostInstructionsByIdAck200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostIntegrationsPersonelEvents200JSONResponseBodySuccess.
+const (
+	PostIntegrationsPersonelEvents200JSONResponseBodySuccessTrue PostIntegrationsPersonelEvents200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostIntegrationsPersonelEvents200JSONResponseBodySuccess enum.
+func (e PostIntegrationsPersonelEvents200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostIntegrationsPersonelEvents200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
@@ -4548,6 +4716,21 @@ const (
 func (e GetOverviewCharts200JSONResponseBodySuccess) Valid() bool {
 	switch e {
 	case GetOverviewCharts200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetPanicTypes200JSONResponseBodySuccess.
+const (
+	GetPanicTypes200JSONResponseBodySuccessTrue GetPanicTypes200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetPanicTypes200JSONResponseBodySuccess enum.
+func (e GetPanicTypes200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetPanicTypes200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
@@ -5466,6 +5649,21 @@ func (e GetTeamsByIdMap200JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
+// Defines values for PostWsTicket200JSONResponseBodySuccess.
+const (
+	PostWsTicket200JSONResponseBodySuccessTrue PostWsTicket200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostWsTicket200JSONResponseBodySuccess enum.
+func (e PostWsTicket200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostWsTicket200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetZonesParamsType.
 const (
 	GetZonesParamsTypeGUARD  GetZonesParamsType = "GUARD"
@@ -5909,6 +6107,57 @@ type BusinessLine string
 // CaptureSource Dari mana foto berasal. Swafoto absensi hanya boleh `CAMERA` (manual §3.2.3.1).
 type CaptureSource string
 
+// Category Kategori laporan atau instruksi (satu bentuk, `kind` ditentukan path). `urgency` hanya untuk kategori instruksi. `business_lines` kosong = semua lini bisnis.
+type Category struct {
+	BusinessLines  *[]CategoryBusinessLines `json:"business_lines,omitempty"`
+	CreatedAt      *time.Time               `json:"created_at,omitempty"`
+	Id             *int64                   `json:"id,omitempty"`
+	IsActive       *bool                    `json:"is_active,omitempty"`
+	Name           *string                  `json:"name,omitempty"`
+	OrganizationId *int64                   `json:"organization_id,omitempty"`
+	SortOrder      *int                     `json:"sort_order,omitempty"`
+	UpdatedAt      *time.Time               `json:"updated_at,omitempty"`
+	Urgency        *CategoryUrgency         `json:"urgency,omitempty"`
+}
+
+// CategoryBusinessLines defines model for Category.BusinessLines.
+type CategoryBusinessLines string
+
+// CategoryUrgency defines model for Category.Urgency.
+type CategoryUrgency string
+
+// CategoryCreate Nama unik per jenis dan per lini bisnis, tanpa membedakan huruf besar/kecil, termasuk terhadap kategori nonaktif (yang dihapus tidak dihitung). `business_lines` kosong = semua lini, jadi bentrok dengan nama yang sama di lini mana pun. Bentrok → 409 CATEGORY_NAME_TAKEN.
+type CategoryCreate struct {
+	BusinessLines *[]CategoryCreateBusinessLines `json:"business_lines,omitempty"`
+	IsActive      *bool                          `json:"is_active,omitempty"`
+	Name          string                         `json:"name"`
+	SortOrder     *int                           `json:"sort_order,omitempty"`
+
+	// Urgency Wajib untuk kategori instruksi
+	Urgency *CategoryCreateUrgency `json:"urgency,omitempty"`
+}
+
+// CategoryCreateBusinessLines defines model for CategoryCreate.BusinessLines.
+type CategoryCreateBusinessLines string
+
+// CategoryCreateUrgency Wajib untuk kategori instruksi
+type CategoryCreateUrgency string
+
+// CategoryPatch Field yang tidak dikirim tidak berubah. `business_lines` kosong berarti semua lini bisnis.
+type CategoryPatch struct {
+	BusinessLines *[]CategoryPatchBusinessLines `json:"business_lines,omitempty"`
+	IsActive      *bool                         `json:"is_active,omitempty"`
+	Name          *string                       `json:"name,omitempty"`
+	SortOrder     *int                          `json:"sort_order,omitempty"`
+	Urgency       *CategoryPatchUrgency         `json:"urgency,omitempty"`
+}
+
+// CategoryPatchBusinessLines defines model for CategoryPatch.BusinessLines.
+type CategoryPatchBusinessLines string
+
+// CategoryPatchUrgency defines model for CategoryPatch.Urgency.
+type CategoryPatchUrgency string
+
 // Cctv defines model for Cctv.
 type Cctv struct {
 	Code           *string    `json:"code,omitempty"`
@@ -6336,8 +6585,8 @@ type Instruction struct {
 	UpdatedAt             *time.Time          `json:"updated_at,omitempty"`
 }
 
-// InstructionCategory Master umum (qualifications, client_types, client_groups, stakeholder_types, panic_types, report_categories, instruction_categories, permission_categories).
-type InstructionCategory = CodedMaster
+// InstructionCategory Kategori laporan atau instruksi (satu bentuk, `kind` ditentukan path). `urgency` hanya untuk kategori instruksi. `business_lines` kosong = semua lini bisnis.
+type InstructionCategory = Category
 
 // InstructionCreate defines model for InstructionCreate.
 type InstructionCreate struct {
@@ -6972,8 +7221,33 @@ type PanicResolve struct {
 	ResolutionNote string `json:"resolution_note"`
 }
 
-// PanicType Tipe panik (Keamanan/Medis/Kebakaran/Lainnya).
-type PanicType = CodedMaster
+// PanicType Tipe panik (Keamanan/Medis/Kebakaran/Lainnya). `code` adalah identitasnya dan tidak berubah.
+type PanicType struct {
+	Code           *string    `json:"code,omitempty"`
+	CreatedAt      *time.Time `json:"created_at,omitempty"`
+	Id             *int64     `json:"id,omitempty"`
+	IsActive       *bool      `json:"is_active,omitempty"`
+	Name           *string    `json:"name,omitempty"`
+	OrganizationId *int64     `json:"organization_id,omitempty"`
+	SortOrder      *int       `json:"sort_order,omitempty"`
+	UpdatedAt      *time.Time `json:"updated_at,omitempty"`
+}
+
+// PanicTypeCreate Nama unik di organisasi (tanpa membedakan huruf besar/kecil, termasuk tipe nonaktif) → 409 PANIC_TYPE_NAME_TAKEN. Kode yang dikirim yang sudah dipakai (juga oleh tipe terhapus) → 409 PANIC_TYPE_CODE_TAKEN; kode yang dibuat dari nama diberi akhiran _2, _3 bila terpakai.
+type PanicTypeCreate struct {
+	// Code Huruf besar/angka/garis bawah, diawali huruf. Dibuat dari `name` bila kosong.
+	Code      *string `json:"code,omitempty"`
+	IsActive  *bool   `json:"is_active,omitempty"`
+	Name      string  `json:"name"`
+	SortOrder *int    `json:"sort_order,omitempty"`
+}
+
+// PanicTypePatch Kode tidak bisa diubah.
+type PanicTypePatch struct {
+	IsActive  *bool   `json:"is_active,omitempty"`
+	Name      *string `json:"name,omitempty"`
+	SortOrder *int    `json:"sort_order,omitempty"`
+}
 
 // PatrolScan defines model for PatrolScan.
 type PatrolScan struct {
@@ -7119,6 +7393,32 @@ type PermissionCreate struct {
 // PermissionScope Jangkauan hak yang dimiliki seseorang. `SELF`: hanya catatannya sendiri. `TEAM`: catatan regu tempat ia memegang peran itu.
 // `PROJECT`: catatan semua regu di proyek tempat ia memegang peran itu.
 type PermissionScope string
+
+// PersonelEvent defines model for PersonelEvent.
+type PersonelEvent struct {
+	// Data employee.* dan position.changed membawa `nik` (position.changed juga `position_name`); placement.changed membawa `project_id`.
+	Data *struct {
+		Nik          *string `json:"nik,omitempty"`
+		PositionName *string `json:"position_name,omitempty"`
+		ProjectId    *int64  `json:"project_id,omitempty"`
+	} `json:"data,omitempty"`
+
+	// EventId Unik per event; dasar penolakan kiriman ulang (7 hari).
+	EventId        string    `json:"event_id"`
+	OrganizationId int64     `json:"organization_id"`
+	Timestamp      time.Time `json:"timestamp"`
+
+	// Type employee.updated | employee.deactivated | placement.changed | position.changed | leave.decided
+	Type string `json:"type"`
+}
+
+// PersonelEventResult defines model for PersonelEventResult.
+type PersonelEventResult struct {
+	Status PersonelEventResultStatus `json:"status"`
+}
+
+// PersonelEventResultStatus defines model for PersonelEventResult.Status.
+type PersonelEventResultStatus string
 
 // Personnel defines model for Personnel.
 type Personnel struct {
@@ -7537,8 +7837,8 @@ type Report struct {
 	UpdatedAt        *time.Time `json:"updated_at,omitempty"`
 }
 
-// ReportCategory Master umum (qualifications, client_types, client_groups, stakeholder_types, panic_types, report_categories, instruction_categories, permission_categories).
-type ReportCategory = CodedMaster
+// ReportCategory Kategori laporan atau instruksi (satu bentuk, `kind` ditentukan path). `urgency` hanya untuk kategori instruksi. `business_lines` kosong = semua lini bisnis.
+type ReportCategory = Category
 
 // ReportCreate defines model for ReportCreate.
 type ReportCreate struct {
@@ -8288,6 +8588,15 @@ type WebhookEndpointSecretResult struct {
 
 // Weekday defines model for Weekday.
 type Weekday string
+
+// WsTicket defines model for WsTicket.
+type WsTicket struct {
+	// ExpiresIn Detik.
+	ExpiresIn int `json:"expires_in"`
+
+	// Ticket Dipakai sekali pada GET /api/v1/ws?ticket=.
+	Ticket string `json:"ticket"`
+}
 
 // ZoneCheckInInput defines model for ZoneCheckInInput.
 type ZoneCheckInInput struct {
@@ -10169,6 +10478,15 @@ type PostEMemosByIdResponses200JSONResponseBodySuccess bool
 // PostEMemosByIdResponses201JSONResponseBodySuccess defines parameters for PostEMemosByIdResponses.
 type PostEMemosByIdResponses201JSONResponseBodySuccess bool
 
+// GetInstructionCategoriesParams defines parameters for GetInstructionCategories.
+type GetInstructionCategoriesParams struct {
+	// Since Delta-sync watermark (updated_at). Tanpa since → full pull (DL-34).
+	Since *SinceParam `form:"since,omitempty" json:"since,omitempty"`
+}
+
+// GetInstructionCategories200JSONResponseBodySuccess defines parameters for GetInstructionCategories.
+type GetInstructionCategories200JSONResponseBodySuccess bool
+
 // PostInstructionsParams defines parameters for PostInstructions.
 type PostInstructionsParams struct {
 	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
@@ -10205,6 +10523,9 @@ type GetInstructionsSent200JSONResponseBodySuccess bool
 
 // PostInstructionsByIdAck200JSONResponseBodySuccess defines parameters for PostInstructionsByIdAck.
 type PostInstructionsByIdAck200JSONResponseBodySuccess bool
+
+// PostIntegrationsPersonelEvents200JSONResponseBodySuccess defines parameters for PostIntegrationsPersonelEvents.
+type PostIntegrationsPersonelEvents200JSONResponseBodySuccess bool
 
 // GetMasterReviewsParams defines parameters for GetMasterReviews.
 type GetMasterReviewsParams struct {
@@ -10344,6 +10665,15 @@ type GetOverviewChartsParams struct {
 
 // GetOverviewCharts200JSONResponseBodySuccess defines parameters for GetOverviewCharts.
 type GetOverviewCharts200JSONResponseBodySuccess bool
+
+// GetPanicTypesParams defines parameters for GetPanicTypes.
+type GetPanicTypesParams struct {
+	// Since Delta-sync watermark (updated_at). Tanpa since → full pull (DL-34).
+	Since *SinceParam `form:"since,omitempty" json:"since,omitempty"`
+}
+
+// GetPanicTypes200JSONResponseBodySuccess defines parameters for GetPanicTypes.
+type GetPanicTypes200JSONResponseBodySuccess bool
 
 // GetPanicsParams defines parameters for GetPanics.
 type GetPanicsParams struct {
@@ -10743,8 +11073,8 @@ type PostQrCodesGenerate201JSONResponseBodySuccess bool
 
 // GetReportCategoriesParams defines parameters for GetReportCategories.
 type GetReportCategoriesParams struct {
-	// IsActive Filter status aktif.
-	IsActive *IsActiveParam `form:"is_active,omitempty" json:"is_active,omitempty"`
+	// Since Delta-sync watermark (updated_at). Tanpa since → full pull (DL-34).
+	Since *SinceParam `form:"since,omitempty" json:"since,omitempty"`
 }
 
 // GetReportCategories200JSONResponseBodySuccess defines parameters for GetReportCategories.
@@ -10911,6 +11241,9 @@ type GetTeamsByCodeMembers200JSONResponseBodySuccess bool
 // GetTeamsByIdMap200JSONResponseBodySuccess defines parameters for GetTeamsByIdMap.
 type GetTeamsByIdMap200JSONResponseBodySuccess bool
 
+// PostWsTicket200JSONResponseBodySuccess defines parameters for PostWsTicket.
+type PostWsTicket200JSONResponseBodySuccess bool
+
 // GetZonesParams defines parameters for GetZones.
 type GetZonesParams struct {
 	Type *GetZonesParamsType `form:"type,omitempty" json:"type,omitempty"`
@@ -11037,10 +11370,10 @@ type PatchAdminClientsByCodeJSONRequestBody = ClientUpdate
 type PutAdminFieldPermissionsByTeamRoleJSONRequestBody = FieldPermissionsInput
 
 // PostAdminInstructionCategoriesJSONRequestBody defines body for PostAdminInstructionCategories for application/json ContentType.
-type PostAdminInstructionCategoriesJSONRequestBody = CodedMasterInput
+type PostAdminInstructionCategoriesJSONRequestBody = CategoryCreate
 
 // PatchAdminInstructionCategoriesByIdJSONRequestBody defines body for PatchAdminInstructionCategoriesById for application/json ContentType.
-type PatchAdminInstructionCategoriesByIdJSONRequestBody = CodedMasterInput
+type PatchAdminInstructionCategoriesByIdJSONRequestBody = CategoryPatch
 
 // PostAdminLetterheadsJSONRequestBody defines body for PostAdminLetterheads for application/json ContentType.
 type PostAdminLetterheadsJSONRequestBody = LetterheadInput
@@ -11055,10 +11388,10 @@ type PostAdminMasterReviewsJSONRequestBody = MasterReviewCreate
 type PatchAdminMasterReviewsByIdJSONRequestBody = MasterReviewCreate
 
 // PostAdminPanicTypesJSONRequestBody defines body for PostAdminPanicTypes for application/json ContentType.
-type PostAdminPanicTypesJSONRequestBody = CodedMasterInput
+type PostAdminPanicTypesJSONRequestBody = PanicTypeCreate
 
 // PatchAdminPanicTypesByIdJSONRequestBody defines body for PatchAdminPanicTypesById for application/json ContentType.
-type PatchAdminPanicTypesByIdJSONRequestBody = CodedMasterInput
+type PatchAdminPanicTypesByIdJSONRequestBody = PanicTypePatch
 
 // PostAdminPanicsByIdResolveJSONRequestBody defines body for PostAdminPanicsByIdResolve for application/json ContentType.
 type PostAdminPanicsByIdResolveJSONRequestBody = PanicResolve
@@ -11112,10 +11445,10 @@ type PostAdminRegionsJSONRequestBody = RegionInput
 type PatchAdminRegionsByCodeJSONRequestBody = RegionUpdate
 
 // PostAdminReportCategoriesJSONRequestBody defines body for PostAdminReportCategories for application/json ContentType.
-type PostAdminReportCategoriesJSONRequestBody = CodedMasterInput
+type PostAdminReportCategoriesJSONRequestBody = CategoryCreate
 
 // PatchAdminReportCategoriesByIdJSONRequestBody defines body for PatchAdminReportCategoriesById for application/json ContentType.
-type PatchAdminReportCategoriesByIdJSONRequestBody = CodedMasterInput
+type PatchAdminReportCategoriesByIdJSONRequestBody = CategoryPatch
 
 // PostAdminRolesJSONRequestBody defines body for PostAdminRoles for application/json ContentType.
 type PostAdminRolesJSONRequestBody = RoleInput
@@ -11245,6 +11578,9 @@ type PostInstructionsJSONRequestBody = InstructionCreate
 
 // PostInstructionsByIdAckJSONRequestBody defines body for PostInstructionsByIdAck for application/json ContentType.
 type PostInstructionsByIdAckJSONRequestBody = InstructionFeedback
+
+// PostIntegrationsPersonelEventsJSONRequestBody defines body for PostIntegrationsPersonelEvents for application/json ContentType.
+type PostIntegrationsPersonelEventsJSONRequestBody = PersonelEvent
 
 // PostMediaJSONRequestBody defines body for PostMedia for application/json ContentType.
 type PostMediaJSONRequestBody = MediaCreate

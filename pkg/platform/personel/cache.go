@@ -19,11 +19,12 @@ const personelCacheTTL = 10 * time.Minute
 
 // Cache kinds, the {kind} part of the key org:{orgID}:personel:{kind}:{id}.
 const (
-	KindEmployee   = "employee"   // id: NIK
-	KindProjects   = "projects"   // id: "all"
-	KindProject    = "project"    // id: project id
-	KindPlacements = "placements" // id: project id
-	KindPositions  = "positions"  // id: "all"
+	KindEmployee   = "employee"    // id: NIK
+	KindProjects   = "projects"    // id: "all"
+	KindProject    = "project"     // id: project id
+	KindPlacements = "placements"  // id: project id
+	KindPositions  = "positions"   // id: "all"
+	KindLeaveTypes = "leave-types" // id: "all"
 )
 
 // Cached is a Redis read-through cache in front of Directory and Org. Auth is never cached
@@ -34,9 +35,11 @@ const (
 type Cached struct {
 	dir Directory
 	org Org // nil when only Directory is cached
-	rdb redis.Cmdable
-	log *slog.Logger
-	ttl time.Duration
+	// leave is seam S5; nil until Personel serves it, and LeaveTypes then returns ErrUnavailable.
+	leave Leave
+	rdb   redis.Cmdable
+	log   *slog.Logger
+	ttl   time.Duration
 }
 
 var (
@@ -52,6 +55,9 @@ func NewCached(dir Directory, org Org, rdb redis.Cmdable, log *slog.Logger) *Cac
 	}
 	return &Cached{dir: dir, org: org, rdb: rdb, log: log, ttl: personelCacheTTL}
 }
+
+// UseLeave plugs in the leave seam (S5). Call it while wiring, before the cache serves requests.
+func (c *Cached) UseLeave(l Leave) { c.leave = l }
 
 func key(orgID int64, kind, id string) string {
 	return fmt.Sprintf("org:%d:personel:%s:%s", orgID, kind, id)
@@ -138,6 +144,17 @@ func (c *Cached) Positions(ctx context.Context, orgID int64) ([]Position, error)
 			return nil, fmt.Errorf("%w: org seam (S2) is not available", ErrUnavailable)
 		}
 		return c.org.Positions(ctx, orgID)
+	})
+}
+
+// LeaveTypes returns the leave categories Personel defines, through the cache. It is not part of
+// Leave on purpose: the other methods of S5 write, and a write is never cached.
+func (c *Cached) LeaveTypes(ctx context.Context, orgID int64) ([]LeaveType, error) {
+	return readThrough(ctx, c, key(orgID, KindLeaveTypes, "all"), func() ([]LeaveType, error) {
+		if c.leave == nil {
+			return nil, fmt.Errorf("%w: leave seam (S5) is not available", ErrUnavailable)
+		}
+		return c.leave.Types(ctx, orgID)
 	})
 }
 

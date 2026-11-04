@@ -1754,12 +1754,77 @@ components:
     StakeholderType:
       allOf: [ { $ref: '#/components/schemas/CodedMaster' } ]
     PanicType:
-      allOf: [ { $ref: '#/components/schemas/CodedMaster' } ]
-      description: Tipe panik (Keamanan/Medis/Kebakaran/Lainnya).
+      type: object
+      description: Tipe panik (Keamanan/Medis/Kebakaran/Lainnya). `code` adalah identitasnya dan tidak berubah.
+      properties:
+        id: { type: integer, format: int64 }
+        organization_id: { type: integer, format: int64 }
+        code: { type: string }
+        name: { type: string }
+        sort_order: { type: integer }
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    PanicTypeCreate:
+      type: object
+      description: >-
+        Nama unik di organisasi (tanpa membedakan huruf besar/kecil, termasuk tipe nonaktif) →
+        409 PANIC_TYPE_NAME_TAKEN. Kode yang dikirim yang sudah dipakai (juga oleh tipe terhapus) →
+        409 PANIC_TYPE_CODE_TAKEN; kode yang dibuat dari nama diberi akhiran _2, _3 bila terpakai.
+      required: [name]
+      properties:
+        code: { type: string, maxLength: 30, description: "Huruf besar/angka/garis bawah, diawali huruf. Dibuat dari `name` bila kosong." }
+        name: { type: string, maxLength: 100 }
+        sort_order: { type: integer, minimum: 0, maximum: 10000 }
+        is_active: { type: boolean, default: true }
+    PanicTypePatch:
+      type: object
+      description: Kode tidak bisa diubah.
+      properties:
+        name: { type: string, maxLength: 100 }
+        sort_order: { type: integer, minimum: 0, maximum: 10000 }
+        is_active: { type: boolean }
+    Category:
+      type: object
+      description: >-
+        Kategori laporan atau instruksi (satu bentuk, `kind` ditentukan path). `urgency` hanya untuk
+        kategori instruksi. `business_lines` kosong = semua lini bisnis.
+      properties:
+        id: { type: integer, format: int64 }
+        organization_id: { type: integer, format: int64 }
+        name: { type: string }
+        urgency: { type: string, enum: [LOW, NORMAL, HIGH] }
+        business_lines: { type: array, items: { type: string, enum: [security, cleaning] } }
+        sort_order: { type: integer }
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    CategoryCreate:
+      type: object
+      description: >-
+        Nama unik per jenis dan per lini bisnis, tanpa membedakan huruf besar/kecil, termasuk terhadap
+        kategori nonaktif (yang dihapus tidak dihitung). `business_lines` kosong = semua lini, jadi
+        bentrok dengan nama yang sama di lini mana pun. Bentrok → 409 CATEGORY_NAME_TAKEN.
+      required: [name]
+      properties:
+        name: { type: string, maxLength: 100 }
+        urgency: { type: string, enum: [LOW, NORMAL, HIGH], description: Wajib untuk kategori instruksi, ditolak untuk kategori laporan. }
+        business_lines: { type: array, maxItems: 2, items: { type: string, enum: [security, cleaning] } }
+        sort_order: { type: integer, minimum: 0, maximum: 10000 }
+        is_active: { type: boolean, default: true }
+    CategoryPatch:
+      type: object
+      description: Field yang tidak dikirim tidak berubah. `business_lines` kosong berarti semua lini bisnis.
+      properties:
+        name: { type: string, maxLength: 100 }
+        urgency: { type: string, enum: [LOW, NORMAL, HIGH] }
+        business_lines: { type: array, maxItems: 2, items: { type: string, enum: [security, cleaning] } }
+        sort_order: { type: integer, minimum: 0, maximum: 10000 }
+        is_active: { type: boolean }
     ReportCategory:
-      allOf: [ { $ref: '#/components/schemas/CodedMaster' } ]
+      $ref: '#/components/schemas/Category'
     InstructionCategory:
-      allOf: [ { $ref: '#/components/schemas/CodedMaster' } ]
+      $ref: '#/components/schemas/Category'
     PermissionCategory:
       allOf: [ { $ref: '#/components/schemas/CodedMaster' } ]
     Letterhead:
@@ -3691,7 +3756,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/CodedMasterInput' }
+            schema: { $ref: '#/components/schemas/CategoryCreate' }
       responses:
         '201':
           description: Created
@@ -3739,7 +3804,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/CodedMasterInput' }
+            schema: { $ref: '#/components/schemas/CategoryPatch' }
       responses:
         '200':
           description: OK
@@ -3810,7 +3875,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/CodedMasterInput' }
+            schema: { $ref: '#/components/schemas/CategoryCreate' }
       responses:
         '201':
           description: Created
@@ -3858,7 +3923,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/CodedMasterInput' }
+            schema: { $ref: '#/components/schemas/CategoryPatch' }
       responses:
         '200':
           description: OK
@@ -4167,7 +4232,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/CodedMasterInput' }
+            schema: { $ref: '#/components/schemas/PanicTypeCreate' }
       responses:
         '201':
           description: Created
@@ -4215,7 +4280,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/CodedMasterInput' }
+            schema: { $ref: '#/components/schemas/PanicTypePatch' }
       responses:
         '200':
           description: OK
@@ -9364,11 +9429,95 @@ paths:
     get:
       operationId: getReportCategories
       tags: [Report]
-      summary: Daftar kategori laporan (lookup)
-      parameters: [ { $ref: '#/components/parameters/IsActiveParam' } ]
+      summary: Daftar kategori laporan (lookup, delta-sync)
+      description: >-
+        Kategori laporan yang ditawarkan ke lini bisnis proyek pemanggil. Dua bentuk jawaban:
+
+        - **Tanpa `since`**: semua baris aktif sekaligus (tanpa paginasi sungguhan), dengan
+          `meta.server_time` sebagai watermark pertama klien.
+        - **Dengan `since`** (delta-sync, DL-34/DL-57): baris yang berubah sejak itu di `data`, dan
+          baris yang dihapus atau dinonaktifkan di `deleted` (tombstone) supaya cache offline bisa
+          membuangnya. Simpan `meta.server_time` sebagai `since` berikutnya. Baris yang baru saja
+          berubah boleh datang dua kali: upsert berdasarkan `id`.
+      parameters:
+        - $ref: '#/components/parameters/SinceParam'
       responses:
-        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/ListEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/ReportCategory' } } } } ] } } } }
+        '200':
+          description: OK. `meta.server_time` WAJIB.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/ReportCategory' } }
+                      deleted: { type: array, items: { $ref: '#/components/schemas/Tombstone' } }
+                      pagination: { $ref: '#/components/schemas/Pagination' }
+                      meta: { $ref: '#/components/schemas/DeltaMeta' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /instruction-categories:
+    get:
+      operationId: getInstructionCategories
+      tags: [Instruction]
+      summary: Daftar kategori instruksi (lookup, delta-sync)
+      description: >-
+        Kategori instruksi yang ditawarkan ke lini bisnis proyek pemanggil. Dua bentuk jawaban:
+
+        - **Tanpa `since`**: semua baris aktif sekaligus (tanpa paginasi sungguhan), dengan
+          `meta.server_time` sebagai watermark pertama klien.
+        - **Dengan `since`** (delta-sync, DL-34/DL-57): baris yang berubah sejak itu di `data`, dan
+          baris yang dihapus atau dinonaktifkan di `deleted` (tombstone) supaya cache offline bisa
+          membuangnya. Simpan `meta.server_time` sebagai `since` berikutnya. Baris yang baru saja
+          berubah boleh datang dua kali: upsert berdasarkan `id`.
+      parameters:
+        - $ref: '#/components/parameters/SinceParam'
+      responses:
+        '200':
+          description: OK. `meta.server_time` WAJIB.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/InstructionCategory' } }
+                      deleted: { type: array, items: { $ref: '#/components/schemas/Tombstone' } }
+                      pagination: { $ref: '#/components/schemas/Pagination' }
+                      meta: { $ref: '#/components/schemas/DeltaMeta' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /panic-types:
+    get:
+      operationId: getPanicTypes
+      tags: [Panic]
+      summary: Daftar tipe panik (lookup, delta-sync)
+      description: >-
+        Tipe panik organisasi pemanggil. Dua bentuk jawaban:
+
+        - **Tanpa `since`**: semua baris aktif sekaligus (tanpa paginasi sungguhan), dengan
+          `meta.server_time` sebagai watermark pertama klien.
+        - **Dengan `since`** (delta-sync, DL-34/DL-57): baris yang berubah sejak itu di `data`, dan
+          baris yang dihapus atau dinonaktifkan di `deleted` (tombstone) supaya cache offline bisa
+          membuangnya. Simpan `meta.server_time` sebagai `since` berikutnya. Baris yang baru saja
+          berubah boleh datang dua kali: upsert berdasarkan `id`.
+      parameters:
+        - $ref: '#/components/parameters/SinceParam'
+      responses:
+        '200':
+          description: OK. `meta.server_time` WAJIB.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/PanicType' } }
+                      deleted: { type: array, items: { $ref: '#/components/schemas/Tombstone' } }
+                      pagination: { $ref: '#/components/schemas/Pagination' }
+                      meta: { $ref: '#/components/schemas/DeltaMeta' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /reports:
     post:
       operationId: postReports

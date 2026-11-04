@@ -15,6 +15,7 @@ import (
 
 	"siapp/internal/db"
 	"siapp/pkg/access"
+	"siapp/pkg/masterdata"
 	"siapp/pkg/platform/apperr"
 	"siapp/pkg/platform/auth"
 	"siapp/pkg/platform/clock"
@@ -116,6 +117,10 @@ func (u *Usecase) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 	// rows there writes nothing, so this costs one read on every other login.
 	if _, err := access.EnsureDefaults(ctx, u.pool, u.clock, id.OrganizationID); err != nil {
 		return LoginResult{}, fmt.Errorf("seed field permissions: %w", err)
+	}
+	// The same for the master data (Phase 06.1): categories and panic types the forms offer.
+	if _, err := masterdata.EnsureDefaults(ctx, u.pool, u.clock, id.OrganizationID); err != nil {
+		return LoginResult{}, fmt.Errorf("seed master data: %w", err)
 	}
 
 	var out LoginResult
