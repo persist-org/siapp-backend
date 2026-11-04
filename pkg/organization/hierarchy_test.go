@@ -229,7 +229,7 @@ func TestACodeIsBuiltFromValidInputsOnly(t *testing.T) {
 			"longitude only":            base(map[string]any{"longitude": 106.8}),
 			"latitude out of range":     base(map[string]any{"latitude": 91.0, "longitude": 106.8}),
 			"zero radius":               base(map[string]any{"attendance_radius_meters": 0}),
-			"a contact without a phone": base(map[string]any{"emergency_contacts": []map[string]any{{"type": "Polisi", "name": "Polsek"}}}),
+			"a contact without a phone": base(map[string]any{"emergency_contacts": []map[string]any{{"stakeholder_type_id": 1, "name": "Polsek"}}}),
 		} {
 			res := e.raw(admin, http.MethodPost, "/admin/projects", body)
 			require.Equal(t, http.StatusUnprocessableEntity, res.Status, "%s: %s", name, res.Raw)
@@ -422,11 +422,23 @@ func TestARegionAdminWorksInsideTheirRegion(t *testing.T) {
 	})
 }
 
+// stakeholderType adds a stakeholder type to an organization, for the emergency contacts of a
+// project to point at.
+func stakeholderType(t *testing.T, org int64, code string) int64 {
+	t.Helper()
+	var id int64
+	require.NoError(t, database.WithTenantTx(t.Context(), testkit.Pool(t), org, func(tx pgx.Tx) error {
+		return tx.QueryRow(t.Context(), "INSERT INTO stakeholder_types (code, name) VALUES ($1, $1) RETURNING id", code).Scan(&id)
+	}))
+	return id
+}
+
 func TestAProjectKnowsWhereItIs(t *testing.T) {
 	e := newEnv(t)
 	org := testkit.NewOrg(t)
 	admin := e.person(org, "ORG_ADMIN", "")
 	_, _, _, project := e.tree(admin, 1)
+	police := stakeholderType(t, org, "POLICE")
 	projects := organization.NewProjects(testkit.Pool(t), clock.System{})
 
 	t.Run("without coordinates it is not configured", func(t *testing.T) {
@@ -445,7 +457,7 @@ func TestAProjectKnowsWhereItIs(t *testing.T) {
 		res := e.api(admin, http.MethodPatch, "/admin/projects/"+project, map[string]any{
 			"latitude": -2.5337, "longitude": 140.7181, "timezone": "Asia/Jayapura", "attendance_radius_meters": 200,
 			"patrol_interval_minutes": 30, "strict_attendance_geofence": true,
-			"emergency_contacts": []map[string]any{{"type": "Polisi", "name": "Polres", "phone": "110"}},
+			"emergency_contacts": []map[string]any{{"stakeholder_type_id": police, "name": "Polres", "phone": "110"}},
 		})
 		require.Equal(t, http.StatusOK, res.Status, "body: %s", res.Raw)
 		got := data[row](t, res)

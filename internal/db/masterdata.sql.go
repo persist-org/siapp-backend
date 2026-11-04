@@ -258,6 +258,7 @@ INSERT INTO panic_types (code, name, sort_order, created_at, updated_at)
 SELECT d.code, d.name, d.ord, $1::timestamptz, $1::timestamptz
 FROM (SELECT unnest($2::text[]) AS code, unnest($3::text[]) AS name,
              unnest($4::int[]) AS ord) AS d
+WHERE NOT EXISTS (SELECT 1 FROM panic_types p WHERE p.code = d.code)
 ON CONFLICT DO NOTHING
 `
 
@@ -268,6 +269,8 @@ type InsertDefaultPanicTypesParams struct {
 	Orders []int32
 }
 
+// The NOT EXISTS makes the usual call (every login, all rows present) insert nothing at all: a
+// conflicting INSERT would still take an id from the sequence for every row, at every login.
 // No conflict target: a default whose code OR name an admin already uses is skipped, never an
 // error that would fail the login seeding it.
 func (q *Queries) InsertDefaultPanicTypes(ctx context.Context, arg InsertDefaultPanicTypesParams) (int64, error) {
@@ -284,25 +287,27 @@ func (q *Queries) InsertDefaultPanicTypes(ctx context.Context, arg InsertDefault
 }
 
 const insertPanicType = `-- name: InsertPanicType :one
-INSERT INTO panic_types (code, name, sort_order, active, created_at, updated_at)
-VALUES ($1, $2,
-        COALESCE($3::int, (SELECT COALESCE(max(p.sort_order) + 1, 0) FROM panic_types p)),
-        $4, $5, $5)
+INSERT INTO panic_types (code, name, stakeholder_type_id, sort_order, active, created_at, updated_at)
+VALUES ($1, $2, $3,
+        COALESCE($4::int, (SELECT COALESCE(max(p.sort_order) + 1, 0) FROM panic_types p)),
+        $5, $6, $6)
 RETURNING id, organization_id, code, name, stakeholder_type_id, sort_order, active, created_at, updated_at, deleted_at
 `
 
 type InsertPanicTypeParams struct {
-	Code      string
-	Name      string
-	SortOrder pgtype.Int4
-	Active    bool
-	Now       pgtype.Timestamptz
+	Code              string
+	Name              string
+	StakeholderTypeID pgtype.Int8
+	SortOrder         pgtype.Int4
+	Active            bool
+	Now               pgtype.Timestamptz
 }
 
 func (q *Queries) InsertPanicType(ctx context.Context, arg InsertPanicTypeParams) (PanicType, error) {
 	row := q.db.QueryRow(ctx, insertPanicType,
 		arg.Code,
 		arg.Name,
+		arg.StakeholderTypeID,
 		arg.SortOrder,
 		arg.Active,
 		arg.Now,
@@ -594,11 +599,12 @@ func (q *Queries) ListPanicTypeChanges(ctx context.Context, after pgtype.Timesta
 }
 
 const listPanicTypeCodesWithPrefix = `-- name: ListPanicTypeCodesWithPrefix :many
-SELECT code FROM panic_types WHERE code = $1::text OR starts_with(code, $1::text || '_')
+SELECT code FROM panic_types WHERE starts_with(code, $1::text)
 `
 
 // The codes that start with a prefix, deleted ones included (a code is never reused), for making
-// a free code from a name.
+// a free code from a name. The prefix is codeRoot of the code, which every form freeCode can make
+// of it starts with, the cut ones included.
 func (q *Queries) ListPanicTypeCodesWithPrefix(ctx context.Context, prefix string) ([]string, error) {
 	rows, err := q.db.Query(ctx, listPanicTypeCodesWithPrefix, prefix)
 	if err != nil {
@@ -827,27 +833,27 @@ func (q *Queries) UpdateCategory(ctx context.Context, arg UpdateCategoryParams) 
 }
 
 const updatePanicType = `-- name: UpdatePanicType :one
-UPDATE panic_types SET
-    name       = COALESCE($1, name),
-    sort_order = COALESCE($2::int, sort_order),
-    active     = COALESCE($3::boolean, active),
-    updated_at = $4
-WHERE id = $5 AND deleted_at IS NULL
+UPDATE panic_types SET name = $1, stakeholder_type_id = $2,
+    sort_order = $3, active = $4, updated_at = $5
+WHERE id = $6 AND deleted_at IS NULL
 RETURNING id, organization_id, code, name, stakeholder_type_id, sort_order, active, created_at, updated_at, deleted_at
 `
 
 type UpdatePanicTypeParams struct {
-	Name      pgtype.Text
-	SortOrder pgtype.Int4
-	Active    pgtype.Bool
-	Now       pgtype.Timestamptz
-	ID        int64
+	Name              string
+	StakeholderTypeID pgtype.Int8
+	SortOrder         int32
+	Active            bool
+	Now               pgtype.Timestamptz
+	ID                int64
 }
 
-// The code is the identity and never changes.
+// The code is the identity and never changes. Writes every editable column: the caller has worked
+// out what the row becomes, so stakeholder_type_id can be cleared as well as set.
 func (q *Queries) UpdatePanicType(ctx context.Context, arg UpdatePanicTypeParams) (PanicType, error) {
 	row := q.db.QueryRow(ctx, updatePanicType,
 		arg.Name,
+		arg.StakeholderTypeID,
 		arg.SortOrder,
 		arg.Active,
 		arg.Now,

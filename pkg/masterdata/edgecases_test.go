@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"siapp/pkg/masterdata"
+	"siapp/pkg/platform/testkit"
 )
 
 // ---------- category names ----------
@@ -341,4 +342,127 @@ func TestSinceAcceptsAnOffsetAndRejectsGarbage(t *testing.T) {
 		e.raw(token, http.MethodGet, "/report-categories?since="+url.QueryEscape(bad), nil).
 			requireFailure(t, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "")
 	}
+}
+
+func TestAWrongTypeInANullableFieldNamesTheField(t *testing.T) {
+	e := newEnv(t)
+	_, admin := e.seeded()
+	st := e.stakeholders(admin)[0]
+	pt := data[[]panicType](t, e.api(admin, http.MethodGet, "/admin/panic-types", nil))[0]
+	lh := e.createLetterhead(admin, map[string]any{"name": "Kop"})
+	link := e.appLinks(admin)[0]
+
+	for _, tc := range []struct {
+		path  string
+		body  map[string]any
+		field string
+	}{
+		{"/admin/stakeholder-types/" + itoa(st.ID), map[string]any{"default_phone": 110}, "default_phone"},
+		{"/admin/panic-types/" + itoa(pt.ID), map[string]any{"stakeholder_type_id": "satu"}, "stakeholder_type_id"},
+		{"/admin/letterheads/" + itoa(lh.ID), map[string]any{"header_text": []int{1}}, "header_text"},
+		{"/admin/letterheads/" + itoa(lh.ID), map[string]any{"logo_media_id": 1.5}, "logo_media_id"},
+		{"/admin/app-links/" + itoa(link.ID), map[string]any{"ios_url_scheme": true}, "ios_url_scheme"},
+	} {
+		r := e.raw(admin, http.MethodPatch, tc.path, tc.body)
+		require.Equal(t, http.StatusUnprocessableEntity, r.Status, "%v: %s", tc.body, r.Raw)
+		require.Contains(t, string(r.Raw), `"field":"`+tc.field+`"`, "%v: %s", tc.body, r.Raw)
+	}
+	// Two at once are both reported.
+	r := e.raw(admin, http.MethodPatch, "/admin/app-links/"+itoa(link.ID), map[string]any{"url": 1, "android_package": 2})
+	require.Contains(t, string(r.Raw), `"field":"url"`)
+	require.Contains(t, string(r.Raw), `"field":"android_package"`)
+}
+
+func TestTwoNamesThatMakeOneCodeAtOnceBothGetACode(t *testing.T) {
+	e := newEnv(t)
+	_, admin := e.seeded()
+	names := []string{"Banjir", "Banjir!", "banjir?", "BANJIR."}
+	codes := make([]string, len(names))
+	statuses := make([]int, len(names))
+	var wg sync.WaitGroup
+	for i, n := range names {
+		wg.Go(func() {
+			// Different names (the name rule ignores case and spacing, not punctuation).
+			r := e.raw(admin, http.MethodPost, "/admin/panic-types", map[string]any{"name": n})
+			statuses[i] = r.Status
+			if r.Status == http.StatusCreated {
+				codes[i] = data[panicType](t, r).Code
+			}
+		})
+	}
+	wg.Wait()
+	for i, s := range statuses {
+		require.Equal(t, http.StatusCreated, s, "%q", names[i])
+	}
+	require.ElementsMatch(t, []string{"BANJIR", "BANJIR_2", "BANJIR_3", "BANJIR_4"}, codes)
+}
+
+func TestACutCodeDoesNotCollideWithACodeAnAdminTyped(t *testing.T) {
+	e := newEnv(t)
+	_, admin := e.seeded()
+	create := func(body map[string]any) reply {
+		return e.raw(admin, http.MethodPost, "/admin/panic-types", body)
+	}
+	name := "Kebakaran Hutan Dan Lahan Gambut Besar" // KEBAKARAN_HUTAN_DAN_LAHAN_GAMBU (cut to 30)
+	first := create(map[string]any{"name": name})
+	require.Equal(t, http.StatusCreated, first.Status, "body: %s", first.Raw)
+	code := data[panicType](t, first).Code
+	require.Len(t, code, 30)
+	// An admin types the very code the next suffix would make.
+	typed := code[:28] + "_2"
+	require.Equal(t, http.StatusCreated, create(map[string]any{"name": "Diketik", "code": typed}).Status)
+
+	next := create(map[string]any{"name": name + " Lagi"})
+	require.Equal(t, http.StatusCreated, next.Status, "a request without a code never gets CODE_TAKEN: %s", next.Raw)
+	got := data[panicType](t, next).Code
+	require.NotEqual(t, typed, got)
+	require.LessOrEqual(t, len(got), 30)
+}
+
+func TestARegionAdminIsRefusedBeforeTheBodyIsRead(t *testing.T) {
+	e := newEnv(t)
+	org, admin := e.seeded()
+	_, region := e.person(org, "REGION_ADMIN")
+	c := e.categories(admin, "/admin/report-categories")[0]
+	for _, tc := range []struct{ method, path string }{
+		{http.MethodPost, "/admin/report-categories"},
+		{http.MethodPatch, "/admin/report-categories/" + itoa(c.ID)},
+		{http.MethodPost, "/admin/stakeholder-types"},
+		{http.MethodPost, "/admin/app-links"},
+		{http.MethodPost, "/admin/letterheads"},
+	} {
+		// A body that would be a 422 for an ORG_ADMIN.
+		r := e.raw(region, tc.method, tc.path, map[string]any{"nonsense": true})
+		r.requireFailure(t, http.StatusForbidden, "ROLE_DENIED", "ACCESS_ORG_ADMIN_ONLY")
+	}
+	e.raw(region, http.MethodGet, "/admin/panic-types/abc", nil).
+		requireFailure(t, http.StatusForbidden, "ROLE_DENIED", "ACCESS_ORG_ADMIN_ONLY")
+}
+
+func TestAnOrganizationWithSomeStakeholderTypesGetsTheRest(t *testing.T) {
+	e := newEnv(t)
+	org := testkit.NewOrg(t)
+	// What migration 00021 leaves for an organization whose projects named only the police.
+	e.exec(org, "INSERT INTO stakeholder_types (code, name) VALUES ('POLICE', 'Polisi')")
+
+	_, err := masterdata.EnsureDefaults(t.Context(), testkit.Pool(t), e.clock, org)
+	require.NoError(t, err)
+	_, admin := e.person(org, "ORG_ADMIN")
+	var codes []string
+	for _, s := range e.stakeholders(admin) {
+		codes = append(codes, s.Code)
+	}
+	require.ElementsMatch(t, []string{"POLICE", "HOSPITAL", "FIRE_DEPARTMENT"}, codes)
+	police := e.stakeholderByCode(admin, "POLICE")
+	security := panicByCode(data[[]panicType2](t, e.api(admin, http.MethodGet, "/admin/panic-types", nil)), "SECURITY")
+	require.Equal(t, police.ID, *security.StakeholderTypeID, "the default panic types are linked to it")
+
+	// A default an admin deleted is not given back.
+	hospital := e.stakeholderByCode(admin, "HOSPITAL")
+	e.exec(org, "UPDATE panic_types SET stakeholder_type_id = NULL WHERE stakeholder_type_id = $1", hospital.ID)
+	require.Equal(t, http.StatusOK, e.api(admin, http.MethodDelete, "/admin/stakeholder-types/"+itoa(hospital.ID), nil).Status)
+	added, err := masterdata.EnsureDefaults(t.Context(), testkit.Pool(t), e.clock, org)
+	require.NoError(t, err)
+	require.Zero(t, added)
+	require.Len(t, e.stakeholders(admin), 2)
 }

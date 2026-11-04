@@ -1,7 +1,9 @@
 package masterdata
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -12,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"siapp/internal/db"
+	"siapp/pkg/media"
 	"siapp/pkg/platform/apperr"
 	"siapp/pkg/platform/clock"
 	"siapp/pkg/platform/personel"
@@ -28,6 +31,14 @@ type LeaveSource interface {
 	LeaveTypes(ctx context.Context, orgID int64) ([]personel.LeaveType, error)
 }
 
+// LogoStore is what a letterhead's logo needs from the media module: claiming the uploaded photo
+// for the letterhead, and a signed URL to show it. *media.Service is one.
+type LogoStore interface {
+	Attach(ctx context.Context, q *db.Queries, in media.AttachInput) error
+	Detach(ctx context.Context, q *db.Queries, entityType string, entityID int64, keep []int64) error
+	Views(ctx context.Context, q *db.Queries, entityType string, entityID int64, ids []int64) ([]media.View, error)
+}
+
 // UsageCheck reports whether a record elsewhere points at the master with this id. It runs in the
 // tenant transaction of the delete, on the row's lock, so a reference cannot appear between the
 // check and the delete without waiting for it.
@@ -41,8 +52,10 @@ type Service struct {
 
 	// Modules that point at a master register a check, while the router is wired: reports and
 	// instructions for their categories (11, 12), panic for its types (09).
-	categoryUsage  map[db.CategoryKind][]UsageCheck
-	panicTypeUsage []UsageCheck
+	categoryUsage   map[db.CategoryKind][]UsageCheck
+	panicTypeUsage  []UsageCheck
+	letterheadUsage []UsageCheck
+	logos           LogoStore
 }
 
 // NewService returns the service. leave may be nil: /permission-categories then answers 503 until
@@ -61,6 +74,72 @@ func (s *Service) UseCategoryUsage(kind Kind, check UsageCheck) {
 // points at. Call it while wiring, before the service takes requests.
 func (s *Service) UsePanicTypeUsage(check UsageCheck) {
 	s.panicTypeUsage = append(s.panicTypeUsage, check)
+}
+
+// UseLetterheadUsage registers a check that stops the delete of a letterhead that something
+// points at (exports, module 14). Call it while wiring, before the service takes requests.
+func (s *Service) UseLetterheadUsage(check UsageCheck) {
+	s.letterheadUsage = append(s.letterheadUsage, check)
+}
+
+// UseLogoStore plugs in the media module, which letterhead logos go through. Without it a
+// request that names a logo is a server error, not a client one: the router must wire it.
+func (s *Service) UseLogoStore(l LogoStore) { s.logos = l }
+
+// Optional is a field of a patch that can be left out, set, or set to null (to clear it). A plain
+// pointer cannot tell "absent" from "null", and a patch needs to.
+//
+// ⚠ The value is read in two steps. UnmarshalJSON only keeps the raw JSON; the use case calls
+// resolve with the field's name, which reads it. encoding/json does not pass a field's name down to
+// a custom unmarshaler, so a wrong type ({"url": 42}) decoded there would be reported without the
+// field it is about.
+type Optional[T any] struct {
+	// Set is true when the field was in the request, null or not.
+	Set bool
+	// Value is nil for null. It is filled by resolve.
+	Value *T
+	raw   json.RawMessage
+}
+
+// UnmarshalJSON marks the field as sent and keeps its JSON for resolve.
+func (o *Optional[T]) UnmarshalJSON(b []byte) error {
+	o.Set = true
+	o.raw = append(o.raw[:0], b...)
+	return nil
+}
+
+// resolve reads the value the request sent, or says that it is of the wrong type.
+func (o *Optional[T]) resolve(field string) *apperr.FieldError {
+	if !o.Set || o.Value != nil || bytes.Equal(bytes.TrimSpace(o.raw), []byte("null")) {
+		return nil
+	}
+	var v T
+	if err := json.Unmarshal(o.raw, &v); err != nil {
+		kind := "nilai yang sesuai"
+		switch any(v).(type) {
+		case string:
+			kind = "teks"
+		case int64, int, int32:
+			kind = "angka"
+		}
+		return &apperr.FieldError{Field: field, Code: "INVALID", Message: "Harus bertipe " + kind + "."}
+	}
+	o.Value = &v
+	return nil
+}
+
+// resolveAll resolves the optional fields of a request and reports every wrong one at once.
+func resolveAll(problems ...*apperr.FieldError) error {
+	var fields []apperr.FieldError
+	for _, p := range problems {
+		if p != nil {
+			fields = append(fields, *p)
+		}
+	}
+	if len(fields) == 0 {
+		return nil
+	}
+	return apperr.ErrValidation.WithFields(fields...)
 }
 
 // Tombstone says a row is gone for the app's cache: deleted, deactivated, or no longer offered to
@@ -94,6 +173,31 @@ func boolOrNull(b *bool) pgtype.Bool {
 		return pgtype.Bool{}
 	}
 	return pgtype.Bool{Bool: *b, Valid: true}
+}
+
+func pgInt8(n int64) pgtype.Int8 { return pgtype.Int8{Int64: n, Valid: true} }
+
+func int8Ptr(n *int64) pgtype.Int8 {
+	if n == nil {
+		return pgtype.Int8{}
+	}
+	return pgtype.Int8{Int64: *n, Valid: true}
+}
+
+func int8Value(n pgtype.Int8) *int64 {
+	if !n.Valid {
+		return nil
+	}
+	v := n.Int64
+	return &v
+}
+
+func textValue(t pgtype.Text) *string {
+	if !t.Valid {
+		return nil
+	}
+	v := t.String
+	return &v
 }
 
 func intPtr(n *int) pgtype.Int4 {

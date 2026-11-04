@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
+
 	"siapp/internal/db"
 	"siapp/pkg/platform/apperr"
 )
@@ -198,4 +200,25 @@ func (s *Service) Views(ctx context.Context, q *db.Queries, entityType string, e
 		out = append(out, View{ID: m.ID, URL: url, ContentType: m.ContentType, CapturedAt: m.CapturedAt, CaptureSource: m.CaptureSource})
 	}
 	return out, nil
+}
+
+// Detach releases the photos attached to a record (entityType, entityID), except the ids in keep,
+// inside the caller's tenant transaction. It is for a record whose photo can be replaced or
+// removed (a letterhead's logo): the photo it no longer shows becomes unattached, and the cleanup
+// job removes it and its file like any photo nobody attached. A record that keeps its photos for
+// ever (a report) never calls it.
+func (s *Service) Detach(ctx context.Context, q *db.Queries, entityType string, entityID int64, keep []int64) error {
+	if entityType == "" || entityID < 1 {
+		return fmt.Errorf("media: Detach needs the record (got %q %d)", entityType, entityID)
+	}
+	if keep == nil {
+		keep = []int64{}
+	}
+	if _, err := q.DetachMedia(ctx, db.DetachMediaParams{
+		EntityType: pgtype.Text{String: entityType, Valid: true}, EntityID: pgtype.Int8{Int64: entityID, Valid: true},
+		Keep: keep, Now: pgtype.Timestamptz{Time: s.clock.Now(), Valid: true},
+	}); err != nil {
+		return fmt.Errorf("detach media: %w", err)
+	}
+	return nil
 }

@@ -193,6 +193,7 @@ const (
 	MediaPurposePANICREPORT      MediaPurpose = "PANIC_REPORT"
 	MediaPurposeASSETREPORT      MediaPurpose = "ASSET_REPORT"
 	MediaPurposeEMEMO            MediaPurpose = "EMEMO"
+	MediaPurposeLETTERHEADLOGO   MediaPurpose = "LETTERHEAD_LOGO"
 )
 
 func (e *MediaPurpose) Scan(src interface{}) error {
@@ -756,6 +757,21 @@ func (ns NullWebRole) Value() (driver.Value, error) {
 	return string(ns.WebRole), nil
 }
 
+type AppLink struct {
+	ID             int64
+	OrganizationID int64
+	Name           string
+	IconKey        string
+	AndroidPackage pgtype.Text
+	IosUrlScheme   pgtype.Text
+	Url            pgtype.Text
+	SortOrder      int32
+	Active         bool
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+	DeletedAt      pgtype.Timestamptz
+}
+
 type AuditLog struct {
 	ID               int64
 	OrganizationID   int64
@@ -859,6 +875,25 @@ type IdempotencyKey struct {
 	ResponseBody     json.RawMessage
 	CreatedAt        pgtype.Timestamptz
 	ResponseOmitted  bool
+}
+
+type LegacyContactType struct {
+	OrganizationID int64
+	TypeName       string
+	Code           interface{}
+	Name           interface{}
+}
+
+type Letterhead struct {
+	ID             int64
+	OrganizationID int64
+	Name           string
+	HeaderText     pgtype.Text
+	FooterText     pgtype.Text
+	LogoMediaID    pgtype.Int8
+	IsDefault      bool
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
 }
 
 type Medium struct {
@@ -1066,6 +1101,19 @@ type ShiftGroupDay struct {
 	ShiftGroupID   int64
 	Weekday        int16
 	ShiftID        int64
+}
+
+type StakeholderType struct {
+	ID             int64
+	OrganizationID int64
+	Code           string
+	Name           string
+	DefaultPhone   pgtype.Text
+	SortOrder      int32
+	Active         bool
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+	DeletedAt      pgtype.Timestamptz
 }
 
 type Team struct {

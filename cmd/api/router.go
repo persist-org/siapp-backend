@@ -87,7 +87,8 @@ func newRouter(d deps) *chi.Mux {
 
 	// Photo uploads (module 04). Registering and completing need a signed-in person; the two
 	// blob routes of the local driver are public and authorized by the token in their URL.
-	mediaHandler := media.NewHandler(media.NewService(d.Pool, d.MediaStorage, d.Clock, d.Logger), d.MediaStorage, idempotency.Middleware(true))
+	mediaService := media.NewService(d.Pool, d.MediaStorage, d.Clock, d.Logger)
+	mediaHandler := media.NewHandler(mediaService, d.MediaStorage, idempotency.Middleware(true))
 	mediaHandler.Mount(router)
 
 	// The inbox (module 05): any signed-in person reads their own notifications. Modules that
@@ -119,10 +120,13 @@ func newRouter(d deps) *chi.Mux {
 		Notifier: notifier, Clock: d.Clock, Logger: d.Logger,
 	}).Mount(router)
 
-	// Master data (module 06): categories, panic types and the leave categories Personel owns.
-	// Modules that point at a master register a usage check on this service when they land, so a
-	// referenced master is refused a delete (MASTER_IN_USE).
-	masterdataHandler := masterdata.NewHandler(masterdata.NewService(d.Pool, d.Clock, personelCache))
+	// Master data (module 06): categories, panic types, stakeholders, letterheads, app links and
+	// the leave categories Personel owns. Modules that point at a master register a usage check on
+	// this service when they land, so a referenced master is refused a delete (MASTER_IN_USE).
+	masterdataService := masterdata.NewService(d.Pool, d.Clock, personelCache)
+	// A letterhead's logo is a photo that goes through the media module.
+	masterdataService.UseLogoStore(mediaService)
+	masterdataHandler := masterdata.NewHandler(masterdataService)
 	masterdataHandler.MountField(router)
 
 	// The WebSocket (05.3). The hub is shared with the Redis subscriber main starts, which feeds

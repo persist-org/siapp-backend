@@ -16,6 +16,13 @@
 
 -- Rows written before this rule may clash. Each clashing row is kept and renamed, never deleted:
 -- the row that keeps its name is the active one, then the oldest.
+--
+-- ⚠ FORCE ROW LEVEL SECURITY applies the tenant policy to the table owner too, and a migration has
+-- no tenant: the UPDATEs would see no rows, and the unique indexes below would then fail on the
+-- clashes they were meant to clear. FORCE is lifted for the two statements and put back before the
+-- migration's transaction commits, so no other session sees the tables without it (as 00008).
+ALTER TABLE categories NO FORCE ROW LEVEL SECURITY;
+ALTER TABLE panic_types NO FORCE ROW LEVEL SECURITY;
 UPDATE categories r SET name = r.name || ' (' || r.id || ')', updated_at = now()
 WHERE r.deleted_at IS NULL AND EXISTS (
     SELECT 1 FROM categories o
@@ -31,6 +38,8 @@ WHERE r.deleted_at IS NULL AND EXISTS (
     WHERE o.organization_id = r.organization_id AND o.id <> r.id AND o.deleted_at IS NULL
       AND lower(o.name) = lower(r.name)
       AND ((o.active AND NOT r.active) OR (o.active = r.active AND o.id < r.id)));
+ALTER TABLE categories FORCE ROW LEVEL SECURITY;
+ALTER TABLE panic_types FORCE ROW LEVEL SECURITY;
 
 DROP INDEX categories_name_uq;
 CREATE UNIQUE INDEX categories_name_uq ON categories (organization_id, kind, lower(name), business_lines)

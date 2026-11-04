@@ -107,9 +107,10 @@ SELECT EXISTS (
 )::boolean;
 
 -- The codes that start with a prefix, deleted ones included (a code is never reused), for making
--- a free code from a name.
+-- a free code from a name. The prefix is codeRoot of the code, which every form freeCode can make
+-- of it starts with, the cut ones included.
 -- name: ListPanicTypeCodesWithPrefix :many
-SELECT code FROM panic_types WHERE code = @prefix::text OR starts_with(code, @prefix::text || '_');
+SELECT code FROM panic_types WHERE starts_with(code, @prefix::text);
 
 -- name: ListPanicTypes :many
 SELECT * FROM panic_types
@@ -134,19 +135,17 @@ SELECT * FROM panic_types WHERE id = @id AND deleted_at IS NULL;
 SELECT * FROM panic_types WHERE id = @id AND deleted_at IS NULL FOR UPDATE;
 
 -- name: InsertPanicType :one
-INSERT INTO panic_types (code, name, sort_order, active, created_at, updated_at)
-VALUES (@code, @name,
+INSERT INTO panic_types (code, name, stakeholder_type_id, sort_order, active, created_at, updated_at)
+VALUES (@code, @name, sqlc.narg('stakeholder_type_id'),
         COALESCE(sqlc.narg('sort_order')::int, (SELECT COALESCE(max(p.sort_order) + 1, 0) FROM panic_types p)),
         @active, @now, @now)
 RETURNING *;
 
--- The code is the identity and never changes.
+-- The code is the identity and never changes. Writes every editable column: the caller has worked
+-- out what the row becomes, so stakeholder_type_id can be cleared as well as set.
 -- name: UpdatePanicType :one
-UPDATE panic_types SET
-    name       = COALESCE(sqlc.narg('name'), name),
-    sort_order = COALESCE(sqlc.narg('sort_order')::int, sort_order),
-    active     = COALESCE(sqlc.narg('active')::boolean, active),
-    updated_at = @now
+UPDATE panic_types SET name = @name, stakeholder_type_id = sqlc.narg('stakeholder_type_id'),
+    sort_order = @sort_order, active = @active, updated_at = @now
 WHERE id = @id AND deleted_at IS NULL
 RETURNING *;
 
@@ -165,6 +164,9 @@ INSERT INTO panic_types (code, name, sort_order, created_at, updated_at)
 SELECT d.code, d.name, d.ord, @now::timestamptz, @now::timestamptz
 FROM (SELECT unnest(@codes::text[]) AS code, unnest(@names::text[]) AS name,
              unnest(@orders::int[]) AS ord) AS d
+-- The NOT EXISTS makes the usual call (every login, all rows present) insert nothing at all: a
+-- conflicting INSERT would still take an id from the sequence for every row, at every login.
+WHERE NOT EXISTS (SELECT 1 FROM panic_types p WHERE p.code = d.code)
 -- No conflict target: a default whose code OR name an admin already uses is skipped, never an
 -- error that would fail the login seeding it.
 ON CONFLICT DO NOTHING;

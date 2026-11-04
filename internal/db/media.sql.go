@@ -123,6 +123,35 @@ func (q *Queries) DeleteMediaByIDs(ctx context.Context, ids []int64) (int64, err
 	return result.RowsAffected(), nil
 }
 
+const detachMedia = `-- name: DetachMedia :execrows
+UPDATE media SET attached_entity_type = NULL, attached_entity_id = NULL, updated_at = $1
+WHERE attached_entity_type = $2 AND attached_entity_id = $3
+  AND NOT (id = ANY($4::bigint[]))
+`
+
+type DetachMediaParams struct {
+	Now        pgtype.Timestamptz
+	EntityType pgtype.Text
+	EntityID   pgtype.Int8
+	Keep       []int64
+}
+
+// Releases the photos attached to a record, except the ones in keep: a letterhead whose logo was
+// replaced or removed lets the old photo go. Unattached again, the photo is removed with its file
+// by the cleanup job, like any other photo nobody attached.
+func (q *Queries) DetachMedia(ctx context.Context, arg DetachMediaParams) (int64, error) {
+	result, err := q.db.Exec(ctx, detachMedia,
+		arg.Now,
+		arg.EntityType,
+		arg.EntityID,
+		arg.Keep,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getMedia = `-- name: GetMedia :one
 SELECT id, organization_id, owner_personnel_id, purpose, content_type, size_bytes, storage_key, status, captured_at, capture_latitude, capture_longitude, capture_source, attached_entity_type, attached_entity_id, created_at, updated_at FROM media WHERE id = $1
 `

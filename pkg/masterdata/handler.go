@@ -35,6 +35,8 @@ func (h *Handler) MountAdmin(r chi.Router) {
 	r.Get("/panic-types/{id}", h.getPanicType)
 	r.Patch("/panic-types/{id}", h.updatePanicType)
 	r.Delete("/panic-types/{id}", h.deletePanicType)
+
+	h.mountAdminMore(r)
 }
 
 // MountField adds the routes of the field app. They need a signed-in person and nothing more: the
@@ -44,6 +46,7 @@ func (h *Handler) MountField(r chi.Router) {
 	r.Get("/api/v1/instruction-categories", h.fieldCategories(KindInstruction))
 	r.Get("/api/v1/panic-types", h.fieldPanicTypes)
 	r.Get("/api/v1/permission-categories", h.permissionCategories)
+	h.mountFieldMore(r)
 }
 
 // ---------- admin: categories ----------
@@ -349,11 +352,18 @@ func (h *Handler) permissionCategories(w http.ResponseWriter, r *http.Request) {
 
 // ---------- shared ----------
 
+// caller is the admin behind an admin request. Every master is the organization's, so only an
+// ORG_ADMIN gets past here: a REGION_ADMIN is told so before the body is read, whatever is in it.
+// The service checks it again.
 func caller(w http.ResponseWriter, r *http.Request) (auth.Principal, access.AdminScope, bool) {
 	p, okP := auth.From(r.Context())
 	s, okS := access.ScopeFrom(r.Context())
 	if !okP || !okS {
 		httpx.Error(w, r, apperr.ErrUnauthenticated)
+		return auth.Principal{}, access.AdminScope{}, false
+	}
+	if !s.All {
+		httpx.Error(w, r, access.ErrOrgAdminOnly)
 		return auth.Principal{}, access.AdminScope{}, false
 	}
 	return p, s, true
@@ -418,20 +428,22 @@ func categoryToAPI(c Category) categoryJSON {
 
 // panicTypeJSON is a panic type as the API shows it: CodedMaster plus its sort order.
 type panicTypeJSON struct {
-	ID             int64     `json:"id"`
-	OrganizationID int64     `json:"organization_id"`
-	Code           string    `json:"code"`
-	Name           string    `json:"name"`
-	SortOrder      int       `json:"sort_order"`
-	IsActive       bool      `json:"is_active"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ID             int64  `json:"id"`
+	OrganizationID int64  `json:"organization_id"`
+	Code           string `json:"code"`
+	Name           string `json:"name"`
+	// StakeholderTypeID is who to call for this kind of emergency; null when nobody in particular.
+	StakeholderTypeID *int64    `json:"stakeholder_type_id"`
+	SortOrder         int       `json:"sort_order"`
+	IsActive          bool      `json:"is_active"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }
 
 func panicTypeToAPI(t PanicType) panicTypeJSON {
 	return panicTypeJSON{
-		ID: t.ID, OrganizationID: t.OrganizationID, Code: t.Code, Name: t.Name, SortOrder: t.SortOrder,
-		IsActive: t.Active, CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt,
+		ID: t.ID, OrganizationID: t.OrganizationID, Code: t.Code, Name: t.Name, StakeholderTypeID: t.StakeholderTypeID,
+		SortOrder: t.SortOrder, IsActive: t.Active, CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt,
 	}
 }
 

@@ -38,6 +38,14 @@ WHERE id = ANY(@ids::bigint[])
   AND purpose = @purpose
   AND attached_entity_id IS NULL;
 
+-- Releases the photos attached to a record, except the ones in keep: a letterhead whose logo was
+-- replaced or removed lets the old photo go. Unattached again, the photo is removed with its file
+-- by the cleanup job, like any other photo nobody attached.
+-- name: DetachMedia :execrows
+UPDATE media SET attached_entity_type = NULL, attached_entity_id = NULL, updated_at = @now
+WHERE attached_entity_type = @entity_type AND attached_entity_id = @entity_id
+  AND NOT (id = ANY(@keep::bigint[]));
+
 -- Photos nobody attached, a day after they were registered: PENDING ones that were never
 -- uploaded or confirmed, and UPLOADED ones no record claimed. The rows are LOCKED, skipping
 -- those another transaction holds: an Attach that runs at the same moment waits for the

@@ -52,6 +52,7 @@ type env struct {
 	client  *testkit.Client
 	clock   *testClock
 	service *masterdata.Service
+	logos   *fakeLogos
 	userID  int64
 }
 
@@ -67,6 +68,8 @@ func newEnv(t *testing.T) *env {
 
 	clk := &testClock{now: time.Now().UTC().Truncate(time.Second)}
 	service := masterdata.NewService(pool, clk, cache)
+	logos := newFakeLogos()
+	service.UseLogoStore(logos)
 	h := masterdata.NewHandler(service)
 	srv := testkit.NewServer(t, testkit.Deps{Mount: func(r chi.Router) {
 		r.Route("/api/v1/admin", func(admin chi.Router) {
@@ -75,7 +78,7 @@ func newEnv(t *testing.T) *env {
 		})
 		h.MountField(r)
 	}})
-	return &env{t: t, srv: srv.URL, client: testkit.NewClient(t, srv), clock: clk, service: service}
+	return &env{t: t, srv: srv.URL, client: testkit.NewClient(t, srv), clock: clk, service: service, logos: logos}
 }
 
 type reply struct {
@@ -297,7 +300,9 @@ func TestANewOrganizationGetsTheDefaultsAndASecondCallAddsNothing(t *testing.T) 
 
 	added, err := masterdata.EnsureDefaults(t.Context(), testkit.Pool(t), e.clock, org)
 	require.NoError(t, err)
-	require.EqualValues(t, 4+4+2, added)
+	// 3 stakeholder types, 4 panic types linked to 3 of them, 2 app links, 4 report and 2 instruction
+	// categories.
+	require.EqualValues(t, 3+4+3+2+4+2, added)
 	added, err = masterdata.EnsureDefaults(t.Context(), testkit.Pool(t), e.clock, org)
 	require.NoError(t, err)
 	require.Zero(t, added)

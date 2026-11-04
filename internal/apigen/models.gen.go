@@ -540,6 +540,7 @@ const (
 	ATTENDANCESELFIE MediaPurpose = "ATTENDANCE_SELFIE"
 	EMEMO            MediaPurpose = "EMEMO"
 	INSTRUCTION      MediaPurpose = "INSTRUCTION"
+	LETTERHEADLOGO   MediaPurpose = "LETTERHEAD_LOGO"
 	PANICREPORT      MediaPurpose = "PANIC_REPORT"
 	PATROLSCAN       MediaPurpose = "PATROL_SCAN"
 	PROFILEPHOTO     MediaPurpose = "PROFILE_PHOTO"
@@ -556,6 +557,8 @@ func (e MediaPurpose) Valid() bool {
 	case EMEMO:
 		return true
 	case INSTRUCTION:
+		return true
+	case LETTERHEADLOGO:
 		return true
 	case PANICREPORT:
 		return true
@@ -1614,6 +1617,66 @@ func (e BusinessLineParam) Valid() bool {
 	case BusinessLineParamCleaning:
 		return true
 	case BusinessLineParamSecurity:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetAdminAppLinks200JSONResponseBodySuccess.
+const (
+	GetAdminAppLinks200JSONResponseBodySuccessTrue GetAdminAppLinks200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetAdminAppLinks200JSONResponseBodySuccess enum.
+func (e GetAdminAppLinks200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetAdminAppLinks200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostAdminAppLinks201JSONResponseBodySuccess.
+const (
+	PostAdminAppLinks201JSONResponseBodySuccessTrue PostAdminAppLinks201JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostAdminAppLinks201JSONResponseBodySuccess enum.
+func (e PostAdminAppLinks201JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostAdminAppLinks201JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetAdminAppLinksById200JSONResponseBodySuccess.
+const (
+	GetAdminAppLinksById200JSONResponseBodySuccessTrue GetAdminAppLinksById200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetAdminAppLinksById200JSONResponseBodySuccess enum.
+func (e GetAdminAppLinksById200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetAdminAppLinksById200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatchAdminAppLinksById200JSONResponseBodySuccess.
+const (
+	PatchAdminAppLinksById200JSONResponseBodySuccessTrue PatchAdminAppLinksById200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PatchAdminAppLinksById200JSONResponseBodySuccess enum.
+func (e PatchAdminAppLinksById200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PatchAdminAppLinksById200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
@@ -3588,6 +3651,21 @@ func (e GetAdminZonesByIdQrParamsFormat) Valid() bool {
 	}
 }
 
+// Defines values for GetAppLinks200JSONResponseBodySuccess.
+const (
+	GetAppLinks200JSONResponseBodySuccessTrue GetAppLinks200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetAppLinks200JSONResponseBodySuccess enum.
+func (e GetAppLinks200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetAppLinks200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetAssetConditions200JSONResponseBodySuccess.
 const (
 	GetAssetConditions200JSONResponseBodySuccessTrue GetAssetConditions200JSONResponseBodySuccess = true
@@ -5343,6 +5421,21 @@ func (e GetPositions200JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
+// Defines values for GetProjectEmergencyContacts200JSONResponseBodySuccess.
+const (
+	GetProjectEmergencyContacts200JSONResponseBodySuccessTrue GetProjectEmergencyContacts200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetProjectEmergencyContacts200JSONResponseBodySuccess enum.
+func (e GetProjectEmergencyContacts200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetProjectEmergencyContacts200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetProvinces200JSONResponseBodySuccess.
 const (
 	GetProvinces200JSONResponseBodySuccessTrue GetProvinces200JSONResponseBodySuccess = true
@@ -5862,6 +5955,45 @@ type ApiUsageCounter struct {
 	OrganizationId *int64              `json:"organization_id,omitempty"`
 	PeriodEnd      *openapi_types.Date `json:"period_end,omitempty"`
 	PeriodStart    *openapi_types.Date `json:"period_start,omitempty"`
+}
+
+// AppLink Tombol di beranda yang membuka aplikasi lain (E-Koperasi Janusa, IKI). SiAPP hanya menautkan (DL-16).
+type AppLink struct {
+	AndroidPackage *string    `json:"android_package,omitempty"`
+	CreatedAt      *time.Time `json:"created_at,omitempty"`
+
+	// IconKey Kunci ikon yang dibawa aplikasi.
+	IconKey        *string    `json:"icon_key,omitempty"`
+	Id             *int64     `json:"id,omitempty"`
+	IosUrlScheme   *string    `json:"ios_url_scheme,omitempty"`
+	IsActive       *bool      `json:"is_active,omitempty"`
+	Name           *string    `json:"name,omitempty"`
+	OrganizationId *int64     `json:"organization_id,omitempty"`
+	SortOrder      *int       `json:"sort_order,omitempty"`
+	UpdatedAt      *time.Time `json:"updated_at,omitempty"`
+	Url            *string    `json:"url,omitempty"`
+}
+
+// AppLinkCreate Nama unik di organisasi (tanpa membedakan huruf besar/kecil, termasuk tautan nonaktif) → 409 APP_LINK_NAME_TAKEN. Tautan yang aktif butuh minimal satu tujuan (`android_package`, `ios_url_scheme` atau `url`); `url` harus https.
+type AppLinkCreate struct {
+	AndroidPackage *string `json:"android_package,omitempty"`
+	IconKey        string  `json:"icon_key"`
+	IosUrlScheme   *string `json:"ios_url_scheme,omitempty"`
+	IsActive       *bool   `json:"is_active,omitempty"`
+	Name           string  `json:"name"`
+	SortOrder      *int    `json:"sort_order,omitempty"`
+	Url            *string `json:"url,omitempty"`
+}
+
+// AppLinkPatch Field yang tidak dikirim tidak berubah; ketiga tujuan menerima null untuk menghapus.
+type AppLinkPatch struct {
+	AndroidPackage *string `json:"android_package,omitempty"`
+	IconKey        *string `json:"icon_key,omitempty"`
+	IosUrlScheme   *string `json:"ios_url_scheme,omitempty"`
+	IsActive       *bool   `json:"is_active,omitempty"`
+	Name           *string `json:"name,omitempty"`
+	SortOrder      *int    `json:"sort_order,omitempty"`
+	Url            *string `json:"url,omitempty"`
 }
 
 // ApprovalNote defines model for ApprovalNote.
@@ -6440,13 +6572,11 @@ type EMemoUpdate struct {
 	Subject *string `json:"subject,omitempty"`
 }
 
-// EmergencyContact defines model for EmergencyContact.
+// EmergencyContact Satu nomor darurat proyek (Phase 06.2). `stakeholder_type_id` menunjuk ke tipe stakeholder organisasi (`/admin/stakeholder-types`): tidak ditemukan atau sudah dihapus → 422 STAKEHOLDER_TYPE_NOT_FOUND. `phone` disimpan sebagai E.164 (`+62812…`); nomor lokal (`0812…`, `62812…`) dan spasi/strip diterima dan dinormalkan, nomor darurat nasional (110, 112, 113, 115, 118, 119, 123, 129) disimpan apa adanya. Nomor yang tidak dikenali → 422. Maksimum 20 kontak per proyek; tipe + nomor yang sama dua kali ditolak.
 type EmergencyContact struct {
-	Name  string `json:"name"`
-	Phone string `json:"phone"`
-
-	// Type Jenis kejadian, misalnya Polisi, RS, Pemadam.
-	Type string `json:"type"`
+	Name              string `json:"name"`
+	Phone             string `json:"phone"`
+	StakeholderTypeId int64  `json:"stakeholder_type_id"`
 }
 
 // ErrorCode Kode error UPPERCASE machine-readable permukaan /api/v1/*.
@@ -6678,26 +6808,36 @@ type InvoiceLine struct {
 	UnitPrice *Money `json:"unit_price,omitempty"`
 }
 
-// Letterhead Kop Surat (WEB-12).
+// Letterhead Kop surat untuk ekspor (WEB-12). Satu organisasi punya paling banyak satu kop default; kop pertama otomatis jadi default. `logo_url` adalah URL bertanda tangan (berlaku 1 jam, tidak disimpan) dari foto `logo_media_id`.
 type Letterhead struct {
 	CreatedAt      *time.Time `json:"created_at,omitempty"`
-	Footer         *string    `json:"footer,omitempty"`
-	Header         *string    `json:"header,omitempty"`
+	FooterText     *string    `json:"footer_text,omitempty"`
+	HeaderText     *string    `json:"header_text,omitempty"`
 	Id             *int64     `json:"id,omitempty"`
-	IsActive       *bool      `json:"is_active,omitempty"`
+	IsDefault      *bool      `json:"is_default,omitempty"`
+	LogoMediaId    *int64     `json:"logo_media_id,omitempty"`
 	LogoUrl        *string    `json:"logo_url,omitempty"`
 	Name           *string    `json:"name,omitempty"`
 	OrganizationId *int64     `json:"organization_id,omitempty"`
 	UpdatedAt      *time.Time `json:"updated_at,omitempty"`
 }
 
-// LetterheadInput defines model for LetterheadInput.
-type LetterheadInput struct {
-	Footer   *string `json:"footer,omitempty"`
-	Header   *string `json:"header,omitempty"`
-	IsActive *bool   `json:"is_active,omitempty"`
-	LogoUrl  *string `json:"logo_url,omitempty"`
-	Name     string  `json:"name"`
+// LetterheadCreate Nama unik (tanpa membedakan huruf besar/kecil) → 409 LETTERHEAD_NAME_TAKEN. `logo_media_id` adalah foto milik pemanggil berstatus UPLOADED dengan purpose LETTERHEAD_LOGO yang belum dilampirkan ke yang lain (galat MEDIA_*). `is_default: true` menggantikan default lama.
+type LetterheadCreate struct {
+	FooterText  *string `json:"footer_text,omitempty"`
+	HeaderText  *string `json:"header_text,omitempty"`
+	IsDefault   *bool   `json:"is_default,omitempty"`
+	LogoMediaId *int64  `json:"logo_media_id,omitempty"`
+	Name        string  `json:"name"`
+}
+
+// LetterheadPatch Field yang tidak dikirim tidak berubah; `header_text`, `footer_text` dan `logo_media_id` menerima null untuk menghapus.
+type LetterheadPatch struct {
+	FooterText  *string `json:"footer_text,omitempty"`
+	HeaderText  *string `json:"header_text,omitempty"`
+	IsDefault   *bool   `json:"is_default,omitempty"`
+	LogoMediaId *int64  `json:"logo_media_id,omitempty"`
+	Name        *string `json:"name,omitempty"`
 }
 
 // ListEnvelope defines model for ListEnvelope.
@@ -7230,7 +7370,10 @@ type PanicType struct {
 	Name           *string    `json:"name,omitempty"`
 	OrganizationId *int64     `json:"organization_id,omitempty"`
 	SortOrder      *int       `json:"sort_order,omitempty"`
-	UpdatedAt      *time.Time `json:"updated_at,omitempty"`
+
+	// StakeholderTypeId Siapa yang dihubungi untuk jenis darurat ini.
+	StakeholderTypeId *int64     `json:"stakeholder_type_id,omitempty"`
+	UpdatedAt         *time.Time `json:"updated_at,omitempty"`
 }
 
 // PanicTypeCreate Nama unik di organisasi (tanpa membedakan huruf besar/kecil, termasuk tipe nonaktif) → 409 PANIC_TYPE_NAME_TAKEN. Kode yang dikirim yang sudah dipakai (juga oleh tipe terhapus) → 409 PANIC_TYPE_CODE_TAKEN; kode yang dibuat dari nama diberi akhiran _2, _3 bila terpakai.
@@ -7240,13 +7383,17 @@ type PanicTypeCreate struct {
 	IsActive  *bool   `json:"is_active,omitempty"`
 	Name      string  `json:"name"`
 	SortOrder *int    `json:"sort_order,omitempty"`
+
+	// StakeholderTypeId Tipe stakeholder yang tidak ditemukan → 422 STAKEHOLDER_TYPE_NOT_FOUND.
+	StakeholderTypeId *int64 `json:"stakeholder_type_id,omitempty"`
 }
 
-// PanicTypePatch Kode tidak bisa diubah.
+// PanicTypePatch Kode tidak bisa diubah. `stakeholder_type_id: null` menghapus tautannya.
 type PanicTypePatch struct {
-	IsActive  *bool   `json:"is_active,omitempty"`
-	Name      *string `json:"name,omitempty"`
-	SortOrder *int    `json:"sort_order,omitempty"`
+	IsActive          *bool   `json:"is_active,omitempty"`
+	Name              *string `json:"name,omitempty"`
+	SortOrder         *int    `json:"sort_order,omitempty"`
+	StakeholderTypeId *int64  `json:"stakeholder_type_id,omitempty"`
 }
 
 // PatrolScan defines model for PatrolScan.
@@ -7623,6 +7770,16 @@ type Project struct {
 	// Timezone Zona waktu IANA proyek: WIB = Asia/Jakarta, WITA = Asia/Makassar, WIT = Asia/Jayapura.
 	Timezone  *ProjectTimezone `json:"timezone,omitempty"`
 	UpdatedAt *time.Time       `json:"updated_at,omitempty"`
+}
+
+// ProjectContact Satu nomor di buku telepon proyek. `is_default: true` bila nomor itu cadangan tipenya karena proyek tidak punya kontak tipe tersebut.
+type ProjectContact struct {
+	IsDefault         *bool   `json:"is_default,omitempty"`
+	Name              *string `json:"name,omitempty"`
+	Phone             *string `json:"phone,omitempty"`
+	StakeholderTypeId *int64  `json:"stakeholder_type_id,omitempty"`
+	TypeCode          *string `json:"type_code,omitempty"`
+	TypeName          *string `json:"type_name,omitempty"`
 }
 
 // ProjectInput defines model for ProjectInput.
@@ -8142,8 +8299,39 @@ type ShiftUpdate struct {
 	ToleranceMinutes *int    `json:"tolerance_minutes,omitempty"`
 }
 
-// StakeholderType Master umum (qualifications, client_types, client_groups, stakeholder_types, panic_types, report_categories, instruction_categories, permission_categories).
-type StakeholderType = CodedMaster
+// StakeholderType Tipe stakeholder darurat (Polisi, Rumah Sakit, Pemadam Kebakaran). `code` adalah identitasnya dan tidak berubah.
+type StakeholderType struct {
+	Code      *string    `json:"code,omitempty"`
+	CreatedAt *time.Time `json:"created_at,omitempty"`
+
+	// DefaultPhone Nomor cadangan untuk proyek yang tidak punya kontak tipe ini. E.164 atau nomor darurat nasional.
+	DefaultPhone   *string    `json:"default_phone,omitempty"`
+	Id             *int64     `json:"id,omitempty"`
+	IsActive       *bool      `json:"is_active,omitempty"`
+	Name           *string    `json:"name,omitempty"`
+	OrganizationId *int64     `json:"organization_id,omitempty"`
+	SortOrder      *int       `json:"sort_order,omitempty"`
+	UpdatedAt      *time.Time `json:"updated_at,omitempty"`
+}
+
+// StakeholderTypeCreate Nama unik di organisasi (tanpa membedakan huruf besar/kecil, termasuk tipe nonaktif) → 409 STAKEHOLDER_TYPE_NAME_TAKEN. Kode yang sudah dipakai (juga oleh tipe terhapus) → 409 STAKEHOLDER_TYPE_CODE_TAKEN; kode yang dibuat dari nama diberi akhiran _2, _3 bila terpakai.
+type StakeholderTypeCreate struct {
+	Code *string `json:"code,omitempty"`
+
+	// DefaultPhone E.164 (+62812…), nomor lokal (0812…) atau nomor darurat nasional (110, 113, …); kosong = tanpa nomor cadangan.
+	DefaultPhone *string `json:"default_phone,omitempty"`
+	IsActive     *bool   `json:"is_active,omitempty"`
+	Name         string  `json:"name"`
+	SortOrder    *int    `json:"sort_order,omitempty"`
+}
+
+// StakeholderTypePatch Kode tidak bisa diubah. `default_phone: null` menghapus nomor cadangan.
+type StakeholderTypePatch struct {
+	DefaultPhone *string `json:"default_phone,omitempty"`
+	IsActive     *bool   `json:"is_active,omitempty"`
+	Name         *string `json:"name,omitempty"`
+	SortOrder    *int    `json:"sort_order,omitempty"`
+}
 
 // Subscription defines model for Subscription.
 type Subscription struct {
@@ -8730,6 +8918,9 @@ type XRequestIdHeader = string
 // XTenantIdHeader defines model for XTenantIdHeader.
 type XTenantIdHeader = string
 
+// BadRequest defines model for BadRequest.
+type BadRequest = ErrorEnvelope
+
 // Conflict defines model for Conflict.
 type Conflict = ErrorEnvelope
 
@@ -8738,6 +8929,9 @@ type Forbidden = ErrorEnvelope
 
 // NotFound defines model for NotFound.
 type NotFound = ErrorEnvelope
+
+// PayloadTooLarge defines model for PayloadTooLarge.
+type PayloadTooLarge = ErrorEnvelope
 
 // RateLimited defines model for RateLimited.
 type RateLimited = ErrorEnvelope
@@ -8750,6 +8944,33 @@ type Unauthorized = ErrorEnvelope
 
 // ValidationError defines model for ValidationError.
 type ValidationError = ErrorEnvelope
+
+// GetAdminAppLinksParams defines parameters for GetAdminAppLinks.
+type GetAdminAppLinksParams struct {
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
+	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
+
+	// Limit Item per halaman (maks 100).
+	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
+	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
+
+	// IsActive Filter status aktif.
+	IsActive *IsActiveParam `form:"is_active,omitempty" json:"is_active,omitempty"`
+}
+
+// GetAdminAppLinks200JSONResponseBodySuccess defines parameters for GetAdminAppLinks.
+type GetAdminAppLinks200JSONResponseBodySuccess bool
+
+// PostAdminAppLinks201JSONResponseBodySuccess defines parameters for PostAdminAppLinks.
+type PostAdminAppLinks201JSONResponseBodySuccess bool
+
+// GetAdminAppLinksById200JSONResponseBodySuccess defines parameters for GetAdminAppLinksById.
+type GetAdminAppLinksById200JSONResponseBodySuccess bool
+
+// PatchAdminAppLinksById200JSONResponseBodySuccess defines parameters for PatchAdminAppLinksById.
+type PatchAdminAppLinksById200JSONResponseBodySuccess bool
 
 // GetAdminAssetConditionsParams defines parameters for GetAdminAssetConditions.
 type GetAdminAssetConditionsParams struct {
@@ -9071,9 +9292,6 @@ type GetAdminInstructionCategoriesParams struct {
 	// Limit Item per halaman (maks 100).
 	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Sort Sortir per-resource, mis. `created_at:desc`.
-	Sort *SortParam `form:"sort,omitempty" json:"sort,omitempty"`
-
 	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
@@ -9083,14 +9301,6 @@ type GetAdminInstructionCategoriesParams struct {
 
 // GetAdminInstructionCategories200JSONResponseBodySuccess defines parameters for GetAdminInstructionCategories.
 type GetAdminInstructionCategories200JSONResponseBodySuccess bool
-
-// PostAdminInstructionCategoriesParams defines parameters for PostAdminInstructionCategories.
-type PostAdminInstructionCategoriesParams struct {
-	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
-	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
-	// 409 CONFLICT.
-	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
-}
 
 // PostAdminInstructionCategories201JSONResponseBodySuccess defines parameters for PostAdminInstructionCategories.
 type PostAdminInstructionCategories201JSONResponseBodySuccess bool
@@ -9109,26 +9319,12 @@ type GetAdminLetterheadsParams struct {
 	// Limit Item per halaman (maks 100).
 	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Sort Sortir per-resource, mis. `created_at:desc`.
-	Sort *SortParam `form:"sort,omitempty" json:"sort,omitempty"`
-
 	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
-
-	// IsActive Filter status aktif.
-	IsActive *IsActiveParam `form:"is_active,omitempty" json:"is_active,omitempty"`
 }
 
 // GetAdminLetterheads200JSONResponseBodySuccess defines parameters for GetAdminLetterheads.
 type GetAdminLetterheads200JSONResponseBodySuccess bool
-
-// PostAdminLetterheadsParams defines parameters for PostAdminLetterheads.
-type PostAdminLetterheadsParams struct {
-	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
-	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
-	// 409 CONFLICT.
-	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
-}
 
 // PostAdminLetterheads201JSONResponseBodySuccess defines parameters for PostAdminLetterheads.
 type PostAdminLetterheads201JSONResponseBodySuccess bool
@@ -9191,9 +9387,6 @@ type GetAdminPanicTypesParams struct {
 	// Limit Item per halaman (maks 100).
 	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Sort Sortir per-resource, mis. `created_at:desc`.
-	Sort *SortParam `form:"sort,omitempty" json:"sort,omitempty"`
-
 	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
@@ -9203,14 +9396,6 @@ type GetAdminPanicTypesParams struct {
 
 // GetAdminPanicTypes200JSONResponseBodySuccess defines parameters for GetAdminPanicTypes.
 type GetAdminPanicTypes200JSONResponseBodySuccess bool
-
-// PostAdminPanicTypesParams defines parameters for PostAdminPanicTypes.
-type PostAdminPanicTypesParams struct {
-	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
-	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
-	// 409 CONFLICT.
-	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
-}
 
 // PostAdminPanicTypes201JSONResponseBodySuccess defines parameters for PostAdminPanicTypes.
 type PostAdminPanicTypes201JSONResponseBodySuccess bool
@@ -9533,9 +9718,6 @@ type GetAdminReportCategoriesParams struct {
 	// Limit Item per halaman (maks 100).
 	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Sort Sortir per-resource, mis. `created_at:desc`.
-	Sort *SortParam `form:"sort,omitempty" json:"sort,omitempty"`
-
 	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
@@ -9545,14 +9727,6 @@ type GetAdminReportCategoriesParams struct {
 
 // GetAdminReportCategories200JSONResponseBodySuccess defines parameters for GetAdminReportCategories.
 type GetAdminReportCategories200JSONResponseBodySuccess bool
-
-// PostAdminReportCategoriesParams defines parameters for PostAdminReportCategories.
-type PostAdminReportCategoriesParams struct {
-	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
-	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
-	// 409 CONFLICT.
-	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
-}
 
 // PostAdminReportCategories201JSONResponseBodySuccess defines parameters for PostAdminReportCategories.
 type PostAdminReportCategories201JSONResponseBodySuccess bool
@@ -9729,9 +9903,6 @@ type GetAdminStakeholderTypesParams struct {
 	// Limit Item per halaman (maks 100).
 	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Sort Sortir per-resource, mis. `created_at:desc`.
-	Sort *SortParam `form:"sort,omitempty" json:"sort,omitempty"`
-
 	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
@@ -9741,14 +9912,6 @@ type GetAdminStakeholderTypesParams struct {
 
 // GetAdminStakeholderTypes200JSONResponseBodySuccess defines parameters for GetAdminStakeholderTypes.
 type GetAdminStakeholderTypes200JSONResponseBodySuccess bool
-
-// PostAdminStakeholderTypesParams defines parameters for PostAdminStakeholderTypes.
-type PostAdminStakeholderTypesParams struct {
-	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
-	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
-	// 409 CONFLICT.
-	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
-}
 
 // PostAdminStakeholderTypes201JSONResponseBodySuccess defines parameters for PostAdminStakeholderTypes.
 type PostAdminStakeholderTypes201JSONResponseBodySuccess bool
@@ -9914,6 +10077,15 @@ type GetAdminZonesByIdQrParams struct {
 
 // GetAdminZonesByIdQrParamsFormat defines parameters for GetAdminZonesByIdQr.
 type GetAdminZonesByIdQrParamsFormat string
+
+// GetAppLinksParams defines parameters for GetAppLinks.
+type GetAppLinksParams struct {
+	// Since Delta-sync watermark (updated_at). Tanpa since → full pull (DL-34).
+	Since *SinceParam `form:"since,omitempty" json:"since,omitempty"`
+}
+
+// GetAppLinks200JSONResponseBodySuccess defines parameters for GetAppLinks.
+type GetAppLinks200JSONResponseBodySuccess bool
 
 // GetAssetConditions200JSONResponseBodySuccess defines parameters for GetAssetConditions.
 type GetAssetConditions200JSONResponseBodySuccess bool
@@ -10719,12 +10891,6 @@ type GetPatrolPendingApprovalsParams struct {
 // GetPatrolPendingApprovals200JSONResponseBodySuccess defines parameters for GetPatrolPendingApprovals.
 type GetPatrolPendingApprovals200JSONResponseBodySuccess bool
 
-// GetPermissionCategoriesParams defines parameters for GetPermissionCategories.
-type GetPermissionCategoriesParams struct {
-	// IsActive Filter status aktif.
-	IsActive *IsActiveParam `form:"is_active,omitempty" json:"is_active,omitempty"`
-}
-
 // GetPermissionCategories200JSONResponseBodySuccess defines parameters for GetPermissionCategories.
 type GetPermissionCategories200JSONResponseBodySuccess bool
 
@@ -11036,6 +11202,9 @@ type PostPlatformSubscriptionsByIdCancel200JSONResponseBodySuccess bool
 // GetPositions200JSONResponseBodySuccess defines parameters for GetPositions.
 type GetPositions200JSONResponseBodySuccess bool
 
+// GetProjectEmergencyContacts200JSONResponseBodySuccess defines parameters for GetProjectEmergencyContacts.
+type GetProjectEmergencyContacts200JSONResponseBodySuccess bool
+
 // GetProvinces200JSONResponseBodySuccess defines parameters for GetProvinces.
 type GetProvinces200JSONResponseBodySuccess bool
 
@@ -11318,6 +11487,12 @@ type GetZonesByIdTrackingParams struct {
 // GetZonesByIdTracking200JSONResponseBodySuccess defines parameters for GetZonesByIdTracking.
 type GetZonesByIdTracking200JSONResponseBodySuccess bool
 
+// PostAdminAppLinksJSONRequestBody defines body for PostAdminAppLinks for application/json ContentType.
+type PostAdminAppLinksJSONRequestBody = AppLinkCreate
+
+// PatchAdminAppLinksByIdJSONRequestBody defines body for PatchAdminAppLinksById for application/json ContentType.
+type PatchAdminAppLinksByIdJSONRequestBody = AppLinkPatch
+
 // PostAdminAssetConditionsJSONRequestBody defines body for PostAdminAssetConditions for application/json ContentType.
 type PostAdminAssetConditionsJSONRequestBody = AssetConditionInput
 
@@ -11376,10 +11551,10 @@ type PostAdminInstructionCategoriesJSONRequestBody = CategoryCreate
 type PatchAdminInstructionCategoriesByIdJSONRequestBody = CategoryPatch
 
 // PostAdminLetterheadsJSONRequestBody defines body for PostAdminLetterheads for application/json ContentType.
-type PostAdminLetterheadsJSONRequestBody = LetterheadInput
+type PostAdminLetterheadsJSONRequestBody = LetterheadCreate
 
 // PatchAdminLetterheadsByIdJSONRequestBody defines body for PatchAdminLetterheadsById for application/json ContentType.
-type PatchAdminLetterheadsByIdJSONRequestBody = LetterheadInput
+type PatchAdminLetterheadsByIdJSONRequestBody = LetterheadPatch
 
 // PostAdminMasterReviewsJSONRequestBody defines body for PostAdminMasterReviews for application/json ContentType.
 type PostAdminMasterReviewsJSONRequestBody = MasterReviewCreate
@@ -11475,10 +11650,10 @@ type PostAdminShiftsJSONRequestBody = ShiftInput
 type PatchAdminShiftsByIdJSONRequestBody = ShiftUpdate
 
 // PostAdminStakeholderTypesJSONRequestBody defines body for PostAdminStakeholderTypes for application/json ContentType.
-type PostAdminStakeholderTypesJSONRequestBody = CodedMasterInput
+type PostAdminStakeholderTypesJSONRequestBody = StakeholderTypeCreate
 
 // PatchAdminStakeholderTypesByIdJSONRequestBody defines body for PatchAdminStakeholderTypesById for application/json ContentType.
-type PatchAdminStakeholderTypesByIdJSONRequestBody = CodedMasterInput
+type PatchAdminStakeholderTypesByIdJSONRequestBody = StakeholderTypePatch
 
 // PostAdminTeamMembersByIdChangeRoleJSONRequestBody defines body for PostAdminTeamMembersByIdChangeRole for application/json ContentType.
 type PostAdminTeamMembersByIdChangeRoleJSONRequestBody = TeamMembershipChangeRoleInput

@@ -27,28 +27,34 @@ type PanicType struct {
 	OrganizationID int64
 	Code           string
 	Name           string
-	SortOrder      int
-	Active         bool
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
-	deletedAt      *time.Time
+	// StakeholderTypeID is who to call for this kind of emergency (Phase 09.1 puts that type's
+	// numbers first). nil: nobody in particular.
+	StakeholderTypeID *int64
+	SortOrder         int
+	Active            bool
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+	deletedAt         *time.Time
 }
 
 // PanicTypeInput is a request to create a panic type. The code is the type's identity: when it is
 // left out it is made from the name ("Banjir" becomes BANJIR), and it never changes afterwards.
 type PanicTypeInput struct {
-	Code      string `json:"code" validate:"omitempty,max=30"`
-	Name      string `json:"name" validate:"required,notblank,max=500"`
-	SortOrder *int   `json:"sort_order" validate:"omitempty,min=0,max=10000"`
-	Active    *bool  `json:"is_active"`
+	Code              string `json:"code" validate:"omitempty,max=30"`
+	Name              string `json:"name" validate:"required,notblank,max=500"`
+	StakeholderTypeID *int64 `json:"stakeholder_type_id" validate:"omitempty,min=1"`
+	SortOrder         *int   `json:"sort_order" validate:"omitempty,min=0,max=10000"`
+	Active            *bool  `json:"is_active"`
 }
 
 // PanicTypeUpdate is a request to change a panic type. There is no field for the code: a client
 // that sends one gets 422 from the decoder's unknown-field rule.
 type PanicTypeUpdate struct {
-	Name      *string `json:"name" validate:"omitempty,notblank,max=500"`
-	SortOrder *int    `json:"sort_order" validate:"omitempty,min=0,max=10000"`
-	Active    *bool   `json:"is_active"`
+	Name *string `json:"name" validate:"omitempty,notblank,max=500"`
+	// StakeholderTypeID: null clears it.
+	StakeholderTypeID Optional[int64] `json:"stakeholder_type_id"`
+	SortOrder         *int            `json:"sort_order" validate:"omitempty,min=0,max=10000"`
+	Active            *bool           `json:"is_active"`
 }
 
 // ListPanicTypes returns one page of the organization's panic types, and their total.
@@ -110,14 +116,9 @@ func (s *Service) CreatePanicType(ctx context.Context, actor auth.Principal, sco
 	if err != nil {
 		return PanicType{}, err
 	}
-	code := strings.ToUpper(strings.TrimSpace(in.Code))
-	derived := code == ""
-	if derived {
-		if code = codeFromName(name); code == "" {
-			return PanicType{}, validationError("code", "Kode tidak bisa dibuat dari nama ini. Isi kode secara manual.")
-		}
-	} else if !panicCodePattern.MatchString(code) {
-		return PanicType{}, validationError("code", "Harus 2 sampai 30 karakter: huruf besar, angka atau garis bawah, diawali huruf.")
+	code, derived, err := codeFor(in.Code, name)
+	if err != nil {
+		return PanicType{}, err
 	}
 	active := in.Active == nil || *in.Active
 
@@ -126,15 +127,24 @@ func (s *Service) CreatePanicType(ctx context.Context, actor auth.Principal, sco
 		if err := claimPanicTypeName(ctx, q, actor.OrganizationID, 0, name); err != nil {
 			return err
 		}
+		if err := checkStakeholderType(ctx, q, in.StakeholderTypeID); err != nil {
+			return err
+		}
 		if derived {
-			taken, err := q.ListPanicTypeCodesWithPrefix(ctx, code)
+			// Two names can make one code ("Banjir", "Banjir!"): the lock makes the second wait and
+			// then see the first one's code taken.
+			if err := q.LockMasterName(ctx, fmt.Sprintf("masterdata:panic_type_code:%d:%s", actor.OrganizationID, codeRoot(code))); err != nil {
+				return fmt.Errorf("lock panic type code: %w", err)
+			}
+			taken, err := q.ListPanicTypeCodesWithPrefix(ctx, codeRoot(code))
 			if err != nil {
 				return fmt.Errorf("list panic type codes: %w", err)
 			}
 			code = freeCode(code, taken)
 		}
 		row, err := q.InsertPanicType(ctx, db.InsertPanicTypeParams{
-			Code: code, Name: name, SortOrder: intPtr(in.SortOrder), Active: active, Now: ts(s.clock.Now()),
+			Code: code, Name: name, StakeholderTypeID: int8Ptr(in.StakeholderTypeID),
+			SortOrder: intPtr(in.SortOrder), Active: active, Now: ts(s.clock.Now()),
 		})
 		if err != nil {
 			return err
@@ -154,6 +164,9 @@ func (s *Service) CreatePanicType(ctx context.Context, actor auth.Principal, sco
 func (s *Service) UpdatePanicType(ctx context.Context, actor auth.Principal, scope access.AdminScope, id int64, in PanicTypeUpdate) (PanicType, error) {
 	if !scope.All {
 		return PanicType{}, access.ErrOrgAdminOnly
+	}
+	if err := resolveAll(in.StakeholderTypeID.resolve("stakeholder_type_id")); err != nil {
+		return PanicType{}, err
 	}
 	var name *string
 	if in.Name != nil {
@@ -177,15 +190,24 @@ func (s *Service) UpdatePanicType(ctx context.Context, actor auth.Principal, sco
 		if name != nil {
 			next.Name = *name
 		}
+		if in.StakeholderTypeID.Set {
+			next.StakeholderTypeID = in.StakeholderTypeID.Value
+		}
 		if in.SortOrder != nil {
 			next.SortOrder = *in.SortOrder
 		}
 		if in.Active != nil {
 			next.Active = *in.Active
 		}
-		if next.Name == was.Name && next.SortOrder == was.SortOrder && next.Active == was.Active {
+		if next.Name == was.Name && samePhone64(next.StakeholderTypeID, was.StakeholderTypeID) &&
+			next.SortOrder == was.SortOrder && next.Active == was.Active {
 			out = was
 			return nil
+		}
+		if !samePhone64(next.StakeholderTypeID, was.StakeholderTypeID) {
+			if err := checkStakeholderType(ctx, q, next.StakeholderTypeID); err != nil {
+				return err
+			}
 		}
 		if next.Name != was.Name {
 			if err := claimPanicTypeName(ctx, q, actor.OrganizationID, id, next.Name); err != nil {
@@ -193,7 +215,8 @@ func (s *Service) UpdatePanicType(ctx context.Context, actor auth.Principal, sco
 			}
 		}
 		row, err := q.UpdatePanicType(ctx, db.UpdatePanicTypeParams{
-			ID: id, Name: textPtr(name), SortOrder: intPtr(in.SortOrder), Active: boolOrNull(in.Active), Now: ts(s.clock.Now()),
+			ID: id, Name: next.Name, StakeholderTypeID: int8Ptr(next.StakeholderTypeID),
+			SortOrder: int32(next.SortOrder), Active: next.Active, Now: ts(s.clock.Now()), //nolint:gosec // validated 0..10000
 		})
 		if err != nil {
 			return err
@@ -239,6 +262,16 @@ func panicTypeWriteError(err error, what string) error {
 		return err
 	}
 	return fmt.Errorf("%s: %w", what, err)
+}
+
+// codeRoot is the start every code freeCode can make of code has in common: the code itself, or
+// its first 24 characters when a suffix may have to cut it. The codes that start with it are the
+// ones freeCode must know are taken.
+func codeRoot(code string) string {
+	if len(code) > 24 {
+		return strings.TrimRight(code[:24], "_")
+	}
+	return code
 }
 
 // freeCode is code itself when no type has it, else code_2, code_3, ... cut so it stays within
@@ -373,7 +406,7 @@ func codeFromName(name string) string {
 
 func toPanicType(r db.PanicType) PanicType {
 	t := PanicType{
-		ID: r.ID, OrganizationID: r.OrganizationID, Code: r.Code, Name: r.Name,
+		ID: r.ID, OrganizationID: r.OrganizationID, Code: r.Code, Name: r.Name, StakeholderTypeID: int8Value(r.StakeholderTypeID),
 		SortOrder: int(r.SortOrder), Active: r.Active, CreatedAt: r.CreatedAt.Time, UpdatedAt: r.UpdatedAt.Time,
 	}
 	if r.DeletedAt.Valid {
@@ -385,5 +418,25 @@ func toPanicType(r db.PanicType) PanicType {
 
 // panicTypeMeta is what an audit row keeps of a panic type.
 func panicTypeMeta(t PanicType) map[string]any {
-	return map[string]any{"code": t.Code, "name": t.Name, "sort_order": t.SortOrder, "active": t.Active}
+	return map[string]any{
+		"code": t.Code, "name": t.Name, "stakeholder_type_id": t.StakeholderTypeID,
+		"sort_order": t.SortOrder, "active": t.Active,
+	}
+}
+
+// checkStakeholderType checks that a stakeholder type a body names is there (not deleted, and the
+// caller's own: row-level security hides the rest), and locks it FOR SHARE so a delete of it waits
+// for this transaction. nil is "none" and always fine.
+func checkStakeholderType(ctx context.Context, q *db.Queries, id *int64) error {
+	if id == nil {
+		return nil
+	}
+	found, err := q.LockStakeholderTypesForShare(ctx, []int64{*id})
+	if err != nil {
+		return fmt.Errorf("lock stakeholder type: %w", err)
+	}
+	if len(found) == 0 {
+		return unknownStakeholderType("stakeholder_type_id")
+	}
+	return nil
 }

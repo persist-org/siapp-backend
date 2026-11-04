@@ -118,7 +118,9 @@ func (u *Usecase) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 	if _, err := access.EnsureDefaults(ctx, u.pool, u.clock, id.OrganizationID); err != nil {
 		return LoginResult{}, fmt.Errorf("seed field permissions: %w", err)
 	}
-	// The same for the master data (Phase 06.1): categories and panic types the forms offer.
+	// The same for the master data (module 06): categories, panic types, stakeholder types and app
+	// links. Every statement there is an insert guarded by NOT EXISTS, so a login that finds the
+	// defaults in place runs a few cheap reads and writes nothing (not even a sequence value).
 	if _, err := masterdata.EnsureDefaults(ctx, u.pool, u.clock, id.OrganizationID); err != nil {
 		return LoginResult{}, fmt.Errorf("seed master data: %w", err)
 	}

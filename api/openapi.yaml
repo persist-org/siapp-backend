@@ -578,6 +578,16 @@ components:
             success: false
             error: { code: RATE_LIMITED, message: "Terlalu banyak permintaan." }
             meta: { request_id: "req_abc123" }
+    BadRequest:
+      description: BAD_REQUEST — body bukan satu objek JSON yang valid (atau berisi karakter NUL).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    PayloadTooLarge:
+      description: PAYLOAD_TOO_LARGE — body lebih dari 1 MB.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
     ServiceUnavailable:
       description: |
         Persist Personel (Personalia) tidak dapat menjawab. `error.code` = INTERNAL_ERROR dengan
@@ -1128,11 +1138,18 @@ components:
       description: "Zona waktu IANA proyek: WIB = Asia/Jakarta, WITA = Asia/Makassar, WIT = Asia/Jayapura."
     EmergencyContact:
       type: object
-      required: [type, name, phone]
+      required: [stakeholder_type_id, name, phone]
+      description: >-
+        Satu nomor darurat proyek (Phase 06.2). `stakeholder_type_id` menunjuk ke tipe stakeholder
+        organisasi (`/admin/stakeholder-types`): tidak ditemukan atau sudah dihapus → 422
+        STAKEHOLDER_TYPE_NOT_FOUND. `phone` disimpan sebagai E.164 (`+62812…`); nomor lokal
+        (`0812…`, `62812…`) dan spasi/strip diterima dan dinormalkan, nomor darurat nasional
+        (110, 112, 113, 115, 118, 119, 123, 129) disimpan apa adanya. Nomor yang tidak dikenali → 422.
+        Maksimum 20 kontak per proyek; tipe + nomor yang sama dua kali ditolak.
       properties:
-        type: { type: string, minLength: 1, maxLength: 50, example: Polisi, description: "Jenis kejadian, misalnya Polisi, RS, Pemadam." }
-        name: { type: string, minLength: 1, maxLength: 200 }
-        phone: { type: string, minLength: 1, maxLength: 50, example: "08xxxxxxxxxx" }
+        stakeholder_type_id: { type: integer, format: int64, minimum: 1, example: 1 }
+        name: { type: string, minLength: 1, maxLength: 200, example: Polsek Menteng }
+        phone: { type: string, minLength: 1, maxLength: 50, example: "+628123456789" }
     Project:
       type: object
       properties:
@@ -1752,7 +1769,39 @@ components:
     ClientGroup:
       allOf: [ { $ref: '#/components/schemas/CodedMaster' } ]
     StakeholderType:
-      allOf: [ { $ref: '#/components/schemas/CodedMaster' } ]
+      type: object
+      description: Tipe stakeholder darurat (Polisi, Rumah Sakit, Pemadam Kebakaran). `code` adalah identitasnya dan tidak berubah.
+      properties:
+        id: { type: integer, format: int64 }
+        organization_id: { type: integer, format: int64 }
+        code: { type: string }
+        name: { type: string }
+        default_phone: { type: string, nullable: true, description: Nomor cadangan untuk proyek yang tidak punya kontak tipe ini. E.164 atau nomor darurat nasional. }
+        sort_order: { type: integer }
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    StakeholderTypeCreate:
+      type: object
+      description: >-
+        Nama unik di organisasi (tanpa membedakan huruf besar/kecil, termasuk tipe nonaktif) →
+        409 STAKEHOLDER_TYPE_NAME_TAKEN. Kode yang sudah dipakai (juga oleh tipe terhapus) →
+        409 STAKEHOLDER_TYPE_CODE_TAKEN; kode yang dibuat dari nama diberi akhiran _2, _3 bila terpakai.
+      required: [name]
+      properties:
+        code: { type: string, maxLength: 30 }
+        name: { type: string, maxLength: 100 }
+        default_phone: { type: string, maxLength: 50, description: "E.164 (+62812…), nomor lokal (0812…) atau nomor darurat nasional (110, 113, …); kosong = tanpa nomor cadangan." }
+        sort_order: { type: integer, minimum: 0, maximum: 10000 }
+        is_active: { type: boolean, default: true }
+    StakeholderTypePatch:
+      type: object
+      description: "Kode tidak bisa diubah. `default_phone: null` menghapus nomor cadangan."
+      properties:
+        name: { type: string, maxLength: 100 }
+        default_phone: { type: string, nullable: true, maxLength: 50 }
+        sort_order: { type: integer, minimum: 0, maximum: 10000 }
+        is_active: { type: boolean }
     PanicType:
       type: object
       description: Tipe panik (Keamanan/Medis/Kebakaran/Lainnya). `code` adalah identitasnya dan tidak berubah.
@@ -1761,6 +1810,7 @@ components:
         organization_id: { type: integer, format: int64 }
         code: { type: string }
         name: { type: string }
+        stakeholder_type_id: { type: integer, format: int64, nullable: true, description: Siapa yang dihubungi untuk jenis darurat ini. }
         sort_order: { type: integer }
         is_active: { type: boolean }
         created_at: { type: string, format: date-time }
@@ -1775,13 +1825,15 @@ components:
       properties:
         code: { type: string, maxLength: 30, description: "Huruf besar/angka/garis bawah, diawali huruf. Dibuat dari `name` bila kosong." }
         name: { type: string, maxLength: 100 }
+        stakeholder_type_id: { type: integer, format: int64, minimum: 1, description: "Tipe stakeholder yang tidak ditemukan → 422 STAKEHOLDER_TYPE_NOT_FOUND." }
         sort_order: { type: integer, minimum: 0, maximum: 10000 }
         is_active: { type: boolean, default: true }
     PanicTypePatch:
       type: object
-      description: Kode tidak bisa diubah.
+      description: "Kode tidak bisa diubah. `stakeholder_type_id: null` menghapus tautannya."
       properties:
         name: { type: string, maxLength: 100 }
+        stakeholder_type_id: { type: integer, format: int64, nullable: true }
         sort_order: { type: integer, minimum: 0, maximum: 10000 }
         is_active: { type: boolean }
     Category:
@@ -1829,26 +1881,94 @@ components:
       allOf: [ { $ref: '#/components/schemas/CodedMaster' } ]
     Letterhead:
       type: object
-      description: Kop Surat (WEB-12).
+      description: >-
+        Kop surat untuk ekspor (WEB-12). Satu organisasi punya paling banyak satu kop default; kop
+        pertama otomatis jadi default. `logo_url` adalah URL bertanda tangan (berlaku 1 jam, tidak
+        disimpan) dari foto `logo_media_id`.
       properties:
         id: { type: integer, format: int64 }
         organization_id: { type: integer, format: int64 }
         name: { type: string }
+        header_text: { type: string, nullable: true }
+        footer_text: { type: string, nullable: true }
+        logo_media_id: { type: integer, format: int64, nullable: true }
         logo_url: { type: string, nullable: true, format: uri }
-        header: { type: string, nullable: true }
-        footer: { type: string, nullable: true }
+        is_default: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    LetterheadCreate:
+      type: object
+      description: >-
+        Nama unik (tanpa membedakan huruf besar/kecil) → 409 LETTERHEAD_NAME_TAKEN. `logo_media_id`
+        adalah foto milik pemanggil berstatus UPLOADED dengan purpose LETTERHEAD_LOGO yang belum
+        dilampirkan ke yang lain (galat MEDIA_*). `is_default: true` menggantikan default lama.
+      required: [name]
+      properties:
+        name: { type: string, maxLength: 100 }
+        header_text: { type: string, maxLength: 2000 }
+        footer_text: { type: string, maxLength: 2000 }
+        logo_media_id: { type: integer, format: int64, minimum: 1 }
+        is_default: { type: boolean }
+    LetterheadPatch:
+      type: object
+      description: Field yang tidak dikirim tidak berubah; `header_text`, `footer_text` dan `logo_media_id` menerima null untuk menghapus.
+      properties:
+        name: { type: string, maxLength: 100 }
+        header_text: { type: string, nullable: true, maxLength: 2000 }
+        footer_text: { type: string, nullable: true, maxLength: 2000 }
+        logo_media_id: { type: integer, format: int64, nullable: true, minimum: 1 }
+        is_default: { type: boolean }
+    AppLink:
+      type: object
+      description: Tombol di beranda yang membuka aplikasi lain (E-Koperasi Janusa, IKI). SiAPP hanya menautkan (DL-16).
+      properties:
+        id: { type: integer, format: int64 }
+        organization_id: { type: integer, format: int64 }
+        name: { type: string }
+        icon_key: { type: string, description: Kunci ikon yang dibawa aplikasi. }
+        android_package: { type: string, nullable: true }
+        ios_url_scheme: { type: string, nullable: true }
+        url: { type: string, nullable: true, format: uri }
+        sort_order: { type: integer }
         is_active: { type: boolean }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
-    LetterheadInput:
+    AppLinkCreate:
       type: object
-      required: [name]
+      description: >-
+        Nama unik di organisasi (tanpa membedakan huruf besar/kecil, termasuk tautan nonaktif) →
+        409 APP_LINK_NAME_TAKEN. Tautan yang aktif butuh minimal satu tujuan (`android_package`,
+        `ios_url_scheme` atau `url`); `url` harus https.
+      required: [name, icon_key]
       properties:
-        name: { type: string }
-        logo_url: { type: string, format: uri }
-        header: { type: string }
-        footer: { type: string }
+        name: { type: string, maxLength: 100 }
+        icon_key: { type: string, maxLength: 50, pattern: '^[a-z][a-z0-9_-]{0,49}$' }
+        android_package: { type: string, maxLength: 150 }
+        ios_url_scheme: { type: string, maxLength: 200 }
+        url: { type: string, maxLength: 500 }
+        sort_order: { type: integer, minimum: 0, maximum: 10000 }
         is_active: { type: boolean, default: true }
+    AppLinkPatch:
+      type: object
+      description: Field yang tidak dikirim tidak berubah; ketiga tujuan menerima null untuk menghapus.
+      properties:
+        name: { type: string, maxLength: 100 }
+        icon_key: { type: string, maxLength: 50 }
+        android_package: { type: string, nullable: true, maxLength: 150 }
+        ios_url_scheme: { type: string, nullable: true, maxLength: 200 }
+        url: { type: string, nullable: true, maxLength: 500 }
+        sort_order: { type: integer, minimum: 0, maximum: 10000 }
+        is_active: { type: boolean }
+    ProjectContact:
+      type: object
+      description: "Satu nomor di buku telepon proyek. `is_default: true` bila nomor itu cadangan tipenya karena proyek tidak punya kontak tipe tersebut."
+      properties:
+        stakeholder_type_id: { type: integer, format: int64 }
+        type_code: { type: string }
+        type_name: { type: string }
+        name: { type: string }
+        phone: { type: string }
+        is_default: { type: boolean }
     Position:
       type: object
       description: Master Tingkat Posisi (DL-42); level LEADER/MEMBER.
@@ -2044,7 +2164,7 @@ components:
     # ---------- media: unggahan foto (Phase 04.1) ----------
     MediaPurpose:
       type: string
-      enum: [PROFILE_PHOTO, ATTENDANCE_SELFIE, REPORT, INSTRUCTION, PATROL_SCAN, PANIC_REPORT, ASSET_REPORT, EMEMO]
+      enum: [PROFILE_PHOTO, ATTENDANCE_SELFIE, REPORT, INSTRUCTION, PATROL_SCAN, PANIC_REPORT, ASSET_REPORT, EMEMO, LETTERHEAD_LOGO]
       description: "Untuk apa foto itu. Fitur yang melampirkannya menolak tujuan yang tidak cocok (MEDIA_PURPOSE_MISMATCH). `PROFILE_PHOTO` tidak dapat didaftarkan (422): foto profil berasal dari Persist Personalia."
     MediaStatus:
       type: string
@@ -3728,7 +3848,6 @@ paths:
       parameters:
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/LimitParam'
-        - $ref: '#/components/parameters/SortParam'
         - $ref: '#/components/parameters/QParam'
         - $ref: '#/components/parameters/IsActiveParam'
       responses:
@@ -3742,6 +3861,8 @@ paths:
                   - properties: { data: { type: array, items: { $ref: '#/components/schemas/InstructionCategory' } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '422': { $ref: '#/components/responses/ValidationError' }
     post:
       operationId: postAdminInstructionCategories
       tags: [Masters]
@@ -3750,8 +3871,6 @@ paths:
         - bearerSession: []
         - oauth2ClientCredentials: [masters:write]
         - apiKey: []
-      parameters:
-        - $ref: '#/components/parameters/IdempotencyKeyHeader'
       requestBody:
         required: true
         content:
@@ -3770,6 +3889,8 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
   /admin/instruction-categories/{id}:
     parameters:
       - $ref: '#/components/parameters/IdPath'
@@ -3792,6 +3913,7 @@ paths:
                   - properties: { data: { $ref: '#/components/schemas/InstructionCategory' } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '403': { $ref: '#/components/responses/Forbidden' }
     patch:
       operationId: patchAdminInstructionCategoriesById
       tags: [Masters]
@@ -3818,6 +3940,9 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
     delete:
       operationId: deleteAdminInstructionCategoriesById
       tags: [Masters]
@@ -3835,6 +3960,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /admin/report-categories:
     get:
       operationId: getAdminReportCategories
@@ -3847,7 +3973,6 @@ paths:
       parameters:
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/LimitParam'
-        - $ref: '#/components/parameters/SortParam'
         - $ref: '#/components/parameters/QParam'
         - $ref: '#/components/parameters/IsActiveParam'
       responses:
@@ -3861,6 +3986,8 @@ paths:
                   - properties: { data: { type: array, items: { $ref: '#/components/schemas/ReportCategory' } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '422': { $ref: '#/components/responses/ValidationError' }
     post:
       operationId: postAdminReportCategories
       tags: [Masters]
@@ -3869,8 +3996,6 @@ paths:
         - bearerSession: []
         - oauth2ClientCredentials: [masters:write]
         - apiKey: []
-      parameters:
-        - $ref: '#/components/parameters/IdempotencyKeyHeader'
       requestBody:
         required: true
         content:
@@ -3889,6 +4014,8 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
   /admin/report-categories/{id}:
     parameters:
       - $ref: '#/components/parameters/IdPath'
@@ -3911,6 +4038,7 @@ paths:
                   - properties: { data: { $ref: '#/components/schemas/ReportCategory' } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '403': { $ref: '#/components/responses/Forbidden' }
     patch:
       operationId: patchAdminReportCategoriesById
       tags: [Masters]
@@ -3937,6 +4065,9 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
     delete:
       operationId: deleteAdminReportCategoriesById
       tags: [Masters]
@@ -3954,6 +4085,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /admin/letterheads:
     get:
       operationId: getAdminLetterheads
@@ -3966,9 +4098,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/LimitParam'
-        - $ref: '#/components/parameters/SortParam'
         - $ref: '#/components/parameters/QParam'
-        - $ref: '#/components/parameters/IsActiveParam'
       responses:
         '200':
           description: OK
@@ -3980,6 +4110,8 @@ paths:
                   - properties: { data: { type: array, items: { $ref: '#/components/schemas/Letterhead' } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '422': { $ref: '#/components/responses/ValidationError' }
     post:
       operationId: postAdminLetterheads
       tags: [Masters]
@@ -3988,13 +4120,11 @@ paths:
         - bearerSession: []
         - oauth2ClientCredentials: [masters:write]
         - apiKey: []
-      parameters:
-        - $ref: '#/components/parameters/IdempotencyKeyHeader'
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/LetterheadInput' }
+            schema: { $ref: '#/components/schemas/LetterheadCreate' }
       responses:
         '201':
           description: Created
@@ -4008,6 +4138,8 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
   /admin/letterheads/{id}:
     parameters:
       - $ref: '#/components/parameters/IdPath'
@@ -4030,6 +4162,7 @@ paths:
                   - properties: { data: { $ref: '#/components/schemas/Letterhead' } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '403': { $ref: '#/components/responses/Forbidden' }
     patch:
       operationId: patchAdminLetterheadsById
       tags: [Masters]
@@ -4042,7 +4175,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/LetterheadInput' }
+            schema: { $ref: '#/components/schemas/LetterheadPatch' }
       responses:
         '200':
           description: OK
@@ -4056,6 +4189,9 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
     delete:
       operationId: deleteAdminLetterheadsById
       tags: [Masters]
@@ -4073,6 +4209,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /admin/qualifications:
     get:
       operationId: getAdminQualifications
@@ -4204,7 +4341,6 @@ paths:
       parameters:
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/LimitParam'
-        - $ref: '#/components/parameters/SortParam'
         - $ref: '#/components/parameters/QParam'
         - $ref: '#/components/parameters/IsActiveParam'
       responses:
@@ -4218,6 +4354,8 @@ paths:
                   - properties: { data: { type: array, items: { $ref: '#/components/schemas/PanicType' } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '422': { $ref: '#/components/responses/ValidationError' }
     post:
       operationId: postAdminPanicTypes
       tags: [Masters]
@@ -4226,8 +4364,6 @@ paths:
         - bearerSession: []
         - oauth2ClientCredentials: [masters:write]
         - apiKey: []
-      parameters:
-        - $ref: '#/components/parameters/IdempotencyKeyHeader'
       requestBody:
         required: true
         content:
@@ -4246,6 +4382,8 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
   /admin/panic-types/{id}:
     parameters:
       - $ref: '#/components/parameters/IdPath'
@@ -4268,6 +4406,7 @@ paths:
                   - properties: { data: { $ref: '#/components/schemas/PanicType' } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '403': { $ref: '#/components/responses/Forbidden' }
     patch:
       operationId: patchAdminPanicTypesById
       tags: [Masters]
@@ -4294,6 +4433,9 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
     delete:
       operationId: deleteAdminPanicTypesById
       tags: [Masters]
@@ -4311,6 +4453,132 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /admin/app-links:
+    get:
+      operationId: getAdminAppLinks
+      tags: [Masters]
+      summary: List AppLink
+      security:
+        - bearerSession: []
+        - oauth2ClientCredentials: [masters:read]
+        - apiKey: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/QParam'
+        - $ref: '#/components/parameters/IsActiveParam'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/ListEnvelope' }
+                  - properties: { data: { type: array, items: { $ref: '#/components/schemas/AppLink' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    post:
+      operationId: postAdminAppLinks
+      tags: [Masters]
+      summary: Buat AppLink
+      security:
+        - bearerSession: []
+        - oauth2ClientCredentials: [masters:write]
+        - apiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AppLinkCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { $ref: '#/components/schemas/AppLink' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+  /admin/app-links/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    get:
+      operationId: getAdminAppLinksById
+      tags: [Masters]
+      summary: Detail AppLink
+      security:
+        - bearerSession: []
+        - oauth2ClientCredentials: [masters:read]
+        - apiKey: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { $ref: '#/components/schemas/AppLink' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    patch:
+      operationId: patchAdminAppLinksById
+      tags: [Masters]
+      summary: Ubah AppLink
+      security:
+        - bearerSession: []
+        - oauth2ClientCredentials: [masters:write]
+        - apiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AppLinkPatch' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { $ref: '#/components/schemas/AppLink' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+    delete:
+      operationId: deleteAdminAppLinksById
+      tags: [Masters]
+      summary: Hapus/non-aktifkan AppLink
+      security:
+        - bearerSession: []
+        - oauth2ClientCredentials: [masters:write]
+        - apiKey: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /admin/regions:
     get:
       operationId: getAdminRegions
@@ -4907,7 +5175,6 @@ paths:
       parameters:
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/LimitParam'
-        - $ref: '#/components/parameters/SortParam'
         - $ref: '#/components/parameters/QParam'
         - $ref: '#/components/parameters/IsActiveParam'
       responses:
@@ -4921,6 +5188,8 @@ paths:
                   - properties: { data: { type: array, items: { $ref: '#/components/schemas/StakeholderType' } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '422': { $ref: '#/components/responses/ValidationError' }
     post:
       operationId: postAdminStakeholderTypes
       tags: [Masters]
@@ -4929,13 +5198,11 @@ paths:
         - bearerSession: []
         - oauth2ClientCredentials: [masters:write]
         - apiKey: []
-      parameters:
-        - $ref: '#/components/parameters/IdempotencyKeyHeader'
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/CodedMasterInput' }
+            schema: { $ref: '#/components/schemas/StakeholderTypeCreate' }
       responses:
         '201':
           description: Created
@@ -4949,6 +5216,8 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
   /admin/stakeholder-types/{id}:
     parameters:
       - $ref: '#/components/parameters/IdPath'
@@ -4971,6 +5240,7 @@ paths:
                   - properties: { data: { $ref: '#/components/schemas/StakeholderType' } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '403': { $ref: '#/components/responses/Forbidden' }
     patch:
       operationId: patchAdminStakeholderTypesById
       tags: [Masters]
@@ -4983,7 +5253,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/CodedMasterInput' }
+            schema: { $ref: '#/components/schemas/StakeholderTypePatch' }
       responses:
         '200':
           description: OK
@@ -4997,6 +5267,9 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
     delete:
       operationId: deleteAdminStakeholderTypesById
       tags: [Masters]
@@ -5014,6 +5287,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /admin/positions:
     get:
       x-owner: personel
@@ -9339,10 +9613,13 @@ paths:
       operationId: getPermissionCategories
       tags: [Permission]
       summary: Daftar kategori izin (lookup)
-      parameters: [ { $ref: '#/components/parameters/IsActiveParam' } ]
+      description: >-
+        Kategori izin milik Persist Personel (LOCK/01 §2), dibaca lewat cache; SiAPP tidak menyimpannya.
+        Personel tidak dapat menjawab → 503 PERSONEL_UNAVAILABLE.
       responses:
         '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/ListEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/PermissionCategory' } } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /permissions:
     get:
       operationId: getPermissions
@@ -9518,6 +9795,53 @@ paths:
                       meta: { $ref: '#/components/schemas/DeltaMeta' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '422': { $ref: '#/components/responses/ValidationError' }
+  /app-links:
+    get:
+      operationId: getAppLinks
+      tags: [Masters]
+      summary: Daftar tautan aplikasi (beranda, delta-sync)
+      description: >-
+        Tautan ke aplikasi lain yang aktif untuk organisasi pemanggil. Dua bentuk jawaban:
+
+        - **Tanpa `since`**: semua baris aktif sekaligus (tanpa paginasi sungguhan), dengan
+          `meta.server_time` sebagai watermark pertama klien.
+        - **Dengan `since`** (delta-sync, DL-34/DL-57): baris yang berubah sejak itu di `data`, dan
+          baris yang dihapus atau dinonaktifkan di `deleted` (tombstone) supaya cache offline bisa
+          membuangnya. Simpan `meta.server_time` sebagai `since` berikutnya.
+      parameters:
+        - $ref: '#/components/parameters/SinceParam'
+      responses:
+        '200':
+          description: OK. `meta.server_time` WAJIB.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/AppLink' } }
+                      deleted: { type: array, items: { $ref: '#/components/schemas/Tombstone' } }
+                      pagination: { $ref: '#/components/schemas/Pagination' }
+                      meta: { $ref: '#/components/schemas/DeltaMeta' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /projects/{code}/emergency-contacts:
+    parameters:
+      - { name: code, in: path, required: true, description: Kode proyek., schema: { type: string } }
+    get:
+      operationId: getProjectEmergencyContacts
+      tags: [Masters]
+      summary: Buku telepon darurat proyek
+      description: >-
+        Hanya untuk anggota proyek hari ini (menurut zona waktu proyek); yang lain → 403
+        NOT_PROJECT_MEMBER, proyek yang tidak ada atau milik organisasi lain → 404. Isinya kontak
+        proyek ditambah nomor cadangan tiap tipe stakeholder aktif yang proyeknya belum punya
+        kontak (`is_default: true`), diurutkan menurut urutan tipe.
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/ListEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/ProjectContact' } } } } ] } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /reports:
     post:
       operationId: postReports
