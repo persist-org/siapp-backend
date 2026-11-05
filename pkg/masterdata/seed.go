@@ -88,9 +88,11 @@ func EnsureDefaultsTx(ctx context.Context, q *db.Queries, now time.Time) (int64,
 	}
 	total += n
 
-	// ⚠ The default panic types are linked to their default stakeholders only in the call that
-	// created the stakeholders: after that the link is the admin's to keep or clear.
-	if stakeholders > 0 {
+	// ⚠ A default panic type is linked to its default stakeholder only in the call that created
+	// either of the two (a stakeholder type, or the panic type itself): after that the link is the
+	// admin's to keep or clear. A panic type made in this call has never had a link to respect, so
+	// it is linked even when the stakeholder type was already there (migration 00021 makes some).
+	if stakeholders > 0 || n > 0 {
 		panicCodes, stakeholderCodes := make([]string, 0, len(defaultPanicStakeholders)), make([]string, 0, len(defaultPanicStakeholders))
 		for _, l := range defaultPanicStakeholders {
 			panicCodes, stakeholderCodes = append(panicCodes, l.panicCode), append(stakeholderCodes, l.stakeholderCode)

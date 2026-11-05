@@ -16,6 +16,7 @@
 -- tenant: lifted for these statements and put back before the transaction commits (as 00008).
 ALTER TABLE projects NO FORCE ROW LEVEL SECURITY;
 ALTER TABLE stakeholder_types NO FORCE ROW LEVEL SECURITY;
+ALTER TABLE panic_types NO FORCE ROW LEVEL SECURITY;
 
 CREATE TEMP TABLE legacy_contact_types ON COMMIT DROP AS
 SELECT DISTINCT organization_id, type_name, code, name
@@ -54,6 +55,16 @@ WHERE NOT EXISTS (
 ORDER BY l.organization_id, l.code
 ON CONFLICT DO NOTHING;
 
+-- Who each default panic type calls. Before 00020 a panic type could not name a stakeholder type,
+-- so every link is still empty and there is no admin choice to respect: the default panic types of
+-- every organization are linked to the default types that exist now. (EnsureDefaults links the
+-- rest when it adds the missing types; it skips an organization that this statement completed.)
+UPDATE panic_types p SET stakeholder_type_id = s.id, updated_at = now()
+FROM (VALUES ('SECURITY', 'POLICE'), ('MEDICAL', 'HOSPITAL'), ('FIRE', 'FIRE_DEPARTMENT')) AS m(panic_code, stakeholder_code)
+JOIN stakeholder_types s ON s.code = m.stakeholder_code AND s.deleted_at IS NULL
+WHERE p.code = m.panic_code AND p.organization_id = s.organization_id
+  AND p.stakeholder_type_id IS NULL AND p.deleted_at IS NULL;
+
 -- Rewrite every list that still has an old contact, keeping the order. A contact whose type was
 -- blank (never valid) is dropped; an already converted one is kept as it is.
 UPDATE projects p SET emergency_contacts = converted.contacts
@@ -65,7 +76,7 @@ FROM (
                         'stakeholder_type_id', st.id,
                         'name', btrim(coalesce(e.c->>'name', '')),
                         'phone', CASE
-                            WHEN ph.digits ~ '^0[1-9][0-9]{6,13}$' THEN '+62' || substr(ph.digits, 2)
+                            WHEN ph.digits ~ '^0[1-9][0-9]{6,12}$' THEN '+62' || substr(ph.digits, 2)
                             WHEN ph.digits ~ '^62[1-9][0-9]{6,12}$' THEN '+' || ph.digits
                             WHEN ph.digits ~ '^\+[1-9][0-9]{7,14}$' THEN ph.digits
                             ELSE e.c->>'phone' END)
@@ -93,7 +104,10 @@ WHERE p.organization_id = converted.organization_id AND p.code = converted.code;
 
 ALTER TABLE projects FORCE ROW LEVEL SECURITY;
 ALTER TABLE stakeholder_types FORCE ROW LEVEL SECURITY;
+ALTER TABLE panic_types FORCE ROW LEVEL SECURITY;
 
 -- +goose Down
--- A data conversion: there is no old shape to go back to. The stakeholder types it made stay.
+-- A data conversion: there is no old shape to go back to. The stakeholder types it made stay, and
+-- so does the shape {stakeholder_type_id, name, phone} of the contacts: code from before 06.2
+-- cannot read it: do not roll back past 00021 once a deployment has converted its projects.
 SELECT 1;
