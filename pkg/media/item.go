@@ -25,6 +25,8 @@ const (
 	PurposePanicReport      = db.MediaPurposePANICREPORT
 	PurposeAssetReport      = db.MediaPurposeASSETREPORT
 	PurposeEMemo            = db.MediaPurposeEMEMO
+	// PurposeLetterheadLogo is the logo of an export letterhead (Phase 06.2), attached by masterdata.
+	PurposeLetterheadLogo = db.MediaPurposeLETTERHEADLOGO
 )
 
 // Media statuses.
@@ -64,7 +66,7 @@ type Media struct {
 // PROFILE_PHOTO is in the table's enum but not accepted here: a person's profile photo comes
 // from Personalia (personnels.photo_url), and no SiAPP record would ever attach one.
 type RegisterInput struct {
-	Purpose       string     `json:"purpose" validate:"required,oneof=ATTENDANCE_SELFIE REPORT INSTRUCTION PATROL_SCAN PANIC_REPORT ASSET_REPORT EMEMO"`
+	Purpose       string     `json:"purpose" validate:"required,oneof=ATTENDANCE_SELFIE REPORT INSTRUCTION PATROL_SCAN PANIC_REPORT ASSET_REPORT EMEMO LETTERHEAD_LOGO"`
 	ContentType   string     `json:"content_type" validate:"required,notblank"`
 	SizeBytes     int64      `json:"size_bytes" validate:"required,gte=1"`
 	CapturedAt    *time.Time `json:"captured_at"`

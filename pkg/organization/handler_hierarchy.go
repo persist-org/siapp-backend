@@ -206,7 +206,7 @@ func projectToAPI(p Project) apigen.Project {
 	configured := p.Configured()
 	contacts := make([]apigen.EmergencyContact, 0, len(p.EmergencyContacts))
 	for _, c := range p.EmergencyContacts {
-		contacts = append(contacts, apigen.EmergencyContact{Type: c.Type, Name: c.Name, Phone: c.Phone})
+		contacts = append(contacts, apigen.EmergencyContact{StakeholderTypeId: c.StakeholderTypeID, Name: c.Name, Phone: c.Phone})
 	}
 	return apigen.Project{
 		Code: &p.Code, ClientCode: &p.ClientCode, Description: &p.Description, CompanyCode: p.CompanyCode,

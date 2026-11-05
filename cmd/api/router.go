@@ -10,6 +10,7 @@ import (
 
 	"siapp/pkg/access"
 	"siapp/pkg/identity"
+	"siapp/pkg/masterdata"
 	"siapp/pkg/media"
 	"siapp/pkg/notifications"
 	"siapp/pkg/organization"
@@ -32,9 +33,12 @@ type deps struct {
 	// RedisPrefix goes in front of every Redis key; tests use a random one.
 	RedisPrefix string
 	Personel    *personel.Client
-	Tokens      *auth.Tokens
-	Clock       clock.Clock
-	ClientIP    func(*http.Request) string
+	// Leave is the leave seam (S5) of Personel, for /permission-categories. Nil until Personel
+	// serves it: that route then answers 503 PERSONEL_UNAVAILABLE.
+	Leave    personel.Leave
+	Tokens   *auth.Tokens
+	Clock    clock.Clock
+	ClientIP func(*http.Request) string
 	// MediaStorage is the driver STORAGE_DRIVER chose, already checked at start-up.
 	MediaStorage media.Storage
 	// PushQueue is where Notify queues its push tasks for the worker. Nil (the guard test) leaves
@@ -83,7 +87,8 @@ func newRouter(d deps) *chi.Mux {
 
 	// Photo uploads (module 04). Registering and completing need a signed-in person; the two
 	// blob routes of the local driver are public and authorized by the token in their URL.
-	mediaHandler := media.NewHandler(media.NewService(d.Pool, d.MediaStorage, d.Clock, d.Logger), d.MediaStorage, idempotency.Middleware(true))
+	mediaService := media.NewService(d.Pool, d.MediaStorage, d.Clock, d.Logger)
+	mediaHandler := media.NewHandler(mediaService, d.MediaStorage, idempotency.Middleware(true))
 	mediaHandler.Mount(router)
 
 	// The inbox (module 05): any signed-in person reads their own notifications. Modules that
@@ -106,11 +111,23 @@ func newRouter(d deps) *chi.Mux {
 	// The Personel webhook (05.3): public, authenticated by the HMAC signature of its body. It
 	// invalidates the same Redis cache every reader of Personel data goes through.
 	personelCache := personel.NewCached(d.Personel, nil, d.Redis, d.Logger)
+	if d.Leave != nil {
+		personelCache.UseLeave(d.Leave)
+	}
 	identity.NewPersonelEvents(identity.PersonelEventsConfig{
 		Pool: d.Pool, Directory: personelCache, Cache: personelCache, Revocations: revocations,
 		Redis: d.Redis, RedisPrefix: d.RedisPrefix, Secret: d.PersonelWebhookSecret,
 		Notifier: notifier, Clock: d.Clock, Logger: d.Logger,
 	}).Mount(router)
+
+	// Master data (module 06): categories, panic types, stakeholders, letterheads, app links and
+	// the leave categories Personel owns. Modules that point at a master register a usage check on
+	// this service when they land, so a referenced master is refused a delete (MASTER_IN_USE).
+	masterdataService := masterdata.NewService(d.Pool, d.Clock, personelCache)
+	// A letterhead's logo is a photo that goes through the media module.
+	masterdataService.UseLogoStore(mediaService)
+	masterdataHandler := masterdata.NewHandler(masterdataService)
+	masterdataHandler.MountField(router)
 
 	// The WebSocket (05.3). The hub is shared with the Redis subscriber main starts, which feeds
 	// it the events other instances publish.
@@ -129,6 +146,7 @@ func newRouter(d deps) *chi.Mux {
 		identityHandler.MountAdmin(admin)
 		accessHandler.MountAdmin(admin)
 		organizationHandler.MountAdmin(admin)
+		masterdataHandler.MountAdmin(admin)
 	})
 
 	return router

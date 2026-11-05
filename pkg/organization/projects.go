@@ -15,6 +15,7 @@ import (
 
 	"siapp/internal/db"
 	"siapp/pkg/access"
+	"siapp/pkg/masterdata"
 	"siapp/pkg/platform/auth"
 	"siapp/pkg/platform/clock"
 	"siapp/pkg/platform/database"
@@ -25,13 +26,10 @@ import (
 // defaultAttendanceRadiusMeters is a project's geofence radius until an admin sets one.
 const defaultAttendanceRadiusMeters = 150
 
-// EmergencyContact is one phone number a guard may need at the site: Polisi, RS or Pemadam
-// (DL-14, the project's own override of module 06's list).
-type EmergencyContact struct {
-	Type  string `json:"type" validate:"required,notblank,max=50"`
-	Name  string `json:"name" validate:"required,notblank,max=200"`
-	Phone string `json:"phone" validate:"required,notblank,max=50"`
-}
+// EmergencyContact is one phone number a guard may need at the site: a stakeholder type (Polisi,
+// RS, Pemadam), a name and a number (DL-14, the project's own override of module 06's list). It is
+// master data's type: masterdata.ValidateContacts checks the type and the number (Phase 06.2).
+type EmergencyContact = masterdata.Contact
 
 // Project is one proyek. Its description is its name.
 type Project struct {
@@ -203,10 +201,6 @@ func (p *Projects) Create(ctx context.Context, actor auth.Principal, scope acces
 	if !scope.AllowsRegion(RegionOfCode(in.ClientCode)) {
 		return Project{}, access.ErrOutsideAdminScope
 	}
-	contacts, err := encodeContacts(in.EmergencyContacts)
-	if err != nil {
-		return Project{}, err
-	}
 	radius := int32(defaultAttendanceRadiusMeters)
 	if in.AttendanceRadiusMeters != nil {
 		radius = clampInt32(*in.AttendanceRadiusMeters)
@@ -219,6 +213,10 @@ func (p *Projects) Create(ctx context.Context, actor auth.Principal, scope acces
 			return ErrClientNotFound
 		} else if err != nil {
 			return fmt.Errorf("get client: %w", err)
+		}
+		contacts, err := validContacts(ctx, q, in.EmergencyContacts, false)
+		if err != nil {
+			return err
 		}
 		row, err := q.CreateProject(ctx, db.CreateProjectParams{
 			Code: code, ClientCode: in.ClientCode, Description: strings.TrimSpace(in.Description),
@@ -257,12 +255,8 @@ func (p *Projects) Update(ctx context.Context, actor auth.Principal, scope acces
 			return Project{}, err
 		}
 	}
-	contacts, err := encodeContactsPatch(in.EmergencyContacts)
-	if err != nil {
-		return Project{}, err
-	}
 	var out Project
-	err = database.WithTenant(ctx, p.pool, actor.OrganizationID, func(q *db.Queries) error {
+	err := database.WithTenant(ctx, p.pool, actor.OrganizationID, func(q *db.Queries) error {
 		before, err := q.GetProjectForUpdate(ctx, code)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrProjectNotFound
@@ -274,6 +268,10 @@ func (p *Projects) Update(ctx context.Context, actor auth.Principal, scope acces
 		// change (the table's CHECK says the same, but answers 500).
 		lat, lng := pickCoordinate(in.Latitude, before.Latitude), pickCoordinate(in.Longitude, before.Longitude)
 		if err := validatePoint(lat, lng); err != nil {
+			return err
+		}
+		contacts, err := validContacts(ctx, q, in.EmergencyContacts, true)
+		if err != nil {
 			return err
 		}
 		row, err := q.UpdateProject(ctx, db.UpdateProjectParams{
@@ -428,13 +426,18 @@ func encodeContacts(contacts []EmergencyContact) (json.RawMessage, error) {
 	return b, nil
 }
 
-// encodeContactsPatch is encodeContacts for a patch, where nil means "leave it alone" (a NULL
-// in the query) and an empty list means "no contacts".
-func encodeContactsPatch(contacts []EmergencyContact) (json.RawMessage, error) {
-	if contacts == nil {
+// validContacts checks the contacts of a request inside the transaction that stores them (the
+// types are locked until it ends) and returns them encoded for the column. For a patch, nil means
+// "leave it alone" (a NULL in the query) and an empty list means "no contacts".
+func validContacts(ctx context.Context, q *db.Queries, contacts []EmergencyContact, patch bool) (json.RawMessage, error) {
+	if patch && contacts == nil {
 		return nil, nil
 	}
-	return encodeContacts(contacts)
+	valid, err := masterdata.ValidateContacts(ctx, q, contacts)
+	if err != nil {
+		return nil, err
+	}
+	return encodeContacts(valid)
 }
 
 func toProject(r db.Project) Project {
