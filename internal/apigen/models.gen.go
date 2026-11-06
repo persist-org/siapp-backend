@@ -45,45 +45,111 @@ func (e ApiKeyStatus) Valid() bool {
 	}
 }
 
-// Defines values for AttendanceMethod.
+// Defines values for AttendanceCheckInMethod.
 const (
-	FORCE  AttendanceMethod = "FORCE"
-	QR     AttendanceMethod = "QR"
-	SELFIE AttendanceMethod = "SELFIE"
-	SHIFT  AttendanceMethod = "SHIFT"
+	AttendanceCheckInMethodFORCE  AttendanceCheckInMethod = "FORCE"
+	AttendanceCheckInMethodGROUP  AttendanceCheckInMethod = "GROUP"
+	AttendanceCheckInMethodQR     AttendanceCheckInMethod = "QR"
+	AttendanceCheckInMethodSELFIE AttendanceCheckInMethod = "SELFIE"
 )
 
-// Valid indicates whether the value is a known member of the AttendanceMethod enum.
-func (e AttendanceMethod) Valid() bool {
+// Valid indicates whether the value is a known member of the AttendanceCheckInMethod enum.
+func (e AttendanceCheckInMethod) Valid() bool {
 	switch e {
-	case FORCE:
+	case AttendanceCheckInMethodFORCE:
 		return true
-	case QR:
+	case AttendanceCheckInMethodGROUP:
 		return true
-	case SELFIE:
+	case AttendanceCheckInMethodQR:
 		return true
-	case SHIFT:
+	case AttendanceCheckInMethodSELFIE:
 		return true
 	default:
 		return false
 	}
 }
 
-// Defines values for AttendanceTimezone.
+// Defines values for AttendanceCheckOutMethod.
 const (
-	AttendanceTimezoneWIB  AttendanceTimezone = "WIB"
-	AttendanceTimezoneWIT  AttendanceTimezone = "WIT"
-	AttendanceTimezoneWITA AttendanceTimezone = "WITA"
+	AttendanceCheckOutMethodFORCE  AttendanceCheckOutMethod = "FORCE"
+	AttendanceCheckOutMethodGROUP  AttendanceCheckOutMethod = "GROUP"
+	AttendanceCheckOutMethodQR     AttendanceCheckOutMethod = "QR"
+	AttendanceCheckOutMethodSELFIE AttendanceCheckOutMethod = "SELFIE"
 )
 
-// Valid indicates whether the value is a known member of the AttendanceTimezone enum.
-func (e AttendanceTimezone) Valid() bool {
+// Valid indicates whether the value is a known member of the AttendanceCheckOutMethod enum.
+func (e AttendanceCheckOutMethod) Valid() bool {
 	switch e {
-	case AttendanceTimezoneWIB:
+	case AttendanceCheckOutMethodFORCE:
 		return true
-	case AttendanceTimezoneWIT:
+	case AttendanceCheckOutMethodGROUP:
 		return true
-	case AttendanceTimezoneWITA:
+	case AttendanceCheckOutMethodQR:
+		return true
+	case AttendanceCheckOutMethodSELFIE:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AttendancePersonelSyncStatus.
+const (
+	AttendancePersonelSyncStatusFAILED  AttendancePersonelSyncStatus = "FAILED"
+	AttendancePersonelSyncStatusPENDING AttendancePersonelSyncStatus = "PENDING"
+	AttendancePersonelSyncStatusSYNCED  AttendancePersonelSyncStatus = "SYNCED"
+)
+
+// Valid indicates whether the value is a known member of the AttendancePersonelSyncStatus enum.
+func (e AttendancePersonelSyncStatus) Valid() bool {
+	switch e {
+	case AttendancePersonelSyncStatusFAILED:
+		return true
+	case AttendancePersonelSyncStatusPENDING:
+		return true
+	case AttendancePersonelSyncStatusSYNCED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AttendanceStatus.
+const (
+	AttendanceStatusABSENT  AttendanceStatus = "ABSENT"
+	AttendanceStatusLEAVE   AttendanceStatus = "LEAVE"
+	AttendanceStatusPRESENT AttendanceStatus = "PRESENT"
+)
+
+// Valid indicates whether the value is a known member of the AttendanceStatus enum.
+func (e AttendanceStatus) Valid() bool {
+	switch e {
+	case AttendanceStatusABSENT:
+		return true
+	case AttendanceStatusLEAVE:
+		return true
+	case AttendanceStatusPRESENT:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AttendanceTodayStatus.
+const (
+	AttendanceTodayStatusABSENT  AttendanceTodayStatus = "ABSENT"
+	AttendanceTodayStatusLEAVE   AttendanceTodayStatus = "LEAVE"
+	AttendanceTodayStatusPRESENT AttendanceTodayStatus = "PRESENT"
+)
+
+// Valid indicates whether the value is a known member of the AttendanceTodayStatus enum.
+func (e AttendanceTodayStatus) Valid() bool {
+	switch e {
+	case AttendanceTodayStatusABSENT:
+		return true
+	case AttendanceTodayStatusLEAVE:
+		return true
+	case AttendanceTodayStatusPRESENT:
 		return true
 	default:
 		return false
@@ -947,19 +1013,19 @@ func (e OrganizationErrorReason) Valid() bool {
 
 // Defines values for OrganizationSettingsDefaultTimezone.
 const (
-	OrganizationSettingsDefaultTimezoneWIB  OrganizationSettingsDefaultTimezone = "WIB"
-	OrganizationSettingsDefaultTimezoneWIT  OrganizationSettingsDefaultTimezone = "WIT"
-	OrganizationSettingsDefaultTimezoneWITA OrganizationSettingsDefaultTimezone = "WITA"
+	WIB  OrganizationSettingsDefaultTimezone = "WIB"
+	WIT  OrganizationSettingsDefaultTimezone = "WIT"
+	WITA OrganizationSettingsDefaultTimezone = "WITA"
 )
 
 // Valid indicates whether the value is a known member of the OrganizationSettingsDefaultTimezone enum.
 func (e OrganizationSettingsDefaultTimezone) Valid() bool {
 	switch e {
-	case OrganizationSettingsDefaultTimezoneWIB:
+	case WIB:
 		return true
-	case OrganizationSettingsDefaultTimezoneWIT:
+	case WIT:
 		return true
-	case OrganizationSettingsDefaultTimezoneWITA:
+	case WITA:
 		return true
 	default:
 		return false
@@ -3891,6 +3957,21 @@ func (e PostAttendancesSelfieCheckOut200JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
+// Defines values for GetAttendancesToday200JSONResponseBodySuccess.
+const (
+	GetAttendancesToday200JSONResponseBodySuccessTrue GetAttendancesToday200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetAttendancesToday200JSONResponseBodySuccess enum.
+func (e GetAttendancesToday200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetAttendancesToday200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetAttendancesById200JSONResponseBodySuccess.
 const (
 	GetAttendancesById200JSONResponseBodySuccessTrue GetAttendancesById200JSONResponseBodySuccess = true
@@ -6084,33 +6165,54 @@ type AssetReportCreate struct {
 	Title  string    `json:"title"`
 }
 
-// Attendance defines model for Attendance.
+// Attendance Satu instans shift seseorang di satu regu (orang × regu × tanggal kerja × shift). Ini bukti yang ditangkap SiAPP, bukan catatan resmi: catatan resminya di Persist Personel, yang menerima tiap perubahan lewat outbox (`personel_sync_status`).
 type Attendance struct {
-	CheckInAt      *time.Time          `json:"check_in_at,omitempty"`
-	CheckOutAt     *time.Time          `json:"check_out_at,omitempty"`
-	CreatedAt      *time.Time          `json:"created_at,omitempty"`
-	Id             *int64              `json:"id,omitempty"`
-	IsAbsent       *bool               `json:"is_absent,omitempty"`
-	Latitude       *float64            `json:"latitude,omitempty"`
-	LocalId        *string             `json:"local_id,omitempty"`
-	Longitude      *float64            `json:"longitude,omitempty"`
-	Method         *AttendanceMethod   `json:"method,omitempty"`
-	OrganizationId *int64              `json:"organization_id,omitempty"`
-	PersonnelId    *int64              `json:"personnel_id,omitempty"`
-	PhotoUrl       *string             `json:"photo_url,omitempty"`
-	ProjectId      *int64              `json:"project_id,omitempty"`
-	ReplacedById   *int64              `json:"replaced_by_id,omitempty"`
-	SyncedAt       *time.Time          `json:"synced_at,omitempty"`
-	TeamId         *int64              `json:"team_id,omitempty"`
-	Timezone       *AttendanceTimezone `json:"timezone,omitempty"`
-	UpdatedAt      *time.Time          `json:"updated_at,omitempty"`
+	CheckInAt *time.Time `json:"check_in_at,omitempty"`
+
+	// CheckInDistanceMeters Jarak ke titik proyek; null bila tidak ada fix GPS.
+	CheckInDistanceMeters  *int                      `json:"check_in_distance_meters,omitempty"`
+	CheckInMethod          *AttendanceCheckInMethod  `json:"check_in_method,omitempty"`
+	CheckInWithinArea      *bool                     `json:"check_in_within_area,omitempty"`
+	CheckOutAt             *time.Time                `json:"check_out_at,omitempty"`
+	CheckOutDistanceMeters *int                      `json:"check_out_distance_meters,omitempty"`
+	CheckOutMethod         *AttendanceCheckOutMethod `json:"check_out_method,omitempty"`
+
+	// CheckOutUpdateCount Berapa kali jam pulang diperbarui.
+	CheckOutUpdateCount int       `json:"check_out_update_count"`
+	CheckOutWithinArea  *bool     `json:"check_out_within_area,omitempty"`
+	CreatedAt           time.Time `json:"created_at"`
+	Id                  int64     `json:"id"`
+
+	// LateMinutes Menit keterlambatan absen datang, dibulatkan ke bawah; 0 bila tepat waktu. Absen dalam toleransi shift dihitung tepat waktu; lewat dari itu, keterlambatan dihitung dari jam mulai shift. Disimpan saat absen, tidak berubah bila toleransi diedit kemudian.
+	LateMinutes        int                          `json:"late_minutes"`
+	PersonelSyncStatus AttendancePersonelSyncStatus `json:"personel_sync_status"`
+	PersonnelId        int64                        `json:"personnel_id"`
+	ProjectCode        string                       `json:"project_code"`
+	ShiftEndsAt        time.Time                    `json:"shift_ends_at"`
+	ShiftId            int64                        `json:"shift_id"`
+
+	// ShiftStartsAt Salinan jam shift saat absen: tidak ikut berubah bila shift/proyek diedit kemudian.
+	ShiftStartsAt time.Time        `json:"shift_starts_at"`
+	Status        AttendanceStatus `json:"status"`
+	TeamCode      string           `json:"team_code"`
+	Timezone      string           `json:"timezone"`
+	UpdatedAt     time.Time        `json:"updated_at"`
+
+	// WorkDate Tanggal shift DIMULAI, di zona waktu proyek.
+	WorkDate openapi_types.Date `json:"work_date"`
 }
 
-// AttendanceMethod defines model for Attendance.Method.
-type AttendanceMethod string
+// AttendanceCheckInMethod defines model for Attendance.CheckInMethod.
+type AttendanceCheckInMethod string
 
-// AttendanceTimezone defines model for Attendance.Timezone.
-type AttendanceTimezone string
+// AttendanceCheckOutMethod defines model for Attendance.CheckOutMethod.
+type AttendanceCheckOutMethod string
+
+// AttendancePersonelSyncStatus defines model for Attendance.PersonelSyncStatus.
+type AttendancePersonelSyncStatus string
+
+// AttendanceStatus defines model for Attendance.Status.
+type AttendanceStatus string
 
 // AttendanceAbsentInput defines model for AttendanceAbsentInput.
 type AttendanceAbsentInput struct {
@@ -6121,8 +6223,10 @@ type AttendanceAbsentInput struct {
 
 // AttendanceCheckOutPatch defines model for AttendanceCheckOutPatch.
 type AttendanceCheckOutPatch struct {
-	Lat float64 `json:"lat"`
-	Lng float64 `json:"lng"`
+	AccuracyMeters *float64 `json:"accuracy_meters,omitempty"`
+	Latitude       float64  `json:"latitude"`
+	Longitude      float64  `json:"longitude"`
+	MediaIds       []int64  `json:"media_ids"`
 }
 
 // AttendanceCorrection defines model for AttendanceCorrection.
@@ -6157,6 +6261,45 @@ type AttendanceQrCheckOut struct {
 	Lng     float64 `json:"lng"`
 	QrToken string  `json:"qr_token"`
 }
+
+// AttendanceSelfieInput defines model for AttendanceSelfieInput.
+type AttendanceSelfieInput struct {
+	AccuracyMeters *float64 `json:"accuracy_meters,omitempty"`
+	Latitude       float64  `json:"latitude"`
+	Longitude      float64  `json:"longitude"`
+
+	// MediaIds Tepat satu foto selfie (media dengan purpose ATTENDANCE_SELFIE, sudah di-complete).
+	MediaIds []int64 `json:"media_ids"`
+
+	// ShiftRef Dari GET /attendances/today.
+	ShiftRef string `json:"shift_ref"`
+}
+
+// AttendanceToday Satu shift yang bisa diabsen sekarang, di satu regu.
+type AttendanceToday struct {
+	// AttendanceId Ada bila shift sudah punya catatan.
+	AttendanceId *int64     `json:"attendance_id,omitempty"`
+	CheckInAt    *time.Time `json:"check_in_at,omitempty"`
+	CheckOutAt   *time.Time `json:"check_out_at,omitempty"`
+	EndsAt       time.Time  `json:"ends_at"`
+	ProjectCode  string     `json:"project_code"`
+	ProjectName  string     `json:"project_name"`
+	ShiftName    string     `json:"shift_name"`
+
+	// ShiftRef Penanda buram shift; kirim apa adanya ke endpoint absen.
+	ShiftRef string    `json:"shift_ref"`
+	StartsAt time.Time `json:"starts_at"`
+
+	// Status null selama shift belum punya catatan.
+	Status   *AttendanceTodayStatus `json:"status,omitempty"`
+	TeamCode string                 `json:"team_code"`
+	TeamName string                 `json:"team_name"`
+	Timezone string                 `json:"timezone"`
+	WorkDate openapi_types.Date     `json:"work_date"`
+}
+
+// AttendanceTodayStatus null selama shift belum punya catatan.
+type AttendanceTodayStatus string
 
 // Branch defines model for Branch.
 type Branch struct {
@@ -8840,6 +8983,9 @@ type IdPath = int64
 // IdempotencyKeyHeader defines model for IdempotencyKeyHeader.
 type IdempotencyKeyHeader = openapi_types.UUID
 
+// IdempotencyKeyRequiredHeader defines model for IdempotencyKeyRequiredHeader.
+type IdempotencyKeyRequiredHeader = openapi_types.UUID
+
 // IsActiveParam defines model for IsActiveParam.
 type IsActiveParam = bool
 
@@ -10257,44 +10403,41 @@ type GetAttendancesReplacingParams struct {
 // GetAttendancesReplacing200JSONResponseBodySuccess defines parameters for GetAttendancesReplacing.
 type GetAttendancesReplacing200JSONResponseBodySuccess bool
 
-// PostAttendancesSelfieCheckInMultipartBody defines parameters for PostAttendancesSelfieCheckIn.
-type PostAttendancesSelfieCheckInMultipartBody struct {
-	Lat   float64            `json:"lat"`
-	Lng   float64            `json:"lng"`
-	Photo openapi_types.File `json:"photo"`
-}
-
 // PostAttendancesSelfieCheckInParams defines parameters for PostAttendancesSelfieCheckIn.
 type PostAttendancesSelfieCheckInParams struct {
-	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
-	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
-	// 409 CONFLICT.
-	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
+	// IdempotencyKey UUID stabil seumur item; tanpa header ini 422 VALIDATION_ERROR. Retry dengan key dan body
+	// yang sama → respons tersimpan dengan header `Idempotent-Replayed: true`; body berbeda +
+	// key sama → 409 CONFLICT.
+	IdempotencyKey IdempotencyKeyRequiredHeader `json:"Idempotency-Key"`
 }
 
 // PostAttendancesSelfieCheckIn201JSONResponseBodySuccess defines parameters for PostAttendancesSelfieCheckIn.
 type PostAttendancesSelfieCheckIn201JSONResponseBodySuccess bool
 
-// PostAttendancesSelfieCheckOutMultipartBody defines parameters for PostAttendancesSelfieCheckOut.
-type PostAttendancesSelfieCheckOutMultipartBody struct {
-	Lat   float64            `json:"lat"`
-	Lng   float64            `json:"lng"`
-	Photo openapi_types.File `json:"photo"`
-}
-
 // PostAttendancesSelfieCheckOutParams defines parameters for PostAttendancesSelfieCheckOut.
 type PostAttendancesSelfieCheckOutParams struct {
-	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
-	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
-	// 409 CONFLICT.
-	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
+	// IdempotencyKey UUID stabil seumur item; tanpa header ini 422 VALIDATION_ERROR. Retry dengan key dan body
+	// yang sama → respons tersimpan dengan header `Idempotent-Replayed: true`; body berbeda +
+	// key sama → 409 CONFLICT.
+	IdempotencyKey IdempotencyKeyRequiredHeader `json:"Idempotency-Key"`
 }
 
 // PostAttendancesSelfieCheckOut200JSONResponseBodySuccess defines parameters for PostAttendancesSelfieCheckOut.
 type PostAttendancesSelfieCheckOut200JSONResponseBodySuccess bool
 
+// GetAttendancesToday200JSONResponseBodySuccess defines parameters for GetAttendancesToday.
+type GetAttendancesToday200JSONResponseBodySuccess bool
+
 // GetAttendancesById200JSONResponseBodySuccess defines parameters for GetAttendancesById.
 type GetAttendancesById200JSONResponseBodySuccess bool
+
+// PatchAttendancesByIdCheckOutParams defines parameters for PatchAttendancesByIdCheckOut.
+type PatchAttendancesByIdCheckOutParams struct {
+	// IdempotencyKey UUID stabil seumur item; tanpa header ini 422 VALIDATION_ERROR. Retry dengan key dan body
+	// yang sama → respons tersimpan dengan header `Idempotent-Replayed: true`; body berbeda +
+	// key sama → 409 CONFLICT.
+	IdempotencyKey IdempotencyKeyRequiredHeader `json:"Idempotency-Key"`
+}
 
 // PatchAttendancesByIdCheckOut200JSONResponseBodySuccess defines parameters for PatchAttendancesByIdCheckOut.
 type PatchAttendancesByIdCheckOut200JSONResponseBodySuccess bool
@@ -11700,11 +11843,11 @@ type PostAttendancesQrCheckInJSONRequestBody = AttendanceQrCheckIn
 // PostAttendancesQrCheckOutJSONRequestBody defines body for PostAttendancesQrCheckOut for application/json ContentType.
 type PostAttendancesQrCheckOutJSONRequestBody = AttendanceQrCheckOut
 
-// PostAttendancesSelfieCheckInMultipartRequestBody defines body for PostAttendancesSelfieCheckIn for multipart/form-data ContentType.
-type PostAttendancesSelfieCheckInMultipartRequestBody PostAttendancesSelfieCheckInMultipartBody
+// PostAttendancesSelfieCheckInJSONRequestBody defines body for PostAttendancesSelfieCheckIn for application/json ContentType.
+type PostAttendancesSelfieCheckInJSONRequestBody = AttendanceSelfieInput
 
-// PostAttendancesSelfieCheckOutMultipartRequestBody defines body for PostAttendancesSelfieCheckOut for multipart/form-data ContentType.
-type PostAttendancesSelfieCheckOutMultipartRequestBody PostAttendancesSelfieCheckOutMultipartBody
+// PostAttendancesSelfieCheckOutJSONRequestBody defines body for PostAttendancesSelfieCheckOut for application/json ContentType.
+type PostAttendancesSelfieCheckOutJSONRequestBody = AttendanceSelfieInput
 
 // PatchAttendancesByIdCheckOutJSONRequestBody defines body for PatchAttendancesByIdCheckOut for application/json ContentType.
 type PatchAttendancesByIdCheckOutJSONRequestBody = AttendanceCheckOutPatch

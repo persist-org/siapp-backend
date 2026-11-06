@@ -9,6 +9,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"siapp/pkg/access"
+	"siapp/pkg/attendance"
 	"siapp/pkg/identity"
 	"siapp/pkg/masterdata"
 	"siapp/pkg/media"
@@ -129,6 +130,13 @@ func newRouter(d deps) *chi.Mux {
 	masterdataHandler := masterdata.NewHandler(masterdataService)
 	masterdataHandler.MountField(router)
 
+	// Attendance capture (module 07): today's shifts and the selfie check-in/out. The shifts come
+	// from module 02, the photos from module 04; every change also lands in the Personel outbox,
+	// which the worker delivers in Phase 07.3.
+	accessService := access.NewService(d.Pool, d.Clock)
+	attendanceService := attendance.NewService(d.Pool, d.Clock, organization.NewShifts(d.Pool), organization.NewQuery(d.Pool), mediaService, accessService)
+	attendance.NewHandler(attendanceService, accessService, idempotency.Middleware(true)).MountField(router)
+
 	// The WebSocket (05.3). The hub is shared with the Redis subscriber main starts, which feeds
 	// it the events other instances publish.
 	hub := d.Hub
@@ -136,7 +144,7 @@ func newRouter(d deps) *chi.Mux {
 		hub = realtime.NewHub(d.Logger)
 	}
 	realtime.NewHandler(d.Tokens, revocations, realtime.NewTickets(d.Redis, d.RedisPrefix), hub,
-		realtime.NewAuthorizer(d.Pool, access.NewService(d.Pool, d.Clock), d.Clock), d.Clock, d.Logger,
+		realtime.NewAuthorizer(d.Pool, accessService, d.Clock), d.Clock, d.Logger,
 		realtime.Config{OriginPatterns: realtime.OriginPatternsOf(d.CORSOrigins)}).Mount(router)
 
 	// ⚠ The admin group: access.RequireAdmin is mounted ONCE here, so every route a module

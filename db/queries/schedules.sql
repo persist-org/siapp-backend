@@ -138,13 +138,13 @@ ORDER BY s.work_date;
 -- The person's regu over a date range with each one's project and timezone: what decides
 -- where (and in which timezone) a schedule on a date is worked.
 -- name: ListMembershipZonesOfPersonnelBetween :many
-SELECT tm.start_date, tm.end_date, t.project_code, pr.timezone
+SELECT tm.start_date, tm.end_date, tm.team_code, t.project_code, pr.timezone
 FROM team_members tm
 JOIN teams t     ON t.organization_id = tm.organization_id AND t.code = tm.team_code
 JOIN projects pr ON pr.organization_id = t.organization_id AND pr.code = t.project_code
 WHERE tm.personnel_id = @personnel_id AND t.deleted_at IS NULL
   AND tm.start_date <= @date_to AND (tm.end_date IS NULL OR tm.end_date >= @date_from)
-ORDER BY tm.start_date, t.project_code;
+ORDER BY tm.start_date, t.project_code, tm.team_code;
 
 -- name: PersonnelInRegionOn :one
 SELECT EXISTS (

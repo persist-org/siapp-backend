@@ -333,13 +333,13 @@ func (q *Queries) ListAssignmentsToExtend(ctx context.Context, target pgtype.Dat
 }
 
 const listMembershipZonesOfPersonnelBetween = `-- name: ListMembershipZonesOfPersonnelBetween :many
-SELECT tm.start_date, tm.end_date, t.project_code, pr.timezone
+SELECT tm.start_date, tm.end_date, tm.team_code, t.project_code, pr.timezone
 FROM team_members tm
 JOIN teams t     ON t.organization_id = tm.organization_id AND t.code = tm.team_code
 JOIN projects pr ON pr.organization_id = t.organization_id AND pr.code = t.project_code
 WHERE tm.personnel_id = $1 AND t.deleted_at IS NULL
   AND tm.start_date <= $2 AND (tm.end_date IS NULL OR tm.end_date >= $3)
-ORDER BY tm.start_date, t.project_code
+ORDER BY tm.start_date, t.project_code, tm.team_code
 `
 
 type ListMembershipZonesOfPersonnelBetweenParams struct {
@@ -351,6 +351,7 @@ type ListMembershipZonesOfPersonnelBetweenParams struct {
 type ListMembershipZonesOfPersonnelBetweenRow struct {
 	StartDate   pgtype.Date
 	EndDate     pgtype.Date
+	TeamCode    string
 	ProjectCode string
 	Timezone    string
 }
@@ -369,6 +370,7 @@ func (q *Queries) ListMembershipZonesOfPersonnelBetween(ctx context.Context, arg
 		if err := rows.Scan(
 			&i.StartDate,
 			&i.EndDate,
+			&i.TeamCode,
 			&i.ProjectCode,
 			&i.Timezone,
 		); err != nil {

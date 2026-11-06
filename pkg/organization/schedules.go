@@ -707,6 +707,8 @@ func entryShifts(ctx context.Context, q *db.Queries, entries []ScheduleEntry) ([
 type zone struct {
 	loc      *time.Location
 	projects []string
+	// teams are the regu the person serves in on the date, by code (usually one).
+	teams []string
 	// ambiguous is SCHEDULE_TIMEZONE_AMBIGUOUS when the projects of that date are in different
 	// timezones (loc is then the first one's). Only a caller that puts a working shift on the
 	// date has to refuse it: an OFF day, or a date nothing is written to, has no instant.
@@ -731,7 +733,7 @@ func zonesBetween(ctx context.Context, q *db.Queries, personnelID int64, from, t
 	out := map[timeutil.Date]zone{}
 	for d := from; !to.Before(d); d = d.AddDays(1) {
 		var tz string
-		var projects []string
+		var projects, teams []string
 		var ambiguous *apperr.Error
 		for _, r := range rows {
 			if dateValue(r.StartDate).After(d) || (r.EndDate.Valid && dateValue(r.EndDate).Before(d)) {
@@ -745,8 +747,11 @@ func zonesBetween(ctx context.Context, q *db.Queries, personnelID int64, from, t
 			if !slices.Contains(projects, r.ProjectCode) {
 				projects = append(projects, r.ProjectCode)
 			}
+			if !slices.Contains(teams, r.TeamCode) {
+				teams = append(teams, r.TeamCode)
+			}
 		}
-		z := zone{loc: fallback, projects: projects, ambiguous: ambiguous}
+		z := zone{loc: fallback, projects: projects, teams: teams, ambiguous: ambiguous}
 		if tz != "" {
 			if z.loc, err = time.LoadLocation(tz); err != nil {
 				return nil, fmt.Errorf("load timezone %q: %w", tz, err)

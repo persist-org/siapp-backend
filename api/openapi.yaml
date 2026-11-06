@@ -476,6 +476,15 @@ components:
         offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
         409 CONFLICT.
       schema: { type: string, format: uuid }
+    IdempotencyKeyRequiredHeader:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: |
+        UUID stabil seumur item; tanpa header ini 422 VALIDATION_ERROR. Retry dengan key dan body
+        yang sama → respons tersimpan dengan header `Idempotent-Replayed: true`; body berbeda +
+        key sama → 409 CONFLICT.
+      schema: { type: string, format: uuid }
     XRequestIdHeader:
       name: X-Request-Id
       in: header
@@ -2032,25 +2041,68 @@ components:
     # ---------- 22. attendances ----------
     Attendance:
       type: object
+      description: >-
+        Satu instans shift seseorang di satu regu (orang × regu × tanggal kerja × shift). Ini bukti
+        yang ditangkap SiAPP, bukan catatan resmi: catatan resminya di Persist Personel, yang
+        menerima tiap perubahan lewat outbox (`personel_sync_status`).
+      required: [id, personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone, status, late_minutes, check_out_update_count, personel_sync_status, created_at, updated_at]
       properties:
         id: { type: integer, format: int64 }
-        organization_id: { type: integer, format: int64 }
         personnel_id: { type: integer, format: int64 }
-        project_id: { type: integer, format: int64 }
-        team_id: { type: integer, format: int64, nullable: true }
-        method: { type: string, enum: [QR, SELFIE, SHIFT, FORCE] }
+        team_code: { type: string, example: 1K-IBMI-S1 }
+        project_code: { type: string, example: 1K-IBMI-S }
+        work_date: { type: string, format: date, description: "Tanggal shift DIMULAI, di zona waktu proyek." }
+        shift_id: { type: integer, format: int64 }
+        shift_starts_at: { type: string, format: date-time, description: "Salinan jam shift saat absen: tidak ikut berubah bila shift/proyek diedit kemudian." }
+        shift_ends_at: { type: string, format: date-time }
+        timezone: { type: string, example: Asia/Jakarta }
+        status: { type: string, enum: [PRESENT, LEAVE, ABSENT] }
         check_in_at: { type: string, format: date-time, nullable: true }
+        check_in_method: { type: string, enum: [QR, SELFIE, GROUP, FORCE], nullable: true }
+        check_in_distance_meters: { type: integer, nullable: true, description: "Jarak ke titik proyek; null bila tidak ada fix GPS." }
+        check_in_within_area: { type: boolean, nullable: true }
+        late_minutes: { type: integer, minimum: 0, description: "Menit keterlambatan absen datang, dibulatkan ke bawah; 0 bila tepat waktu. Absen dalam toleransi shift dihitung tepat waktu; lewat dari itu, keterlambatan dihitung dari jam mulai shift. Disimpan saat absen, tidak berubah bila toleransi diedit kemudian." }
         check_out_at: { type: string, format: date-time, nullable: true }
-        latitude: { type: number, format: double, nullable: true, example: -6.2 }
-        longitude: { type: number, format: double, nullable: true, example: 106.8 }
-        photo_url: { type: string, nullable: true, format: uri }
-        timezone: { type: string, enum: [WIB, WITA, WIT] }
-        replaced_by_id: { type: integer, format: int64, nullable: true }
-        is_absent: { type: boolean }
-        local_id: { type: string, nullable: true }
-        synced_at: { type: string, format: date-time, nullable: true }
+        check_out_method: { type: string, enum: [QR, SELFIE, GROUP, FORCE], nullable: true }
+        check_out_distance_meters: { type: integer, nullable: true }
+        check_out_within_area: { type: boolean, nullable: true }
+        check_out_update_count: { type: integer, description: "Berapa kali jam pulang diperbarui." }
+        personel_sync_status: { type: string, enum: [PENDING, SYNCED, FAILED] }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+    AttendanceToday:
+      type: object
+      description: Satu shift yang bisa diabsen sekarang, di satu regu.
+      required: [shift_ref, work_date, project_code, project_name, team_code, team_name, shift_name, starts_at, ends_at, timezone]
+      properties:
+        shift_ref: { type: string, description: "Penanda buram shift; kirim apa adanya ke endpoint absen." }
+        attendance_id: { type: integer, format: int64, nullable: true, description: "Ada bila shift sudah punya catatan." }
+        work_date: { type: string, format: date }
+        project_code: { type: string }
+        project_name: { type: string }
+        team_code: { type: string }
+        team_name: { type: string }
+        shift_name: { type: string }
+        starts_at: { type: string, format: date-time }
+        ends_at: { type: string, format: date-time }
+        timezone: { type: string, example: Asia/Jakarta }
+        status: { type: string, enum: [PRESENT, LEAVE, ABSENT], nullable: true, description: "null selama shift belum punya catatan." }
+        check_in_at: { type: string, format: date-time, nullable: true }
+        check_out_at: { type: string, format: date-time, nullable: true }
+    AttendanceSelfieInput:
+      type: object
+      required: [shift_ref, media_ids, latitude, longitude]
+      properties:
+        shift_ref: { type: string, description: "Dari GET /attendances/today." }
+        media_ids:
+          type: array
+          minItems: 1
+          maxItems: 1
+          items: { type: integer, format: int64 }
+          description: "Tepat satu foto selfie (media dengan purpose ATTENDANCE_SELFIE, sudah di-complete)."
+        latitude: { type: number, format: double, minimum: -90, maximum: 90 }
+        longitude: { type: number, format: double, minimum: -180, maximum: 180 }
+        accuracy_meters: { type: number, format: double, minimum: 0, maximum: 100000 }
     AttendanceQrCheckIn:
       type: object
       required: [qr_token, lat, lng]
@@ -2069,10 +2121,16 @@ components:
         lng: { type: number, format: double }
     AttendanceCheckOutPatch:
       type: object
-      required: [lat, lng]
+      required: [media_ids, latitude, longitude]
       properties:
-        lat: { type: number, format: double }
-        lng: { type: number, format: double }
+        media_ids:
+          type: array
+          minItems: 1
+          maxItems: 1
+          items: { type: integer, format: int64 }
+        latitude: { type: number, format: double, minimum: -90, maximum: 90 }
+        longitude: { type: number, format: double, minimum: -180, maximum: 180 }
+        accuracy_meters: { type: number, format: double, minimum: 0, maximum: 100000 }
     AttendanceGroupInput:
       type: object
       required: [team_id, entries]
@@ -9394,48 +9452,66 @@ paths:
         '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/Attendance' } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '422': { $ref: '#/components/responses/ValidationError' }
+  /attendances/today:
+    get:
+      operationId: getAttendancesToday
+      tags: [Attendance]
+      summary: Shift yang bisa diabsen sekarang
+      description: >-
+        Shift terjadwal milik pemanggil yang jendelanya (2 jam sebelum mulai sampai 4 jam setelah
+        selesai) memuat saat ini, satu per regu tempat ia bertugas hari itu, digabung dengan catatan
+        absensi yang sudah ada. `shift_ref` dari sini yang dikirim ke endpoint absen. Perlu izin
+        `attendance.checkin`.
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/AttendanceToday' } } } } ] } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /attendances/selfie/check-in:
     post:
       operationId: postAttendancesSelfieCheckIn
       tags: [Attendance]
-      summary: Absen datang selfie + GPS + TZ
-      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyHeader' } ]
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              required: [photo, lat, lng]
-              properties:
-                photo: { type: string, format: binary }
-                lat: { type: number, format: double }
-                lng: { type: number, format: double }
+      summary: Absen datang selfie + GPS
+      description: >-
+        Online-only. `shift_ref` harus salah satu shift dari `GET /attendances/today`, selain itu
+        422 `ATTENDANCE_SHIFT_NOT_ACTIVE`. Selfie didaftarkan dulu lewat modul media (purpose
+        `ATTENDANCE_SELFIE`). Di luar radius: geofence ketat menolak (422
+        `ATTENDANCE_OUTSIDE_AREA`), geofence longgar menyimpan dengan `check_in_within_area: false`.
+        Absen terlambat tidak ditolak: catatan menyimpan `late_minutes`. Hari kerja sebelumnya
+        (jadwal terakhir sebelum tanggal shift yang bukan OFF) harus beres. Sudah absen datang tetapi
+        belum absen pulang: 422 `ATTENDANCE_PREVIOUS_NOT_CHECKED_OUT`. Tidak ada catatan sama sekali
+        (alpa): 422 `ATTENDANCE_PREVIOUS_NOT_CHECKED_IN`, hanya bila personil sudah pernah absen
+        datang lewat SiAPP sebelum hari itu (hari sebelum absen pertamanya tidak dinilai). Keduanya
+        memuat `previous_work_date`. Dianggap beres: absen pulang yang lengkap, izin yang disetujui
+        (LEAVE), atau mangkir yang sudah ditandai (ABSENT). Check-in ganda 409
+        `ATTENDANCE_ALREADY_CHECKED_IN`; shift yang sudah tercatat izin/mangkir 422
+        `ATTENDANCE_NOT_ALLOWED`; proyek tanpa koordinat 422 `PROJECT_NOT_CONFIGURED`. Foto yang
+        bukan milik pemanggil atau tidak ada: 404 `MEDIA_NOT_FOUND` (aturan modul media).
+      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyRequiredHeader' } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AttendanceSelfieInput' } } } }
       responses:
         '201': { description: Created, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/Attendance' } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '413': { description: PAYLOAD_TOO_LARGE, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
   /attendances/selfie/check-out:
     post:
       operationId: postAttendancesSelfieCheckOut
       tags: [Attendance]
       summary: Absen pulang selfie + GPS
-      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyHeader' } ]
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              required: [photo, lat, lng]
-              properties:
-                photo: { type: string, format: binary }
-                lat: { type: number, format: double }
-                lng: { type: number, format: double }
+      description: >-
+        Butuh check-in lebih dulu (422 `ATTENDANCE_NOT_CHECKED_IN`). Sudah check-out: 409
+        `ATTENDANCE_ALREADY_CHECKED_OUT`, gunakan `PATCH /attendances/{id}/check-out`. Aturan
+        geofence sama dengan check-in.
+      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyRequiredHeader' } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AttendanceSelfieInput' } } } }
       responses:
         '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/Attendance' } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
   /attendances/{id}/check-out:
     parameters: [ { $ref: '#/components/parameters/IdPath' } ]
@@ -9443,11 +9519,22 @@ paths:
       operationId: patchAttendancesByIdCheckOut
       tags: [Attendance]
       summary: Update jam pulang
+      description: >-
+        Menimpa check-out catatan milik sendiri dengan selfie dan fix baru, selama jendela check-out
+        shift masih terbuka. Nilai lama masuk audit log, event `CHECK_OUT_UPDATED` ke Personel,
+        dan `check_out_update_count` bertambah. Belum ada check-out: 422
+        `ATTENDANCE_NOT_CHECKED_OUT`. Jendela check-out sudah tutup (4 jam setelah shift selesai):
+        422 `ATTENDANCE_SHIFT_NOT_ACTIVE`. Geofence memakai proyek yang tersimpan di catatan, dengan
+        aturan yang sama dengan check-out. Catatan orang lain atau organisasi lain: 404.
+      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyRequiredHeader' } ]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AttendanceCheckOutPatch' } } } }
       responses:
         '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/Attendance' } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /attendances/me:
     get:
       operationId: getAttendancesMe
