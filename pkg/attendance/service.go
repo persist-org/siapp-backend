@@ -54,12 +54,17 @@ type Service struct {
 	sites  siteSource
 	photos photoStore
 	access permissions
+	// qr is nil while ATTENDANCE_QR_SECRET is not set: the QR endpoints then answer 503.
+	qr *QRTokens
 }
 
 // NewService returns the Service.
 func NewService(pool *pgxpool.Pool, c clock.Clock, shifts shiftSource, sites siteSource, photos photoStore, perms permissions) *Service {
 	return &Service{pool: pool, clock: c, shifts: shifts, sites: sites, photos: photos, access: perms}
 }
+
+// UseQR turns the QR method on: tokens are issued and verified with qr. Called once at start-up.
+func (s *Service) UseQR(qr *QRTokens) { s.qr = qr }
 
 // capture is what a check-in or check-out brings besides the shift: how it was captured and the
 // evidence. The selfie endpoints build one with method SELFIE; Phase 07.2's QR endpoints build one
@@ -468,7 +473,7 @@ func checkOutValues(r db.Attendance) map[string]any {
 	return map[string]any{
 		"check_out_at": formatted(r.CheckOutAt), "method": methodString(r.CheckOutMethod),
 		"media_id": int8Ptr(r.CheckOutMediaID), "distance_meters": intPtr(r.CheckOutDistanceMeters),
-		"within_area": boolPtr(r.CheckOutWithinArea),
+		"within_area": boolPtr(r.CheckOutWithinArea), "qr_danru_id": int8Ptr(r.CheckOutQrDanruID),
 	}
 }
 

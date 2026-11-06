@@ -50,6 +50,8 @@ type deps struct {
 	Hub *realtime.Hub
 	// PersonelWebhookSecret is PERSONEL_WEBHOOK_SECRET.
 	PersonelWebhookSecret string
+	// AttendanceQRSecret is ATTENDANCE_QR_SECRET. Empty leaves the QR method off.
+	AttendanceQRSecret string
 }
 
 // adminPrefix is the group every web admin route lives under. access.RequireAdmin guards the
@@ -135,6 +137,13 @@ func newRouter(d deps) *chi.Mux {
 	// which the worker delivers in Phase 07.3.
 	accessService := access.NewService(d.Pool, d.Clock)
 	attendanceService := attendance.NewService(d.Pool, d.Clock, organization.NewShifts(d.Pool), organization.NewQuery(d.Pool), mediaService, accessService)
+	if d.AttendanceQRSecret != "" {
+		qr, err := attendance.NewQRTokens(d.AttendanceQRSecret, d.Clock)
+		if err != nil {
+			panic(err) // config.Load refuses a short secret, so this is a test or a caller that skipped it
+		}
+		attendanceService.UseQR(qr)
+	}
 	attendance.NewHandler(attendanceService, accessService, idempotency.Middleware(true)).MountField(router)
 
 	// The WebSocket (05.3). The hub is shared with the Redis subscriber main starts, which feeds

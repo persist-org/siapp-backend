@@ -3897,6 +3897,39 @@ func (e PostAttendancesQrCheckOut200JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
+// Defines values for GetAttendancesQrDisplayParamsDirection.
+const (
+	IN  GetAttendancesQrDisplayParamsDirection = "IN"
+	OUT GetAttendancesQrDisplayParamsDirection = "OUT"
+)
+
+// Valid indicates whether the value is a known member of the GetAttendancesQrDisplayParamsDirection enum.
+func (e GetAttendancesQrDisplayParamsDirection) Valid() bool {
+	switch e {
+	case IN:
+		return true
+	case OUT:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetAttendancesQrDisplay200JSONResponseBodySuccess.
+const (
+	GetAttendancesQrDisplay200JSONResponseBodySuccessTrue GetAttendancesQrDisplay200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetAttendancesQrDisplay200JSONResponseBodySuccess enum.
+func (e GetAttendancesQrDisplay200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetAttendancesQrDisplay200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetAttendancesReplaced200JSONResponseBodySuccess.
 const (
 	GetAttendancesReplaced200JSONResponseBodySuccessTrue GetAttendancesReplaced200JSONResponseBodySuccess = true
@@ -6246,20 +6279,24 @@ type AttendanceGroupInput struct {
 	TeamId int64 `json:"team_id"`
 }
 
-// AttendanceQrCheckIn defines model for AttendanceQrCheckIn.
-type AttendanceQrCheckIn struct {
-	Lat     float64 `json:"lat"`
-	Lng     float64 `json:"lng"`
-	LocalId *string `json:"local_id,omitempty"`
-	Photo   *string `json:"photo,omitempty"`
-	QrToken string  `json:"qr_token"`
+// AttendanceQrCode defines model for AttendanceQrCode.
+type AttendanceQrCode struct {
+	// ExpiresAt 60 detik sejak kode diterbitkan (toleransi 5 detik di sisi server).
+	ExpiresAt time.Time `json:"expires_at"`
+	Token     string    `json:"token"`
 }
 
-// AttendanceQrCheckOut defines model for AttendanceQrCheckOut.
-type AttendanceQrCheckOut struct {
-	Lat     float64 `json:"lat"`
-	Lng     float64 `json:"lng"`
-	QrToken string  `json:"qr_token"`
+// AttendanceQrInput Latitude dan longitude opsional, tetapi harus dikirim berpasangan.
+type AttendanceQrInput struct {
+	AccuracyMeters *float64 `json:"accuracy_meters,omitempty"`
+	Latitude       *float64 `json:"latitude,omitempty"`
+	Longitude      *float64 `json:"longitude,omitempty"`
+
+	// ShiftRef Dari GET /attendances/today.
+	ShiftRef string `json:"shift_ref"`
+
+	// Token Kode yang sedang ditampilkan DANRU (GET /attendances/qr/display).
+	Token string `json:"token"`
 }
 
 // AttendanceSelfieInput defines model for AttendanceSelfieInput.
@@ -10353,10 +10390,10 @@ type GetAttendancesMe200JSONResponseBodySuccess bool
 
 // PostAttendancesQrCheckInParams defines parameters for PostAttendancesQrCheckIn.
 type PostAttendancesQrCheckInParams struct {
-	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
-	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
-	// 409 CONFLICT.
-	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
+	// IdempotencyKey UUID stabil seumur item; tanpa header ini 422 VALIDATION_ERROR. Retry dengan key dan body
+	// yang sama → respons tersimpan dengan header `Idempotent-Replayed: true`; body berbeda +
+	// key sama → 409 CONFLICT.
+	IdempotencyKey IdempotencyKeyRequiredHeader `json:"Idempotency-Key"`
 }
 
 // PostAttendancesQrCheckIn201JSONResponseBodySuccess defines parameters for PostAttendancesQrCheckIn.
@@ -10364,10 +10401,10 @@ type PostAttendancesQrCheckIn201JSONResponseBodySuccess bool
 
 // PostAttendancesQrCheckOutParams defines parameters for PostAttendancesQrCheckOut.
 type PostAttendancesQrCheckOutParams struct {
-	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
-	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
-	// 409 CONFLICT.
-	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
+	// IdempotencyKey UUID stabil seumur item; tanpa header ini 422 VALIDATION_ERROR. Retry dengan key dan body
+	// yang sama → respons tersimpan dengan header `Idempotent-Replayed: true`; body berbeda +
+	// key sama → 409 CONFLICT.
+	IdempotencyKey IdempotencyKeyRequiredHeader `json:"Idempotency-Key"`
 }
 
 // PostAttendancesQrCheckOut200JSONResponseBodySuccess defines parameters for PostAttendancesQrCheckOut.
@@ -10375,9 +10412,18 @@ type PostAttendancesQrCheckOut200JSONResponseBodySuccess bool
 
 // GetAttendancesQrDisplayParams defines parameters for GetAttendancesQrDisplay.
 type GetAttendancesQrDisplayParams struct {
-	// TeamId Filter scope regu.
-	TeamId *TeamIdParam `form:"team_id,omitempty" json:"team_id,omitempty"`
+	// TeamCode Kode regu yang kodenya ditampilkan.
+	TeamCode string `form:"team_code" json:"team_code"`
+
+	// Direction IN untuk absen datang, OUT untuk absen pulang.
+	Direction GetAttendancesQrDisplayParamsDirection `form:"direction" json:"direction"`
 }
+
+// GetAttendancesQrDisplayParamsDirection defines parameters for GetAttendancesQrDisplay.
+type GetAttendancesQrDisplayParamsDirection string
+
+// GetAttendancesQrDisplay200JSONResponseBodySuccess defines parameters for GetAttendancesQrDisplay.
+type GetAttendancesQrDisplay200JSONResponseBodySuccess bool
 
 // GetAttendancesReplacedParams defines parameters for GetAttendancesReplaced.
 type GetAttendancesReplacedParams struct {
@@ -11838,10 +11884,10 @@ type PostAttendancesAbsentJSONRequestBody = AttendanceAbsentInput
 type PostAttendancesGroupJSONRequestBody = AttendanceGroupInput
 
 // PostAttendancesQrCheckInJSONRequestBody defines body for PostAttendancesQrCheckIn for application/json ContentType.
-type PostAttendancesQrCheckInJSONRequestBody = AttendanceQrCheckIn
+type PostAttendancesQrCheckInJSONRequestBody = AttendanceQrInput
 
 // PostAttendancesQrCheckOutJSONRequestBody defines body for PostAttendancesQrCheckOut for application/json ContentType.
-type PostAttendancesQrCheckOutJSONRequestBody = AttendanceQrCheckOut
+type PostAttendancesQrCheckOutJSONRequestBody = AttendanceQrInput
 
 // PostAttendancesSelfieCheckInJSONRequestBody defines body for PostAttendancesSelfieCheckIn for application/json ContentType.
 type PostAttendancesSelfieCheckInJSONRequestBody = AttendanceSelfieInput

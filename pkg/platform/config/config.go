@@ -80,6 +80,13 @@ type Config struct {
 	// production. Never logged.
 	PersonelWebhookSecret string `env:"PERSONEL_WEBHOOK_SECRET"`
 
+	// AttendanceQRSecret signs the rotating QR codes DANRU show for attendance (Phase 07.2): the
+	// HMAC key of the tokens. Empty turns the QR method off (display and scans answer 503) and
+	// leaves the selfie one working; a set value must be at least 32 bytes, and not a placeholder
+	// in production, because whoever holds it can mint a code for any regu of any organization.
+	// Never logged.
+	AttendanceQRSecret string `env:"ATTENDANCE_QR_SECRET"`
+
 	// FCMServiceAccountBase64 is the Firebase service account key (the JSON file), base64-encoded.
 	// Only the worker sends pushes. Empty means no push is sent: the worker logs them instead,
 	// which is what a development machine and the tests want. Never logged.
@@ -231,6 +238,16 @@ func Parse(environ map[string]string) (Config, error) {
 		problems = append(problems, fmt.Sprintf("PERSONEL_WEBHOOK_SECRET must be at least %d bytes, or empty to refuse every event (generate one with: openssl rand -base64 48)", minJWTSecretBytes))
 	case cfg.AppEnv == EnvProduction && weakSecret(cfg.PersonelWebhookSecret):
 		problems = append(problems, "PERSONEL_WEBHOOK_SECRET looks like a placeholder or a low-entropy value, which is refused in production (generate one with: openssl rand -base64 48)")
+	}
+
+	// Like the webhook secret: empty is the safe way to leave the QR method off, a set value must be
+	// a real key.
+	switch {
+	case cfg.AttendanceQRSecret == "":
+	case len(cfg.AttendanceQRSecret) < minJWTSecretBytes:
+		problems = append(problems, fmt.Sprintf("ATTENDANCE_QR_SECRET must be at least %d bytes, or empty to turn the QR method off (generate one with: openssl rand -base64 48)", minJWTSecretBytes))
+	case cfg.AppEnv == EnvProduction && weakSecret(cfg.AttendanceQRSecret):
+		problems = append(problems, "ATTENDANCE_QR_SECRET looks like a placeholder or a low-entropy value, which is refused in production (generate one with: openssl rand -base64 48)")
 	}
 
 	problems = append(problems, checkStorage(&cfg)...)

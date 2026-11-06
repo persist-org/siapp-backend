@@ -22,7 +22,33 @@ const (
 
 	ReasonPreviousNotCheckedIn  = "ATTENDANCE_PREVIOUS_NOT_CHECKED_IN"
 	ReasonPreviousNotCheckedOut = "ATTENDANCE_PREVIOUS_NOT_CHECKED_OUT"
+
+	// Phase 07.2: QR.
+	ReasonQRInvalid     = "ATTENDANCE_QR_INVALID"
+	ReasonQRExpired     = "ATTENDANCE_QR_EXPIRED"
+	ReasonQRWrongTeam   = "ATTENDANCE_QR_WRONG_TEAM"
+	ReasonQRUnavailable = "ATTENDANCE_QR_UNAVAILABLE"
 )
+
+// ErrQRInvalid is returned for a QR token that is not one the system issued: malformed, a bad
+// signature, another organization's, or the code of the other direction (a check-out code scanned
+// to check in). One answer for all of them, so a token cannot be used to probe which it was.
+var ErrQRInvalid = apperr.New(http.StatusUnprocessableEntity, apperr.CodeUnprocessable,
+	ReasonQRInvalid, "QR tidak valid. Pindai QR yang sedang ditampilkan DANRU.")
+
+// ErrQRExpired is returned for a genuine token whose minute has passed: the guard scans again.
+var ErrQRExpired = apperr.New(http.StatusUnprocessableEntity, apperr.CodeUnprocessable,
+	ReasonQRExpired, "QR sudah kedaluwarsa. Pindai ulang QR yang sedang ditampilkan.")
+
+// ErrQRWrongTeam is returned when the QR is a regu's other than the shift's: scanning the code of
+// another regu does not check into this one.
+var ErrQRWrongTeam = apperr.New(http.StatusUnprocessableEntity, apperr.CodeUnprocessable,
+	ReasonQRWrongTeam, "QR ini milik regu lain, bukan regu shift yang dipilih.")
+
+// ErrQRUnavailable is returned while ATTENDANCE_QR_SECRET is not set: without a key no code can be
+// issued or trusted, so the QR method is off and the selfie one still works.
+var ErrQRUnavailable = apperr.New(http.StatusServiceUnavailable, apperr.CodeInternal,
+	ReasonQRUnavailable, "Absen QR belum tersedia. Gunakan absen selfie.")
 
 // ErrShiftNotActive is returned when the shift_ref is not one of the shifts the person can check
 // into now: malformed, another person's, another organization's, or outside its window. The same

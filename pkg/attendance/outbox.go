@@ -33,12 +33,16 @@ type eventPayload struct {
 	CheckInMethod *string `json:"check_in_method"`
 	CheckInInArea *bool   `json:"check_in_within_area"`
 	CheckInMedia  *int64  `json:"check_in_media_id"`
-	LateMinutes   int     `json:"late_minutes"`
+	// CheckInQRDanruID is the DANRU whose QR the check-in scanned, null for any other method.
+	CheckInQRDanruID *int64 `json:"check_in_qr_danru_id"`
+	LateMinutes      int    `json:"late_minutes"`
 
 	CheckOutAt     *string `json:"check_out_at"`
 	CheckOutMethod *string `json:"check_out_method"`
 	CheckOutInArea *bool   `json:"check_out_within_area"`
 	CheckOutMedia  *int64  `json:"check_out_media_id"`
+	// CheckOutQRDanruID is the same for the check-out.
+	CheckOutQRDanruID *int64 `json:"check_out_qr_danru_id"`
 
 	// ShiftSwapID is set when the shift is a covered one (07.7): Personel credits it to the replacer.
 	ShiftSwapID *int64 `json:"shift_swap_id"`
@@ -57,9 +61,9 @@ func writeEvent(ctx context.Context, q *db.Queries, a db.Attendance, eventType s
 		ShiftStarts: timeutil.FormatTimestamp(a.ShiftStartsAt.Time), ShiftEnds: timeutil.FormatTimestamp(a.ShiftEndsAt.Time),
 		Timezone: a.Timezone, Status: string(a.Status), OccurredAt: timeutil.FormatTimestamp(now),
 		CheckInAt: formatted(a.CheckInAt), CheckInMethod: methodString(a.CheckInMethod),
-		CheckInInArea: boolPtr(a.CheckInWithinArea), CheckInMedia: int8Ptr(a.CheckInMediaID), LateMinutes: int(a.LateMinutes),
+		CheckInInArea: boolPtr(a.CheckInWithinArea), CheckInMedia: int8Ptr(a.CheckInMediaID), CheckInQRDanruID: int8Ptr(a.CheckInQrDanruID), LateMinutes: int(a.LateMinutes),
 		CheckOutAt: formatted(a.CheckOutAt), CheckOutMethod: methodString(a.CheckOutMethod),
-		CheckOutInArea: boolPtr(a.CheckOutWithinArea), CheckOutMedia: int8Ptr(a.CheckOutMediaID),
+		CheckOutInArea: boolPtr(a.CheckOutWithinArea), CheckOutMedia: int8Ptr(a.CheckOutMediaID), CheckOutQRDanruID: int8Ptr(a.CheckOutQrDanruID),
 		ShiftSwapID: int8Ptr(a.ShiftSwapID),
 	})
 	if err != nil {

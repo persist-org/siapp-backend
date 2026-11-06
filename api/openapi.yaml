@@ -2103,22 +2103,22 @@ components:
         latitude: { type: number, format: double, minimum: -90, maximum: 90 }
         longitude: { type: number, format: double, minimum: -180, maximum: 180 }
         accuracy_meters: { type: number, format: double, minimum: 0, maximum: 100000 }
-    AttendanceQrCheckIn:
+    AttendanceQrInput:
       type: object
-      required: [qr_token, lat, lng]
+      required: [shift_ref, token]
+      description: "Latitude dan longitude opsional, tetapi harus dikirim berpasangan."
       properties:
-        qr_token: { type: string }
-        lat: { type: number, format: double }
-        lng: { type: number, format: double }
-        photo: { type: string, format: uri }
-        local_id: { type: string }
-    AttendanceQrCheckOut:
+        shift_ref: { type: string, description: "Dari GET /attendances/today." }
+        token: { type: string, description: "Kode yang sedang ditampilkan DANRU (GET /attendances/qr/display)." }
+        latitude: { type: number, format: double, minimum: -90, maximum: 90 }
+        longitude: { type: number, format: double, minimum: -180, maximum: 180 }
+        accuracy_meters: { type: number, format: double, minimum: 0, maximum: 100000 }
+    AttendanceQrCode:
       type: object
-      required: [qr_token, lat, lng]
+      required: [token, expires_at]
       properties:
-        qr_token: { type: string }
-        lat: { type: number, format: double }
-        lng: { type: number, format: double }
+        token: { type: string }
+        expires_at: { type: string, format: date-time, description: "60 detik sejak kode diterbitkan (toleransi 5 detik di sisi server)." }
     AttendanceCheckOutPatch:
       type: object
       required: [media_ids, latitude, longitude]
@@ -9435,23 +9435,42 @@ paths:
       operationId: postAttendancesQrCheckIn
       tags: [Attendance]
       summary: Absen datang via scan QR
-      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyHeader' } ]
-      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AttendanceQrCheckIn' } } } }
+      description: >-
+        Memindai kode yang ditampilkan DANRU. Aturan shift, izin `attendance.checkin`, hari kerja
+        sebelumnya, keterlambatan, dan check-in ganda sama dengan absen selfie; tanpa foto. Koordinat
+        opsional: bila dikirim, diukur terhadap geofence proyek seperti absen selfie (422
+        `ATTENDANCE_OUTSIDE_AREA` untuk geofence ketat). Kode salah/palsu/organisasi lain/kode arah
+        pulang: 422 `ATTENDANCE_QR_INVALID`; kode lewat semenit: 422 `ATTENDANCE_QR_EXPIRED`; kode
+        regu lain: 422 `ATTENDANCE_QR_WRONG_TEAM`. Kunci idempotensi yang sama dengan token berbeda
+        adalah 409 `IDEMPOTENCY_KEY_REUSED`: pindai ulang dengan kunci baru. Tanpa
+        `ATTENDANCE_QR_SECRET`: 503 `ATTENDANCE_QR_UNAVAILABLE` (absen selfie tetap berjalan).
+      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyRequiredHeader' } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AttendanceQrInput' } } } }
       responses:
         '201': { description: Created, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/Attendance' } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
+        '503': { description: "Metode QR belum dinyalakan (ATTENDANCE_QR_UNAVAILABLE).", content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
   /attendances/qr/check-out:
     post:
       operationId: postAttendancesQrCheckOut
       tags: [Attendance]
       summary: Absen pulang via scan QR
-      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyHeader' } ]
-      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AttendanceQrCheckOut' } } } }
+      description: >-
+        Butuh check-in lebih dulu (422 `ATTENDANCE_NOT_CHECKED_IN`); sudah check-out 409
+        `ATTENDANCE_ALREADY_CHECKED_OUT`. Kode harus kode arah pulang (OUT). Aturan kode dan geofence
+        sama dengan check-in QR.
+      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyRequiredHeader' } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AttendanceQrInput' } } } }
       responses:
         '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/Attendance' } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
+        '503': { description: "Metode QR belum dinyalakan (ATTENDANCE_QR_UNAVAILABLE).", content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
   /attendances/today:
     get:
       operationId: getAttendancesToday
@@ -9591,11 +9610,19 @@ paths:
       operationId: getAttendancesQrDisplay
       tags: [Attendance]
       summary: Tampil/generate QR absensi regu (DANRU)
-      parameters: [ { $ref: '#/components/parameters/TeamIdParam' } ]
+      description: >-
+        Kode berputar: berlaku 60 detik, aplikasi meminta ulang tiap ~30 detik. Perlu izin
+        `attendance.qr.display` untuk regu itu; regu di luar jangkauan izin (atau tidak ada): 403
+        `PERMISSION_DENIED`. Respons tidak boleh di-cache (`Cache-Control: no-store`).
+      parameters:
+        - { name: team_code, in: query, required: true, description: "Kode regu yang kodenya ditampilkan.", schema: { type: string, example: "1K-IBMI-S1" } }
+        - { name: direction, in: query, required: true, description: "IN untuk absen datang, OUT untuk absen pulang.", schema: { type: string, enum: [IN, OUT] } }
       responses:
-        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessEnvelope' } } } }
+        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/AttendanceQrCode' } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '503': { description: "Metode QR belum dinyalakan (ATTENDANCE_QR_UNAVAILABLE).", content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
   /attendances/group:
     post:
       operationId: postAttendancesGroup

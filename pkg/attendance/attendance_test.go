@@ -67,7 +67,12 @@ type env struct {
 	mu     sync.Mutex
 }
 
-func newEnv(t *testing.T) *env {
+const qrSecret = "http-test-attendance-qr-secret-0123456789"
+
+func newEnv(t *testing.T) *env { return newEnvWithQR(t, qrSecret) }
+
+// newEnvWithQR is newEnv with the QR method on, or off for an empty secret.
+func newEnvWithQR(t *testing.T, secret string) *env {
 	t.Helper()
 	testkit.Reset(t)
 	pool := testkit.Pool(t)
@@ -75,6 +80,11 @@ func newEnv(t *testing.T) *env {
 	perms := access.NewService(pool, clk)
 	service := attendance.NewService(pool, clk, organization.NewShifts(pool), organization.NewQuery(pool),
 		media.NewService(pool, nil, clk, nil), perms)
+	if secret != "" {
+		qr, err := attendance.NewQRTokens(secret, clk)
+		require.NoError(t, err)
+		service.UseQR(qr)
+	}
 	idempotency := idem.New(idem.Config{Pool: pool, Identity: auth.Identity})
 	h := attendance.NewHandler(service, perms, idempotency.Middleware(true))
 	srv := testkit.NewServer(t, testkit.Deps{Mount: h.MountField})
@@ -301,6 +311,7 @@ type record struct {
 	CheckInWithinArea   *bool   `json:"check_in_within_area"`
 	LateMinutes         int     `json:"late_minutes"`
 	CheckOutAt          *string `json:"check_out_at"`
+	CheckOutMethod      *string `json:"check_out_method"`
 	CheckOutUpdateCount int     `json:"check_out_update_count"`
 	PersonelSyncStatus  string  `json:"personel_sync_status"`
 	ShiftStartsAt       string  `json:"shift_starts_at"`

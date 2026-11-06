@@ -34,10 +34,16 @@ func NewHandler(service *Service, perms *access.Service, idempotent func(http.Ha
 func (h *Handler) MountField(r chi.Router) {
 	checkin := h.access.Require(access.AttendanceCheckin)
 	r.With(checkin).Get("/api/v1/attendances/today", h.today)
-	r.With(checkin, h.idempotent).Post("/api/v1/attendances/selfie/check-in", h.selfie(h.service.SelfieCheckIn, http.StatusCreated))
-	r.With(checkin, h.idempotent).Post("/api/v1/attendances/selfie/check-out", h.selfie(h.service.SelfieCheckOut, http.StatusOK))
+	r.With(checkin, h.idempotent).Post("/api/v1/attendances/selfie/check-in", record(h.service.SelfieCheckIn, http.StatusCreated))
+	r.With(checkin, h.idempotent).Post("/api/v1/attendances/selfie/check-out", record(h.service.SelfieCheckOut, http.StatusOK))
 	// Idempotent too: a retried "update pulang" must not count twice or send two events.
 	r.With(checkin, h.idempotent).Patch("/api/v1/attendances/{id}/check-out", h.updateCheckOut)
+
+	// QR (07.2): the guard scans with attendance.checkin like any check-in; the DANRU's phone asks
+	// for the code to show with attendance.qr.display.
+	r.With(checkin, h.idempotent).Post("/api/v1/attendances/qr/check-in", record(h.service.QRCheckIn, http.StatusCreated))
+	r.With(checkin, h.idempotent).Post("/api/v1/attendances/qr/check-out", record(h.service.QRCheckOut, http.StatusOK))
+	r.With(h.access.Require(access.AttendanceQRDisplay)).Get("/api/v1/attendances/qr/display", h.qrDisplay)
 }
 
 // ---------- JSON ----------
@@ -151,16 +157,16 @@ func (h *Handler) today(w http.ResponseWriter, r *http.Request) {
 	httpx.OK(w, r, http.StatusOK, out)
 }
 
-// selfie is the handler of the selfie check-in and check-out: they differ only in the usecase and
-// the status of a success.
-func (h *Handler) selfie(do func(ctx context.Context, p auth.Principal, in SelfieInput) (Attendance, error), status int) http.HandlerFunc {
+// record is the handler of every check-in and check-out, selfie or QR: they differ only in the body
+// they decode, the usecase and the status of a success.
+func record[In any](do func(ctx context.Context, p auth.Principal, in In) (Attendance, error), status int) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		p, ok := auth.From(r.Context())
 		if !ok {
 			httpx.Error(w, r, apperr.ErrUnauthenticated)
 			return
 		}
-		var in SelfieInput
+		var in In
 		if err := httpx.Decode(r, &in); err != nil {
 			httpx.Error(w, r, err)
 			return
@@ -172,6 +178,50 @@ func (h *Handler) selfie(do func(ctx context.Context, p auth.Principal, in Selfi
 		}
 		httpx.OK(w, r, status, attendanceToAPI(a))
 	}
+}
+
+// qrDisplay is GET /attendances/qr/display?team_code=&direction=IN|OUT: the code a DANRU's phone
+// shows, asked again about every 30 s.
+//
+// The permission is held through the route's resolution; the regu is checked against it here: the
+// caller can show the code of a regu their grant reaches (their own, or a project's with a PROJECT
+// grant), not of any regu. Asking for a regu outside it is 403, whether or not the regu exists.
+func (h *Handler) qrDisplay(w http.ResponseWriter, r *http.Request) {
+	p, ok := auth.From(r.Context())
+	if !ok {
+		httpx.Error(w, r, apperr.ErrUnauthenticated)
+		return
+	}
+	team, dir := r.URL.Query().Get("team_code"), Direction(r.URL.Query().Get("direction"))
+	var fields []apperr.FieldError
+	if team == "" {
+		fields = append(fields, apperr.FieldError{Field: "team_code", Code: "REQUIRED", Message: "team_code wajib diisi."})
+	}
+	if !dir.Valid() {
+		fields = append(fields, apperr.FieldError{Field: "direction", Code: "INVALID", Message: "direction harus IN atau OUT."})
+	}
+	if len(fields) > 0 {
+		httpx.Error(w, r, apperr.ErrValidation.WithFields(fields...))
+		return
+	}
+	res, ok := access.From(r.Context())
+	if !ok || !res.HasTeam(team) {
+		httpx.Error(w, r, access.ErrPermissionDenied)
+		return
+	}
+	token, err := h.service.QRDisplay(p, team, dir)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	// A code that rotates every minute is not for a cache or a shared proxy to keep.
+	w.Header().Set("Cache-Control", "no-store")
+	httpx.OK(w, r, http.StatusOK, qrTokenJSON{Token: token.Token, ExpiresAt: timeutil.FormatTimestamp(token.ExpiresAt)})
+}
+
+type qrTokenJSON struct {
+	Token     string `json:"token"`
+	ExpiresAt string `json:"expires_at"`
 }
 
 func (h *Handler) updateCheckOut(w http.ResponseWriter, r *http.Request) {

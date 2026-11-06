@@ -338,3 +338,46 @@ func TestPersonelWebhookSecret(t *testing.T) {
 		require.NoError(t, parse(EnvProduction, generated))
 	})
 }
+
+// ⚠ Whoever holds the QR secret can mint an attendance code for any regu of any organization, so a
+// set value is held to the same bar as the other secrets; an empty one is fine because the QR
+// method is then off and the selfie one still works.
+func TestAttendanceQRSecret(t *testing.T) {
+	const generated = "q8Vz3mN0rT1yLw7KfX2pH9cJ4dS6bG5uE0aZ8iO1nM3vR7tY"
+
+	parse := func(env, secret string) (Config, error) {
+		environ := validEnv()
+		environ["APP_ENV"] = env
+		environ["JWT_SECRET"] = strongJWTSecret
+		if secret != "" {
+			environ["ATTENDANCE_QR_SECRET"] = secret
+		}
+		return Parse(environ)
+	}
+
+	t.Run("empty is allowed everywhere and leaves it empty", func(t *testing.T) {
+		for _, env := range []string{EnvDevelopment, EnvProduction} {
+			cfg, err := parse(env, "")
+			require.NoError(t, err)
+			require.Empty(t, cfg.AttendanceQRSecret)
+		}
+	})
+	t.Run("too short is refused in every environment, without echoing it", func(t *testing.T) {
+		for _, env := range []string{EnvDevelopment, EnvProduction} {
+			_, err := parse(env, "too-short-secret")
+			require.ErrorContains(t, err, "ATTENDANCE_QR_SECRET must be at least 32 bytes")
+			require.NotContains(t, err.Error(), "too-short-secret")
+		}
+	})
+	t.Run("a low-entropy value is refused in production only", func(t *testing.T) {
+		_, err := parse(EnvProduction, strings.Repeat("a", 40))
+		require.ErrorContains(t, err, "ATTENDANCE_QR_SECRET looks like a placeholder")
+		_, err = parse(EnvDevelopment, strings.Repeat("a", 40))
+		require.NoError(t, err)
+	})
+	t.Run("a generated value is accepted in production", func(t *testing.T) {
+		cfg, err := parse(EnvProduction, generated)
+		require.NoError(t, err)
+		require.Equal(t, generated, cfg.AttendanceQRSecret)
+	})
+}
