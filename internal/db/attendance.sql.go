@@ -300,12 +300,12 @@ INSERT INTO attendances (
     personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone,
     status, check_in_at, check_in_method, check_in_media_id, check_in_latitude, check_in_longitude,
     check_in_accuracy_meters, check_in_distance_meters, check_in_within_area, check_in_qr_danru_id,
-    late_minutes, late_minutes_raw, created_at, updated_at)
+    late_minutes, late_minutes_raw, shift_swap_id, created_at, updated_at)
 VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8,
     'PRESENT', $9, $10, $11, $12, $13,
     $14, $15, $16, $17,
-    $18::int, $19::int, $9, $9)
+    $18::int, $19::int, $20, $9, $9)
 ON CONFLICT (organization_id, personnel_id, team_code, work_date, shift_id) DO NOTHING
 RETURNING id, organization_id, personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone, status, check_in_at, check_in_method, check_in_media_id, check_in_latitude, check_in_longitude, check_in_accuracy_meters, check_in_distance_meters, check_in_within_area, check_in_qr_danru_id, late_minutes, check_out_at, check_out_method, check_out_media_id, check_out_latitude, check_out_longitude, check_out_accuracy_meters, check_out_distance_meters, check_out_within_area, check_out_qr_danru_id, check_out_update_count, leave_request_id, marked_absent_by_id, shift_swap_id, personel_sync_status, personel_synced_at, created_at, updated_at, late_minutes_raw, absent_reason
 `
@@ -330,6 +330,7 @@ type InsertAttendanceCheckInParams struct {
 	QrDanruID      pgtype.Int8
 	LateMinutes    int32
 	LateMinutesRaw int32
+	ShiftSwapID    pgtype.Int8
 }
 
 // ⚠ Insert-or-nothing instead of insert-and-catch: a unique violation would abort the whole
@@ -357,6 +358,7 @@ func (q *Queries) InsertAttendanceCheckIn(ctx context.Context, arg InsertAttenda
 		arg.QrDanruID,
 		arg.LateMinutes,
 		arg.LateMinutesRaw,
+		arg.ShiftSwapID,
 	)
 	var i Attendance
 	err := row.Scan(
@@ -744,7 +746,9 @@ SELECT s.work_date,
   count(*) FILTER (WHERE a.status = 'PRESENT')::int AS present,
   count(*) FILTER (WHERE a.status = 'LEAVE')::int AS leave,
   count(*) FILTER (WHERE a.status = 'ABSENT')::int AS absent,
-  count(*) FILTER (WHERE a.id IS NULL)::int AS missing
+  count(*) FILTER (WHERE a.id IS NULL)::int AS missing,
+  count(*) FILTER (WHERE EXISTS (
+    SELECT 1 FROM shift_swaps sw WHERE sw.replaced_attendance_id = a.id AND sw.cancelled_at IS NULL))::int AS swapped
 FROM schedules s
 JOIN shifts sh ON sh.id = s.shift_id AND NOT sh.is_off
 JOIN team_members tm ON tm.personnel_id = s.personnel_id AND tm.team_code = $1
@@ -769,6 +773,7 @@ type GroupSummaryRow struct {
 	Leave     int32
 	Absent    int32
 	Missing   int32
+	Swapped   int32
 }
 
 // The regu's per-day counts for GET /attendances/group-summary, one GROUP BY query instead of a
@@ -789,6 +794,7 @@ func (q *Queries) GroupSummary(ctx context.Context, arg GroupSummaryParams) ([]G
 			&i.Leave,
 			&i.Absent,
 			&i.Missing,
+			&i.Swapped,
 		); err != nil {
 			return nil, err
 		}

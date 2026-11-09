@@ -34,6 +34,13 @@ const (
 	ReasonNoShift               = "ATTENDANCE_NO_SHIFT"
 	ReasonAbsenceAlreadyPresent = "ABSENCE_ALREADY_PRESENT"
 	ReasonGroupAttendanceOff    = "GROUP_ATTENDANCE_DISABLED"
+
+	// Phase 07.7: shift swap (tukar jaga). The plan's fixed reason catalog for the phase.
+	ReasonSwapNotFound          = "SWAP_NOT_FOUND"
+	ReasonSwapReplacedNotAbsent = "SWAP_REPLACED_NOT_ABSENT"
+	ReasonSwapAlreadyExists     = "SWAP_ALREADY_EXISTS"
+	ReasonSwapShiftOverlap      = "SWAP_SHIFT_OVERLAP"
+	ReasonSwapAlreadyStarted    = "SWAP_ALREADY_STARTED"
 )
 
 // ErrQRInvalid is returned for a QR token that is not one the system issued: malformed, a bad
@@ -121,3 +128,29 @@ var ErrAbsenceAlreadyPresent = apperr.New(http.StatusConflict, apperr.CodeDuplic
 // evidence, which weakens the anti-fraud purpose of QR and selfie, so a project must opt in.
 var ErrGroupAttendanceOff = apperr.New(http.StatusUnprocessableEntity, apperr.CodeUnprocessable,
 	ReasonGroupAttendanceOff, "Absensi group belum diaktifkan untuk proyek ini.")
+
+// ErrSwapNotFound is returned for a shift swap, or the attendance record a swap is about, that
+// does not exist, is outside the caller's attendance.swap.create reach, or (for Cancel) has
+// already been cancelled. One answer for all of them, so neither kind of id can be probed.
+var ErrSwapNotFound = apperr.New(http.StatusNotFound, apperr.CodeNotFound,
+	ReasonSwapNotFound, "Data tidak ditemukan.")
+
+// ErrSwapReplacedNotAbsent is returned by POST /shift-swaps when the record to replace is not
+// LEAVE or ABSENT: there is nothing to cover.
+var ErrSwapReplacedNotAbsent = apperr.New(http.StatusUnprocessableEntity, apperr.CodeUnprocessable,
+	ReasonSwapReplacedNotAbsent, "Catatan ini bukan izin atau mangkir, tidak bisa ditukar.")
+
+// ErrSwapAlreadyExists is returned by POST /shift-swaps when the replaced record already has an
+// active swap.
+var ErrSwapAlreadyExists = apperr.New(http.StatusConflict, apperr.CodeDuplicate,
+	ReasonSwapAlreadyExists, "Catatan ini sudah ada penggantinya.")
+
+// ErrSwapShiftOverlap is returned by POST /shift-swaps when the replacing person already has a
+// shift of their own that overlaps the one they would take over.
+var ErrSwapShiftOverlap = apperr.New(http.StatusUnprocessableEntity, apperr.CodeUnprocessable,
+	ReasonSwapShiftOverlap, "Personil pengganti sudah punya shift lain yang bentrok.")
+
+// ErrSwapAlreadyStarted is returned by DELETE /shift-swaps/{id} once the replacing person has
+// checked into the covered shift: the swap already took effect.
+var ErrSwapAlreadyStarted = apperr.New(http.StatusConflict, apperr.CodeConflict,
+	ReasonSwapAlreadyStarted, "Pengganti sudah mulai bertugas, penukaran tidak bisa dibatalkan.")

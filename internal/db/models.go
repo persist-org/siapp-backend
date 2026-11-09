@@ -1642,6 +1642,24 @@ type ShiftGroupDay struct {
 	ShiftID        int64
 }
 
+type ShiftSwap struct {
+	ID                   int64
+	OrganizationID       int64
+	ReplacedPersonnelID  int64
+	ReplacedAttendanceID int64
+	ReplacingPersonnelID int64
+	TeamCode             string
+	WorkDate             pgtype.Date
+	ShiftID              int64
+	StartsAt             pgtype.Timestamptz
+	EndsAt               pgtype.Timestamptz
+	Note                 pgtype.Text
+	CreatedByID          int64
+	CancelledAt          pgtype.Timestamptz
+	CreatedAt            pgtype.Timestamptz
+	UpdatedAt            pgtype.Timestamptz
+}
+
 type StakeholderType struct {
 	ID             int64
 	OrganizationID int64

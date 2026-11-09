@@ -2505,27 +2505,58 @@ components:
     # ---------- 24. shift_swaps (replacement) ----------
     ShiftSwap:
       type: object
+      description: >-
+        Satu tukar jaga (tukar jaga berlaku seketika, tidak ada persetujuan): DANRU menunjuk
+        pengganti untuk satu catatan izin/mangkir. `cancelled_at` null berarti masih aktif.
+      required: [id, replaced_personnel_id, replaced_attendance_id, replacing_personnel_id, team_code, work_date, shift_id, starts_at, ends_at, created_by_id, created_at, updated_at]
       properties:
         id: { type: integer, format: int64 }
-        organization_id: { type: integer, format: int64 }
         replaced_personnel_id: { type: integer, format: int64 }
+        replaced_attendance_id: { type: integer, format: int64 }
         replacing_personnel_id: { type: integer, format: int64 }
-        team_id: { type: integer, format: int64, nullable: true }
-        swap_date: { type: string, format: date }
-        reason: { type: string, nullable: true }
-        status: { type: string, enum: [PENDING, APPROVED, REJECTED, CANCELLED] }
-        approved_by: { type: integer, format: int64, nullable: true }
+        team_code: { type: string, example: 1K-IBMI-S1 }
+        work_date: { type: string, format: date }
+        shift_id: { type: integer, format: int64 }
+        starts_at: { type: string, format: date-time }
+        ends_at: { type: string, format: date-time }
+        note: { type: string, nullable: true }
+        created_by_id: { type: integer, format: int64 }
+        cancelled_at: { type: string, format: date-time, nullable: true }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
     ShiftSwapCreate:
       type: object
-      required: [replaced_personnel_id, replacing_personnel_id, swap_date]
+      required: [replaced_attendance_id, replacing_personnel_id]
       properties:
-        replaced_personnel_id: { type: integer, format: int64 }
-        replacing_personnel_id: { type: integer, format: int64 }
-        team_id: { type: integer, format: int64 }
-        swap_date: { type: string, format: date }
-        reason: { type: string }
+        replaced_attendance_id: { type: integer, format: int64, description: "Dari GET /shift-swaps/replaceable." }
+        replacing_personnel_id: { type: integer, format: int64, description: "Dari GET /shift-swaps/candidates." }
+        note: { type: string, maxLength: 500 }
+    ShiftSwapCandidate:
+      type: object
+      required: [personnel_id, name]
+      properties:
+        personnel_id: { type: integer, format: int64 }
+        name: { type: string }
+    AttendanceReplacedRow:
+      type: object
+      description: Satu baris tab "Digantikan" (GET /attendances/replaced).
+      required: [work_date, shift_name, replacing_personnel_name, replacing_check_in_at, replacing_check_out_at]
+      properties:
+        work_date: { type: string, format: date }
+        shift_name: { type: string }
+        replacing_personnel_name: { type: string }
+        replacing_check_in_at: { type: string, format: date-time, nullable: true }
+        replacing_check_out_at: { type: string, format: date-time, nullable: true }
+    AttendanceReplacingRow:
+      type: object
+      description: Satu baris tab "Menggantikan" (GET /attendances/replacing).
+      required: [work_date, shift_name, replaced_personnel_name, check_in_at, check_out_at]
+      properties:
+        work_date: { type: string, format: date }
+        shift_name: { type: string }
+        replaced_personnel_name: { type: string }
+        check_in_at: { type: string, format: date-time, nullable: true }
+        check_out_at: { type: string, format: date-time, nullable: true }
 
     # ---------- media: unggahan foto (Phase 04.1) ----------
     MediaPurpose:
@@ -10000,18 +10031,20 @@ paths:
       operationId: getAttendancesReplaced
       tags: [Attendance]
       summary: Tab "Digantikan"
+      description: Shift milik pemanggil yang diambil alih orang lain (tukar jaga aktif saja), terbaru lebih dulu. Tanpa date_from/date_to: seluruh riwayat.
       parameters: [ { $ref: '#/components/parameters/DateFromParam' }, { $ref: '#/components/parameters/DateToParam' } ]
       responses:
-        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/ListEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/Attendance' } } } } ] } } } }
+        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/AttendanceReplacedRow' } } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
   /attendances/replacing:
     get:
       operationId: getAttendancesReplacing
       tags: [Attendance]
       summary: Tab "Menggantikan"
+      description: Shift orang lain yang diambil alih pemanggil (tukar jaga aktif saja), terbaru lebih dulu. Tanpa date_from/date_to: seluruh riwayat.
       parameters: [ { $ref: '#/components/parameters/DateFromParam' }, { $ref: '#/components/parameters/DateToParam' } ]
       responses:
-        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/ListEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/Attendance' } } } } ] } } } }
+        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/AttendanceReplacingRow' } } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
   /attendances/qr/display:
     get:
@@ -10095,8 +10128,8 @@ paths:
       description: >-
         Hitungan per hari kerja regu sebulan: `scheduled` (personil yang terjadwal, bukan OFF),
         `present`, `leave`, `absent`, `missing` (terjadwal tapi belum ada catatan sama sekali, baik
-        hari itu sudah lewat atau belum), `swapped` (selalu 0 sebelum Phase 07.7). Izin sama dengan
-        `GET /attendances`.
+        hari itu sudah lewat atau belum), `swapped` (izin/mangkir yang sudah ada tukar jaga aktif,
+        subset dari `leave`/`absent`). Izin sama dengan `GET /attendances`.
       parameters:
         - { name: team_code, in: query, required: true, schema: { type: string, example: 1K-IBMI-S1 } }
         - { name: month, in: query, required: true, description: "Bulan, YYYY-MM.", schema: { type: string, pattern: '^\d{4}-(0[1-9]|1[0-2])$', example: "2026-03" } }
@@ -10552,26 +10585,92 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
+  /shift-swaps/replaceable:
+    get:
+      operationId: getShiftSwapsReplaceable
+      tags: [Permission]
+      summary: Catatan yang bisa ditukar (DANRU)
+      description: >-
+        Catatan LEAVE/ABSENT regu pada satu tanggal yang belum punya tukar jaga aktif. Perlu izin
+        `attendance.swap.create` yang menjangkau `team_code`; di luar jangkauan: 403
+        `PERMISSION_DENIED`.
+      parameters:
+        - { name: team_code, in: query, required: true, schema: { type: string, example: 1K-IBMI-S1 } }
+        - { name: work_date, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/Attendance' } } } } ] } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /shift-swaps/candidates:
+    get:
+      operationId: getShiftSwapsCandidates
+      tags: [Permission]
+      summary: Personil yang bisa jadi pengganti (DANRU)
+      description: >-
+        Anggota regu pada satu tanggal yang tidak sedang izin atau mangkir hari itu. Regu apa pun
+        yang dijangkau izin pemanggil, sehingga pengganti lintas regu dan lintas proyek bisa
+        dicari. Personil yang ditampilkan bisa saja masih bentrok shift sendiri; itu baru dicek
+        saat `POST /shift-swaps`.
+      parameters:
+        - { name: team_code, in: query, required: true, schema: { type: string, example: 1K-IBMI-S1 } }
+        - { name: work_date, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/ShiftSwapCandidate' } } } } ] } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /shift-swaps:
     get:
       operationId: getShiftSwaps
       tags: [Permission]
       summary: Daftar tukar jaga / pengganti
-      parameters: [ { $ref: '#/components/parameters/StatusParam' }, { $ref: '#/components/parameters/DateFromParam' }, { $ref: '#/components/parameters/DateToParam' } ]
+      description: >-
+        Setiap tukar jaga (aktif dan dibatalkan) dari regu yang dijangkau izin
+        `attendance.swap.create` pemanggil, terbaru lebih dulu.
+      parameters:
+        - { name: active, in: query, description: "true: hanya aktif. false: hanya dibatalkan. Kosong: keduanya.", schema: { type: boolean } }
+        - $ref: '#/components/parameters/DateFromParam'
+        - $ref: '#/components/parameters/DateToParam'
       responses:
-        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/ListEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/ShiftSwap' } } } } ] } } } }
+        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/ShiftSwap' } } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
     post:
       operationId: postShiftSwaps
       tags: [Permission]
       summary: Tukar Jaga / ajukan pengganti (DANRU)
-      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyHeader' } ]
+      description: >-
+        Berlaku seketika, tidak ada persetujuan. Perlu izin `attendance.swap.create` yang
+        menjangkau regu catatan yang ditukar DAN regu tempat pengganti bertugas hari itu; selain
+        itu (atau `replaced_attendance_id` tidak ada): 404 `SWAP_NOT_FOUND`. Catatan bukan
+        izin/mangkir: 422 `SWAP_REPLACED_NOT_ABSENT`. Pengganti sudah punya tukar jaga aktif untuk
+        catatan ini: 409 `SWAP_ALREADY_EXISTS`. Shift pengganti sendiri bentrok (shift kembali
+        belakangan diperbolehkan): 422 `SWAP_SHIFT_OVERLAP`.
+      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyRequiredHeader' } ]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ShiftSwapCreate' } } } }
       responses:
         '201': { description: Created, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/ShiftSwap' } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
+  /shift-swaps/{id}:
+    parameters: [ { $ref: '#/components/parameters/IdPath' } ]
+    delete:
+      operationId: deleteShiftSwapsById
+      tags: [Permission]
+      summary: Batalkan tukar jaga
+      description: >-
+        Hanya sebelum pengganti absen datang pada shift yang ditukar; sesudahnya 409
+        `SWAP_ALREADY_STARTED`. Tidak ada, sudah dibatalkan, atau di luar jangkauan izin pemanggil:
+        404 `SWAP_NOT_FOUND` (sama untuk ketiganya).
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessEnvelope' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
 
   # ============ REPORT (operations) ============
   /report-categories:

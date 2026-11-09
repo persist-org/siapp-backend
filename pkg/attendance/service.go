@@ -32,11 +32,12 @@ type (
 		Current(ctx context.Context, organizationID, personnelID int64, at time.Time) ([]organization.ShiftInstance, error)
 		Instances(ctx context.Context, organizationID, personnelID int64, from, to timeutil.Date) ([]organization.ShiftInstance, error)
 	}
-	// siteSource is organization.Query: a regu with its proyek, and a proyek by code inside the
-	// caller's transaction.
+	// siteSource is organization.Query: a regu with its proyek, a proyek by code inside the
+	// caller's transaction, and (07.7) the regu a person serves in on a date.
 	siteSource interface {
 		TeamWithProject(ctx context.Context, organizationID int64, teamCode string) (organization.TeamWithProject, error)
 		ProjectIn(ctx context.Context, q *db.Queries, code string) (organization.Project, error)
+		ActiveMemberships(ctx context.Context, organizationID, personnelID int64, on timeutil.Date) ([]organization.Membership, error)
 	}
 	// photoStore is media.Service.
 	photoStore interface {
@@ -216,6 +217,7 @@ func (s *Service) checkIn(ctx context.Context, p auth.Principal, ref string, c c
 			QrDanruID:      int8Param(c.QRDanruID),
 			LateMinutes:    int32(min(late, math.MaxInt32)), //nolint:gosec // clamped
 			LateMinutesRaw: int32(min(raw, math.MaxInt32)),  //nolint:gosec // clamped
+			ShiftSwapID:    int8Param(shift.SwapID),
 		})
 		if errors.Is(err, pgx.ErrNoRows) {
 			// A parallel check-in committed between the read above and this insert.

@@ -210,7 +210,7 @@ type GroupSummaryDay struct {
 	Leave     int
 	Absent    int
 	Missing   int
-	// Swapped is always 0 until 07.7 adds shift_swaps.
+	// Swapped is a LEAVE/ABSENT record with an active shift swap (07.7): covered, not missing.
 	Swapped int
 }
 
@@ -242,7 +242,7 @@ func (s *Service) GroupSummary(ctx context.Context, p auth.Principal, teamCode, 
 		for _, r := range rows {
 			out = append(out, GroupSummaryDay{
 				WorkDate: dateValue(r.WorkDate), Scheduled: int(r.Scheduled), Present: int(r.Present),
-				Leave: int(r.Leave), Absent: int(r.Absent), Missing: int(r.Missing),
+				Leave: int(r.Leave), Absent: int(r.Absent), Missing: int(r.Missing), Swapped: int(r.Swapped),
 			})
 		}
 		return nil

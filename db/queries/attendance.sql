@@ -47,12 +47,12 @@ INSERT INTO attendances (
     personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone,
     status, check_in_at, check_in_method, check_in_media_id, check_in_latitude, check_in_longitude,
     check_in_accuracy_meters, check_in_distance_meters, check_in_within_area, check_in_qr_danru_id,
-    late_minutes, late_minutes_raw, created_at, updated_at)
+    late_minutes, late_minutes_raw, shift_swap_id, created_at, updated_at)
 VALUES (
     @personnel_id, @team_code, @project_code, @work_date, @shift_id, @shift_starts_at, @shift_ends_at, @timezone,
     'PRESENT', @now, @method, sqlc.narg('media_id'), sqlc.narg('latitude'), sqlc.narg('longitude'),
     sqlc.narg('accuracy_meters'), sqlc.narg('distance_meters'), sqlc.narg('within_area'), sqlc.narg('qr_danru_id'),
-    @late_minutes::int, @late_minutes_raw::int, @now, @now)
+    @late_minutes::int, @late_minutes_raw::int, sqlc.narg('shift_swap_id'), @now, @now)
 ON CONFLICT (organization_id, personnel_id, team_code, work_date, shift_id) DO NOTHING
 RETURNING *;
 
@@ -158,15 +158,17 @@ WHERE (sqlc.narg('team_codes')::text[] IS NULL OR a.team_code = ANY(sqlc.narg('t
 -- The regu's per-day counts for GET /attendances/group-summary, one GROUP BY query instead of a
 -- loop per day: how many of the team's scheduled, non-OFF shift instances landed in each bucket.
 -- "missing" has no record at all yet, whether the shift already ended or not (there is no
--- UPCOMING bucket here, unlike the personal calendar of 07.4). "swapped" is always 0 until 07.7
--- adds shift_swaps; the column is already in the shape so that phase only has to fill it in.
+-- UPCOMING bucket here, unlike the personal calendar of 07.4). "swapped" (07.7) is a LEAVE/ABSENT
+-- record with an active shift_swaps row: covered, not missing.
 -- name: GroupSummary :many
 SELECT s.work_date,
   count(*)::int AS scheduled,
   count(*) FILTER (WHERE a.status = 'PRESENT')::int AS present,
   count(*) FILTER (WHERE a.status = 'LEAVE')::int AS leave,
   count(*) FILTER (WHERE a.status = 'ABSENT')::int AS absent,
-  count(*) FILTER (WHERE a.id IS NULL)::int AS missing
+  count(*) FILTER (WHERE a.id IS NULL)::int AS missing,
+  count(*) FILTER (WHERE EXISTS (
+    SELECT 1 FROM shift_swaps sw WHERE sw.replaced_attendance_id = a.id AND sw.cancelled_at IS NULL))::int AS swapped
 FROM schedules s
 JOIN shifts sh ON sh.id = s.shift_id AND NOT sh.is_off
 JOIN team_members tm ON tm.personnel_id = s.personnel_id AND tm.team_code = @team_code

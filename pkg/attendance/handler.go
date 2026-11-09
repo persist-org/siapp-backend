@@ -61,6 +61,17 @@ func (h *Handler) MountField(r chi.Router) {
 	r.Get("/api/v1/attendances", h.list)
 	r.Get("/api/v1/attendances/group-summary", h.groupSummary)
 	r.With(h.access.Require(access.AttendanceGroupView), h.idempotent).Post("/api/v1/attendances/group", h.group)
+
+	// 07.7: shift swap (tukar jaga). The lookups and create need attendance.swap.create "today" at
+	// the route; the exact date and team are re-resolved inside the service, like MarkAbsent.
+	swap := h.access.Require(access.AttendanceSwapCreate)
+	r.With(swap).Get("/api/v1/shift-swaps/replaceable", h.swapReplaceable)
+	r.With(swap).Get("/api/v1/shift-swaps/candidates", h.swapCandidates)
+	r.With(swap, h.idempotent).Post("/api/v1/shift-swaps", h.createSwap)
+	r.Get("/api/v1/shift-swaps", h.listSwaps)
+	r.Delete("/api/v1/shift-swaps/{id}", h.cancelSwap)
+	r.With(checkin).Get("/api/v1/attendances/replaced", h.replaced)
+	r.With(checkin).Get("/api/v1/attendances/replacing", h.replacing)
 }
 
 // MountAdmin adds the routes of /api/v1/admin (Part C): a correction and the admin monitor. Both
@@ -521,6 +532,261 @@ func (h *Handler) group(w http.ResponseWriter, r *http.Request) {
 		out = append(out, groupEntryToAPI(res))
 	}
 	httpx.OK(w, r, http.StatusCreated, out)
+}
+
+// ---------- 07.7: shift swap ----------
+
+// requiredDateParam reads a required YYYY-MM-DD query parameter. ok is false when the answer is
+// already written.
+func requiredDateParam(w http.ResponseWriter, r *http.Request, name string) (timeutil.Date, bool) {
+	s := r.URL.Query().Get(name)
+	if s == "" {
+		httpx.Error(w, r, apperr.ErrValidation.WithFields(apperr.FieldError{Field: name, Code: "REQUIRED", Message: name + " wajib diisi."}))
+		return timeutil.Date{}, false
+	}
+	d, err := timeutil.ParseDate(s)
+	if err != nil {
+		httpx.Error(w, r, apperr.ErrValidation.WithFields(apperr.FieldError{Field: name, Code: "INVALID", Message: name + " harus berformat YYYY-MM-DD."}))
+		return timeutil.Date{}, false
+	}
+	return d, true
+}
+
+// swapReplaceable is GET /shift-swaps/replaceable?team_code=&work_date=.
+func (h *Handler) swapReplaceable(w http.ResponseWriter, r *http.Request) {
+	p, ok := auth.From(r.Context())
+	if !ok {
+		httpx.Error(w, r, apperr.ErrUnauthenticated)
+		return
+	}
+	teamCode := r.URL.Query().Get("team_code")
+	if teamCode == "" {
+		httpx.Error(w, r, apperr.ErrValidation.WithFields(apperr.FieldError{Field: "team_code", Code: "REQUIRED", Message: "team_code wajib diisi."}))
+		return
+	}
+	date, ok := requiredDateParam(w, r, "work_date")
+	if !ok {
+		return
+	}
+	rows, err := h.service.Replaceable(r.Context(), p, teamCode, date)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	out := make([]attendanceJSON, 0, len(rows))
+	for _, a := range rows {
+		out = append(out, attendanceToAPI(a))
+	}
+	httpx.OK(w, r, http.StatusOK, out)
+}
+
+type candidateJSON struct {
+	PersonnelID int64  `json:"personnel_id"`
+	Name        string `json:"name"`
+}
+
+// swapCandidates is GET /shift-swaps/candidates?team_code=&work_date=.
+func (h *Handler) swapCandidates(w http.ResponseWriter, r *http.Request) {
+	p, ok := auth.From(r.Context())
+	if !ok {
+		httpx.Error(w, r, apperr.ErrUnauthenticated)
+		return
+	}
+	teamCode := r.URL.Query().Get("team_code")
+	if teamCode == "" {
+		httpx.Error(w, r, apperr.ErrValidation.WithFields(apperr.FieldError{Field: "team_code", Code: "REQUIRED", Message: "team_code wajib diisi."}))
+		return
+	}
+	date, ok := requiredDateParam(w, r, "work_date")
+	if !ok {
+		return
+	}
+	rows, err := h.service.Candidates(r.Context(), p, teamCode, date)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	out := make([]candidateJSON, 0, len(rows))
+	for _, c := range rows {
+		out = append(out, candidateJSON{PersonnelID: c.PersonnelID, Name: c.Name})
+	}
+	httpx.OK(w, r, http.StatusOK, out)
+}
+
+type swapJSON struct {
+	ID                   int64   `json:"id"`
+	ReplacedPersonnelID  int64   `json:"replaced_personnel_id"`
+	ReplacedAttendanceID int64   `json:"replaced_attendance_id"`
+	ReplacingPersonnelID int64   `json:"replacing_personnel_id"`
+	TeamCode             string  `json:"team_code"`
+	WorkDate             string  `json:"work_date"`
+	ShiftID              int64   `json:"shift_id"`
+	StartsAt             string  `json:"starts_at"`
+	EndsAt               string  `json:"ends_at"`
+	Note                 *string `json:"note"`
+	CreatedByID          int64   `json:"created_by_id"`
+	CancelledAt          *string `json:"cancelled_at"`
+	CreatedAt            string  `json:"created_at"`
+	UpdatedAt            string  `json:"updated_at"`
+}
+
+func swapToAPI(s Swap) swapJSON {
+	return swapJSON{
+		ID: s.ID, ReplacedPersonnelID: s.ReplacedPersonnelID, ReplacedAttendanceID: s.ReplacedAttendanceID,
+		ReplacingPersonnelID: s.ReplacingPersonnelID, TeamCode: s.TeamCode, WorkDate: s.WorkDate.String(), ShiftID: s.ShiftID,
+		StartsAt: timeutil.FormatTimestamp(s.StartsAt), EndsAt: timeutil.FormatTimestamp(s.EndsAt), Note: s.Note,
+		CreatedByID: s.CreatedByID, CancelledAt: stamp(s.CancelledAt),
+		CreatedAt: timeutil.FormatTimestamp(s.CreatedAt), UpdatedAt: timeutil.FormatTimestamp(s.UpdatedAt),
+	}
+}
+
+// createSwap is POST /shift-swaps.
+func (h *Handler) createSwap(w http.ResponseWriter, r *http.Request) {
+	p, ok := auth.From(r.Context())
+	if !ok {
+		httpx.Error(w, r, apperr.ErrUnauthenticated)
+		return
+	}
+	var in CreateSwapInput
+	if err := httpx.Decode(r, &in); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	sw, err := h.service.Create(r.Context(), p, in)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.OK(w, r, http.StatusCreated, swapToAPI(sw))
+}
+
+// listSwaps is GET /shift-swaps?active=&date_from=&date_to=.
+func (h *Handler) listSwaps(w http.ResponseWriter, r *http.Request) {
+	p, ok := auth.From(r.Context())
+	if !ok {
+		httpx.Error(w, r, apperr.ErrUnauthenticated)
+		return
+	}
+	var f SwapFilter
+	if s := r.URL.Query().Get("active"); s != "" {
+		b, err := strconv.ParseBool(s)
+		if err != nil {
+			httpx.Error(w, r, apperr.ErrValidation.WithFields(apperr.FieldError{Field: "active", Code: "INVALID", Message: "active harus true atau false."}))
+			return
+		}
+		f.Active = &b
+	}
+	if f.From, ok = dateQueryParam(w, r, "date_from"); !ok {
+		return
+	}
+	if f.To, ok = dateQueryParam(w, r, "date_to"); !ok {
+		return
+	}
+	rows, err := h.service.ListSwaps(r.Context(), p, f)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	out := make([]swapJSON, 0, len(rows))
+	for _, sw := range rows {
+		out = append(out, swapToAPI(sw))
+	}
+	httpx.OK(w, r, http.StatusOK, out)
+}
+
+// cancelSwap is DELETE /shift-swaps/{id}.
+func (h *Handler) cancelSwap(w http.ResponseWriter, r *http.Request) {
+	p, ok := auth.From(r.Context())
+	if !ok {
+		httpx.Error(w, r, apperr.ErrUnauthenticated)
+		return
+	}
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || id < 1 {
+		httpx.Error(w, r, ErrSwapNotFound)
+		return
+	}
+	if err := h.service.CancelSwap(r.Context(), p, id); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.OK(w, r, http.StatusOK, nil)
+}
+
+type replacedRowJSON struct {
+	WorkDate            string  `json:"work_date"`
+	ShiftName           string  `json:"shift_name"`
+	ReplacingName       string  `json:"replacing_personnel_name"`
+	ReplacingCheckInAt  *string `json:"replacing_check_in_at"`
+	ReplacingCheckOutAt *string `json:"replacing_check_out_at"`
+}
+
+// replaced is GET /attendances/replaced?date_from=&date_to= ("Digantikan").
+func (h *Handler) replaced(w http.ResponseWriter, r *http.Request) {
+	p, ok := auth.From(r.Context())
+	if !ok {
+		httpx.Error(w, r, apperr.ErrUnauthenticated)
+		return
+	}
+	from, ok := dateQueryParam(w, r, "date_from")
+	if !ok {
+		return
+	}
+	to, ok := dateQueryParam(w, r, "date_to")
+	if !ok {
+		return
+	}
+	rows, err := h.service.Replaced(r.Context(), p, from, to)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	out := make([]replacedRowJSON, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, replacedRowJSON{
+			WorkDate: row.WorkDate.String(), ShiftName: row.ShiftName, ReplacingName: row.ReplacingName,
+			ReplacingCheckInAt: stamp(row.ReplacingCheckInAt), ReplacingCheckOutAt: stamp(row.ReplacingCheckOutAt),
+		})
+	}
+	httpx.OK(w, r, http.StatusOK, out)
+}
+
+type replacingRowJSON struct {
+	WorkDate     string  `json:"work_date"`
+	ShiftName    string  `json:"shift_name"`
+	ReplacedName string  `json:"replaced_personnel_name"`
+	CheckInAt    *string `json:"check_in_at"`
+	CheckOutAt   *string `json:"check_out_at"`
+}
+
+// replacing is GET /attendances/replacing?date_from=&date_to= ("Menggantikan").
+func (h *Handler) replacing(w http.ResponseWriter, r *http.Request) {
+	p, ok := auth.From(r.Context())
+	if !ok {
+		httpx.Error(w, r, apperr.ErrUnauthenticated)
+		return
+	}
+	from, ok := dateQueryParam(w, r, "date_from")
+	if !ok {
+		return
+	}
+	to, ok := dateQueryParam(w, r, "date_to")
+	if !ok {
+		return
+	}
+	rows, err := h.service.Replacing(r.Context(), p, from, to)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	out := make([]replacingRowJSON, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, replacingRowJSON{
+			WorkDate: row.WorkDate.String(), ShiftName: row.ShiftName, ReplacedName: row.ReplacedName,
+			CheckInAt: stamp(row.CheckInAt), CheckOutAt: stamp(row.CheckOutAt),
+		})
+	}
+	httpx.OK(w, r, http.StatusOK, out)
 }
 
 // detail is GET /attendances/{id}.

@@ -28,6 +28,9 @@ type CheckableShift struct {
 	Location         *time.Location
 	// Record is what is already captured for the shift, nil when nothing is.
 	Record *Attendance
+	// SwapID is set when this instance is a shift the person covers for someone else (07.7), nil
+	// for a shift of their own regu.
+	SwapID *int64
 }
 
 // Checkable returns the shifts the person can check into at now, one per regu they serve in that
@@ -108,6 +111,37 @@ func (s *Service) scheduled(ctx context.Context, organizationID, personnelID int
 				StartsAt: inst.StartsAt, EndsAt: inst.EndsAt, Location: inst.Location,
 			})
 		}
+	}
+
+	// 07.7: active swaps where the person is the replacer are extra instances, in the swap's own
+	// team (not necessarily a regu the person serves in today).
+	swaps, err := s.activeSwapsNear(ctx, organizationID, personnelID, now)
+	if err != nil {
+		return nil, err
+	}
+	for _, sw := range swaps {
+		teamCode := sw.Swap.TeamCode
+		site, ok := sites[teamCode]
+		if !ok {
+			if site, err = s.sites.TeamWithProject(ctx, organizationID, teamCode); errors.Is(err, organization.ErrTeamNotFound) {
+				continue // the swap's regu deleted since
+			} else if err != nil {
+				return nil, fmt.Errorf("team %s: %w", teamCode, err)
+			}
+			sites[teamCode] = site
+		}
+		loc, err := time.LoadLocation(site.Project.Timezone)
+		if err != nil {
+			return nil, fmt.Errorf("load location %s: %w", site.Project.Timezone, err)
+		}
+		id := sw.Swap.ID
+		key := shiftKey{TeamCode: teamCode, WorkDate: dateValue(sw.Swap.WorkDate), ShiftID: sw.Swap.ShiftID}
+		out = append(out, CheckableShift{
+			Key: key, Ref: key.ref(), Team: site.Team, Project: site.Project,
+			ShiftName: sw.ShiftName, ToleranceMinutes: sw.ToleranceMinutes,
+			StartsAt: sw.Swap.StartsAt.Time, EndsAt: sw.Swap.EndsAt.Time, Location: loc,
+			SwapID: &id,
+		})
 	}
 
 	slices.SortStableFunc(out, func(a, b CheckableShift) int {
