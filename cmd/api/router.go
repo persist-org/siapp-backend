@@ -139,7 +139,8 @@ func newRouter(d deps) *chi.Mux {
 		}
 		attendanceService.UseQR(qr)
 	}
-	attendance.NewHandler(attendanceService, accessService, idempotency.Middleware(true)).MountField(router)
+	attendanceHandler := attendance.NewHandler(attendanceService, accessService, idempotency.Middleware(true))
+	attendanceHandler.MountField(router)
 
 	// Leave, permit and sick requests (07.5): SiAPP's own, nothing of it goes through Personalia.
 	// Part A is the categories, quotas and the ledger of annual leave; Part B the requests.
@@ -171,6 +172,7 @@ func newRouter(d deps) *chi.Mux {
 		organizationHandler.MountAdmin(admin)
 		masterdataHandler.MountAdmin(admin)
 		leaveHandler.MountAdmin(admin)
+		attendanceHandler.MountAdmin(admin)
 	})
 
 	return router

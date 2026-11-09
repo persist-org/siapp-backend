@@ -2,6 +2,7 @@ package attendance
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -51,6 +52,90 @@ func (h *Handler) MountField(r chi.Router) {
 	// by the usecase, and everyone else gets 404.
 	r.With(checkin).Get("/api/v1/attendances/me", h.me)
 	r.Get("/api/v1/attendances/{id}", h.detail)
+
+	// 07.6: the DANRU marking a team member absent, and the regu monitor. The monitor has no route
+	// permission either, same reason as the detail: List itself refuses with PERMISSION_DENIED
+	// when the caller's group/absence view grant reaches no regu at all.
+	r.With(h.access.Require(access.AttendanceAbsenceNew), h.idempotent).Post("/api/v1/attendances/absent", record(h.service.MarkAbsent, http.StatusCreated))
+	r.Get("/api/v1/attendances", h.list)
+	r.With(h.access.Require(access.AttendanceGroupView), h.idempotent).Post("/api/v1/attendances/group", h.group)
+}
+
+// MountAdmin adds the routes of /api/v1/admin (Part C): a correction and the admin monitor. Both
+// are reached by an ORG_ADMIN or the REGION_ADMIN of the record's region (access.RequireAdmin is
+// mounted once on the whole group in cmd/api); the usecase checks the reach itself, outside it a
+// record is 404, the same as leave/decide.go's admin side.
+func (h *Handler) MountAdmin(r chi.Router) {
+	r.Get("/attendances", h.adminList)
+	r.Patch("/attendances/{id}", h.adminCorrect)
+}
+
+// anyAdmin is the admin behind an admin request, of either role.
+func anyAdmin(w http.ResponseWriter, r *http.Request) (auth.Principal, access.AdminScope, bool) {
+	p, okP := auth.From(r.Context())
+	s, okS := access.ScopeFrom(r.Context())
+	if !okP || !okS {
+		httpx.Error(w, r, apperr.ErrUnauthenticated)
+		return auth.Principal{}, access.AdminScope{}, false
+	}
+	return p, s, true
+}
+
+// adminList is GET /admin/attendances.
+func (h *Handler) adminList(w http.ResponseWriter, r *http.Request) {
+	p, scope, ok := anyAdmin(w, r)
+	if !ok {
+		return
+	}
+	query, err := httpx.ParseListQuery(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	f := Filter{
+		TeamCode: r.URL.Query().Get("team_code"), ProjectCode: r.URL.Query().Get("project_code"),
+		Limit: query.Limit, Offset: query.Offset(),
+	}
+	if f.From, ok = dateQueryParam(w, r, "date_from"); !ok {
+		return
+	}
+	if f.To, ok = dateQueryParam(w, r, "date_to"); !ok {
+		return
+	}
+	page, err := h.service.ListForAdmin(r.Context(), p, scope, f)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	out := make([]attendanceJSON, 0, len(page.Attendances))
+	for _, a := range page.Attendances {
+		out = append(out, attendanceToAPI(a))
+	}
+	httpx.List(w, r, out, query.WithTotal(page.Total))
+}
+
+// adminCorrect is PATCH /admin/attendances/{id}.
+func (h *Handler) adminCorrect(w http.ResponseWriter, r *http.Request) {
+	p, scope, ok := anyAdmin(w, r)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || id < 1 {
+		httpx.Error(w, r, ErrNotFound)
+		return
+	}
+	var in CorrectionInput
+	if err := httpx.Decode(r, &in); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	a, err := h.service.Correct(r.Context(), p, scope, id, in)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.OK(w, r, http.StatusOK, attendanceToAPI(a))
 }
 
 // ---------- JSON ----------
@@ -237,6 +322,115 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 		out = append(out, day)
 	}
 	httpx.OK(w, r, http.StatusOK, out)
+}
+
+// list is GET /attendances: the regu monitor. No route permission: List itself refuses with
+// PERMISSION_DENIED when the caller's group/absence view grant reaches no regu, or when team_code
+// asks for one outside it.
+func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
+	p, ok := auth.From(r.Context())
+	if !ok {
+		httpx.Error(w, r, apperr.ErrUnauthenticated)
+		return
+	}
+	query, err := httpx.ParseListQuery(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	f := Filter{
+		TeamCode: r.URL.Query().Get("team_code"), ProjectCode: r.URL.Query().Get("project_code"),
+		Limit: query.Limit, Offset: query.Offset(),
+	}
+	if f.From, ok = dateQueryParam(w, r, "date_from"); !ok {
+		return
+	}
+	if f.To, ok = dateQueryParam(w, r, "date_to"); !ok {
+		return
+	}
+	page, err := h.service.List(r.Context(), p, f)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	out := make([]attendanceJSON, 0, len(page.Attendances))
+	for _, a := range page.Attendances {
+		out = append(out, attendanceToAPI(a))
+	}
+	httpx.List(w, r, out, query.WithTotal(page.Total))
+}
+
+// dateQueryParam reads an optional YYYY-MM-DD query parameter. ok is false when the answer is
+// already written (a malformed date is one VALIDATION_ERROR).
+func dateQueryParam(w http.ResponseWriter, r *http.Request, name string) (*timeutil.Date, bool) {
+	s := r.URL.Query().Get(name)
+	if s == "" {
+		return nil, true
+	}
+	d, err := timeutil.ParseDate(s)
+	if err != nil {
+		httpx.Error(w, r, apperr.ErrValidation.WithFields(apperr.FieldError{
+			Field: name, Code: "INVALID", Message: name + " harus berformat YYYY-MM-DD.",
+		}))
+		return nil, false
+	}
+	return &d, true
+}
+
+// groupEntryJSON is one entry's outcome of POST /attendances/group.
+type groupEntryJSON struct {
+	PersonnelID int64           `json:"personnel_id"`
+	Status      string          `json:"status"`
+	Attendance  *attendanceJSON `json:"attendance"`
+	Error       *groupErrorJSON `json:"error"`
+}
+
+type groupErrorJSON struct {
+	Reason  string `json:"reason"`
+	Message string `json:"message"`
+}
+
+func groupEntryToAPI(r GroupEntryResult) groupEntryJSON {
+	out := groupEntryJSON{PersonnelID: r.PersonnelID, Status: string(r.Status)}
+	if r.Attendance != nil {
+		a := attendanceToAPI(*r.Attendance)
+		out.Attendance = &a
+	}
+	if r.Error != nil {
+		var ae *apperr.Error
+		if errors.As(r.Error, &ae) {
+			out.Error = &groupErrorJSON{Reason: ae.Reason, Message: ae.Message}
+		} else {
+			out.Error = &groupErrorJSON{Message: r.Error.Error()}
+		}
+	}
+	return out
+}
+
+// group is POST /attendances/group: the DANRU's group-present muster. A bad entry does not fail
+// the batch (201 with a per-entry result); only a permission or infrastructure failure answers
+// with an error envelope.
+func (h *Handler) group(w http.ResponseWriter, r *http.Request) {
+	p, ok := auth.From(r.Context())
+	if !ok {
+		httpx.Error(w, r, apperr.ErrUnauthenticated)
+		return
+	}
+	var in GroupInput
+	if err := httpx.Decode(r, &in); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	results, err := h.service.GroupPresent(r.Context(), p, in)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	out := make([]groupEntryJSON, 0, len(results))
+	for _, res := range results {
+		out = append(out, groupEntryToAPI(res))
+	}
+	httpx.OK(w, r, http.StatusCreated, out)
 }
 
 // detail is GET /attendances/{id}.

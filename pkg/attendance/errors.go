@@ -28,6 +28,9 @@ const (
 	ReasonQRExpired     = "ATTENDANCE_QR_EXPIRED"
 	ReasonQRWrongTeam   = "ATTENDANCE_QR_WRONG_TEAM"
 	ReasonQRUnavailable = "ATTENDANCE_QR_UNAVAILABLE"
+
+	// Phase 07.6: DANRU absence, group present, admin correction.
+	ReasonPersonnelNotScheduled = "ATTENDANCE_PERSONNEL_NOT_SCHEDULED"
 )
 
 // ErrQRInvalid is returned for a QR token that is not one the system issued: malformed, a bad
@@ -97,3 +100,9 @@ var ErrAlreadyCheckedOut = apperr.New(http.StatusConflict, apperr.CodeDuplicate,
 // ErrNotCheckedOut is returned by "update pulang" for a record that has no check-out yet.
 var ErrNotCheckedOut = apperr.New(http.StatusUnprocessableEntity, apperr.CodeUnprocessable,
 	ReasonNotCheckedOut, "Belum ada absen pulang yang bisa diperbarui.")
+
+// ErrPersonnelNotScheduled is returned by the DANRU absence and group-present endpoints when the
+// target personnel has no shift instance of the given regu on the given work date: there is no
+// shift instance to turn into a record.
+var ErrPersonnelNotScheduled = apperr.New(http.StatusUnprocessableEntity, apperr.CodeUnprocessable,
+	ReasonPersonnelNotScheduled, "Personil tidak terjadwal pada regu dan tanggal ini.")

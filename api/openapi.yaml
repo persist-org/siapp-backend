@@ -2301,31 +2301,60 @@ components:
         accuracy_meters: { type: number, format: double, minimum: 0, maximum: 100000 }
     AttendanceGroupInput:
       type: object
-      required: [team_id, entries]
+      description: >-
+        Muster satu regu sekaligus untuk shift yang sedang berjalan (tidak bisa untuk tanggal
+        lampau): entri PRESENT jadi absen datang metode GROUP, entri ABSENT jadi mangkir, seperti
+        POST /attendances/absent. Satu entri yang gagal (personil tidak terjadwal, sudah tercatat)
+        tidak menggagalkan entri lain; lihat `data[].error` pada tiap entri.
+      required: [team_code, entries]
       properties:
-        team_id: { type: integer, format: int64 }
+        team_code: { type: string, example: 1K-IBMI-S1 }
         entries:
           type: array
+          minItems: 1
+          maxItems: 200
           items:
             type: object
             required: [personnel_id, status]
             properties:
               personnel_id: { type: integer, format: int64 }
-              status: { type: string }
-    AttendanceAbsentInput:
+              status: { type: string, enum: [PRESENT, ABSENT] }
+              reason: { type: string, maxLength: 500, description: "Dipakai bila status ABSENT." }
+    AttendanceGroupResult:
       type: object
-      required: [personnel_id, date]
+      required: [personnel_id, status, attendance, error]
       properties:
         personnel_id: { type: integer, format: int64 }
-        date: { type: string, format: date }
-        reason: { type: string }
+        status: { type: string, enum: [PRESENT, ABSENT] }
+        attendance: { allOf: [ { $ref: '#/components/schemas/Attendance' } ], nullable: true, description: "null bila entri gagal (lihat error)." }
+        error:
+          type: object
+          nullable: true
+          description: "null bila entri berhasil."
+          properties:
+            reason: { type: string, example: ATTENDANCE_PERSONNEL_NOT_SCHEDULED }
+            message: { type: string }
+    AttendanceAbsentInput:
+      type: object
+      description: >-
+        Mangkir satu personil pada satu regu dan tanggal kerja, ditandai langsung oleh DANRU tanpa
+        personil pernah absen datang.
+      required: [personnel_id, team_code, date]
+      properties:
+        personnel_id: { type: integer, format: int64 }
+        team_code: { type: string, example: 1K-IBMI-S1, description: "Regu personil pada tanggal itu; seseorang bisa bertugas di dua regu dalam satu hari." }
+        date: { type: string, format: date, description: "Tanggal kerja yang ditandai mangkir; tidak harus hari ini." }
+        reason: { type: string, maxLength: 500 }
     AttendanceCorrection:
       type: object
+      description: >-
+        Isi salah satu bentuk: `is_absent` sendiri, atau `check_in`/`check_out` (keduanya opsional,
+        kirim yang berubah saja). Tidak boleh mencampur `is_absent` dengan `check_in`/`check_out`.
       properties:
-        check_in: { type: string, format: date-time }
-        check_out: { type: string, format: date-time }
-        is_absent: { type: boolean }
-        note: { type: string }
+        check_in: { type: string, format: date-time, description: "Hanya untuk catatan hadir, atau untuk membatalkan mangkir (is_absent: false)." }
+        check_out: { type: string, format: date-time, description: "Hanya untuk catatan hadir; perlu check_in yang sudah ada atau dikirim bersama." }
+        is_absent: { type: boolean, description: "true: jadikan mangkir. false: batalkan mangkir yang ada (perlu check_in)." }
+        note: { type: string, maxLength: 1000, description: "Alasan koreksi, disimpan di audit log (dan absent_reason bila is_absent: true)." }
 
     # ---------- 23. permissions ----------
     Permission:
@@ -9996,10 +10025,16 @@ paths:
       operationId: postAttendancesGroup
       tags: [Attendance]
       summary: Absensi Group (DANRU)
-      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyHeader' } ]
+      description: >-
+        DANRU memuster seluruh regu untuk shift yang sedang berjalan dalam satu panggilan. Perlu
+        izin `attendance.group.view` yang menjangkau `team_code`; di luar jangkauan: 403
+        `PERMISSION_DENIED`. 201 selalu dikembalikan bila permintaan tervalidasi: setiap entri punya
+        hasilnya sendiri pada `data[]` (lihat `AttendanceGroupResult`), entri gagal tidak
+        menggagalkan entri lain.
+      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyRequiredHeader' } ]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AttendanceGroupInput' } } } }
       responses:
-        '201': { description: Created, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/Attendance' } } } } ] } } } }
+        '201': { description: Created, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/AttendanceGroupResult' } } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/ValidationError' }
@@ -10008,24 +10043,39 @@ paths:
       operationId: postAttendancesAbsent
       tags: [Attendance]
       summary: Buat Mangkir (DANRU)
-      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyHeader' } ]
+      description: >-
+        DANRU menandai satu personil mangkir pada satu regu dan tanggal kerja, tanpa personil itu
+        pernah absen. Perlu izin `attendance.absence.create` yang menjangkau `team_code` pada
+        `date`; di luar jangkauan: 403 `PERMISSION_DENIED`. Personil tidak terjadwal pada regu dan
+        tanggal itu (hari OFF, tidak dijadwalkan, atau bukan regu personil): 422
+        `ATTENDANCE_PERSONNEL_NOT_SCHEDULED`. Shift itu sudah punya catatan: 409
+        `ATTENDANCE_ALREADY_CHECKED_IN` (sudah absen datang) atau 422 `ATTENDANCE_NOT_ALLOWED`
+        (sudah izin/mangkir).
+      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyRequiredHeader' } ]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AttendanceAbsentInput' } } } }
       responses:
         '201': { description: Created, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/Attendance' } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /attendances:
     get:
       operationId: getAttendances
       tags: [Attendance]
       summary: Monitor kehadiran regu (DANRU)
+      description: >-
+        Setiap catatan dari regu yang dijangkau izin `attendance.group.view` atau
+        `attendance.absence.view` pemanggil, terbaru lebih dulu. Tanpa `team_code`: setiap regu yang
+        dijangkau salah satu izin itu; kosong keduanya: 403 `PERMISSION_DENIED`. `team_code` di luar
+        jangkauan: 403 `PERMISSION_DENIED` juga, sama dengan regu yang tidak dijangkau sama sekali.
       security:
         - bearerSession: []
         - oauth2ClientCredentials: [attendance:read]
         - apiKey: []
       parameters:
-        - $ref: '#/components/parameters/TeamIdParam'
-        - $ref: '#/components/parameters/ProjectIdParam'
+        - { name: team_code, in: query, description: "Regu tertentu; selain itu setiap regu yang dijangkau.", schema: { type: string, example: 1K-IBMI-S1 } }
+        - { name: project_code, in: query, description: "Proyek tertentu.", schema: { type: string, example: 1K-IBMI-S } }
         - $ref: '#/components/parameters/DateFromParam'
         - $ref: '#/components/parameters/DateToParam'
         - $ref: '#/components/parameters/PageParam'
@@ -10053,13 +10103,16 @@ paths:
       operationId: getAdminAttendances
       tags: [Attendance]
       summary: Monitor kehadiran (web admin, WEB-25)
+      description: >-
+        Setiap catatan dalam jangkauan admin: ORG_ADMIN melihat semua, REGION_ADMIN hanya proyek di
+        bawah wilayahnya.
       security:
         - bearerSession: []
         - oauth2ClientCredentials: [attendance:read]
         - apiKey: []
       parameters:
-        - $ref: '#/components/parameters/ProjectIdParam'
-        - $ref: '#/components/parameters/TeamIdParam'
+        - { name: team_code, in: query, schema: { type: string, example: 1K-IBMI-S1 } }
+        - { name: project_code, in: query, schema: { type: string, example: 1K-IBMI-S } }
         - $ref: '#/components/parameters/DateFromParam'
         - $ref: '#/components/parameters/DateToParam'
         - $ref: '#/components/parameters/PageParam'
@@ -10074,6 +10127,14 @@ paths:
       operationId: patchAdminAttendancesById
       tags: [Attendance]
       summary: Koreksi kehadiran
+      description: >-
+        Tiga bentuk, tidak boleh dicampur: `is_absent: true` menjadikan catatan mangkir (menghapus
+        jam datang/pulang bila ada); `is_absent: false` membatalkan mangkir yang ada kembali jadi
+        hadir (`check_in` wajib); `check_in`/`check_out` mengoreksi jam catatan yang sudah hadir
+        (metode tersimpan `FORCE`, keterlambatan dihitung ulang terhadap toleransi shift saat ini
+        dan izin yang disetujui, seperti absen datang biasa). Di luar jangkauan wilayah admin, atau
+        tidak ada: 404. Ketiga bentuk dicampur, atau tidak ada satu pun field: 422
+        `VALIDATION_ERROR`.
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AttendanceCorrection' } } } }
       responses:
         '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/Attendance' } } } ] } } } }

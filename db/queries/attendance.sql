@@ -84,3 +84,65 @@ RETURNING *;
 INSERT INTO personel_outbox (kind, aggregate_id, payload, next_attempt_at)
 VALUES (@kind, @aggregate_id, @payload, @now)
 RETURNING id, event_id;
+
+-- ---------- Phase 07.6: DANRU absence, group present, admin correction ----------
+
+-- The DANRU marking a team member absent (or a group-present entry marked ABSENT), and an admin
+-- correction turning a record into ABSENT: one row per shift instance, like a check-in. No
+-- ON CONFLICT DO NOTHING here (unlike InsertAttendanceCheckIn): the caller already read
+-- GetAttendanceOfInstance and refused on a conflict before calling this, so a unique violation here
+-- is a genuine race, left to surface as a 500 and be retried rather than silently returning nothing.
+-- name: InsertAttendanceAbsent :one
+INSERT INTO attendances (
+    personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone,
+    status, marked_absent_by_id, absent_reason, created_at, updated_at)
+VALUES (
+    @personnel_id, @team_code, @project_code, @work_date, @shift_id, @shift_starts_at, @shift_ends_at, @timezone,
+    'ABSENT', @marked_absent_by_id, sqlc.narg('absent_reason'), @now, @now)
+RETURNING *;
+
+-- The regu monitor (GET /attendances, DANRU) and the admin monitor (GET /admin/attendances): team
+-- scope and region scope are mutually exclusive (one is nil depending on who is asking), both sides
+-- of an optional date range, newest first.
+-- name: ListAttendances :many
+SELECT * FROM attendances a
+WHERE (sqlc.narg('team_codes')::text[] IS NULL OR a.team_code = ANY(sqlc.narg('team_codes')::text[]))
+  AND (sqlc.narg('team_code')::text IS NULL OR a.team_code = sqlc.narg('team_code')::text)
+  AND (sqlc.narg('project_code')::text IS NULL OR a.project_code = sqlc.narg('project_code')::text)
+  AND (sqlc.narg('region_code')::text IS NULL OR EXISTS (
+        SELECT 1 FROM projects pr
+        JOIN clients cl ON cl.organization_id = pr.organization_id AND cl.code = pr.client_code
+        JOIN branches b ON b.organization_id = cl.organization_id AND b.code = cl.branch_code
+        WHERE pr.code = a.project_code AND b.region_code = sqlc.narg('region_code')::text))
+  AND (sqlc.narg('from_date')::date IS NULL OR a.work_date >= sqlc.narg('from_date')::date)
+  AND (sqlc.narg('to_date')::date IS NULL OR a.work_date <= sqlc.narg('to_date')::date)
+ORDER BY a.work_date DESC, a.id DESC
+LIMIT @page_limit OFFSET @page_offset;
+
+-- name: CountAttendances :one
+SELECT count(*) FROM attendances a
+WHERE (sqlc.narg('team_codes')::text[] IS NULL OR a.team_code = ANY(sqlc.narg('team_codes')::text[]))
+  AND (sqlc.narg('team_code')::text IS NULL OR a.team_code = sqlc.narg('team_code')::text)
+  AND (sqlc.narg('project_code')::text IS NULL OR a.project_code = sqlc.narg('project_code')::text)
+  AND (sqlc.narg('region_code')::text IS NULL OR EXISTS (
+        SELECT 1 FROM projects pr
+        JOIN clients cl ON cl.organization_id = pr.organization_id AND cl.code = pr.client_code
+        JOIN branches b ON b.organization_id = cl.organization_id AND b.code = cl.branch_code
+        WHERE pr.code = a.project_code AND b.region_code = sqlc.narg('region_code')::text))
+  AND (sqlc.narg('from_date')::date IS NULL OR a.work_date >= sqlc.narg('from_date')::date)
+  AND (sqlc.narg('to_date')::date IS NULL OR a.work_date <= sqlc.narg('to_date')::date);
+
+-- Updates whichever of check-in, check-out and absence an admin correction (PATCH
+-- /admin/attendances/{id}) touches; always stamps the capture method FORCE on the side it edits,
+-- and always marks personel_sync_status PENDING so the correction reaches Persist Personel. The
+-- caller reads the row with GetAttendanceForUpdate first and passes back every field, changed or
+-- not: sqlc.narg lets a field that a correction does not touch keep its current value only when
+-- the caller re-sends it, so the Go side (not SQL) decides what "untouched" means per transition.
+-- name: CorrectAttendance :one
+UPDATE attendances SET
+    status = @status, marked_absent_by_id = sqlc.narg('marked_absent_by_id'), absent_reason = sqlc.narg('absent_reason'),
+    check_in_at = sqlc.narg('check_in_at'), check_in_method = sqlc.narg('check_in_method'), late_minutes = @late_minutes::int,
+    check_out_at = sqlc.narg('check_out_at'), check_out_method = sqlc.narg('check_out_method'),
+    personel_sync_status = 'PENDING', updated_at = @now
+WHERE id = @id
+RETURNING *;
