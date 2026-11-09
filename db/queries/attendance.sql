@@ -101,6 +101,29 @@ VALUES (
     'ABSENT', @marked_absent_by_id, sqlc.narg('absent_reason'), @now, @now)
 RETURNING *;
 
+-- The regu monitor (GET /attendances, DANRU): per member and day, with the person's name and the
+-- shift's, newest first. A deleted shift keeps its record but not its name (LEFT JOIN).
+-- name: ListTeamAttendanceRows :many
+SELECT a.id, a.personnel_id, p.full_name, a.work_date, COALESCE(sh.name, '') AS shift_name,
+  a.status, a.check_in_at, a.check_in_method, a.check_in_within_area,
+  a.check_out_at, a.check_out_method, a.check_out_within_area
+FROM attendances a
+JOIN personnels p ON p.id = a.personnel_id
+LEFT JOIN shifts sh ON sh.id = a.shift_id
+WHERE a.team_code = ANY(@team_codes::text[])
+  AND (sqlc.narg('project_code')::text IS NULL OR a.project_code = sqlc.narg('project_code')::text)
+  AND (sqlc.narg('from_date')::date IS NULL OR a.work_date >= sqlc.narg('from_date')::date)
+  AND (sqlc.narg('to_date')::date IS NULL OR a.work_date <= sqlc.narg('to_date')::date)
+ORDER BY a.work_date DESC, a.id DESC
+LIMIT @page_limit OFFSET @page_offset;
+
+-- name: CountTeamAttendanceRows :one
+SELECT count(*) FROM attendances a
+WHERE a.team_code = ANY(@team_codes::text[])
+  AND (sqlc.narg('project_code')::text IS NULL OR a.project_code = sqlc.narg('project_code')::text)
+  AND (sqlc.narg('from_date')::date IS NULL OR a.work_date >= sqlc.narg('from_date')::date)
+  AND (sqlc.narg('to_date')::date IS NULL OR a.work_date <= sqlc.narg('to_date')::date);
+
 -- The regu monitor (GET /attendances, DANRU) and the admin monitor (GET /admin/attendances): team
 -- scope and region scope are mutually exclusive (one is nil depending on who is asking), both sides
 -- of an optional date range, newest first.
@@ -131,6 +154,33 @@ WHERE (sqlc.narg('team_codes')::text[] IS NULL OR a.team_code = ANY(sqlc.narg('t
         WHERE pr.code = a.project_code AND b.region_code = sqlc.narg('region_code')::text))
   AND (sqlc.narg('from_date')::date IS NULL OR a.work_date >= sqlc.narg('from_date')::date)
   AND (sqlc.narg('to_date')::date IS NULL OR a.work_date <= sqlc.narg('to_date')::date);
+
+-- The regu's per-day counts for GET /attendances/group-summary, one GROUP BY query instead of a
+-- loop per day: how many of the team's scheduled, non-OFF shift instances landed in each bucket.
+-- "missing" has no record at all yet, whether the shift already ended or not (there is no
+-- UPCOMING bucket here, unlike the personal calendar of 07.4). "swapped" is always 0 until 07.7
+-- adds shift_swaps; the column is already in the shape so that phase only has to fill it in.
+-- name: GroupSummary :many
+SELECT s.work_date,
+  count(*)::int AS scheduled,
+  count(*) FILTER (WHERE a.status = 'PRESENT')::int AS present,
+  count(*) FILTER (WHERE a.status = 'LEAVE')::int AS leave,
+  count(*) FILTER (WHERE a.status = 'ABSENT')::int AS absent,
+  count(*) FILTER (WHERE a.id IS NULL)::int AS missing
+FROM schedules s
+JOIN shifts sh ON sh.id = s.shift_id AND NOT sh.is_off
+JOIN team_members tm ON tm.personnel_id = s.personnel_id AND tm.team_code = @team_code
+  AND s.work_date >= tm.start_date AND (tm.end_date IS NULL OR s.work_date <= tm.end_date)
+LEFT JOIN attendances a ON a.personnel_id = s.personnel_id AND a.team_code = @team_code
+  AND a.work_date = s.work_date AND a.shift_id = s.shift_id
+WHERE s.work_date BETWEEN @date_from AND @date_to
+GROUP BY s.work_date
+ORDER BY s.work_date;
+
+-- The DANRU undoing their own mistaken mangkir (DELETE /attendances/absent/{id}): the row is gone
+-- for real, there is no "no record" status to revert it to.
+-- name: DeleteAttendance :exec
+DELETE FROM attendances WHERE id = @id;
 
 -- Updates whichever of check-in, check-out and absence an admin correction (PATCH
 -- /admin/attendances/{id}) touches; always stamps the capture method FORCE on the side it edits,

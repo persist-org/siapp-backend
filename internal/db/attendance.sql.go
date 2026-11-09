@@ -493,6 +493,114 @@ func (q *Queries) InsertAttendanceAbsent(ctx context.Context, arg InsertAttendan
 	return i, err
 }
 
+const listTeamAttendanceRows = `-- name: ListTeamAttendanceRows :many
+SELECT a.id, a.personnel_id, p.full_name, a.work_date, COALESCE(sh.name, '') AS shift_name,
+  a.status, a.check_in_at, a.check_in_method, a.check_in_within_area,
+  a.check_out_at, a.check_out_method, a.check_out_within_area
+FROM attendances a
+JOIN personnels p ON p.id = a.personnel_id
+LEFT JOIN shifts sh ON sh.id = a.shift_id
+WHERE a.team_code = ANY($1::text[])
+  AND ($2::text IS NULL OR a.project_code = $2::text)
+  AND ($3::date IS NULL OR a.work_date >= $3::date)
+  AND ($4::date IS NULL OR a.work_date <= $4::date)
+ORDER BY a.work_date DESC, a.id DESC
+LIMIT $6 OFFSET $5
+`
+
+type ListTeamAttendanceRowsParams struct {
+	TeamCodes   []string
+	ProjectCode pgtype.Text
+	FromDate    pgtype.Date
+	ToDate      pgtype.Date
+	PageOffset  int32
+	PageLimit   int32
+}
+
+type ListTeamAttendanceRowsRow struct {
+	ID                int64
+	PersonnelID       int64
+	FullName          string
+	WorkDate          pgtype.Date
+	ShiftName         string
+	Status            AttendanceStatus
+	CheckInAt         pgtype.Timestamptz
+	CheckInMethod     NullAttendanceMethod
+	CheckInWithinArea pgtype.Bool
+	CheckOutAt        pgtype.Timestamptz
+	CheckOutMethod    NullAttendanceMethod
+	CheckOutWithinArea pgtype.Bool
+}
+
+// The regu monitor (GET /attendances, DANRU): per member and day, with the person's name and the
+// shift's, newest first. A deleted shift keeps its record but not its name (LEFT JOIN).
+func (q *Queries) ListTeamAttendanceRows(ctx context.Context, arg ListTeamAttendanceRowsParams) ([]ListTeamAttendanceRowsRow, error) {
+	rows, err := q.db.Query(ctx, listTeamAttendanceRows,
+		arg.TeamCodes,
+		arg.ProjectCode,
+		arg.FromDate,
+		arg.ToDate,
+		arg.PageOffset,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListTeamAttendanceRowsRow{}
+	for rows.Next() {
+		var i ListTeamAttendanceRowsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PersonnelID,
+			&i.FullName,
+			&i.WorkDate,
+			&i.ShiftName,
+			&i.Status,
+			&i.CheckInAt,
+			&i.CheckInMethod,
+			&i.CheckInWithinArea,
+			&i.CheckOutAt,
+			&i.CheckOutMethod,
+			&i.CheckOutWithinArea,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const countTeamAttendanceRows = `-- name: CountTeamAttendanceRows :one
+SELECT count(*) FROM attendances a
+WHERE a.team_code = ANY($1::text[])
+  AND ($2::text IS NULL OR a.project_code = $2::text)
+  AND ($3::date IS NULL OR a.work_date >= $3::date)
+  AND ($4::date IS NULL OR a.work_date <= $4::date)
+`
+
+type CountTeamAttendanceRowsParams struct {
+	TeamCodes   []string
+	ProjectCode pgtype.Text
+	FromDate    pgtype.Date
+	ToDate      pgtype.Date
+}
+
+func (q *Queries) CountTeamAttendanceRows(ctx context.Context, arg CountTeamAttendanceRowsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countTeamAttendanceRows,
+		arg.TeamCodes,
+		arg.ProjectCode,
+		arg.FromDate,
+		arg.ToDate,
+	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const listAttendances = `-- name: ListAttendances :many
 SELECT a.id, a.organization_id, a.personnel_id, a.team_code, a.project_code, a.work_date, a.shift_id, a.shift_starts_at, a.shift_ends_at, a.timezone, a.status, a.check_in_at, a.check_in_method, a.check_in_media_id, a.check_in_latitude, a.check_in_longitude, a.check_in_accuracy_meters, a.check_in_distance_meters, a.check_in_within_area, a.check_in_qr_danru_id, a.late_minutes, a.check_out_at, a.check_out_method, a.check_out_media_id, a.check_out_latitude, a.check_out_longitude, a.check_out_accuracy_meters, a.check_out_distance_meters, a.check_out_within_area, a.check_out_qr_danru_id, a.check_out_update_count, a.leave_request_id, a.marked_absent_by_id, a.shift_swap_id, a.personel_sync_status, a.personel_synced_at, a.created_at, a.updated_at, a.late_minutes_raw, a.absent_reason FROM attendances a
 WHERE ($1::text[] IS NULL OR a.team_code = ANY($1::text[]))
@@ -628,6 +736,79 @@ func (q *Queries) CountAttendances(ctx context.Context, arg CountAttendancesPara
 	var count int64
 	err := row.Scan(&count)
 	return count, err
+}
+
+const groupSummary = `-- name: GroupSummary :many
+SELECT s.work_date,
+  count(*)::int AS scheduled,
+  count(*) FILTER (WHERE a.status = 'PRESENT')::int AS present,
+  count(*) FILTER (WHERE a.status = 'LEAVE')::int AS leave,
+  count(*) FILTER (WHERE a.status = 'ABSENT')::int AS absent,
+  count(*) FILTER (WHERE a.id IS NULL)::int AS missing
+FROM schedules s
+JOIN shifts sh ON sh.id = s.shift_id AND NOT sh.is_off
+JOIN team_members tm ON tm.personnel_id = s.personnel_id AND tm.team_code = $1
+  AND s.work_date >= tm.start_date AND (tm.end_date IS NULL OR s.work_date <= tm.end_date)
+LEFT JOIN attendances a ON a.personnel_id = s.personnel_id AND a.team_code = $1
+  AND a.work_date = s.work_date AND a.shift_id = s.shift_id
+WHERE s.work_date BETWEEN $2 AND $3
+GROUP BY s.work_date
+ORDER BY s.work_date
+`
+
+type GroupSummaryParams struct {
+	TeamCode string
+	DateFrom pgtype.Date
+	DateTo   pgtype.Date
+}
+
+type GroupSummaryRow struct {
+	WorkDate  pgtype.Date
+	Scheduled int32
+	Present   int32
+	Leave     int32
+	Absent    int32
+	Missing   int32
+}
+
+// The regu's per-day counts for GET /attendances/group-summary, one GROUP BY query instead of a
+// loop per day.
+func (q *Queries) GroupSummary(ctx context.Context, arg GroupSummaryParams) ([]GroupSummaryRow, error) {
+	rows, err := q.db.Query(ctx, groupSummary, arg.TeamCode, arg.DateFrom, arg.DateTo)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GroupSummaryRow{}
+	for rows.Next() {
+		var i GroupSummaryRow
+		if err := rows.Scan(
+			&i.WorkDate,
+			&i.Scheduled,
+			&i.Present,
+			&i.Leave,
+			&i.Absent,
+			&i.Missing,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const deleteAttendance = `-- name: DeleteAttendance :exec
+DELETE FROM attendances WHERE id = $1
+`
+
+// The DANRU undoing their own mistaken mangkir (DELETE /attendances/absent/{id}): the row is gone
+// for real, there is no "no record" status to revert it to.
+func (q *Queries) DeleteAttendance(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, deleteAttendance, id)
+	return err
 }
 
 const correctAttendance = `-- name: CorrectAttendance :one

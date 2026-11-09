@@ -67,7 +67,7 @@ VALUES ($1, $2, $3, $4, $5, $6,
         $15, $16, $17,
         $18, $19, $20,
         $21, $21, $22, $22)
-RETURNING organization_id, code, client_code, description, company_code, company_prefix, company_bidang_usaha, business_line, city, address, phone, email, timezone, latitude, longitude, attendance_radius_meters, strict_attendance_geofence, gps_tracking_enabled, patrol_interval_minutes, emergency_contacts, next_team_number, active, created_by, modify_by, created_at, updated_at, deleted_at
+RETURNING organization_id, code, client_code, description, company_code, company_prefix, company_bidang_usaha, business_line, city, address, phone, email, timezone, latitude, longitude, attendance_radius_meters, strict_attendance_geofence, gps_tracking_enabled, patrol_interval_minutes, emergency_contacts, next_team_number, active, created_by, modify_by, created_at, updated_at, deleted_at, allow_group_attendance
 `
 
 type CreateProjectParams struct {
@@ -149,12 +149,13 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (P
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.AllowGroupAttendance,
 	)
 	return i, err
 }
 
 const getProject = `-- name: GetProject :one
-SELECT organization_id, code, client_code, description, company_code, company_prefix, company_bidang_usaha, business_line, city, address, phone, email, timezone, latitude, longitude, attendance_radius_meters, strict_attendance_geofence, gps_tracking_enabled, patrol_interval_minutes, emergency_contacts, next_team_number, active, created_by, modify_by, created_at, updated_at, deleted_at FROM projects WHERE code = $1 AND deleted_at IS NULL
+SELECT organization_id, code, client_code, description, company_code, company_prefix, company_bidang_usaha, business_line, city, address, phone, email, timezone, latitude, longitude, attendance_radius_meters, strict_attendance_geofence, gps_tracking_enabled, patrol_interval_minutes, emergency_contacts, next_team_number, active, created_by, modify_by, created_at, updated_at, deleted_at, allow_group_attendance FROM projects WHERE code = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetProject(ctx context.Context, code string) (Project, error) {
@@ -188,6 +189,7 @@ func (q *Queries) GetProject(ctx context.Context, code string) (Project, error) 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.AllowGroupAttendance,
 	)
 	return i, err
 }
@@ -229,7 +231,7 @@ func (q *Queries) GetProjectAncestors(ctx context.Context, code string) (GetProj
 }
 
 const getProjectForUpdate = `-- name: GetProjectForUpdate :one
-SELECT organization_id, code, client_code, description, company_code, company_prefix, company_bidang_usaha, business_line, city, address, phone, email, timezone, latitude, longitude, attendance_radius_meters, strict_attendance_geofence, gps_tracking_enabled, patrol_interval_minutes, emergency_contacts, next_team_number, active, created_by, modify_by, created_at, updated_at, deleted_at FROM projects WHERE code = $1 AND deleted_at IS NULL FOR UPDATE
+SELECT organization_id, code, client_code, description, company_code, company_prefix, company_bidang_usaha, business_line, city, address, phone, email, timezone, latitude, longitude, attendance_radius_meters, strict_attendance_geofence, gps_tracking_enabled, patrol_interval_minutes, emergency_contacts, next_team_number, active, created_by, modify_by, created_at, updated_at, deleted_at, allow_group_attendance FROM projects WHERE code = $1 AND deleted_at IS NULL FOR UPDATE
 `
 
 func (q *Queries) GetProjectForUpdate(ctx context.Context, code string) (Project, error) {
@@ -263,13 +265,14 @@ func (q *Queries) GetProjectForUpdate(ctx context.Context, code string) (Project
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.AllowGroupAttendance,
 	)
 	return i, err
 }
 
 const listProjects = `-- name: ListProjects :many
 
-SELECT organization_id, code, client_code, description, company_code, company_prefix, company_bidang_usaha, business_line, city, address, phone, email, timezone, latitude, longitude, attendance_radius_meters, strict_attendance_geofence, gps_tracking_enabled, patrol_interval_minutes, emergency_contacts, next_team_number, active, created_by, modify_by, created_at, updated_at, deleted_at FROM projects
+SELECT organization_id, code, client_code, description, company_code, company_prefix, company_bidang_usaha, business_line, city, address, phone, email, timezone, latitude, longitude, attendance_radius_meters, strict_attendance_geofence, gps_tracking_enabled, patrol_interval_minutes, emergency_contacts, next_team_number, active, created_by, modify_by, created_at, updated_at, deleted_at, allow_group_attendance FROM projects
 WHERE deleted_at IS NULL
   AND ($1::text IS NULL OR 'OS' || substring(code from '^[0-9]+') = $1)
   AND ($2::text IS NULL OR client_code = $2)
@@ -339,6 +342,7 @@ func (q *Queries) ListProjects(ctx context.Context, arg ListProjectsParams) ([]P
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.AllowGroupAttendance,
 		); err != nil {
 			return nil, err
 		}
@@ -406,7 +410,7 @@ UPDATE projects SET
     modify_by                  = $17,
     updated_at                 = $18
 WHERE code = $19 AND deleted_at IS NULL
-RETURNING organization_id, code, client_code, description, company_code, company_prefix, company_bidang_usaha, business_line, city, address, phone, email, timezone, latitude, longitude, attendance_radius_meters, strict_attendance_geofence, gps_tracking_enabled, patrol_interval_minutes, emergency_contacts, next_team_number, active, created_by, modify_by, created_at, updated_at, deleted_at
+RETURNING organization_id, code, client_code, description, company_code, company_prefix, company_bidang_usaha, business_line, city, address, phone, email, timezone, latitude, longitude, attendance_radius_meters, strict_attendance_geofence, gps_tracking_enabled, patrol_interval_minutes, emergency_contacts, next_team_number, active, created_by, modify_by, created_at, updated_at, deleted_at, allow_group_attendance
 `
 
 type UpdateProjectParams struct {
@@ -485,6 +489,7 @@ func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) (P
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.AllowGroupAttendance,
 	)
 	return i, err
 }

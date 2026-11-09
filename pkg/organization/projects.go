@@ -52,9 +52,13 @@ type Project struct {
 	GPSTrackingEnabled       bool
 	PatrolIntervalMinutes    *int
 	EmergencyContacts        []EmergencyContact
-	Active                   bool
-	CreatedAt                time.Time
-	UpdatedAt                time.Time
+	// AllowGroupAttendance turns on the DANRU's group check-in (07.6): off by default, since it
+	// records presence without each guard's own evidence. Set directly in the database or seed
+	// data for now; there is no admin endpoint yet to toggle it.
+	AllowGroupAttendance bool
+	Active               bool
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
 }
 
 // Configured reports whether the project's location is known. Without it a feature that
@@ -455,7 +459,8 @@ func toProject(r db.Project) Project {
 		Latitude: r.Latitude, Longitude: r.Longitude, AttendanceRadiusMeters: int(r.AttendanceRadiusMeters),
 		StrictAttendanceGeofence: r.StrictAttendanceGeofence, GPSTrackingEnabled: r.GpsTrackingEnabled,
 		PatrolIntervalMinutes: intValue(r.PatrolIntervalMinutes), EmergencyContacts: contacts,
-		Active: r.Active, CreatedAt: r.CreatedAt.Time, UpdatedAt: r.UpdatedAt.Time,
+		AllowGroupAttendance: r.AllowGroupAttendance,
+		Active:               r.Active, CreatedAt: r.CreatedAt.Time, UpdatedAt: r.UpdatedAt.Time,
 	}
 }
 

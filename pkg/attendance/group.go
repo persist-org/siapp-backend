@@ -17,105 +17,99 @@ import (
 	"siapp/pkg/platform/audit"
 	"siapp/pkg/platform/auth"
 	"siapp/pkg/platform/database"
-	"siapp/pkg/platform/timeutil"
+	"siapp/pkg/platform/geo"
 )
 
-// Phase 07.6 Part B: the DANRU's group-present muster. One submission marks the whole roster for
-// the shift happening right now: PRESENT entries become a GROUP check-in, ABSENT entries go
-// through the same path Part A's MarkAbsent uses. A bad entry (not scheduled, already recorded)
-// does not fail the batch: every entry gets its own result, like pkg/leave.SkippedDay.
-
-// GroupStatus is what a group-present entry does to a person's record.
-type GroupStatus string
-
-const (
-	GroupStatusPresent GroupStatus = "PRESENT"
-	GroupStatusAbsent  GroupStatus = "ABSENT"
-)
-
-// GroupEntryInput is one person of POST /attendances/group.
-type GroupEntryInput struct {
-	PersonnelID int64  `json:"personnel_id" validate:"required,min=1"`
-	Status      string `json:"status" validate:"required,oneof=PRESENT ABSENT"`
-	// Reason is kept only for a PRESENT entry turned ABSENT; ignored otherwise.
-	Reason string `json:"reason" validate:"omitempty,max=500"`
-}
+// Phase 07.6 Part B: the DANRU's group check-in. One shift, one location, a list of people, all
+// marked PRESENT at once with method GROUP — off unless the project has opted in
+// (allow_group_attendance), since it records presence without each guard's own evidence, which
+// weakens the anti-fraud purpose of QR and selfie (manual §2.6.1). A bad entry (not scheduled,
+// already recorded) does not fail the batch: every entry gets its own result.
 
 // GroupInput is the body of POST /attendances/group.
 type GroupInput struct {
-	TeamCode string            `json:"team_code" validate:"required"`
-	Entries  []GroupEntryInput `json:"entries" validate:"required,min=1,max=200,dive"`
+	TeamCode string `json:"team_code" validate:"required"`
+	// ShiftRef is the shift the whole group is checked into, from the same opaque format self
+	// check-in uses (team_code|work_date|shift_id); its team must equal TeamCode.
+	ShiftRef     string   `json:"shift_ref" validate:"required"`
+	PersonnelIDs []int64  `json:"personnel_ids" validate:"required,min=1,max=200,dive,min=1"`
+	Latitude     *float64 `json:"latitude" validate:"required,gte=-90,lte=90"`
+	Longitude    *float64 `json:"longitude" validate:"required,gte=-180,lte=180"`
 }
 
-// GroupEntryResult is one entry's outcome.
+// GroupEntryResult is one person's outcome.
 type GroupEntryResult struct {
 	PersonnelID int64
-	Status      GroupStatus
 	// Attendance is nil when Error is set.
 	Attendance *Attendance
 	Error      error
 }
 
-// currentInstanceFor is instanceFor for "now" rather than a fixed date: the shift instance of
-// personnelID in teamCode whose window (organization.Shifts.Current) contains now. Group-present
-// acts on the shift happening right now, never a backdated one; Current already leaves out OFF
-// days. The project code comes from TeamWithProject, not index-matched into
-// ShiftInstance.ProjectCodes — see instanceFor's comment on why that would be unsound.
-func (s *Service) currentInstanceFor(ctx context.Context, organizationID, personnelID int64, teamCode string, now time.Time) (inst organization.ShiftInstance, projectCode string, ok bool, err error) {
-	instances, err := s.shifts.Current(ctx, organizationID, personnelID, now)
+// instanceAt is instanceFor narrowed to one specific shift (the group check-in's shift_ref)
+// instead of any shift of the team: the one a group-present entry turns into a record. ok is
+// false when the person is not scheduled for exactly that shift instance of that regu on that
+// date.
+func (s *Service) instanceAt(ctx context.Context, organizationID, personnelID int64, key shiftKey) (organization.ShiftInstance, bool, error) {
+	instances, err := s.shifts.Instances(ctx, organizationID, personnelID, key.WorkDate, key.WorkDate)
 	if err != nil {
-		return organization.ShiftInstance{}, "", false, fmt.Errorf("current shifts: %w", err)
+		return organization.ShiftInstance{}, false, fmt.Errorf("shift instances: %w", err)
 	}
 	for _, in := range instances {
-		if !slices.Contains(in.TeamCodes, teamCode) {
+		if in.IsOff || in.ShiftID != key.ShiftID {
 			continue
 		}
-		site, err := s.sites.TeamWithProject(ctx, organizationID, teamCode)
-		if errors.Is(err, organization.ErrTeamNotFound) {
-			return organization.ShiftInstance{}, "", false, nil
+		if slices.Contains(in.TeamCodes, key.TeamCode) {
+			return in, true, nil
 		}
-		if err != nil {
-			return organization.ShiftInstance{}, "", false, fmt.Errorf("team %s: %w", teamCode, err)
-		}
-		return in, site.Project.Code, true, nil
 	}
-	return organization.ShiftInstance{}, "", false, nil
+	return organization.ShiftInstance{}, false, nil
 }
 
-// GroupPresent is POST /attendances/group: the DANRU mustering their regu's current shift in one
-// call. Guarded by attendance.group.view, resolved for "today" (the same simplification the
-// monitor list makes): a muster is always about the shift happening now.
+// GroupPresent is POST /attendances/group: the DANRU checking in their regu's current shift in one
+// call, from their own location. Guarded by attendance.group.view (resolved for the shift's own
+// work date, not necessarily today: a DANRU may be catching up on an earlier shift) and by the
+// project's allow_group_attendance toggle.
 func (s *Service) GroupPresent(ctx context.Context, p auth.Principal, in GroupInput) ([]GroupEntryResult, error) {
+	key, ok := parseShiftRef(in.ShiftRef)
+	if !ok || key.TeamCode != in.TeamCode {
+		return nil, ErrShiftNotActive
+	}
 	now := s.clock.Now()
-	out := make([]GroupEntryResult, 0, len(in.Entries))
+	out := make([]GroupEntryResult, 0, len(in.PersonnelIDs))
 	err := database.WithTenant(ctx, s.pool, p.OrganizationID, func(q *db.Queries) error {
-		res, err := s.access.Resolve(ctx, q, p.PersonnelID, access.AttendanceGroupView, timeutil.BusinessDate(now, wib))
+		res, err := s.access.Resolve(ctx, q, p.PersonnelID, access.AttendanceGroupView, key.WorkDate)
 		if err != nil {
 			return err
 		}
 		if !res.HasTeam(in.TeamCode) {
 			return access.ErrPermissionDenied
 		}
-		for _, e := range in.Entries {
-			r := GroupEntryResult{PersonnelID: e.PersonnelID, Status: GroupStatus(e.Status)}
-			inst, projectCode, found, err := s.currentInstanceFor(ctx, p.OrganizationID, e.PersonnelID, in.TeamCode, now)
+		site, err := s.sites.TeamWithProject(ctx, p.OrganizationID, in.TeamCode)
+		if errors.Is(err, organization.ErrTeamNotFound) {
+			return ErrShiftNotActive
+		}
+		if err != nil {
+			return fmt.Errorf("team %s: %w", in.TeamCode, err)
+		}
+		if !site.Project.AllowGroupAttendance {
+			return ErrGroupAttendanceOff
+		}
+		m, err := measure(site.Project, &geo.Point{Lat: *in.Latitude, Lng: *in.Longitude})
+		if err != nil {
+			return err
+		}
+		for _, personnelID := range in.PersonnelIDs {
+			r := GroupEntryResult{PersonnelID: personnelID}
+			inst, found, ierr := s.instanceAt(ctx, p.OrganizationID, personnelID, key)
 			switch {
-			case err != nil:
-				return err // an infra error aborts the whole batch; a business refusal does not
+			case ierr != nil:
+				return ierr // an infra error aborts the whole batch; a business refusal does not
 			case !found:
-				r.Error = ErrPersonnelNotScheduled
-			case r.Status == GroupStatusAbsent:
-				row, aerr := s.insertAbsent(ctx, q, p.PersonnelID, e.PersonnelID, in.TeamCode, projectCode, inst, e.Reason, now)
-				if aerr != nil {
-					r.Error = aerr
-				} else {
-					a := toAttendance(row)
-					r.Attendance = &a
-				}
+				r.Error = ErrNoShift
 			default:
-				row, aerr := s.groupCheckIn(ctx, q, p.PersonnelID, e.PersonnelID, in.TeamCode, projectCode, inst, now)
-				if aerr != nil {
-					r.Error = aerr
+				row, cerr := s.groupCheckIn(ctx, q, p.PersonnelID, personnelID, in.TeamCode, site.Project.Code, inst, in.Latitude, in.Longitude, m, now)
+				if cerr != nil {
+					r.Error = cerr
 				} else {
 					a := toAttendance(row)
 					r.Attendance = &a
@@ -131,11 +125,12 @@ func (s *Service) GroupPresent(ctx context.Context, p auth.Principal, in GroupIn
 	return out, nil
 }
 
-// groupCheckIn writes a GROUP-method check-in for one entry: no selfie, no GPS, timestamped at the
+// groupCheckIn writes a GROUP-method check-in for one entry: the DANRU's own fix (measured against
+// the project's geofence once, before the loop, and applied to every entry), timestamped at the
 // muster's call time. Guards are the same as a self check-in (an existing record refuses, the
 // previous working day must be settled) and lateness is computed the same way (an approved permit
 // can still lower it), so GROUP is a capture method like any other, not a shortcut around them.
-func (s *Service) groupCheckIn(ctx context.Context, q *db.Queries, markedByID, personnelID int64, teamCode, projectCode string, inst organization.ShiftInstance, now time.Time) (db.Attendance, error) {
+func (s *Service) groupCheckIn(ctx context.Context, q *db.Queries, markedByID, personnelID int64, teamCode, projectCode string, inst organization.ShiftInstance, lat, lng *float64, m measurement, now time.Time) (db.Attendance, error) {
 	key := shiftKey{TeamCode: teamCode, WorkDate: inst.WorkDate, ShiftID: inst.ShiftID}
 	existing, err := existingRecord(ctx, q, personnelID, key)
 	if err != nil {
@@ -156,7 +151,8 @@ func (s *Service) groupCheckIn(ctx context.Context, q *db.Queries, markedByID, p
 		PersonnelID: personnelID, TeamCode: teamCode, ProjectCode: projectCode,
 		WorkDate: dateParam(inst.WorkDate), ShiftID: inst.ShiftID,
 		ShiftStartsAt: ts(inst.StartsAt), ShiftEndsAt: ts(inst.EndsAt), Timezone: inst.Location.String(),
-		Now: ts(now), Method: nullMethod(db.AttendanceMethodGROUP),
+		Now: ts(now), Method: nullMethod(db.AttendanceMethodGROUP), Latitude: lat, Longitude: lng,
+		DistanceMeters: m.distance, WithinArea: m.inArea,
 		LateMinutes:    int32(min(late, math.MaxInt32)), //nolint:gosec // clamped
 		LateMinutesRaw: int32(min(raw, math.MaxInt32)),  //nolint:gosec // clamped
 	})

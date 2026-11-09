@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -22,44 +23,60 @@ import (
 // Phase 07.6 Part C: the admin correction (PATCH /admin/attendances/{id}) and the admin monitor
 // (GET /admin/attendances).
 
-// CorrectionInput is the body of PATCH /admin/attendances/{id}. Exactly one of three shapes, never
-// mixed: `is_absent: true` turns the record into ABSENT; `is_absent: false` undoes an existing
-// ABSENT back into PRESENT (check_in required); `check_in`/`check_out` edit the times of an
-// already-PRESENT record. validationError below enforces the three stay mutually exclusive.
+// CorrectionInput is the body of PATCH /admin/attendances/{id}. `reason` is always required.
+// `status` (PRESENT, LEAVE or ABSENT) retargets the record; `check_in_at`/`check_out_at` edit the
+// times of a record that is (or is becoming, via `status: PRESENT`) hadir. A single CORRECTED
+// event is written to Personel regardless of which of these changed: the event is for "this
+// record was corrected by an admin", not for the particular transition (unlike the DANRU's own
+// ABSENT/ABSENT_CANCELLED on /attendances/absent).
 type CorrectionInput struct {
-	CheckIn  *string `json:"check_in"`
-	CheckOut *string `json:"check_out"`
-	IsAbsent *bool   `json:"is_absent"`
-	Note     string  `json:"note" validate:"omitempty,max=1000"`
+	Status   *string `json:"status"`
+	CheckIn  *string `json:"check_in_at"`
+	CheckOut *string `json:"check_out_at"`
+	Reason   string  `json:"reason" validate:"required,max=1000"`
 }
 
 func correctionValidationError(field, message string) error {
 	return apperr.ErrValidation.WithFields(apperr.FieldError{Field: field, Code: "INVALID", Message: message})
 }
 
-// parseCorrection reads and validates the input; checkIn/checkOut are nil when not sent.
-func parseCorrection(in CorrectionInput) (checkIn, checkOut *time.Time, err error) {
-	if in.CheckIn == nil && in.CheckOut == nil && in.IsAbsent == nil {
-		return nil, nil, correctionValidationError("is_absent", "Isi check_in, check_out, atau is_absent.")
+// parseCorrection reads and validates the input; status, checkIn and checkOut are nil when not
+// sent. It cannot check status against the record's own (that needs the row), so Correct does the
+// rest once it has it.
+func parseCorrection(in CorrectionInput) (status *db.AttendanceStatus, checkIn, checkOut *time.Time, err error) {
+	if strings.TrimSpace(in.Reason) == "" {
+		return nil, nil, nil, correctionValidationError("reason", "Alasan koreksi wajib diisi.")
 	}
-	if in.IsAbsent != nil && (in.CheckIn != nil || in.CheckOut != nil) {
-		return nil, nil, correctionValidationError("is_absent", "Tidak boleh dikirim bersama check_in atau check_out.")
+	if in.Status == nil && in.CheckIn == nil && in.CheckOut == nil {
+		return nil, nil, nil, correctionValidationError("status", "Isi status, check_in_at, atau check_out_at.")
+	}
+	if in.Status != nil {
+		st := db.AttendanceStatus(strings.ToUpper(*in.Status))
+		switch st {
+		case db.AttendanceStatusPRESENT, db.AttendanceStatusLEAVE, db.AttendanceStatusABSENT:
+			status = &st
+		default:
+			return nil, nil, nil, correctionValidationError("status", "Harus PRESENT, LEAVE, atau ABSENT.")
+		}
+		if st != db.AttendanceStatusPRESENT && (in.CheckIn != nil || in.CheckOut != nil) {
+			return nil, nil, nil, correctionValidationError("status", "check_in_at/check_out_at hanya berlaku untuk status PRESENT.")
+		}
 	}
 	if in.CheckIn != nil {
-		t, err := time.Parse(time.RFC3339, *in.CheckIn)
-		if err != nil {
-			return nil, nil, correctionValidationError("check_in", "Harus RFC3339.")
+		t, perr := time.Parse(time.RFC3339, *in.CheckIn)
+		if perr != nil {
+			return nil, nil, nil, correctionValidationError("check_in_at", "Harus RFC3339.")
 		}
 		checkIn = &t
 	}
 	if in.CheckOut != nil {
-		t, err := time.Parse(time.RFC3339, *in.CheckOut)
-		if err != nil {
-			return nil, nil, correctionValidationError("check_out", "Harus RFC3339.")
+		t, perr := time.Parse(time.RFC3339, *in.CheckOut)
+		if perr != nil {
+			return nil, nil, nil, correctionValidationError("check_out_at", "Harus RFC3339.")
 		}
 		checkOut = &t
 	}
-	return checkIn, checkOut, nil
+	return status, checkIn, checkOut, nil
 }
 
 // Correct is PATCH /admin/attendances/{id}: an admin's fix of a record after the fact, the part of
@@ -67,7 +84,7 @@ func parseCorrection(in CorrectionInput) (checkIn, checkOut *time.Time, err erro
 // (access.AdminScope.AllowsRegion of the record's project), same as leave/decide.go's
 // decideByAdmin: outside the admin's reach answers 404, the same as a record that does not exist.
 func (s *Service) Correct(ctx context.Context, p auth.Principal, scope access.AdminScope, id int64, in CorrectionInput) (Attendance, error) {
-	checkIn, checkOut, err := parseCorrection(in)
+	status, checkIn, checkOut, err := parseCorrection(in)
 	if err != nil {
 		return Attendance{}, err
 	}
@@ -85,46 +102,32 @@ func (s *Service) Correct(ctx context.Context, p auth.Principal, scope access.Ad
 			return ErrNotFound
 		}
 
+		newStatus := row.Status
+		if status != nil {
+			newStatus = *status
+		} else if row.Status != db.AttendanceStatusPRESENT && (checkIn != nil || checkOut != nil) {
+			return correctionValidationError("check_in_at", "Catatan ini bukan hadir; sertakan status: PRESENT untuk mengoreksi jamnya.")
+		}
+
 		params := db.CorrectAttendanceParams{
-			Status: row.Status, MarkedAbsentByID: row.MarkedAbsentByID, AbsentReason: row.AbsentReason,
+			Status: newStatus, MarkedAbsentByID: row.MarkedAbsentByID, AbsentReason: row.AbsentReason,
 			CheckInAt: row.CheckInAt, CheckInMethod: row.CheckInMethod, LateMinutes: row.LateMinutes,
 			CheckOutAt: row.CheckOutAt, CheckOutMethod: row.CheckOutMethod, Now: ts(now), ID: id,
 		}
-		var eventType string
-		switch {
-		case in.IsAbsent != nil && *in.IsAbsent:
-			if row.Status == db.AttendanceStatusABSENT {
-				return correctionValidationError("is_absent", "Catatan ini sudah mangkir.")
-			}
-			params.Status = db.AttendanceStatusABSENT
+		switch newStatus {
+		case db.AttendanceStatusABSENT:
 			params.MarkedAbsentByID = pgtype.Int8{Int64: p.PersonnelID, Valid: true}
-			params.AbsentReason = textOrNull(in.Note)
+			params.AbsentReason = textOrNull(in.Reason)
 			params.CheckInAt, params.CheckInMethod = pgtype.Timestamptz{}, db.NullAttendanceMethod{}
 			params.CheckOutAt, params.CheckOutMethod = pgtype.Timestamptz{}, db.NullAttendanceMethod{}
 			params.LateMinutes = 0
-			eventType = eventAbsent
-
-		case in.IsAbsent != nil && !*in.IsAbsent:
-			if row.Status != db.AttendanceStatusABSENT {
-				return correctionValidationError("is_absent", "Catatan ini tidak sedang mangkir.")
-			}
-			if checkIn == nil {
-				return correctionValidationError("check_in", "Wajib diisi untuk membatalkan mangkir.")
-			}
-			late, lerr := s.correctedLateness(ctx, q, row, *checkIn)
-			if lerr != nil {
-				return lerr
-			}
-			params.Status = db.AttendanceStatusPRESENT
+		case db.AttendanceStatusLEAVE:
 			params.MarkedAbsentByID, params.AbsentReason = pgtype.Int8{}, pgtype.Text{}
-			params.CheckInAt, params.CheckInMethod = ts(*checkIn), nullMethod(db.AttendanceMethodFORCE)
-			params.LateMinutes = int32(min(late, math.MaxInt32)) //nolint:gosec // clamped
-			eventType = eventAbsentCancelled
-
-		default:
-			if row.Status != db.AttendanceStatusPRESENT {
-				return correctionValidationError("check_in", "Hanya catatan hadir yang bisa dikoreksi jamnya; gunakan is_absent untuk mangkir.")
-			}
+			params.CheckInAt, params.CheckInMethod = pgtype.Timestamptz{}, db.NullAttendanceMethod{}
+			params.CheckOutAt, params.CheckOutMethod = pgtype.Timestamptz{}, db.NullAttendanceMethod{}
+			params.LateMinutes = 0
+		case db.AttendanceStatusPRESENT:
+			params.MarkedAbsentByID, params.AbsentReason = pgtype.Int8{}, pgtype.Text{}
 			if checkIn != nil {
 				late, lerr := s.correctedLateness(ctx, q, row, *checkIn)
 				if lerr != nil {
@@ -133,13 +136,12 @@ func (s *Service) Correct(ctx context.Context, p auth.Principal, scope access.Ad
 				params.CheckInAt, params.CheckInMethod = ts(*checkIn), nullMethod(db.AttendanceMethodFORCE)
 				params.LateMinutes = int32(min(late, math.MaxInt32)) //nolint:gosec // clamped
 			}
+			if !params.CheckInAt.Valid {
+				return correctionValidationError("check_in_at", "Wajib diisi agar catatan ini menjadi hadir.")
+			}
 			if checkOut != nil {
-				if !params.CheckInAt.Valid {
-					return correctionValidationError("check_out", "Catatan ini belum punya jam datang.")
-				}
 				params.CheckOutAt, params.CheckOutMethod = ts(*checkOut), nullMethod(db.AttendanceMethodFORCE)
 			}
-			eventType = eventCorrected
 		}
 
 		before := correctionSnapshot(row)
@@ -147,13 +149,13 @@ func (s *Service) Correct(ctx context.Context, p auth.Principal, scope access.Ad
 		if err != nil {
 			return fmt.Errorf("correct attendance: %w", err)
 		}
-		if err := writeEvent(ctx, q, updated, eventType, now); err != nil {
+		if err := writeEvent(ctx, q, updated, eventCorrected, now); err != nil {
 			return err
 		}
 		actorID := p.PersonnelID
 		if err := audit.Record(ctx, q, audit.Entry{
 			ActorPersonnelID: &actorID, Action: "attendance.correct", EntityType: "attendance", EntityID: id,
-			Metadata: map[string]any{"before": before, "after": correctionSnapshot(updated), "note": in.Note},
+			Metadata: map[string]any{"before": before, "after": correctionSnapshot(updated), "reason": in.Reason},
 		}); err != nil {
 			return err
 		}

@@ -57,7 +57,9 @@ func (h *Handler) MountField(r chi.Router) {
 	// permission either, same reason as the detail: List itself refuses with PERMISSION_DENIED
 	// when the caller's group/absence view grant reaches no regu at all.
 	r.With(h.access.Require(access.AttendanceAbsenceNew), h.idempotent).Post("/api/v1/attendances/absent", record(h.service.MarkAbsent, http.StatusCreated))
+	r.With(h.access.Require(access.AttendanceAbsenceNew)).Delete("/api/v1/attendances/absent/{id}", h.cancelAbsent)
 	r.Get("/api/v1/attendances", h.list)
+	r.Get("/api/v1/attendances/group-summary", h.groupSummary)
 	r.With(h.access.Require(access.AttendanceGroupView), h.idempotent).Post("/api/v1/attendances/group", h.group)
 }
 
@@ -324,6 +326,50 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 	httpx.OK(w, r, http.StatusOK, out)
 }
 
+// cancelAbsent is DELETE /attendances/absent/{id}.
+func (h *Handler) cancelAbsent(w http.ResponseWriter, r *http.Request) {
+	p, ok := auth.From(r.Context())
+	if !ok {
+		httpx.Error(w, r, apperr.ErrUnauthenticated)
+		return
+	}
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || id < 1 {
+		httpx.Error(w, r, ErrNotFound)
+		return
+	}
+	if err := h.service.CancelAbsent(r.Context(), p, id); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.OK(w, r, http.StatusOK, nil)
+}
+
+// teamAttendanceRowJSON is one member's record of one day, GET /attendances' shape.
+type teamAttendanceRowJSON struct {
+	AttendanceID       int64   `json:"attendance_id"`
+	PersonnelID        int64   `json:"personnel_id"`
+	PersonnelName      string  `json:"personnel_name"`
+	WorkDate           string  `json:"work_date"`
+	ShiftName          string  `json:"shift_name"`
+	Status             string  `json:"status"`
+	CheckInAt          *string `json:"check_in_at"`
+	CheckInMethod      *string `json:"check_in_method"`
+	CheckInWithinArea  *bool   `json:"check_in_within_area"`
+	CheckOutAt         *string `json:"check_out_at"`
+	CheckOutMethod     *string `json:"check_out_method"`
+	CheckOutWithinArea *bool   `json:"check_out_within_area"`
+}
+
+func teamRowToAPI(r TeamAttendanceRow) teamAttendanceRowJSON {
+	return teamAttendanceRowJSON{
+		AttendanceID: r.AttendanceID, PersonnelID: r.PersonnelID, PersonnelName: r.PersonnelName,
+		WorkDate: r.WorkDate.String(), ShiftName: r.ShiftName, Status: r.Status,
+		CheckInAt: stamp(r.CheckInAt), CheckInMethod: methodName(r.CheckInMethod), CheckInWithinArea: r.CheckInWithinArea,
+		CheckOutAt: stamp(r.CheckOutAt), CheckOutMethod: methodName(r.CheckOutMethod), CheckOutWithinArea: r.CheckOutWithinArea,
+	}
+}
+
 // list is GET /attendances: the regu monitor. No route permission: List itself refuses with
 // PERMISSION_DENIED when the caller's group/absence view grant reaches no regu, or when team_code
 // asks for one outside it.
@@ -353,11 +399,56 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, r, err)
 		return
 	}
-	out := make([]attendanceJSON, 0, len(page.Attendances))
-	for _, a := range page.Attendances {
-		out = append(out, attendanceToAPI(a))
+	out := make([]teamAttendanceRowJSON, 0, len(page.Rows))
+	for _, row := range page.Rows {
+		out = append(out, teamRowToAPI(row))
 	}
 	httpx.List(w, r, out, query.WithTotal(page.Total))
+}
+
+// groupSummaryDayJSON is one day of GET /attendances/group-summary.
+type groupSummaryDayJSON struct {
+	WorkDate  string `json:"work_date"`
+	Scheduled int    `json:"scheduled"`
+	Present   int    `json:"present"`
+	Leave     int    `json:"leave"`
+	Absent    int    `json:"absent"`
+	Missing   int    `json:"missing"`
+	Swapped   int    `json:"swapped"`
+}
+
+// groupSummary is GET /attendances/group-summary?team_code=&month=.
+func (h *Handler) groupSummary(w http.ResponseWriter, r *http.Request) {
+	p, ok := auth.From(r.Context())
+	if !ok {
+		httpx.Error(w, r, apperr.ErrUnauthenticated)
+		return
+	}
+	teamCode, month := r.URL.Query().Get("team_code"), r.URL.Query().Get("month")
+	var fields []apperr.FieldError
+	if teamCode == "" {
+		fields = append(fields, apperr.FieldError{Field: "team_code", Code: "REQUIRED", Message: "team_code wajib diisi."})
+	}
+	if month == "" {
+		fields = append(fields, apperr.FieldError{Field: "month", Code: "REQUIRED", Message: "month wajib diisi (YYYY-MM)."})
+	}
+	if len(fields) > 0 {
+		httpx.Error(w, r, apperr.ErrValidation.WithFields(fields...))
+		return
+	}
+	days, err := h.service.GroupSummary(r.Context(), p, teamCode, month)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	out := make([]groupSummaryDayJSON, 0, len(days))
+	for _, d := range days {
+		out = append(out, groupSummaryDayJSON{
+			WorkDate: d.WorkDate.String(), Scheduled: d.Scheduled, Present: d.Present,
+			Leave: d.Leave, Absent: d.Absent, Missing: d.Missing, Swapped: d.Swapped,
+		})
+	}
+	httpx.OK(w, r, http.StatusOK, out)
 }
 
 // dateQueryParam reads an optional YYYY-MM-DD query parameter. ok is false when the answer is
@@ -380,7 +471,6 @@ func dateQueryParam(w http.ResponseWriter, r *http.Request, name string) (*timeu
 // groupEntryJSON is one entry's outcome of POST /attendances/group.
 type groupEntryJSON struct {
 	PersonnelID int64           `json:"personnel_id"`
-	Status      string          `json:"status"`
 	Attendance  *attendanceJSON `json:"attendance"`
 	Error       *groupErrorJSON `json:"error"`
 }
@@ -391,7 +481,7 @@ type groupErrorJSON struct {
 }
 
 func groupEntryToAPI(r GroupEntryResult) groupEntryJSON {
-	out := groupEntryJSON{PersonnelID: r.PersonnelID, Status: string(r.Status)}
+	out := groupEntryJSON{PersonnelID: r.PersonnelID}
 	if r.Attendance != nil {
 		a := attendanceToAPI(*r.Attendance)
 		out.Attendance = &a

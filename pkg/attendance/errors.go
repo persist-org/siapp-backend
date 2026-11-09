@@ -29,8 +29,11 @@ const (
 	ReasonQRWrongTeam   = "ATTENDANCE_QR_WRONG_TEAM"
 	ReasonQRUnavailable = "ATTENDANCE_QR_UNAVAILABLE"
 
-	// Phase 07.6: DANRU absence, group present, admin correction.
-	ReasonPersonnelNotScheduled = "ATTENDANCE_PERSONNEL_NOT_SCHEDULED"
+	// Phase 07.6: DANRU absence, group present, admin correction. These four are the plan's fixed
+	// reason catalog for the phase (docs/plan/07-attendance.md); do not add others beside them.
+	ReasonNoShift               = "ATTENDANCE_NO_SHIFT"
+	ReasonAbsenceAlreadyPresent = "ABSENCE_ALREADY_PRESENT"
+	ReasonGroupAttendanceOff    = "GROUP_ATTENDANCE_DISABLED"
 )
 
 // ErrQRInvalid is returned for a QR token that is not one the system issued: malformed, a bad
@@ -101,8 +104,20 @@ var ErrAlreadyCheckedOut = apperr.New(http.StatusConflict, apperr.CodeDuplicate,
 var ErrNotCheckedOut = apperr.New(http.StatusUnprocessableEntity, apperr.CodeUnprocessable,
 	ReasonNotCheckedOut, "Belum ada absen pulang yang bisa diperbarui.")
 
-// ErrPersonnelNotScheduled is returned by the DANRU absence and group-present endpoints when the
-// target personnel has no shift instance of the given regu on the given work date: there is no
-// shift instance to turn into a record.
-var ErrPersonnelNotScheduled = apperr.New(http.StatusUnprocessableEntity, apperr.CodeUnprocessable,
-	ReasonPersonnelNotScheduled, "Personil tidak terjadwal pada regu dan tanggal ini.")
+// ErrNoShift is returned by the DANRU absence and group-present endpoints when the target
+// personnel has no shift instance of the given regu on the given work date: there is no shift
+// instance to turn into a record.
+var ErrNoShift = apperr.New(http.StatusUnprocessableEntity, apperr.CodeUnprocessable,
+	ReasonNoShift, "Personil tidak terjadwal pada regu dan tanggal ini.")
+
+// ErrAbsenceAlreadyPresent is returned by the DANRU absence and group-present endpoints for a
+// shift instance that already has a check-in: a guard who came to work is not the DANRU's to mark
+// absent.
+var ErrAbsenceAlreadyPresent = apperr.New(http.StatusConflict, apperr.CodeDuplicate,
+	ReasonAbsenceAlreadyPresent, "Personil sudah absen datang pada shift ini.")
+
+// ErrGroupAttendanceOff is returned by the group check-in endpoint while the project has not
+// opted into it (projects.allow_group_attendance): it records presence without each guard's own
+// evidence, which weakens the anti-fraud purpose of QR and selfie, so a project must opt in.
+var ErrGroupAttendanceOff = apperr.New(http.StatusUnprocessableEntity, apperr.CodeUnprocessable,
+	ReasonGroupAttendanceOff, "Absensi group belum diaktifkan untuk proyek ini.")
