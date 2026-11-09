@@ -269,6 +269,93 @@ func (ns NullDevicePlatform) Value() (driver.Value, error) {
 	return string(ns.DevicePlatform), nil
 }
 
+type LeaveCategoryType string
+
+const (
+	LeaveCategoryTypeLEAVE  LeaveCategoryType = "LEAVE"
+	LeaveCategoryTypePERMIT LeaveCategoryType = "PERMIT"
+	LeaveCategoryTypeSICK   LeaveCategoryType = "SICK"
+)
+
+func (e *LeaveCategoryType) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = LeaveCategoryType(s)
+	case string:
+		*e = LeaveCategoryType(s)
+	default:
+		return fmt.Errorf("unsupported scan type for LeaveCategoryType: %T", src)
+	}
+	return nil
+}
+
+type NullLeaveCategoryType struct {
+	LeaveCategoryType LeaveCategoryType
+	Valid             bool // Valid is true if LeaveCategoryType is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullLeaveCategoryType) Scan(value interface{}) error {
+	if value == nil {
+		ns.LeaveCategoryType, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.LeaveCategoryType.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullLeaveCategoryType) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.LeaveCategoryType), nil
+}
+
+type LeaveLedgerKind string
+
+const (
+	LeaveLedgerKindGRANT  LeaveLedgerKind = "GRANT"
+	LeaveLedgerKindDEDUCT LeaveLedgerKind = "DEDUCT"
+	LeaveLedgerKindREFUND LeaveLedgerKind = "REFUND"
+	LeaveLedgerKindADJUST LeaveLedgerKind = "ADJUST"
+)
+
+func (e *LeaveLedgerKind) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = LeaveLedgerKind(s)
+	case string:
+		*e = LeaveLedgerKind(s)
+	default:
+		return fmt.Errorf("unsupported scan type for LeaveLedgerKind: %T", src)
+	}
+	return nil
+}
+
+type NullLeaveLedgerKind struct {
+	LeaveLedgerKind LeaveLedgerKind
+	Valid           bool // Valid is true if LeaveLedgerKind is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullLeaveLedgerKind) Scan(value interface{}) error {
+	if value == nil {
+		ns.LeaveLedgerKind, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.LeaveLedgerKind.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullLeaveLedgerKind) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.LeaveLedgerKind), nil
+}
+
 type MediaPurpose string
 
 const (
@@ -1130,6 +1217,55 @@ type IdempotencyKey struct {
 	ResponseBody     json.RawMessage
 	CreatedAt        pgtype.Timestamptz
 	ResponseOmitted  bool
+}
+
+type LeaveCategory struct {
+	ID                int64
+	OrganizationID    int64
+	Code              string
+	Name              string
+	Type              LeaveCategoryType
+	IsAnnual          bool
+	SkipsDayCheck     bool
+	RequiresTimeRange bool
+	RequiresChangeDay bool
+	MakesLeaveDays    bool
+	ExcusesLateness   bool
+	HasQuota          bool
+	SortOrder         int32
+	Active            bool
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
+}
+
+type LeaveCategoryQuota struct {
+	ID             int64
+	OrganizationID int64
+	CategoryID     int64
+	ClientCode     pgtype.Text
+	QuotaDays      int32
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
+type LeaveClientSetting struct {
+	OrganizationID  int64
+	ClientCode      string
+	RequestsEnabled bool
+	UpdatedAt       pgtype.Timestamptz
+}
+
+type LeaveLedger struct {
+	ID             int64
+	OrganizationID int64
+	PersonnelID    int64
+	Kind           LeaveLedgerKind
+	Days           int32
+	BalanceAfter   int32
+	LeaveRequestID pgtype.Int8
+	Note           string
+	CreatedByID    pgtype.Int8
+	CreatedAt      pgtype.Timestamptz
 }
 
 type LegacyContactType struct {

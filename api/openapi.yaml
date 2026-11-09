@@ -1886,8 +1886,134 @@ components:
       $ref: '#/components/schemas/Category'
     InstructionCategory:
       $ref: '#/components/schemas/Category'
-    PermissionCategory:
-      allOf: [ { $ref: '#/components/schemas/CodedMaster' } ]
+    LeaveCategoryType:
+      type: string
+      enum: [LEAVE, PERMIT, SICK]
+    LeaveCategory:
+      type: object
+      description: >-
+        Kategori izin, cuti atau sakit. Keistimewaannya ada pada bendera: `is_annual` (memakai saldo
+        buku besar), `skips_day_check` (hari tidak dibandingkan dengan sisa), `requires_time_range`
+        (perlu jam mulai dan selesai; kelas "sebagian hari"), `requires_change_day` (perlu hari
+        tukar), `makes_leave_days` (persetujuan menulis baris LEAVE), `excuses_lateness`
+        (menghapus keterlambatan hari itu), `has_quota`.
+      required: [code, name, type, is_annual, skips_day_check, requires_time_range, requires_change_day, makes_leave_days, excuses_lateness, has_quota, sort_order, is_active, created_at, updated_at]
+      properties:
+        code: { type: string, example: ANNUAL }
+        name: { type: string, example: Cuti Tahunan }
+        type: { $ref: '#/components/schemas/LeaveCategoryType' }
+        is_annual: { type: boolean }
+        skips_day_check: { type: boolean }
+        requires_time_range: { type: boolean }
+        requires_change_day: { type: boolean }
+        makes_leave_days: { type: boolean }
+        excuses_lateness: { type: boolean }
+        has_quota: { type: boolean }
+        sort_order: { type: integer }
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    LeaveCategoryDetail:
+      allOf:
+        - { $ref: '#/components/schemas/LeaveCategory' }
+        - type: object
+          required: [quotas]
+          properties:
+            quotas: { $ref: '#/components/schemas/LeaveQuotas' }
+    LeaveCategoryInput:
+      type: object
+      required: [code, name, type]
+      properties:
+        code: { type: string, pattern: '^[A-Z][A-Z0-9_]{1,39}$' }
+        name: { type: string, maxLength: 100 }
+        type: { $ref: '#/components/schemas/LeaveCategoryType' }
+        is_annual: { type: boolean, default: false }
+        skips_day_check: { type: boolean }
+        requires_time_range: { type: boolean }
+        requires_change_day: { type: boolean }
+        makes_leave_days: { type: boolean, description: "Bawaan true." }
+        excuses_lateness: { type: boolean }
+        has_quota: { type: boolean, description: "Bawaan false untuk SICK, selain itu true." }
+        sort_order: { type: integer, minimum: 0, maximum: 10000 }
+        is_active: { type: boolean }
+    LeaveCategoryUpdate:
+      type: object
+      properties:
+        name: { type: string, maxLength: 100 }
+        skips_day_check: { type: boolean }
+        requires_time_range: { type: boolean }
+        requires_change_day: { type: boolean }
+        makes_leave_days: { type: boolean }
+        excuses_lateness: { type: boolean }
+        has_quota: { type: boolean }
+        sort_order: { type: integer, minimum: 0, maximum: 10000 }
+        is_active: { type: boolean }
+    LeaveCategoryTombstone:
+      type: object
+      description: Kategori yang dinonaktifkan, untuk cache lokal delta-sync (berkunci `code`).
+      required: [code, deleted_at]
+      properties:
+        code: { type: string }
+        deleted_at: { type: string, format: date-time }
+    LeaveQuotas:
+      type: object
+      required: [default_days, clients]
+      properties:
+        default_days: { type: integer, nullable: true, minimum: 0, maximum: 366, description: "null: tidak ada default, klien tanpa barisnya punya 0 hari." }
+        clients:
+          type: array
+          items:
+            type: object
+            required: [client_code, quota_days]
+            properties:
+              client_code: { type: string, example: 1K-IBMI }
+              quota_days: { type: integer, minimum: 0, maximum: 366 }
+    LeaveQuotasInput:
+      type: object
+      properties:
+        default_days: { type: integer, minimum: 0, maximum: 366 }
+        clients:
+          type: array
+          maxItems: 500
+          items:
+            type: object
+            required: [client_code, quota_days]
+            properties:
+              client_code: { type: string, maxLength: 40 }
+              quota_days: { type: integer, minimum: 0, maximum: 366 }
+    LeaveQuota:
+      type: object
+      required: [category_code, quota_days, used_days, remaining_days]
+      properties:
+        category_code: { type: string }
+        quota_days: { type: integer, description: "Batas: saldo untuk cuti tahunan, hari kuota klien untuk lainnya." }
+        used_days: { type: integer, description: "Hari yang dipegang pengajuan menunggu dan disetujui tahun ini." }
+        remaining_days: { type: integer }
+    LeaveApprover:
+      type: object
+      required: [personnel_id, name]
+      properties:
+        personnel_id: { type: integer, format: int64 }
+        name: { type: string }
+    LeaveLedgerEntry:
+      type: object
+      required: [id, kind, days, balance_after, note, created_at]
+      properties:
+        id: { type: integer, format: int64 }
+        kind: { type: string, enum: [GRANT, DEDUCT, REFUND, ADJUST] }
+        days: { type: integer, description: "Bertanda: pengurangan negatif." }
+        balance_after: { type: integer, minimum: 0 }
+        leave_request_id: { type: integer, format: int64, nullable: true }
+        note: { type: string }
+        created_by_id: { type: integer, format: int64, nullable: true }
+        created_at: { type: string, format: date-time }
+    LeaveLedgerInput:
+      type: object
+      required: [kind, days, note]
+      properties:
+        kind: { type: string, enum: [GRANT, ADJUST] }
+        days: { type: integer, minimum: -3660, maximum: 3660, description: "GRANT: lebih dari 0. ADJUST: tidak 0." }
+        note: { type: string, maxLength: 200 }
     Letterhead:
       type: object
       description: >-
@@ -3813,18 +3939,18 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
   /admin/permission-categories:
     get:
-      x-owner: personel
       operationId: getAdminPermissionCategories
-      tags: [Masters]
-      summary: List PermissionCategory
+      tags: [Permission]
+      summary: Daftar kategori izin (ORG_ADMIN)
+      description: >-
+        Kategori izin, cuti dan sakit milik SiAPP (D2), aktif atau tidak. Apa yang istimewa dari
+        sebuah kategori ada pada bendera barisnya, bukan pada kode atau namanya.
       security:
         - bearerSession: []
-        - oauth2ClientCredentials: [masters:read]
-        - apiKey: []
       parameters:
+        - { name: type, in: query, required: false, schema: { $ref: '#/components/schemas/LeaveCategoryType' } }
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/LimitParam'
-        - $ref: '#/components/parameters/SortParam'
         - $ref: '#/components/parameters/QParam'
         - $ref: '#/components/parameters/IsActiveParam'
       responses:
@@ -3835,25 +3961,24 @@ paths:
               schema:
                 allOf:
                   - { $ref: '#/components/schemas/ListEnvelope' }
-                  - properties: { data: { type: array, items: { $ref: '#/components/schemas/PermissionCategory' } } }
+                  - properties: { data: { type: array, items: { $ref: '#/components/schemas/LeaveCategory' } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
     post:
-      x-owner: personel
       operationId: postAdminPermissionCategories
-      tags: [Masters]
-      summary: Buat PermissionCategory
+      tags: [Permission]
+      summary: Buat kategori izin (ORG_ADMIN)
+      description: >-
+        Kode, tipe dan `is_annual` tidak bisa diubah sesudahnya, dan kode tidak pernah dipakai dua
+        kali (409 `LEAVE_CATEGORY_CODE_TAKEN`). Bendera yang saling bertentangan: 422.
       security:
         - bearerSession: []
-        - oauth2ClientCredentials: [masters:write]
-        - apiKey: []
-      parameters:
-        - $ref: '#/components/parameters/IdempotencyKeyHeader'
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/CodedMasterInput' }
+            schema: { $ref: '#/components/schemas/LeaveCategoryInput' }
       responses:
         '201':
           description: Created
@@ -3862,23 +3987,20 @@ paths:
               schema:
                 allOf:
                   - { $ref: '#/components/schemas/SuccessEnvelope' }
-                  - properties: { data: { $ref: '#/components/schemas/PermissionCategory' } }
+                  - properties: { data: { $ref: '#/components/schemas/LeaveCategory' } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
-  /admin/permission-categories/{id}:
+  /admin/permission-categories/{code}:
     parameters:
-      - $ref: '#/components/parameters/IdPath'
+      - { name: code, in: path, required: true, schema: { type: string, example: ANNUAL } }
     get:
-      x-owner: personel
-      operationId: getAdminPermissionCategoriesById
-      tags: [Masters]
-      summary: Detail PermissionCategory
+      operationId: getAdminPermissionCategoriesByCode
+      tags: [Permission]
+      summary: Detail kategori izin beserta kuotanya (ORG_ADMIN)
       security:
         - bearerSession: []
-        - oauth2ClientCredentials: [masters:read]
-        - apiKey: []
       responses:
         '200':
           description: OK
@@ -3887,23 +4009,24 @@ paths:
               schema:
                 allOf:
                   - { $ref: '#/components/schemas/SuccessEnvelope' }
-                  - properties: { data: { $ref: '#/components/schemas/PermissionCategory' } }
+                  - properties: { data: { $ref: '#/components/schemas/LeaveCategoryDetail' } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
     patch:
-      x-owner: personel
-      operationId: patchAdminPermissionCategoriesById
-      tags: [Masters]
-      summary: Ubah PermissionCategory
+      operationId: patchAdminPermissionCategoriesByCode
+      tags: [Permission]
+      summary: Ubah atau nonaktifkan kategori izin (ORG_ADMIN)
+      description: >-
+        Kategori tidak dihapus, hanya dinonaktifkan (`is_active: false`): permintaan lama tetap
+        menunjuk padanya. Kode, tipe dan `is_annual` tidak bisa diubah (422).
       security:
         - bearerSession: []
-        - oauth2ClientCredentials: [masters:write]
-        - apiKey: []
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/CodedMasterInput' }
+            schema: { $ref: '#/components/schemas/LeaveCategoryUpdate' }
       responses:
         '200':
           description: OK
@@ -3912,29 +4035,138 @@ paths:
               schema:
                 allOf:
                   - { $ref: '#/components/schemas/SuccessEnvelope' }
-                  - properties: { data: { $ref: '#/components/schemas/PermissionCategory' } }
+                  - properties: { data: { $ref: '#/components/schemas/LeaveCategory' } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
-    delete:
-      x-owner: personel
-      operationId: deleteAdminPermissionCategoriesById
-      tags: [Masters]
-      summary: Hapus/non-aktifkan PermissionCategory
+  /admin/permission-categories/{code}/quotas:
+    parameters:
+      - { name: code, in: path, required: true, schema: { type: string, example: UNPAID } }
+    put:
+      operationId: putAdminPermissionCategoriesByCodeQuotas
+      tags: [Permission]
+      summary: Ganti kuota hari sebuah kategori (ORG_ADMIN)
+      description: >-
+        Baris yang dikirim adalah baris yang ada sesudahnya. `default_days` berlaku untuk klien tanpa
+        barisnya sendiri; **tanpa baris sama sekali berarti 0 hari**, jadi kategori itu belum bisa
+        diajukan. Cuti tahunan dibatasi saldo (bukan kuota) dan sakit tidak berkuota: keduanya 422
+        `LEAVE_CATEGORY_INVALID`.
       security:
         - bearerSession: []
-        - oauth2ClientCredentials: [masters:write]
-        - apiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LeaveQuotasInput' }
       responses:
         '200':
           description: OK
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { $ref: '#/components/schemas/LeaveQuotas' } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /admin/leave-client-settings/{client_code}:
+    parameters:
+      - { name: client_code, in: path, required: true, schema: { type: string, example: 1K-IBMI } }
+    put:
+      operationId: putAdminLeaveClientSettingsByClientCode
+      tags: [Permission]
+      summary: Nyalakan atau matikan pengajuan izin untuk satu klien (ORG_ADMIN)
+      description: >-
+        Klien tanpa pengaturan dianggap menyala. Klien yang dimatikan: setiap pengajuan bukan sakit
+        gagal dengan `LEAVE_QUOTA_EXCEEDED`.
+      security:
+        - bearerSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [requests_enabled]
+              properties:
+                requests_enabled: { type: boolean }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties:
+                      data:
+                        type: object
+                        required: [client_code, requests_enabled]
+                        properties:
+                          client_code: { type: string }
+                          requests_enabled: { type: boolean }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /admin/personnel/{personnel_id}/leave-ledger:
+    parameters:
+      - { name: personnel_id, in: path, required: true, schema: { type: integer, format: int64 } }
+    get:
+      operationId: getAdminPersonnelByPersonnelIdLeaveLedger
+      tags: [Permission]
+      summary: Riwayat saldo cuti tahunan seorang pegawai
+      description: >-
+        Terbaru dulu; `balance_after` baris pertama adalah saldo sekarang. ORG_ADMIN, atau
+        REGION_ADMIN untuk pegawai yang bertugas di regu di bawah wilayahnya (di luar itu 403, sama
+        dengan pegawai yang tidak ada).
+      security:
+        - bearerSession: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/ListEnvelope' }
+                  - properties: { data: { type: array, items: { $ref: '#/components/schemas/LeaveLedgerEntry' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      operationId: postAdminPersonnelByPersonnelIdLeaveLedger
+      tags: [Permission]
+      summary: Beri saldo cuti tahunan atau koreksi saldo
+      description: >-
+        `GRANT` menambah hari (lebih dari 0). `ADJUST` mengoreksi (positif atau negatif). Saldo tidak
+        boleh di bawah 0 (422 `LEAVE_BALANCE_INSUFFICIENT`). Riwayat hanya ditambah, tidak diubah.
+      security:
+        - bearerSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LeaveLedgerInput' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { $ref: '#/components/schemas/LeaveLedgerEntry' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /admin/instruction-categories:
     get:
       operationId: getAdminInstructionCategories
@@ -9764,14 +9996,84 @@ paths:
     get:
       operationId: getPermissionCategories
       tags: [Permission]
-      summary: Daftar kategori izin (lookup)
+      summary: Daftar kategori izin, cuti dan sakit (lookup, delta-sync)
       description: >-
-        Kategori izin milik Persist Personel (LOCK/01 §2), dibaca lewat cache; SiAPP tidak menyimpannya.
-        Personel tidak dapat menjawab → 503 PERSONEL_UNAVAILABLE.
+        Kategori milik SiAPP (D2), tidak lagi dibaca dari Personel. Dua bentuk jawaban:
+
+        - **Tanpa `since`**: semua baris aktif sekaligus, dengan `meta.server_time` sebagai
+          watermark pertama klien.
+        - **Dengan `since`** (delta-sync, DL-34/DL-57): baris yang berubah di `data`, dan yang
+          dinonaktifkan di `deleted` (tombstone, berkunci `code`). Simpan `meta.server_time`.
+
+        `type` menyaring satu tipe (LEAVE, PERMIT atau SICK).
+      parameters:
+        - { name: type, in: query, required: false, schema: { $ref: '#/components/schemas/LeaveCategoryType' } }
+        - $ref: '#/components/parameters/SinceParam'
       responses:
-        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/ListEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/PermissionCategory' } } } } ] } } } }
+        '200':
+          description: OK. `meta.server_time` WAJIB.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/LeaveCategory' } }
+                      deleted: { type: array, items: { $ref: '#/components/schemas/LeaveCategoryTombstone' } }
+                      pagination: { $ref: '#/components/schemas/Pagination' }
+                      meta: { $ref: '#/components/schemas/DeltaMeta' }
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /permissions/quota:
+    get:
+      operationId: getPermissionsQuota
+      tags: [Permission]
+      summary: Sisa kuota milik sendiri untuk satu kategori
+      description: >-
+        Cuti tahunan: `quota_days` adalah saldo buku besar. Kategori lain: hari kuota klien regu itu
+        (bila tidak ada baris, 0) dikurangi hari yang dipegang pengajuan menunggu dan disetujui
+        tahun ini. `team_code` boleh dikosongkan bila orang itu hanya bertugas di satu regu.
+        Sakit dan kategori tanpa kuota: 422 `LEAVE_CATEGORY_INVALID`. Perlu `attendance.leave.request`.
+      parameters:
+        - { name: category_code, in: query, required: true, schema: { type: string, example: ANNUAL } }
+        - { name: team_code, in: query, required: false, schema: { type: string, example: 1K-IBMI-S1 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { $ref: '#/components/schemas/LeaveQuota' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /permissions/approver:
+    get:
+      operationId: getPermissionsApprover
+      tags: [Permission]
+      summary: Siapa yang akan memutuskan pengajuan di sebuah regu
+      description: >-
+        DANRU regu itu hari ini. Regu tanpa DANRU, atau pemanggil sendiri DANRU-nya: 404
+        `LEAVE_NO_APPROVER` (pengajuan tetap bisa dibuat; admin yang memutuskan). Perlu
+        `attendance.leave.request`.
+      parameters:
+        - { name: team_code, in: query, required: false, schema: { type: string, example: 1K-IBMI-S1 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { $ref: '#/components/schemas/LeaveApprover' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /permissions:
     get:
       operationId: getPermissions

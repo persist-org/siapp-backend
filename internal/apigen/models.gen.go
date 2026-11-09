@@ -615,6 +615,69 @@ func (e InvoiceStatus) Valid() bool {
 	}
 }
 
+// Defines values for LeaveCategoryType.
+const (
+	LeaveCategoryTypeLEAVE  LeaveCategoryType = "LEAVE"
+	LeaveCategoryTypePERMIT LeaveCategoryType = "PERMIT"
+	LeaveCategoryTypeSICK   LeaveCategoryType = "SICK"
+)
+
+// Valid indicates whether the value is a known member of the LeaveCategoryType enum.
+func (e LeaveCategoryType) Valid() bool {
+	switch e {
+	case LeaveCategoryTypeLEAVE:
+		return true
+	case LeaveCategoryTypePERMIT:
+		return true
+	case LeaveCategoryTypeSICK:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for LeaveLedgerEntryKind.
+const (
+	LeaveLedgerEntryKindADJUST LeaveLedgerEntryKind = "ADJUST"
+	LeaveLedgerEntryKindDEDUCT LeaveLedgerEntryKind = "DEDUCT"
+	LeaveLedgerEntryKindGRANT  LeaveLedgerEntryKind = "GRANT"
+	LeaveLedgerEntryKindREFUND LeaveLedgerEntryKind = "REFUND"
+)
+
+// Valid indicates whether the value is a known member of the LeaveLedgerEntryKind enum.
+func (e LeaveLedgerEntryKind) Valid() bool {
+	switch e {
+	case LeaveLedgerEntryKindADJUST:
+		return true
+	case LeaveLedgerEntryKindDEDUCT:
+		return true
+	case LeaveLedgerEntryKindGRANT:
+		return true
+	case LeaveLedgerEntryKindREFUND:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for LeaveLedgerInputKind.
+const (
+	LeaveLedgerInputKindADJUST LeaveLedgerInputKind = "ADJUST"
+	LeaveLedgerInputKindGRANT  LeaveLedgerInputKind = "GRANT"
+)
+
+// Valid indicates whether the value is a known member of the LeaveLedgerInputKind enum.
+func (e LeaveLedgerInputKind) Valid() bool {
+	switch e {
+	case LeaveLedgerInputKindADJUST:
+		return true
+	case LeaveLedgerInputKindGRANT:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListEnvelopeSuccess.
 const (
 	ListEnvelopeSuccessTrue ListEnvelopeSuccess = true
@@ -2478,6 +2541,21 @@ func (e PatchAdminInstructionCategoriesById200JSONResponseBodySuccess) Valid() b
 	}
 }
 
+// Defines values for PutAdminLeaveClientSettingsByClientCode200JSONResponseBodySuccess.
+const (
+	PutAdminLeaveClientSettingsByClientCode200JSONResponseBodySuccessTrue PutAdminLeaveClientSettingsByClientCode200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PutAdminLeaveClientSettingsByClientCode200JSONResponseBodySuccess enum.
+func (e PutAdminLeaveClientSettingsByClientCode200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PutAdminLeaveClientSettingsByClientCode200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetAdminLetterheads200JSONResponseBodySuccess.
 const (
 	GetAdminLetterheads200JSONResponseBodySuccessTrue GetAdminLetterheads200JSONResponseBodySuccess = true
@@ -2736,30 +2814,45 @@ func (e PostAdminPermissionCategories201JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
-// Defines values for GetAdminPermissionCategoriesById200JSONResponseBodySuccess.
+// Defines values for GetAdminPermissionCategoriesByCode200JSONResponseBodySuccess.
 const (
-	GetAdminPermissionCategoriesById200JSONResponseBodySuccessTrue GetAdminPermissionCategoriesById200JSONResponseBodySuccess = true
+	GetAdminPermissionCategoriesByCode200JSONResponseBodySuccessTrue GetAdminPermissionCategoriesByCode200JSONResponseBodySuccess = true
 )
 
-// Valid indicates whether the value is a known member of the GetAdminPermissionCategoriesById200JSONResponseBodySuccess enum.
-func (e GetAdminPermissionCategoriesById200JSONResponseBodySuccess) Valid() bool {
+// Valid indicates whether the value is a known member of the GetAdminPermissionCategoriesByCode200JSONResponseBodySuccess enum.
+func (e GetAdminPermissionCategoriesByCode200JSONResponseBodySuccess) Valid() bool {
 	switch e {
-	case GetAdminPermissionCategoriesById200JSONResponseBodySuccessTrue:
+	case GetAdminPermissionCategoriesByCode200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
 	}
 }
 
-// Defines values for PatchAdminPermissionCategoriesById200JSONResponseBodySuccess.
+// Defines values for PatchAdminPermissionCategoriesByCode200JSONResponseBodySuccess.
 const (
-	PatchAdminPermissionCategoriesById200JSONResponseBodySuccessTrue PatchAdminPermissionCategoriesById200JSONResponseBodySuccess = true
+	PatchAdminPermissionCategoriesByCode200JSONResponseBodySuccessTrue PatchAdminPermissionCategoriesByCode200JSONResponseBodySuccess = true
 )
 
-// Valid indicates whether the value is a known member of the PatchAdminPermissionCategoriesById200JSONResponseBodySuccess enum.
-func (e PatchAdminPermissionCategoriesById200JSONResponseBodySuccess) Valid() bool {
+// Valid indicates whether the value is a known member of the PatchAdminPermissionCategoriesByCode200JSONResponseBodySuccess enum.
+func (e PatchAdminPermissionCategoriesByCode200JSONResponseBodySuccess) Valid() bool {
 	switch e {
-	case PatchAdminPermissionCategoriesById200JSONResponseBodySuccessTrue:
+	case PatchAdminPermissionCategoriesByCode200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PutAdminPermissionCategoriesByCodeQuotas200JSONResponseBodySuccess.
+const (
+	PutAdminPermissionCategoriesByCodeQuotas200JSONResponseBodySuccessTrue PutAdminPermissionCategoriesByCodeQuotas200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PutAdminPermissionCategoriesByCodeQuotas200JSONResponseBodySuccess enum.
+func (e PutAdminPermissionCategoriesByCodeQuotas200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PutAdminPermissionCategoriesByCodeQuotas200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
@@ -2793,6 +2886,36 @@ const (
 func (e GetAdminPersonnelReviews200JSONResponseBodySuccess) Valid() bool {
 	switch e {
 	case GetAdminPersonnelReviews200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetAdminPersonnelByPersonnelIdLeaveLedger200JSONResponseBodySuccess.
+const (
+	GetAdminPersonnelByPersonnelIdLeaveLedger200JSONResponseBodySuccessTrue GetAdminPersonnelByPersonnelIdLeaveLedger200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetAdminPersonnelByPersonnelIdLeaveLedger200JSONResponseBodySuccess enum.
+func (e GetAdminPersonnelByPersonnelIdLeaveLedger200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetAdminPersonnelByPersonnelIdLeaveLedger200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostAdminPersonnelByPersonnelIdLeaveLedger201JSONResponseBodySuccess.
+const (
+	PostAdminPersonnelByPersonnelIdLeaveLedger201JSONResponseBodySuccessTrue PostAdminPersonnelByPersonnelIdLeaveLedger201JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostAdminPersonnelByPersonnelIdLeaveLedger201JSONResponseBodySuccess enum.
+func (e PostAdminPersonnelByPersonnelIdLeaveLedger201JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostAdminPersonnelByPersonnelIdLeaveLedger201JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
@@ -5175,6 +5298,21 @@ func (e PostPermissions201JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
+// Defines values for GetPermissionsApprover200JSONResponseBodySuccess.
+const (
+	GetPermissionsApprover200JSONResponseBodySuccessTrue GetPermissionsApprover200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetPermissionsApprover200JSONResponseBodySuccess enum.
+func (e GetPermissionsApprover200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetPermissionsApprover200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetPermissionsMe200JSONResponseBodySuccess.
 const (
 	GetPermissionsMe200JSONResponseBodySuccessTrue GetPermissionsMe200JSONResponseBodySuccess = true
@@ -5184,6 +5322,21 @@ const (
 func (e GetPermissionsMe200JSONResponseBodySuccess) Valid() bool {
 	switch e {
 	case GetPermissionsMe200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetPermissionsQuota200JSONResponseBodySuccess.
+const (
+	GetPermissionsQuota200JSONResponseBodySuccessTrue GetPermissionsQuota200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetPermissionsQuota200JSONResponseBodySuccess enum.
+func (e GetPermissionsQuota200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetPermissionsQuota200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
@@ -7220,6 +7373,151 @@ type InvoiceLine struct {
 	UnitPrice *Money `json:"unit_price,omitempty"`
 }
 
+// LeaveApprover defines model for LeaveApprover.
+type LeaveApprover struct {
+	Name        string `json:"name"`
+	PersonnelId int64  `json:"personnel_id"`
+}
+
+// LeaveCategory Kategori izin, cuti atau sakit. Keistimewaannya ada pada bendera: `is_annual` (memakai saldo buku besar), `skips_day_check` (hari tidak dibandingkan dengan sisa), `requires_time_range` (perlu jam mulai dan selesai; kelas "sebagian hari"), `requires_change_day` (perlu hari tukar), `makes_leave_days` (persetujuan menulis baris LEAVE), `excuses_lateness` (menghapus keterlambatan hari itu), `has_quota`.
+type LeaveCategory struct {
+	Code              string            `json:"code"`
+	CreatedAt         time.Time         `json:"created_at"`
+	ExcusesLateness   bool              `json:"excuses_lateness"`
+	HasQuota          bool              `json:"has_quota"`
+	IsActive          bool              `json:"is_active"`
+	IsAnnual          bool              `json:"is_annual"`
+	MakesLeaveDays    bool              `json:"makes_leave_days"`
+	Name              string            `json:"name"`
+	RequiresChangeDay bool              `json:"requires_change_day"`
+	RequiresTimeRange bool              `json:"requires_time_range"`
+	SkipsDayCheck     bool              `json:"skips_day_check"`
+	SortOrder         int               `json:"sort_order"`
+	Type              LeaveCategoryType `json:"type"`
+	UpdatedAt         time.Time         `json:"updated_at"`
+}
+
+// LeaveCategoryDetail defines model for LeaveCategoryDetail.
+type LeaveCategoryDetail struct {
+	Code              string            `json:"code"`
+	CreatedAt         time.Time         `json:"created_at"`
+	ExcusesLateness   bool              `json:"excuses_lateness"`
+	HasQuota          bool              `json:"has_quota"`
+	IsActive          bool              `json:"is_active"`
+	IsAnnual          bool              `json:"is_annual"`
+	MakesLeaveDays    bool              `json:"makes_leave_days"`
+	Name              string            `json:"name"`
+	Quotas            LeaveQuotas       `json:"quotas"`
+	RequiresChangeDay bool              `json:"requires_change_day"`
+	RequiresTimeRange bool              `json:"requires_time_range"`
+	SkipsDayCheck     bool              `json:"skips_day_check"`
+	SortOrder         int               `json:"sort_order"`
+	Type              LeaveCategoryType `json:"type"`
+	UpdatedAt         time.Time         `json:"updated_at"`
+}
+
+// LeaveCategoryInput defines model for LeaveCategoryInput.
+type LeaveCategoryInput struct {
+	Code            string `json:"code"`
+	ExcusesLateness *bool  `json:"excuses_lateness,omitempty"`
+
+	// HasQuota Bawaan false untuk SICK, selain itu true.
+	HasQuota *bool `json:"has_quota,omitempty"`
+	IsActive *bool `json:"is_active,omitempty"`
+	IsAnnual *bool `json:"is_annual,omitempty"`
+
+	// MakesLeaveDays Bawaan true.
+	MakesLeaveDays    *bool             `json:"makes_leave_days,omitempty"`
+	Name              string            `json:"name"`
+	RequiresChangeDay *bool             `json:"requires_change_day,omitempty"`
+	RequiresTimeRange *bool             `json:"requires_time_range,omitempty"`
+	SkipsDayCheck     *bool             `json:"skips_day_check,omitempty"`
+	SortOrder         *int              `json:"sort_order,omitempty"`
+	Type              LeaveCategoryType `json:"type"`
+}
+
+// LeaveCategoryTombstone Kategori yang dinonaktifkan, untuk cache lokal delta-sync (berkunci `code`).
+type LeaveCategoryTombstone struct {
+	Code      string    `json:"code"`
+	DeletedAt time.Time `json:"deleted_at"`
+}
+
+// LeaveCategoryType defines model for LeaveCategoryType.
+type LeaveCategoryType string
+
+// LeaveCategoryUpdate defines model for LeaveCategoryUpdate.
+type LeaveCategoryUpdate struct {
+	ExcusesLateness   *bool   `json:"excuses_lateness,omitempty"`
+	HasQuota          *bool   `json:"has_quota,omitempty"`
+	IsActive          *bool   `json:"is_active,omitempty"`
+	MakesLeaveDays    *bool   `json:"makes_leave_days,omitempty"`
+	Name              *string `json:"name,omitempty"`
+	RequiresChangeDay *bool   `json:"requires_change_day,omitempty"`
+	RequiresTimeRange *bool   `json:"requires_time_range,omitempty"`
+	SkipsDayCheck     *bool   `json:"skips_day_check,omitempty"`
+	SortOrder         *int    `json:"sort_order,omitempty"`
+}
+
+// LeaveLedgerEntry defines model for LeaveLedgerEntry.
+type LeaveLedgerEntry struct {
+	BalanceAfter int       `json:"balance_after"`
+	CreatedAt    time.Time `json:"created_at"`
+	CreatedById  *int64    `json:"created_by_id,omitempty"`
+
+	// Days Bertanda: pengurangan negatif.
+	Days           int                  `json:"days"`
+	Id             int64                `json:"id"`
+	Kind           LeaveLedgerEntryKind `json:"kind"`
+	LeaveRequestId *int64               `json:"leave_request_id,omitempty"`
+	Note           string               `json:"note"`
+}
+
+// LeaveLedgerEntryKind defines model for LeaveLedgerEntry.Kind.
+type LeaveLedgerEntryKind string
+
+// LeaveLedgerInput defines model for LeaveLedgerInput.
+type LeaveLedgerInput struct {
+	// Days GRANT: lebih dari 0. ADJUST: tidak 0.
+	Days int                  `json:"days"`
+	Kind LeaveLedgerInputKind `json:"kind"`
+	Note string               `json:"note"`
+}
+
+// LeaveLedgerInputKind defines model for LeaveLedgerInput.Kind.
+type LeaveLedgerInputKind string
+
+// LeaveQuota defines model for LeaveQuota.
+type LeaveQuota struct {
+	CategoryCode string `json:"category_code"`
+
+	// QuotaDays Batas: saldo untuk cuti tahunan, hari kuota klien untuk lainnya.
+	QuotaDays     int `json:"quota_days"`
+	RemainingDays int `json:"remaining_days"`
+
+	// UsedDays Hari yang dipegang pengajuan menunggu dan disetujui tahun ini.
+	UsedDays int `json:"used_days"`
+}
+
+// LeaveQuotas defines model for LeaveQuotas.
+type LeaveQuotas struct {
+	Clients []struct {
+		ClientCode string `json:"client_code"`
+		QuotaDays  int    `json:"quota_days"`
+	} `json:"clients"`
+
+	// DefaultDays null: tidak ada default, klien tanpa barisnya punya 0 hari.
+	DefaultDays int `json:"default_days"`
+}
+
+// LeaveQuotasInput defines model for LeaveQuotasInput.
+type LeaveQuotasInput struct {
+	Clients *[]struct {
+		ClientCode string `json:"client_code"`
+		QuotaDays  int    `json:"quota_days"`
+	} `json:"clients,omitempty"`
+	DefaultDays *int `json:"default_days,omitempty"`
+}
+
 // Letterhead Kop surat untuk ekspor (WEB-12). Satu organisasi punya paling banyak satu kop default; kop pertama otomatis jadi default. `logo_url` adalah URL bertanda tangan (berlaku 1 jam, tidak disimpan) dari foto `logo_media_id`.
 type Letterhead struct {
 	CreatedAt      *time.Time `json:"created_at,omitempty"`
@@ -7936,9 +8234,6 @@ type Permission struct {
 
 // PermissionStatus defines model for Permission.Status.
 type PermissionStatus string
-
-// PermissionCategory Master umum (qualifications, client_types, client_groups, stakeholder_types, panic_types, report_categories, instruction_categories, permission_categories).
-type PermissionCategory = CodedMaster
 
 // PermissionCreate defines model for PermissionCreate.
 type PermissionCreate struct {
@@ -9726,6 +10021,14 @@ type GetAdminInstructionCategoriesById200JSONResponseBodySuccess bool
 // PatchAdminInstructionCategoriesById200JSONResponseBodySuccess defines parameters for PatchAdminInstructionCategoriesById.
 type PatchAdminInstructionCategoriesById200JSONResponseBodySuccess bool
 
+// PutAdminLeaveClientSettingsByClientCodeJSONBody defines parameters for PutAdminLeaveClientSettingsByClientCode.
+type PutAdminLeaveClientSettingsByClientCodeJSONBody struct {
+	RequestsEnabled bool `json:"requests_enabled"`
+}
+
+// PutAdminLeaveClientSettingsByClientCode200JSONResponseBodySuccess defines parameters for PutAdminLeaveClientSettingsByClientCode.
+type PutAdminLeaveClientSettingsByClientCode200JSONResponseBodySuccess bool
+
 // GetAdminLetterheadsParams defines parameters for GetAdminLetterheads.
 type GetAdminLetterheadsParams struct {
 	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
@@ -9847,14 +10150,13 @@ type PostAdminPanicsByIdResolve200JSONResponseBodySuccess bool
 
 // GetAdminPermissionCategoriesParams defines parameters for GetAdminPermissionCategories.
 type GetAdminPermissionCategoriesParams struct {
+	Type *LeaveCategoryType `form:"type,omitempty" json:"type,omitempty"`
+
 	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
 	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
-
-	// Sort Sortir per-resource, mis. `created_at:desc`.
-	Sort *SortParam `form:"sort,omitempty" json:"sort,omitempty"`
 
 	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
@@ -9866,22 +10168,17 @@ type GetAdminPermissionCategoriesParams struct {
 // GetAdminPermissionCategories200JSONResponseBodySuccess defines parameters for GetAdminPermissionCategories.
 type GetAdminPermissionCategories200JSONResponseBodySuccess bool
 
-// PostAdminPermissionCategoriesParams defines parameters for PostAdminPermissionCategories.
-type PostAdminPermissionCategoriesParams struct {
-	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
-	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
-	// 409 CONFLICT.
-	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
-}
-
 // PostAdminPermissionCategories201JSONResponseBodySuccess defines parameters for PostAdminPermissionCategories.
 type PostAdminPermissionCategories201JSONResponseBodySuccess bool
 
-// GetAdminPermissionCategoriesById200JSONResponseBodySuccess defines parameters for GetAdminPermissionCategoriesById.
-type GetAdminPermissionCategoriesById200JSONResponseBodySuccess bool
+// GetAdminPermissionCategoriesByCode200JSONResponseBodySuccess defines parameters for GetAdminPermissionCategoriesByCode.
+type GetAdminPermissionCategoriesByCode200JSONResponseBodySuccess bool
 
-// PatchAdminPermissionCategoriesById200JSONResponseBodySuccess defines parameters for PatchAdminPermissionCategoriesById.
-type PatchAdminPermissionCategoriesById200JSONResponseBodySuccess bool
+// PatchAdminPermissionCategoriesByCode200JSONResponseBodySuccess defines parameters for PatchAdminPermissionCategoriesByCode.
+type PatchAdminPermissionCategoriesByCode200JSONResponseBodySuccess bool
+
+// PutAdminPermissionCategoriesByCodeQuotas200JSONResponseBodySuccess defines parameters for PutAdminPermissionCategoriesByCodeQuotas.
+type PutAdminPermissionCategoriesByCodeQuotas200JSONResponseBodySuccess bool
 
 // GetAdminPersonnelReviewsParams defines parameters for GetAdminPersonnelReviews.
 type GetAdminPersonnelReviewsParams struct {
@@ -9915,6 +10212,21 @@ type GetAdminPersonnelReviewsParamsType string
 
 // GetAdminPersonnelReviews200JSONResponseBodySuccess defines parameters for GetAdminPersonnelReviews.
 type GetAdminPersonnelReviews200JSONResponseBodySuccess bool
+
+// GetAdminPersonnelByPersonnelIdLeaveLedgerParams defines parameters for GetAdminPersonnelByPersonnelIdLeaveLedger.
+type GetAdminPersonnelByPersonnelIdLeaveLedgerParams struct {
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
+	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
+
+	// Limit Item per halaman (maks 100).
+	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetAdminPersonnelByPersonnelIdLeaveLedger200JSONResponseBodySuccess defines parameters for GetAdminPersonnelByPersonnelIdLeaveLedger.
+type GetAdminPersonnelByPersonnelIdLeaveLedger200JSONResponseBodySuccess bool
+
+// PostAdminPersonnelByPersonnelIdLeaveLedger201JSONResponseBodySuccess defines parameters for PostAdminPersonnelByPersonnelIdLeaveLedger.
+type PostAdminPersonnelByPersonnelIdLeaveLedger201JSONResponseBodySuccess bool
 
 // PostAdminPersonnelByPersonnelIdSchedules201JSONResponseBodySuccess defines parameters for PostAdminPersonnelByPersonnelIdSchedules.
 type PostAdminPersonnelByPersonnelIdSchedules201JSONResponseBodySuccess bool
@@ -11297,6 +11609,14 @@ type GetPatrolPendingApprovalsParams struct {
 // GetPatrolPendingApprovals200JSONResponseBodySuccess defines parameters for GetPatrolPendingApprovals.
 type GetPatrolPendingApprovals200JSONResponseBodySuccess bool
 
+// GetPermissionCategoriesParams defines parameters for GetPermissionCategories.
+type GetPermissionCategoriesParams struct {
+	Type *LeaveCategoryType `form:"type,omitempty" json:"type,omitempty"`
+
+	// Since Delta-sync watermark (updated_at). Tanpa since → full pull (DL-34).
+	Since *SinceParam `form:"since,omitempty" json:"since,omitempty"`
+}
+
 // GetPermissionCategories200JSONResponseBodySuccess defines parameters for GetPermissionCategories.
 type GetPermissionCategories200JSONResponseBodySuccess bool
 
@@ -11329,6 +11649,14 @@ type PostPermissionsParams struct {
 // PostPermissions201JSONResponseBodySuccess defines parameters for PostPermissions.
 type PostPermissions201JSONResponseBodySuccess bool
 
+// GetPermissionsApproverParams defines parameters for GetPermissionsApprover.
+type GetPermissionsApproverParams struct {
+	TeamCode *string `form:"team_code,omitempty" json:"team_code,omitempty"`
+}
+
+// GetPermissionsApprover200JSONResponseBodySuccess defines parameters for GetPermissionsApprover.
+type GetPermissionsApprover200JSONResponseBodySuccess bool
+
 // GetPermissionsMeParams defines parameters for GetPermissionsMe.
 type GetPermissionsMeParams struct {
 	// Status Filter status/enum resource.
@@ -11343,6 +11671,15 @@ type GetPermissionsMeParams struct {
 
 // GetPermissionsMe200JSONResponseBodySuccess defines parameters for GetPermissionsMe.
 type GetPermissionsMe200JSONResponseBodySuccess bool
+
+// GetPermissionsQuotaParams defines parameters for GetPermissionsQuota.
+type GetPermissionsQuotaParams struct {
+	CategoryCode string  `form:"category_code" json:"category_code"`
+	TeamCode     *string `form:"team_code,omitempty" json:"team_code,omitempty"`
+}
+
+// GetPermissionsQuota200JSONResponseBodySuccess defines parameters for GetPermissionsQuota.
+type GetPermissionsQuota200JSONResponseBodySuccess bool
 
 // PostPermissionsByIdApprove200JSONResponseBodySuccess defines parameters for PostPermissionsByIdApprove.
 type PostPermissionsByIdApprove200JSONResponseBodySuccess bool
@@ -11956,6 +12293,9 @@ type PostAdminInstructionCategoriesJSONRequestBody = CategoryCreate
 // PatchAdminInstructionCategoriesByIdJSONRequestBody defines body for PatchAdminInstructionCategoriesById for application/json ContentType.
 type PatchAdminInstructionCategoriesByIdJSONRequestBody = CategoryPatch
 
+// PutAdminLeaveClientSettingsByClientCodeJSONRequestBody defines body for PutAdminLeaveClientSettingsByClientCode for application/json ContentType.
+type PutAdminLeaveClientSettingsByClientCodeJSONRequestBody PutAdminLeaveClientSettingsByClientCodeJSONBody
+
 // PostAdminLetterheadsJSONRequestBody defines body for PostAdminLetterheads for application/json ContentType.
 type PostAdminLetterheadsJSONRequestBody = LetterheadCreate
 
@@ -11978,10 +12318,16 @@ type PatchAdminPanicTypesByIdJSONRequestBody = PanicTypePatch
 type PostAdminPanicsByIdResolveJSONRequestBody = PanicResolve
 
 // PostAdminPermissionCategoriesJSONRequestBody defines body for PostAdminPermissionCategories for application/json ContentType.
-type PostAdminPermissionCategoriesJSONRequestBody = CodedMasterInput
+type PostAdminPermissionCategoriesJSONRequestBody = LeaveCategoryInput
 
-// PatchAdminPermissionCategoriesByIdJSONRequestBody defines body for PatchAdminPermissionCategoriesById for application/json ContentType.
-type PatchAdminPermissionCategoriesByIdJSONRequestBody = CodedMasterInput
+// PatchAdminPermissionCategoriesByCodeJSONRequestBody defines body for PatchAdminPermissionCategoriesByCode for application/json ContentType.
+type PatchAdminPermissionCategoriesByCodeJSONRequestBody = LeaveCategoryUpdate
+
+// PutAdminPermissionCategoriesByCodeQuotasJSONRequestBody defines body for PutAdminPermissionCategoriesByCodeQuotas for application/json ContentType.
+type PutAdminPermissionCategoriesByCodeQuotasJSONRequestBody = LeaveQuotasInput
+
+// PostAdminPersonnelByPersonnelIdLeaveLedgerJSONRequestBody defines body for PostAdminPersonnelByPersonnelIdLeaveLedger for application/json ContentType.
+type PostAdminPersonnelByPersonnelIdLeaveLedgerJSONRequestBody = LeaveLedgerInput
 
 // PostAdminPersonnelByPersonnelIdSchedulesJSONRequestBody defines body for PostAdminPersonnelByPersonnelIdSchedules for application/json ContentType.
 type PostAdminPersonnelByPersonnelIdSchedulesJSONRequestBody = ScheduleEntriesInput

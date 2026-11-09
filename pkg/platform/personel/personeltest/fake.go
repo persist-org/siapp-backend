@@ -98,13 +98,11 @@ type Fake struct {
 	failures map[string]int
 
 	pushed []personel.AttendanceEvent
-	leaves []personel.LeaveRecord
 }
 
 var (
 	_ personel.Org        = (*Fake)(nil)
 	_ personel.Attendance = (*Fake)(nil)
-	_ personel.Leave      = (*Fake)(nil)
 )
 
 // New returns a Fake loaded with the fixtures.
@@ -607,59 +605,4 @@ func (f *Fake) Pushed() []personel.AttendanceEvent {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return slices.Clone(f.pushed)
-}
-
-// Types implements personel.Leave.
-func (f *Fake) Types(_ context.Context, _ int64) ([]personel.LeaveType, error) {
-	if err := f.record("leave/types"); err != nil {
-		return nil, err
-	}
-	return []personel.LeaveType{{ID: 1, Name: "Sakit"}, {ID: 2, Name: "Izin"}, {ID: 3, Name: "Cuti"}}, nil
-}
-
-// Submit implements personel.Leave.
-func (f *Fake) Submit(_ context.Context, _ int64, req personel.LeaveRequest) (personel.LeaveRecord, error) {
-	if err := f.record("leave/submit"); err != nil {
-		return personel.LeaveRecord{}, err
-	}
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	rec := personel.LeaveRecord{ID: fmt.Sprintf("leave-%d", len(f.leaves)+1), LeaveRequest: req, State: personel.LeavePending}
-	f.leaves = append(f.leaves, rec)
-	return rec, nil
-}
-
-// Decide implements personel.Leave.
-func (f *Fake) Decide(_ context.Context, _ int64, id string, approve bool, _ string) error {
-	if err := f.record("leave/decide"); err != nil {
-		return err
-	}
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	for i := range f.leaves {
-		if f.leaves[i].ID == id {
-			f.leaves[i].State = personel.LeaveRejected
-			if approve {
-				f.leaves[i].State = personel.LeaveApproved
-			}
-			return nil
-		}
-	}
-	return personel.ErrNotFound
-}
-
-// List implements personel.Leave.
-func (f *Fake) List(_ context.Context, _ int64, filter personel.LeaveFilter) ([]personel.LeaveRecord, error) {
-	if err := f.record("leave/list"); err != nil {
-		return nil, err
-	}
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	var out []personel.LeaveRecord
-	for _, l := range f.leaves {
-		if (filter.NIK == "" || l.NIK == filter.NIK) && (filter.State == "" || l.State == filter.State) {
-			out = append(out, l)
-		}
-	}
-	return out, nil
 }

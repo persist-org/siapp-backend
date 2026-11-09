@@ -435,15 +435,6 @@ func TestProposedSeamsAgainstTheFake(t *testing.T) {
 	require.True(t, st.CheckedIn)
 	require.False(t, st.CheckedOut)
 
-	rec, err := fake.Submit(ctx, personeltest.OrgSatu, personel.LeaveRequest{NIK: personeltest.NIKAnggota1Satu, LeaveTypeID: 2})
-	require.NoError(t, err)
-	require.Equal(t, personel.LeavePending, rec.State)
-	require.NoError(t, fake.Decide(ctx, personeltest.OrgSatu, rec.ID, true, ""))
-	approved, err := fake.List(ctx, personeltest.OrgSatu, personel.LeaveFilter{State: personel.LeaveApproved})
-	require.NoError(t, err)
-	require.Len(t, approved, 1)
-	require.ErrorIs(t, fake.Decide(ctx, personeltest.OrgSatu, "nope", true, ""), personel.ErrNotFound)
-
 	fake.Down()
 	_, err = fake.Projects(ctx, personeltest.OrgSatu)
 	require.ErrorIs(t, err, personel.ErrUnavailable)
