@@ -810,6 +810,7 @@ const (
 	ATTENDANCESELFIE MediaPurpose = "ATTENDANCE_SELFIE"
 	EMEMO            MediaPurpose = "EMEMO"
 	INSTRUCTION      MediaPurpose = "INSTRUCTION"
+	LEAVEATTACHMENT  MediaPurpose = "LEAVE_ATTACHMENT"
 	LETTERHEADLOGO   MediaPurpose = "LETTERHEAD_LOGO"
 	PANICREPORT      MediaPurpose = "PANIC_REPORT"
 	PATROLSCAN       MediaPurpose = "PATROL_SCAN"
@@ -827,6 +828,8 @@ func (e MediaPurpose) Valid() bool {
 	case EMEMO:
 		return true
 	case INSTRUCTION:
+		return true
+	case LEAVEATTACHMENT:
 		return true
 	case LETTERHEADLOGO:
 		return true
@@ -1308,17 +1311,38 @@ func (e PatrolZoneInputType) Valid() bool {
 	}
 }
 
+// Defines values for PermissionDecisionLevel.
+const (
+	PermissionDecisionLevelADMIN PermissionDecisionLevel = "ADMIN"
+	PermissionDecisionLevelDANRU PermissionDecisionLevel = "DANRU"
+)
+
+// Valid indicates whether the value is a known member of the PermissionDecisionLevel enum.
+func (e PermissionDecisionLevel) Valid() bool {
+	switch e {
+	case PermissionDecisionLevelADMIN:
+		return true
+	case PermissionDecisionLevelDANRU:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PermissionStatus.
 const (
-	PermissionStatusAPPROVED PermissionStatus = "APPROVED"
-	PermissionStatusPENDING  PermissionStatus = "PENDING"
-	PermissionStatusREJECTED PermissionStatus = "REJECTED"
+	PermissionStatusAPPROVED  PermissionStatus = "APPROVED"
+	PermissionStatusCANCELLED PermissionStatus = "CANCELLED"
+	PermissionStatusPENDING   PermissionStatus = "PENDING"
+	PermissionStatusREJECTED  PermissionStatus = "REJECTED"
 )
 
 // Valid indicates whether the value is a known member of the PermissionStatus enum.
 func (e PermissionStatus) Valid() bool {
 	switch e {
 	case PermissionStatusAPPROVED:
+		return true
+	case PermissionStatusCANCELLED:
 		return true
 	case PermissionStatusPENDING:
 		return true
@@ -5343,6 +5367,21 @@ func (e GetPermissionsQuota200JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
+// Defines values for GetPermissionsById200JSONResponseBodySuccess.
+const (
+	GetPermissionsById200JSONResponseBodySuccessTrue GetPermissionsById200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetPermissionsById200JSONResponseBodySuccess enum.
+func (e GetPermissionsById200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetPermissionsById200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PostPermissionsByIdApprove200JSONResponseBodySuccess.
 const (
 	PostPermissionsByIdApprove200JSONResponseBodySuccessTrue PostPermissionsByIdApprove200JSONResponseBodySuccess = true
@@ -5352,6 +5391,21 @@ const (
 func (e PostPermissionsByIdApprove200JSONResponseBodySuccess) Valid() bool {
 	switch e {
 	case PostPermissionsByIdApprove200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostPermissionsByIdCancel200JSONResponseBodySuccess.
+const (
+	PostPermissionsByIdCancel200JSONResponseBodySuccessTrue PostPermissionsByIdCancel200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostPermissionsByIdCancel200JSONResponseBodySuccess enum.
+func (e PostPermissionsByIdCancel200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostPermissionsByIdCancel200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
@@ -8216,32 +8270,92 @@ type PaymentCreate struct {
 	Reference *string   `json:"reference,omitempty"`
 }
 
-// Permission defines model for Permission.
+// Permission Satu pengajuan izin, cuti atau sakit (Phase 07.5). `decision` kosong selama masih menunggu dan setelah dibatalkan; `by_name` adalah nama depan yang memutuskan.
 type Permission struct {
-	ApprovedAt           *time.Time          `json:"approved_at,omitempty"`
-	ApprovedBy           *int64              `json:"approved_by,omitempty"`
-	CreatedAt            *time.Time          `json:"created_at,omitempty"`
-	EndDate              *openapi_types.Date `json:"end_date,omitempty"`
-	Id                   *int64              `json:"id,omitempty"`
-	OrganizationId       *int64              `json:"organization_id,omitempty"`
-	PermissionCategoryId *int64              `json:"permission_category_id,omitempty"`
-	PersonnelId          *int64              `json:"personnel_id,omitempty"`
-	Reason               *string             `json:"reason,omitempty"`
-	StartDate            *openapi_types.Date `json:"start_date,omitempty"`
-	Status               *PermissionStatus   `json:"status,omitempty"`
-	UpdatedAt            *time.Time          `json:"updated_at,omitempty"`
+	Attachment *struct {
+		ContentType string `json:"content_type"`
+		Id          int64  `json:"id"`
+
+		// Url URL bertanda tangan, berlaku satu jam.
+		Url string `json:"url"`
+	} `json:"attachment,omitempty"`
+
+	// CanCancel True selama pengajuan masih PENDING dan milik pemanggil.
+	CanCancel     bool                `json:"can_cancel"`
+	CategoryCode  string              `json:"category_code"`
+	CategoryName  string              `json:"category_name"`
+	ChangeDayFrom *openapi_types.Date `json:"change_day_from,omitempty"`
+	ChangeDayTo   *openapi_types.Date `json:"change_day_to,omitempty"`
+	ContactInfo   *string             `json:"contact_info,omitempty"`
+	Decision      *struct {
+		At     time.Time               `json:"at"`
+		ByName string                  `json:"by_name"`
+		Level  PermissionDecisionLevel `json:"level"`
+		Note   *string                 `json:"note,omitempty"`
+	} `json:"decision,omitempty"`
+	EndDate openapi_types.Date `json:"end_date"`
+	EndTime *string            `json:"end_time,omitempty"`
+	Id      int64              `json:"id"`
+
+	// Number LR, PR atau SR + YYYYMM + 5 digit penghitung per tipe.
+	Number         string    `json:"number"`
+	Reason         string    `json:"reason"`
+	RequestedAt    time.Time `json:"requested_at"`
+	Responsibility *string   `json:"responsibility,omitempty"`
+	Sick           *struct {
+		Disease         *string             `json:"disease,omitempty"`
+		Hospitalization bool                `json:"hospitalization"`
+		LetterDate      *openapi_types.Date `json:"letter_date,omitempty"`
+		LetterStatus    bool                `json:"letter_status"`
+	} `json:"sick,omitempty"`
+	StartDate openapi_types.Date `json:"start_date"`
+
+	// StartTime Jam lokal proyek; hanya kategori sebagian hari.
+	StartTime *string           `json:"start_time,omitempty"`
+	Status    PermissionStatus  `json:"status"`
+	TeamCode  string            `json:"team_code"`
+	Type      LeaveCategoryType `json:"type"`
+
+	// WorkingDays Hari yang dihitung terhadap kuota; 0 untuk kategori tanpa kuota.
+	WorkingDays int `json:"working_days"`
 }
+
+// PermissionDecisionLevel defines model for Permission.Decision.Level.
+type PermissionDecisionLevel string
 
 // PermissionStatus defines model for Permission.Status.
 type PermissionStatus string
 
 // PermissionCreate defines model for PermissionCreate.
 type PermissionCreate struct {
-	Attachment *string            `json:"attachment,omitempty"`
-	CategoryId int64              `json:"category_id"`
-	DateFrom   openapi_types.Date `json:"date_from"`
-	DateTo     openapi_types.Date `json:"date_to"`
-	Reason     *string            `json:"reason,omitempty"`
+	// CategoryCode Boleh kosong untuk SICK (memakai kategori SICK).
+	CategoryCode  *string             `json:"category_code,omitempty"`
+	ChangeDayFrom *openapi_types.Date `json:"change_day_from,omitempty"`
+	ChangeDayTo   *openapi_types.Date `json:"change_day_to,omitempty"`
+	ContactInfo   *string             `json:"contact_info,omitempty"`
+	Disease       *string             `json:"disease,omitempty"`
+	EndDate       openapi_types.Date  `json:"end_date"`
+	EndTime       *string             `json:"end_time,omitempty"`
+
+	// Hospitalization Hanya SICK; wajib.
+	Hospitalization *bool               `json:"hospitalization,omitempty"`
+	LetterDate      *openapi_types.Date `json:"letter_date,omitempty"`
+
+	// LetterStatus Hanya SICK; wajib. true mewajibkan satu foto di media_ids.
+	LetterStatus *bool `json:"letter_status,omitempty"`
+
+	// MediaIds Satu foto (purpose LEAVE_ATTACHMENT, sudah di-complete).
+	MediaIds       *[]int64           `json:"media_ids,omitempty"`
+	Reason         string             `json:"reason"`
+	Responsibility *string            `json:"responsibility,omitempty"`
+	StartDate      openapi_types.Date `json:"start_date"`
+
+	// StartTime HH:MM; wajib berpasangan dengan end_time dan hanya untuk kategori sebagian hari.
+	StartTime *string `json:"start_time,omitempty"`
+
+	// TeamCode Boleh kosong bila orang itu hanya bertugas di satu regu pada start_date.
+	TeamCode *string           `json:"team_code,omitempty"`
+	Type     LeaveCategoryType `json:"type"`
 }
 
 // PermissionScope Jangkauan hak yang dimiliki seseorang. `SELF`: hanya catatannya sendiri. `TEAM`: catatan regu tempat ia memegang peran itu.
@@ -11659,14 +11773,18 @@ type GetPermissionsApprover200JSONResponseBodySuccess bool
 
 // GetPermissionsMeParams defines parameters for GetPermissionsMe.
 type GetPermissionsMeParams struct {
+	Type *string `form:"type,omitempty" json:"type,omitempty"`
+
 	// Status Filter status/enum resource.
-	Status *StatusParam `form:"status,omitempty" json:"status,omitempty"`
+	Status   *StatusParam        `form:"status,omitempty" json:"status,omitempty"`
+	FromDate *openapi_types.Date `form:"from_date,omitempty" json:"from_date,omitempty"`
+	ToDate   *openapi_types.Date `form:"to_date,omitempty" json:"to_date,omitempty"`
 
-	// DateFrom Awal rentang (YYYY-MM-DD, relatif TZ proyek).
-	DateFrom *DateFromParam `form:"date_from,omitempty" json:"date_from,omitempty"`
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
+	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
-	// DateTo Akhir rentang (YYYY-MM-DD, relatif TZ proyek).
-	DateTo *DateToParam `form:"date_to,omitempty" json:"date_to,omitempty"`
+	// Limit Item per halaman (maks 100).
+	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // GetPermissionsMe200JSONResponseBodySuccess defines parameters for GetPermissionsMe.
@@ -11681,8 +11799,22 @@ type GetPermissionsQuotaParams struct {
 // GetPermissionsQuota200JSONResponseBodySuccess defines parameters for GetPermissionsQuota.
 type GetPermissionsQuota200JSONResponseBodySuccess bool
 
+// GetPermissionsById200JSONResponseBodySuccess defines parameters for GetPermissionsById.
+type GetPermissionsById200JSONResponseBodySuccess bool
+
 // PostPermissionsByIdApprove200JSONResponseBodySuccess defines parameters for PostPermissionsByIdApprove.
 type PostPermissionsByIdApprove200JSONResponseBodySuccess bool
+
+// PostPermissionsByIdCancelParams defines parameters for PostPermissionsByIdCancel.
+type PostPermissionsByIdCancelParams struct {
+	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
+	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
+	// 409 CONFLICT.
+	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
+}
+
+// PostPermissionsByIdCancel200JSONResponseBodySuccess defines parameters for PostPermissionsByIdCancel.
+type PostPermissionsByIdCancel200JSONResponseBodySuccess bool
 
 // PostPermissionsByIdDecline200JSONResponseBodySuccess defines parameters for PostPermissionsByIdDecline.
 type PostPermissionsByIdDecline200JSONResponseBodySuccess bool

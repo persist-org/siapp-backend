@@ -2329,28 +2329,81 @@ components:
     # ---------- 23. permissions ----------
     Permission:
       type: object
+      description: >-
+        Satu pengajuan izin, cuti atau sakit (Phase 07.5). `decision` kosong selama masih menunggu
+        dan setelah dibatalkan; `by_name` adalah nama depan yang memutuskan.
+      required: [id, number, team_code, type, category_code, category_name, status, start_date, end_date, working_days, reason, requested_at, can_cancel]
       properties:
         id: { type: integer, format: int64 }
-        organization_id: { type: integer, format: int64 }
-        personnel_id: { type: integer, format: int64 }
-        permission_category_id: { type: integer, format: int64 }
+        number: { type: string, example: LR20261100001, description: "LR, PR atau SR + YYYYMM + 5 digit penghitung per tipe." }
+        team_code: { type: string, example: 1K-IBMI-S1 }
+        type: { $ref: '#/components/schemas/LeaveCategoryType' }
+        category_code: { type: string, example: ANNUAL }
+        category_name: { type: string, example: Cuti Tahunan }
+        status: { type: string, enum: [PENDING, APPROVED, REJECTED, CANCELLED] }
         start_date: { type: string, format: date }
         end_date: { type: string, format: date }
-        reason: { type: string, nullable: true }
-        status: { type: string, enum: [PENDING, APPROVED, REJECTED] }
-        approved_by: { type: integer, format: int64, nullable: true }
-        approved_at: { type: string, format: date-time, nullable: true }
-        created_at: { type: string, format: date-time }
-        updated_at: { type: string, format: date-time }
+        start_time: { type: string, nullable: true, example: "08:00", description: "Jam lokal proyek; hanya kategori sebagian hari." }
+        end_time: { type: string, nullable: true, example: "10:00" }
+        working_days: { type: integer, description: "Hari yang dihitung terhadap kuota; 0 untuk kategori tanpa kuota." }
+        reason: { type: string }
+        responsibility: { type: string, nullable: true }
+        contact_info: { type: string, nullable: true }
+        change_day_from: { type: string, format: date, nullable: true }
+        change_day_to: { type: string, format: date, nullable: true }
+        requested_at: { type: string, format: date-time }
+        decision:
+          type: object
+          nullable: true
+          required: [level, by_name, at]
+          properties:
+            level: { type: string, enum: [DANRU, ADMIN] }
+            by_name: { type: string }
+            at: { type: string, format: date-time }
+            note: { type: string, nullable: true }
+        can_cancel: { type: boolean, description: "True selama pengajuan masih PENDING dan milik pemanggil." }
+        sick:
+          type: object
+          nullable: true
+          required: [hospitalization, letter_status]
+          properties:
+            hospitalization: { type: boolean }
+            letter_status: { type: boolean }
+            letter_date: { type: string, format: date, nullable: true }
+            disease: { type: string, nullable: true }
+        attachment:
+          type: object
+          nullable: true
+          required: [id, url, content_type]
+          properties:
+            id: { type: integer, format: int64 }
+            url: { type: string, description: "URL bertanda tangan, berlaku satu jam." }
+            content_type: { type: string }
     PermissionCreate:
       type: object
-      required: [category_id, date_from, date_to]
+      required: [type, start_date, end_date, reason]
       properties:
-        category_id: { type: integer, format: int64 }
-        date_from: { type: string, format: date }
-        date_to: { type: string, format: date }
-        reason: { type: string }
-        attachment: { type: string, format: uri }
+        team_code: { type: string, nullable: true, example: 1K-IBMI-S1, description: "Boleh kosong bila orang itu hanya bertugas di satu regu pada start_date." }
+        type: { $ref: '#/components/schemas/LeaveCategoryType' }
+        category_code: { type: string, nullable: true, example: ANNUAL, description: "Boleh kosong untuk SICK (memakai kategori SICK)." }
+        start_date: { type: string, format: date }
+        end_date: { type: string, format: date }
+        start_time: { type: string, nullable: true, example: "08:00", description: "HH:MM; wajib berpasangan dengan end_time dan hanya untuk kategori sebagian hari." }
+        end_time: { type: string, nullable: true, example: "10:00" }
+        reason: { type: string, minLength: 1, maxLength: 500 }
+        responsibility: { type: string, nullable: true, maxLength: 255 }
+        contact_info: { type: string, nullable: true, maxLength: 255 }
+        change_day_from: { type: string, format: date, nullable: true }
+        change_day_to: { type: string, format: date, nullable: true }
+        hospitalization: { type: boolean, nullable: true, description: "Hanya SICK; wajib." }
+        letter_status: { type: boolean, nullable: true, description: "Hanya SICK; wajib. true mewajibkan satu foto di media_ids." }
+        letter_date: { type: string, format: date, nullable: true }
+        disease: { type: string, nullable: true, maxLength: 500 }
+        media_ids:
+          type: array
+          maxItems: 1
+          items: { type: integer, format: int64 }
+          description: "Satu foto (purpose LEAVE_ATTACHMENT, sudah di-complete)."
     ApprovalNote:
       type: object
       properties:
@@ -2389,7 +2442,7 @@ components:
     # ---------- media: unggahan foto (Phase 04.1) ----------
     MediaPurpose:
       type: string
-      enum: [PROFILE_PHOTO, ATTENDANCE_SELFIE, REPORT, INSTRUCTION, PATROL_SCAN, PANIC_REPORT, ASSET_REPORT, EMEMO, LETTERHEAD_LOGO]
+      enum: [PROFILE_PHOTO, ATTENDANCE_SELFIE, REPORT, INSTRUCTION, PATROL_SCAN, PANIC_REPORT, ASSET_REPORT, EMEMO, LETTERHEAD_LOGO, LEAVE_ATTACHMENT]
       description: "Untuk apa foto itu. Fitur yang melampirkannya menolak tujuan yang tidak cocok (MEDIA_PURPOSE_MISMATCH). `PROFILE_PHOTO` tidak dapat didaftarkan (422): foto profil berasal dari Persist Personalia."
     MediaStatus:
       type: string
@@ -10094,22 +10147,79 @@ paths:
     post:
       operationId: postPermissions
       tags: [Permission]
-      summary: Ajukan izin
+      summary: Ajukan izin, cuti atau sakit
+      description: >-
+        Satu transaksi, urutan seperti Personalia: orang dikunci, regu dan DANRU ditentukan,
+        tumpang tindih, hari kerja, kuota, nomor, baris, foto, lalu pemotongan saldo (cuti tahunan
+        dipotong SAAT diajukan dan dikembalikan bila ditolak atau dibatalkan). Perlu
+        `attendance.leave.request`. Idempoten.
+
+        - 403: bukan anggota regu yang disebut pada `start_date`.
+        - 409 `LEAVE_OVERLAP`: bertabrakan dengan pengajuan lain yang masih berlaku.
+        - 422 `LEAVE_SCHEDULE_MISSING` (ada tanggal tanpa jadwal; `details.dates`),
+          `LEAVE_NO_WORKING_DAYS`, `LEAVE_QUOTA_EXCEEDED` (field `category_code`),
+          `LEAVE_CATEGORY_INVALID` (tipe tidak cocok atau kategori nonaktif), dan kesalahan isian
+          per field.
       parameters: [ { $ref: '#/components/parameters/IdempotencyKeyHeader' } ]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PermissionCreate' } } } }
       responses:
         '201': { description: Created, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/Permission' } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
   /permissions/me:
     get:
       operationId: getPermissionsMe
       tags: [Permission]
-      summary: Riwayat izin sendiri
-      parameters: [ { $ref: '#/components/parameters/StatusParam' }, { $ref: '#/components/parameters/DateFromParam' }, { $ref: '#/components/parameters/DateToParam' } ]
+      summary: Riwayat pengajuan sendiri
+      description: >-
+        Terbaru dulu, tanpa jendela bawaan. `type` dan `status` boleh diulang atau dipisah koma.
+        `from_date` dan `to_date` menyaring pengajuan yang harinya beririsan dengan rentang itu.
+        Perlu `attendance.leave.request`.
+      parameters:
+        - { name: type, in: query, required: false, schema: { type: string, example: "LEAVE,SICK" } }
+        - $ref: '#/components/parameters/StatusParam'
+        - { name: from_date, in: query, required: false, schema: { type: string, format: date } }
+        - { name: to_date, in: query, required: false, schema: { type: string, format: date } }
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
       responses:
         '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/ListEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/Permission' } } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /permissions/{id}:
+    parameters: [ { $ref: '#/components/parameters/IdPath' } ]
+    get:
+      operationId: getPermissionsById
+      tags: [Permission]
+      summary: Detail satu pengajuan
+      description: >-
+        Pemilik, atau DANRU yang `attendance.leave.approve`-nya mencakup regu pengajuan pada hari
+        pertamanya. Selain itu, dan id yang tidak ada, 404 `LEAVE_NOT_FOUND` (tidak pernah 403).
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/Permission' } } } ] } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /permissions/{id}/cancel:
+    parameters: [ { $ref: '#/components/parameters/IdPath' } ]
+    post:
+      operationId: postPermissionsByIdCancel
+      tags: [Permission]
+      summary: Batalkan pengajuan sendiri
+      description: >-
+        Hanya pemilik dan hanya selagi `PENDING`; pengajuan orang lain 404 `LEAVE_NOT_FOUND`.
+        Sudah dibatalkan: 409 `LEAVE_ALREADY_CANCELLED`; sudah diputuskan: 409 `LEAVE_CANNOT_CANCEL`.
+        Cuti tahunan mendapat harinya kembali, sekali. Tanpa badan. Idempoten.
+      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyHeader' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/Permission' } } } ] } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /permissions/{id}/approve:
     parameters: [ { $ref: '#/components/parameters/IdPath' } ]
     post:

@@ -25,6 +25,13 @@ const (
 	ReasonBalanceInsufficient = "LEAVE_BALANCE_INSUFFICIENT"
 	ReasonNoApprover          = "LEAVE_NO_APPROVER"
 	ReasonClientNotFound      = "LEAVE_CLIENT_NOT_FOUND"
+	ReasonOverlap             = "LEAVE_OVERLAP"
+	ReasonScheduleMissing     = "LEAVE_SCHEDULE_MISSING"
+	ReasonNoWorkingDays       = "LEAVE_NO_WORKING_DAYS"
+	ReasonQuotaExceeded       = "LEAVE_QUOTA_EXCEEDED"
+	ReasonNotFound            = "LEAVE_NOT_FOUND"
+	ReasonAlreadyCancelled    = "LEAVE_ALREADY_CANCELLED"
+	ReasonCannotCancel        = "LEAVE_CANNOT_CANCEL"
 )
 
 // ErrCategoryNotFound is returned for a category that does not exist or is another organization's
@@ -54,6 +61,40 @@ var ErrNoApprover = apperr.New(http.StatusNotFound, apperr.CodeNotFound,
 // ErrClientNotFound is returned for a client that does not exist or is another organization's.
 var ErrClientNotFound = apperr.New(http.StatusNotFound, apperr.CodeNotFound,
 	ReasonClientNotFound, "Klien tidak ditemukan.")
+
+// ErrNotFound is returned for a request that does not exist, is another person's and not the
+// caller's to read, or belongs to another organization: the same answer for all three, so ids
+// cannot be probed.
+var ErrNotFound = apperr.New(http.StatusNotFound, apperr.CodeNotFound,
+	ReasonNotFound, "Pengajuan tidak ditemukan.")
+
+// ErrAlreadyCancelled is returned when the request was already canceled.
+var ErrAlreadyCancelled = apperr.New(http.StatusConflict, apperr.CodeConflict,
+	ReasonAlreadyCancelled, "Pengajuan ini sudah dibatalkan.")
+
+// ErrCannotCancel is returned when the request is no longer waiting for a decision.
+var ErrCannotCancel = apperr.New(http.StatusConflict, apperr.CodeConflict,
+	ReasonCannotCancel, "Pengajuan yang sudah diputuskan tidak dapat dibatalkan.")
+
+func overlapError(date string) error {
+	return apperr.New(http.StatusConflict, apperr.CodeConflict, ReasonOverlap,
+		"Tanggal pengajuan bertabrakan dengan pengajuan lain yang masih berlaku.").
+		WithFields(apperr.FieldError{Field: "start_date", Code: ReasonOverlap, Message: "Bertabrakan dengan pengajuan lain pada " + date + "."})
+}
+
+func scheduleMissingError(dates []string) error {
+	return apperr.New(http.StatusUnprocessableEntity, apperr.CodeUnprocessable, ReasonScheduleMissing,
+		"Jadwal kerja belum lengkap untuk rentang tanggal ini.").
+		WithDetails(map[string]any{"dates": dates})
+}
+
+var errNoWorkingDays = apperr.New(http.StatusUnprocessableEntity, apperr.CodeUnprocessable,
+	ReasonNoWorkingDays, "Tidak ada hari kerja pada rentang tanggal ini.")
+
+func quotaExceededError(message string) error {
+	return apperr.New(http.StatusUnprocessableEntity, apperr.CodeUnprocessable, ReasonQuotaExceeded, message).
+		WithFields(apperr.FieldError{Field: "category_code", Code: ReasonQuotaExceeded, Message: message})
+}
 
 func validationError(field, message string) error {
 	return apperr.ErrValidation.WithFields(apperr.FieldError{Field: field, Code: "INVALID", Message: message})

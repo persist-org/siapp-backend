@@ -16,13 +16,16 @@ import (
 
 // Handler is the HTTP side of leave: decode, call the service, respond.
 type Handler struct {
-	service *Service
-	access  *access.Service
+	service    *Service
+	access     *access.Service
+	idempotent func(http.Handler) http.Handler
 }
 
-// NewHandler returns the handler.
-func NewHandler(service *Service, perms *access.Service) *Handler {
-	return &Handler{service: service, access: perms}
+// NewHandler returns the handler. idempotent is the Idempotency-Key middleware
+// (idem.Service.Middleware(true)): a request submitted again after a lost answer must give back the
+// same request and take no second day from the balance.
+func NewHandler(service *Service, perms *access.Service, idempotent func(http.Handler) http.Handler) *Handler {
+	return &Handler{service: service, access: perms, idempotent: idempotent}
 }
 
 // MountAdmin adds the admin routes. The caller mounts it inside the admin group, which holds
@@ -48,6 +51,13 @@ func (h *Handler) MountField(r chi.Router) {
 	request := h.access.Require(access.AttendanceLeaveRequest)
 	r.With(request).Get("/api/v1/permissions/quota", h.quota)
 	r.With(request).Get("/api/v1/permissions/approver", h.approver)
+
+	// The requests (Part B). Submitting and canceling are the caller's own; reading one has no
+	// route permission, the usecase decides (the owner, or a DANRU whose scope reaches the regu).
+	r.With(request, h.idempotent).Post("/api/v1/permissions", h.submit)
+	r.With(request).Get("/api/v1/permissions/me", h.mine)
+	r.Get("/api/v1/permissions/{id}", h.detail)
+	r.With(request, h.idempotent).Post("/api/v1/permissions/{id}/cancel", h.cancel)
 }
 
 // ---------- JSON ----------

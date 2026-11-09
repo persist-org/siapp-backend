@@ -20,7 +20,11 @@ import (
 	"siapp/internal/db"
 	"siapp/pkg/access"
 	"siapp/pkg/leave"
+	"siapp/pkg/media"
+	"siapp/pkg/organization"
+	"siapp/pkg/platform/auth"
 	"siapp/pkg/platform/database"
+	"siapp/pkg/platform/idem"
 	"siapp/pkg/platform/testkit"
 )
 
@@ -61,6 +65,15 @@ type env struct {
 	service *leave.Service
 	regions fakeRegions
 	userID  int64
+	keys    int
+	mu      sync.Mutex
+}
+
+// presigner gives a photo a URL without a storage behind it.
+type presigner struct{ media.Storage }
+
+func (presigner) PresignGet(_ context.Context, key, _ string, _ time.Duration) (string, error) {
+	return "https://files.test/" + key + "?sig=x", nil
 }
 
 // newEnv serves the admin group (RequireAdmin and the leave admin routes) and the field routes on
@@ -74,7 +87,10 @@ func newEnv(t *testing.T) *env {
 	perms := access.NewService(pool, clk)
 	e.service = leave.NewService(pool, clk)
 	e.service.UseRegionLookup(e.regions)
-	h := leave.NewHandler(e.service, perms)
+	e.service.UseSchedule(organization.LeaveSchedule{Shifts: organization.NewShifts(pool)})
+	e.service.UseAttachments(media.NewService(pool, presigner{}, clk, nil))
+	e.service.UsePermissions(perms)
+	h := leave.NewHandler(e.service, perms, idem.New(idem.Config{Pool: pool, Identity: auth.Identity}).Middleware(true))
 	srv := testkit.NewServer(t, testkit.Deps{Mount: func(r chi.Router) {
 		r.Route("/api/v1/admin", func(admin chi.Router) {
 			admin.Use(access.RequireAdmin(pool))
@@ -126,6 +142,12 @@ func (e *env) api(token, method, path string, body any) reply {
 
 func (e *env) raw(token, method, path string, body any) reply {
 	e.t.Helper()
+	return e.rawHeaders(token, method, path, body, nil)
+}
+
+// rawHeaders is raw with extra request headers, such as Idempotency-Key.
+func (e *env) rawHeaders(token, method, path string, body any, headers map[string]string) reply {
+	e.t.Helper()
 	var reader io.Reader
 	if body != nil {
 		encoded, err := json.Marshal(body)
@@ -139,6 +161,9 @@ func (e *env) raw(token, method, path string, body any) reply {
 	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	for name, value := range headers {
+		req.Header.Set(name, value)
 	}
 	res, err := http.DefaultClient.Do(req)
 	require.NoError(e.t, err)
@@ -627,6 +652,18 @@ func TestARegionAdminReachesOnlyTheirRegionsPeople(t *testing.T) {
 	require.Equal(t, 1, e.count(w.org, "SELECT count(*) FROM leave_ledger"))
 }
 
+// request inserts a bare request of annual leave of the person: a ledger row points at one.
+func (e *env) request(w world, personnelID int64) (id int64) {
+	e.t.Helper()
+	e.inTenant(w.org, func(tx pgx.Tx) {
+		require.NoError(e.t, tx.QueryRow(e.t.Context(), `
+INSERT INTO leave_requests (number, personnel_id, team_code, project_code, type, category_id, start_date, end_date, working_days, reason)
+SELECT 'T' || gen_random_uuid()::text, $1, '1K-IBMI-S1', '1K-IBMI-S', 'LEAVE', c.id, '2026-04-01', '2026-04-03', 3, 'Uji'
+FROM leave_categories c WHERE c.code = 'ANNUAL' RETURNING id`, personnelID).Scan(&id))
+	})
+	return id
+}
+
 // inLockedTx runs fn the way Part B's submit will: in the tenant transaction, under the person's
 // row lock.
 func (e *env) inLockedTx(w world, personnelID int64, fn func(q *db.Queries)) {
@@ -646,15 +683,16 @@ func TestDeductAndRefundKeepTheBalanceRight(t *testing.T) {
 	require.Equal(t, http.StatusCreated, e.grant(w, w.guardID, 5).Status)
 	ctx := t.Context()
 	now := e.clock.Now()
+	first, second, never := e.request(w, w.guardID), e.request(w, w.guardID), e.request(w, w.guardID)
 
 	e.inLockedTx(w, w.guardID, func(q *db.Queries) {
-		row, err := leave.Deduct(ctx, q, now, w.guardID, 101, 3, "LR202603-00001")
+		row, err := leave.Deduct(ctx, q, now, w.guardID, first, 3, "LR202603-00001")
 		require.NoError(t, err)
 		require.Equal(t, -3, row.Days)
 		require.Equal(t, 2, row.BalanceAfter)
 
 		// A balance that cannot cover the days is refused and writes nothing.
-		_, err = leave.Deduct(ctx, q, now, w.guardID, 102, 3, "too much")
+		_, err = leave.Deduct(ctx, q, now, w.guardID, second, 3, "too much")
 		require.ErrorIs(t, err, leave.ErrBalanceInsufficient)
 		bal, err := leave.Balance(ctx, q, w.guardID)
 		require.NoError(t, err)
@@ -663,13 +701,13 @@ func TestDeductAndRefundKeepTheBalanceRight(t *testing.T) {
 
 	// A refund gives the days back once. A second one, and one for a request that deducted nothing, do nothing.
 	e.inLockedTx(w, w.guardID, func(q *db.Queries) {
-		refunded, err := leave.Refund(ctx, q, now, w.guardID, 101, "Ditolak")
+		refunded, err := leave.Refund(ctx, q, now, w.guardID, first, "Ditolak")
 		require.NoError(t, err)
 		require.True(t, refunded)
-		again, err := leave.Refund(ctx, q, now, w.guardID, 101, "Ditolak lagi")
+		again, err := leave.Refund(ctx, q, now, w.guardID, first, "Ditolak lagi")
 		require.NoError(t, err)
 		require.False(t, again)
-		none, err := leave.Refund(ctx, q, now, w.guardID, 999, "Tidak pernah dipotong")
+		none, err := leave.Refund(ctx, q, now, w.guardID, never, "Tidak pernah dipotong")
 		require.NoError(t, err)
 		require.False(t, none)
 		bal, err := leave.Balance(ctx, q, w.guardID)
@@ -680,7 +718,7 @@ func TestDeductAndRefundKeepTheBalanceRight(t *testing.T) {
 
 	// A request is deducted once: the database refuses a second deduction of the same one.
 	require.Error(t, database.WithTenant(ctx, testkit.Pool(t), w.org, func(q *db.Queries) error {
-		_, err := leave.Deduct(ctx, q, now, w.guardID, 101, 1, "again")
+		_, err := leave.Deduct(ctx, q, now, w.guardID, first, 1, "again")
 		return err
 	}))
 	require.Equal(t, 3, e.count(w.org, "SELECT count(*) FROM leave_ledger"))
@@ -693,7 +731,7 @@ func TestTwoDeductionsOfTheLastDaysLetOneThrough(t *testing.T) {
 
 	results := make(chan error, 2)
 	var wg sync.WaitGroup
-	for _, requestID := range []int64{201, 202} {
+	for _, requestID := range []int64{e.request(w, w.guardID), e.request(w, w.guardID)} {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

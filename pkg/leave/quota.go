@@ -229,7 +229,7 @@ func (s *Service) AllowanceFor(ctx context.Context, q *db.Queries, personnelID i
 	}
 	out := Allowance{Category: cat, Quota: Quota{CategoryCode: cat.Code}}
 
-	clientCode, _, err := clientAndZone(ctx, q, teamCode)
+	clientCode, loc, err := clientAndZone(ctx, q, teamCode)
 	if err != nil {
 		return Allowance{}, err
 	}
@@ -239,7 +239,7 @@ func (s *Service) AllowanceFor(ctx context.Context, q *db.Queries, personnelID i
 			return Allowance{}, fmt.Errorf("get leave balance: %w", err)
 		}
 		out.QuotaDays, out.RemainingDays = int(balance), int(balance)
-		return out, s.addUsed(ctx, q, personnelID, cat.ID, on, &out.UsedDays)
+		return out, s.addUsed(ctx, q, personnelID, cat, on, loc, &out.UsedDays)
 	}
 
 	enabled, err := q.GetLeaveClientSetting(ctx, clientCode)
@@ -256,22 +256,31 @@ func (s *Service) AllowanceFor(ctx context.Context, q *db.Queries, personnelID i
 		}
 		out.QuotaDays = int(days) // no row is 0 days
 	}
-	if err := s.addUsed(ctx, q, personnelID, cat.ID, on, &out.UsedDays); err != nil {
+	if err := s.addUsed(ctx, q, personnelID, cat, on, loc, &out.UsedDays); err != nil {
 		return Allowance{}, err
 	}
 	out.RemainingDays = max(0, out.QuotaDays-out.UsedDays)
 	return out, nil
 }
 
-func (s *Service) addUsed(ctx context.Context, q *db.Queries, personnelID, categoryID int64, on timeutil.Date, into *int) error {
-	if s.used == nil {
-		return nil
+// addUsed fills in the days a person's live requests of a category already hold. A day count of
+// annual leave is the days not yet taken (their request ends today or later): the days already
+// taken are not "used" any more, they are gone from the balance.
+func (s *Service) addUsed(ctx context.Context, q *db.Queries, personnelID int64, cat Category, on timeutil.Date, loc *time.Location, into *int) error {
+	year := on.Time().Year()
+	notBefore := timeutil.NewDate(year, time.January, 1)
+	if cat.IsAnnual {
+		notBefore = timeutil.BusinessDate(s.clock.Now(), loc)
 	}
-	used, err := s.used(ctx, q, personnelID, categoryID, on.Time().Year())
+	days, err := q.SumLiveLeaveDays(ctx, db.SumLiveLeaveDaysParams{
+		PersonnelID: personnelID, CategoryID: cat.ID,
+		YearStart: dateParam(timeutil.NewDate(year, time.January, 1)), YearEnd: dateParam(timeutil.NewDate(year, time.December, 31)),
+		NotBefore: dateParam(notBefore),
+	})
 	if err != nil {
-		return fmt.Errorf("used leave days: %w", err)
+		return fmt.Errorf("sum live leave days: %w", err)
 	}
-	*into = used
+	*into = int(days)
 	return nil
 }
 

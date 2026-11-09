@@ -9,6 +9,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"siapp/internal/db"
+	"siapp/pkg/access"
+	"siapp/pkg/media"
 	"siapp/pkg/platform/clock"
 	"siapp/pkg/platform/timeutil"
 )
@@ -25,16 +27,39 @@ type RegionLookup interface {
 	RegionCodesOf(ctx context.Context, q *db.Queries, personnelID int64) ([]string, error)
 }
 
-// UsedDays is how many days of a category a person has used, or has pending, in a calendar year.
-// Part B plugs it in from the requests; until then nothing is used.
-type UsedDays func(ctx context.Context, q *db.Queries, personnelID, categoryID int64, year int) (int, error)
+// ScheduleDay is one day of a person's schedule: a date that has a shift, which may be the OFF shift.
+type ScheduleDay struct {
+	Date timeutil.Date
+	// Off is true when the shift of the day is the day off.
+	Off bool
+}
+
+// Schedule answers which days of a range a person has a shift on (organization.Shifts is behind
+// it). Only dates that have a schedule row are returned.
+type Schedule interface {
+	Days(ctx context.Context, organizationID, personnelID int64, from, to timeutil.Date) ([]ScheduleDay, error)
+}
+
+// Attachments is media.Service: a request's doctor's letter is attached to it and shown by it.
+type Attachments interface {
+	Attach(ctx context.Context, q *db.Queries, in media.AttachInput) error
+	Views(ctx context.Context, q *db.Queries, entityType string, entityID int64, ids []int64) ([]media.View, error)
+}
+
+// Permissions is access.Service: who may read a request besides its owner.
+type Permissions interface {
+	Resolve(ctx context.Context, q *db.Queries, personnelID int64, perm access.Permission, on timeutil.Date) (access.Resolution, error)
+}
 
 // Service is the leave use cases.
 type Service struct {
 	pool    *pgxpool.Pool
 	clock   clock.Clock
 	regions RegionLookup
-	used    UsedDays
+	// schedule, files and perms are plugged in while wiring (the requests need them; Part A does not).
+	schedule Schedule
+	files    Attachments
+	perms    Permissions
 }
 
 // NewService returns the Service. regions may be nil until it is wired: a REGION_ADMIN is then
@@ -46,8 +71,14 @@ func NewService(pool *pgxpool.Pool, clk clock.Clock) *Service {
 // UseRegionLookup plugs in the lookup of a person's regions. Call it while wiring.
 func (s *Service) UseRegionLookup(r RegionLookup) { s.regions = r }
 
-// UseUsedDays plugs in the count of used days. Call it while wiring.
-func (s *Service) UseUsedDays(f UsedDays) { s.used = f }
+// UseSchedule plugs in the person's schedule, from which a request's working days are counted.
+func (s *Service) UseSchedule(sc Schedule) { s.schedule = sc }
+
+// UseAttachments plugs in the media module. Call it while wiring.
+func (s *Service) UseAttachments(a Attachments) { s.files = a }
+
+// UsePermissions plugs in the permission lookup. Call it while wiring.
+func (s *Service) UsePermissions(p Permissions) { s.perms = p }
 
 func ts(t time.Time) pgtype.Timestamptz { return pgtype.Timestamptz{Time: t, Valid: true} }
 

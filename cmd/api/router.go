@@ -142,10 +142,13 @@ func newRouter(d deps) *chi.Mux {
 	attendance.NewHandler(attendanceService, accessService, idempotency.Middleware(true)).MountField(router)
 
 	// Leave, permit and sick requests (07.5): SiAPP's own, nothing of it goes through Personalia.
-	// Part A is the categories, quotas and the ledger of annual leave.
+	// Part A is the categories, quotas and the ledger of annual leave; Part B the requests.
 	leaveService := leave.NewService(d.Pool, d.Clock)
 	leaveService.UseRegionLookup(directory)
-	leaveHandler := leave.NewHandler(leaveService, accessService)
+	leaveService.UseSchedule(organization.LeaveSchedule{Shifts: organization.NewShifts(d.Pool)})
+	leaveService.UseAttachments(mediaService)
+	leaveService.UsePermissions(accessService)
+	leaveHandler := leave.NewHandler(leaveService, accessService, idempotency.Middleware(true))
 	leaveHandler.MountField(router)
 
 	// The WebSocket (05.3). The hub is shared with the Redis subscriber main starts, which feeds

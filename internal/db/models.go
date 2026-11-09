@@ -312,6 +312,48 @@ func (ns NullLeaveCategoryType) Value() (driver.Value, error) {
 	return string(ns.LeaveCategoryType), nil
 }
 
+type LeaveDecidedLevel string
+
+const (
+	LeaveDecidedLevelDANRU LeaveDecidedLevel = "DANRU"
+	LeaveDecidedLevelADMIN LeaveDecidedLevel = "ADMIN"
+)
+
+func (e *LeaveDecidedLevel) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = LeaveDecidedLevel(s)
+	case string:
+		*e = LeaveDecidedLevel(s)
+	default:
+		return fmt.Errorf("unsupported scan type for LeaveDecidedLevel: %T", src)
+	}
+	return nil
+}
+
+type NullLeaveDecidedLevel struct {
+	LeaveDecidedLevel LeaveDecidedLevel
+	Valid             bool // Valid is true if LeaveDecidedLevel is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullLeaveDecidedLevel) Scan(value interface{}) error {
+	if value == nil {
+		ns.LeaveDecidedLevel, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.LeaveDecidedLevel.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullLeaveDecidedLevel) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.LeaveDecidedLevel), nil
+}
+
 type LeaveLedgerKind string
 
 const (
@@ -356,6 +398,50 @@ func (ns NullLeaveLedgerKind) Value() (driver.Value, error) {
 	return string(ns.LeaveLedgerKind), nil
 }
 
+type LeaveRequestStatus string
+
+const (
+	LeaveRequestStatusPENDING   LeaveRequestStatus = "PENDING"
+	LeaveRequestStatusAPPROVED  LeaveRequestStatus = "APPROVED"
+	LeaveRequestStatusREJECTED  LeaveRequestStatus = "REJECTED"
+	LeaveRequestStatusCANCELLED LeaveRequestStatus = "CANCELLED"
+)
+
+func (e *LeaveRequestStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = LeaveRequestStatus(s)
+	case string:
+		*e = LeaveRequestStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for LeaveRequestStatus: %T", src)
+	}
+	return nil
+}
+
+type NullLeaveRequestStatus struct {
+	LeaveRequestStatus LeaveRequestStatus
+	Valid              bool // Valid is true if LeaveRequestStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullLeaveRequestStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.LeaveRequestStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.LeaveRequestStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullLeaveRequestStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.LeaveRequestStatus), nil
+}
+
 type MediaPurpose string
 
 const (
@@ -368,6 +454,7 @@ const (
 	MediaPurposeASSETREPORT      MediaPurpose = "ASSET_REPORT"
 	MediaPurposeEMEMO            MediaPurpose = "EMEMO"
 	MediaPurposeLETTERHEADLOGO   MediaPurpose = "LETTERHEAD_LOGO"
+	MediaPurposeLEAVEATTACHMENT  MediaPurpose = "LEAVE_ATTACHMENT"
 )
 
 func (e *MediaPurpose) Scan(src interface{}) error {
@@ -1266,6 +1353,47 @@ type LeaveLedger struct {
 	Note           string
 	CreatedByID    pgtype.Int8
 	CreatedAt      pgtype.Timestamptz
+}
+
+type LeaveRequest struct {
+	ID                  int64
+	OrganizationID      int64
+	Number              string
+	PersonnelID         int64
+	TeamCode            string
+	ProjectCode         string
+	Type                LeaveCategoryType
+	CategoryID          int64
+	StartDate           pgtype.Date
+	EndDate             pgtype.Date
+	StartTime           pgtype.Time
+	EndTime             pgtype.Time
+	WorkingDays         int32
+	Reason              string
+	Responsibility      pgtype.Text
+	ContactInfo         pgtype.Text
+	ChangeDayFrom       pgtype.Date
+	ChangeDayTo         pgtype.Date
+	Hospitalization     pgtype.Bool
+	LetterStatus        pgtype.Bool
+	LetterDate          pgtype.Date
+	Disease             pgtype.Text
+	AttachmentMediaID   pgtype.Int8
+	Status              LeaveRequestStatus
+	ApproverPersonnelID pgtype.Int8
+	DecidedLevel        NullLeaveDecidedLevel
+	DecidedByID         pgtype.Int8
+	DecidedAt           pgtype.Timestamptz
+	DecisionNote        pgtype.Text
+	CancelledAt         pgtype.Timestamptz
+	CreatedAt           pgtype.Timestamptz
+	UpdatedAt           pgtype.Timestamptz
+}
+
+type LeaveRequestCounter struct {
+	OrganizationID int64
+	Type           LeaveCategoryType
+	Counter        int32
 }
 
 type LegacyContactType struct {
