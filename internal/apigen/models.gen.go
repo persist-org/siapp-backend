@@ -925,6 +925,7 @@ const (
 	GUARDSUBMITTED        NotificationType = "GUARD_SUBMITTED"
 	INSTRUCTIONFEEDBACK   NotificationType = "INSTRUCTION_FEEDBACK"
 	INSTRUCTIONRECEIVED   NotificationType = "INSTRUCTION_RECEIVED"
+	LEAVECANCELLED        NotificationType = "LEAVE_CANCELLED"
 	LEAVEDECIDED          NotificationType = "LEAVE_DECIDED"
 	LEAVEREQUESTED        NotificationType = "LEAVE_REQUESTED"
 	OFFLINESUBMISSIONSENT NotificationType = "OFFLINE_SUBMISSION_SENT"
@@ -950,6 +951,8 @@ func (e NotificationType) Valid() bool {
 	case INSTRUCTIONFEEDBACK:
 		return true
 	case INSTRUCTIONRECEIVED:
+		return true
+	case LEAVECANCELLED:
 		return true
 	case LEAVEDECIDED:
 		return true
@@ -2877,6 +2880,66 @@ const (
 func (e PutAdminPermissionCategoriesByCodeQuotas200JSONResponseBodySuccess) Valid() bool {
 	switch e {
 	case PutAdminPermissionCategoriesByCodeQuotas200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetAdminPermissions200JSONResponseBodySuccess.
+const (
+	GetAdminPermissions200JSONResponseBodySuccessTrue GetAdminPermissions200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetAdminPermissions200JSONResponseBodySuccess enum.
+func (e GetAdminPermissions200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetAdminPermissions200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetAdminPermissionsById200JSONResponseBodySuccess.
+const (
+	GetAdminPermissionsById200JSONResponseBodySuccessTrue GetAdminPermissionsById200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetAdminPermissionsById200JSONResponseBodySuccess enum.
+func (e GetAdminPermissionsById200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetAdminPermissionsById200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostAdminPermissionsByIdApprove200JSONResponseBodySuccess.
+const (
+	PostAdminPermissionsByIdApprove200JSONResponseBodySuccessTrue PostAdminPermissionsByIdApprove200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostAdminPermissionsByIdApprove200JSONResponseBodySuccess enum.
+func (e PostAdminPermissionsByIdApprove200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostAdminPermissionsByIdApprove200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostAdminPermissionsByIdDecline200JSONResponseBodySuccess.
+const (
+	PostAdminPermissionsByIdDecline200JSONResponseBodySuccessTrue PostAdminPermissionsByIdDecline200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostAdminPermissionsByIdDecline200JSONResponseBodySuccess enum.
+func (e PostAdminPermissionsByIdDecline200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostAdminPermissionsByIdDecline200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
@@ -6565,7 +6628,10 @@ type Attendance struct {
 	Id                  int64     `json:"id"`
 
 	// LateMinutes Menit keterlambatan absen datang, dibulatkan ke bawah; 0 bila tepat waktu. Absen dalam toleransi shift dihitung tepat waktu; lewat dari itu, keterlambatan dihitung dari jam mulai shift. Disimpan saat absen, tidak berubah bila toleransi diedit kemudian.
-	LateMinutes        int                          `json:"late_minutes"`
+	LateMinutes int `json:"late_minutes"`
+
+	// LeaveRequestId Pengajuan izin/cuti/sakit yang membuat catatan LEAVE ini (GET /permissions/{id}); null untuk catatan lain.
+	LeaveRequestId     *int64                       `json:"leave_request_id,omitempty"`
 	PersonelSyncStatus AttendancePersonelSyncStatus `json:"personel_sync_status"`
 	PersonnelId        int64                        `json:"personnel_id"`
 	ProjectCode        string                       `json:"project_code"`
@@ -6642,7 +6708,10 @@ type AttendanceDetail struct {
 	Id         int64    `json:"id"`
 
 	// LateMinutes Menit keterlambatan absen datang, dibulatkan ke bawah; 0 bila tepat waktu. Absen dalam toleransi shift dihitung tepat waktu; lewat dari itu, keterlambatan dihitung dari jam mulai shift. Disimpan saat absen, tidak berubah bila toleransi diedit kemudian.
-	LateMinutes        int                                `json:"late_minutes"`
+	LateMinutes int `json:"late_minutes"`
+
+	// LeaveRequestId Pengajuan izin/cuti/sakit yang membuat catatan LEAVE ini (GET /permissions/{id}); null untuk catatan lain.
+	LeaveRequestId     *int64                             `json:"leave_request_id,omitempty"`
 	PersonelSyncStatus AttendanceDetailPersonelSyncStatus `json:"personel_sync_status"`
 	PersonnelId        int64                              `json:"personnel_id"`
 	ProjectCode        string                             `json:"project_code"`
@@ -8287,7 +8356,14 @@ type Permission struct {
 	ChangeDayFrom *openapi_types.Date `json:"change_day_from,omitempty"`
 	ChangeDayTo   *openapi_types.Date `json:"change_day_to,omitempty"`
 	ContactInfo   *string             `json:"contact_info,omitempty"`
-	Decision      *struct {
+
+	// Coverage Anggota regu yang hadir pada hari pertama irisan (atau hari mulai), tanpa pemohon. Hanya untuk yang memutuskan.
+	Coverage *struct {
+		Date    openapi_types.Date `json:"date"`
+		Present int                `json:"present"`
+		Size    int                `json:"size"`
+	} `json:"coverage,omitempty"`
+	Decision *struct {
 		At     time.Time               `json:"at"`
 		ByName string                  `json:"by_name"`
 		Level  PermissionDecisionLevel `json:"level"`
@@ -8297,8 +8373,28 @@ type Permission struct {
 	EndTime *string            `json:"end_time,omitempty"`
 	Id      int64              `json:"id"`
 
+	// LeaveBalance Cuti tahunan saja; hanya pada detail untuk yang memutuskan. `after_approval_days = max(0, remaining_days - working_days)`.
+	LeaveBalance *struct {
+		AfterApprovalDays int `json:"after_approval_days"`
+		RemainingDays     int `json:"remaining_days"`
+	} `json:"leave_balance,omitempty"`
+
 	// Number LR, PR atau SR + YYYYMM + 5 digit penghitung per tipe.
-	Number         string    `json:"number"`
+	Number string `json:"number"`
+
+	// OverlapsWith Anggota regu lain dengan izin DISETUJUI yang beririsan hari. Hanya untuk yang memutuskan.
+	OverlapsWith *[]struct {
+		EndDate   openapi_types.Date `json:"end_date"`
+		Name      string             `json:"name"`
+		StartDate openapi_types.Date `json:"start_date"`
+	} `json:"overlaps_with,omitempty"`
+
+	// Person Hanya untuk yang memutuskan (bukan pemilik).
+	Person *struct {
+		Name        string  `json:"name"`
+		PersonnelId int64   `json:"personnel_id"`
+		Position    *string `json:"position,omitempty"`
+	} `json:"person,omitempty"`
 	Reason         string    `json:"reason"`
 	RequestedAt    time.Time `json:"requested_at"`
 	Responsibility *string   `json:"responsibility,omitempty"`
@@ -8308,6 +8404,12 @@ type Permission struct {
 		LetterDate      *openapi_types.Date `json:"letter_date,omitempty"`
 		LetterStatus    bool                `json:"letter_status"`
 	} `json:"sick,omitempty"`
+
+	// Skipped Hanya pada jawaban persetujuan: hari cuti yang tidak ditulis karena orangnya sudah PRESENT.
+	Skipped *[]struct {
+		TeamCode string             `json:"team_code"`
+		WorkDate openapi_types.Date `json:"work_date"`
+	} `json:"skipped,omitempty"`
 	StartDate openapi_types.Date `json:"start_date"`
 
 	// StartTime Jam lokal proyek; hanya kategori sebagian hari.
@@ -8356,6 +8458,12 @@ type PermissionCreate struct {
 	// TeamCode Boleh kosong bila orang itu hanya bertugas di satu regu pada start_date.
 	TeamCode *string           `json:"team_code,omitempty"`
 	Type     LeaveCategoryType `json:"type"`
+}
+
+// PermissionDecision Isi persetujuan atau penolakan.
+type PermissionDecision struct {
+	// Note Wajib saat menolak; opsional saat menyetujui.
+	Note *string `json:"note,omitempty"`
 }
 
 // PermissionScope Jangkauan hak yang dimiliki seseorang. `SELF`: hanya catatannya sendiri. `TEAM`: catatan regu tempat ia memegang peran itu.
@@ -10294,6 +10402,56 @@ type PatchAdminPermissionCategoriesByCode200JSONResponseBodySuccess bool
 // PutAdminPermissionCategoriesByCodeQuotas200JSONResponseBodySuccess defines parameters for PutAdminPermissionCategoriesByCodeQuotas.
 type PutAdminPermissionCategoriesByCodeQuotas200JSONResponseBodySuccess bool
 
+// GetAdminPermissionsParams defines parameters for GetAdminPermissions.
+type GetAdminPermissionsParams struct {
+	TeamCode *string `form:"team_code,omitempty" json:"team_code,omitempty"`
+	Type     *string `form:"type,omitempty" json:"type,omitempty"`
+
+	// Status Filter status/enum resource.
+	Status *StatusParam `form:"status,omitempty" json:"status,omitempty"`
+
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
+	Q        *QParam             `form:"q,omitempty" json:"q,omitempty"`
+	FromDate *openapi_types.Date `form:"from_date,omitempty" json:"from_date,omitempty"`
+	ToDate   *openapi_types.Date `form:"to_date,omitempty" json:"to_date,omitempty"`
+
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
+	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
+
+	// Limit Item per halaman (maks 100).
+	Limit       *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
+	ProjectCode *string     `form:"project_code,omitempty" json:"project_code,omitempty"`
+	RegionCode  *string     `form:"region_code,omitempty" json:"region_code,omitempty"`
+}
+
+// GetAdminPermissions200JSONResponseBodySuccess defines parameters for GetAdminPermissions.
+type GetAdminPermissions200JSONResponseBodySuccess bool
+
+// GetAdminPermissionsById200JSONResponseBodySuccess defines parameters for GetAdminPermissionsById.
+type GetAdminPermissionsById200JSONResponseBodySuccess bool
+
+// PostAdminPermissionsByIdApproveParams defines parameters for PostAdminPermissionsByIdApprove.
+type PostAdminPermissionsByIdApproveParams struct {
+	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
+	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
+	// 409 CONFLICT.
+	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
+}
+
+// PostAdminPermissionsByIdApprove200JSONResponseBodySuccess defines parameters for PostAdminPermissionsByIdApprove.
+type PostAdminPermissionsByIdApprove200JSONResponseBodySuccess bool
+
+// PostAdminPermissionsByIdDeclineParams defines parameters for PostAdminPermissionsByIdDecline.
+type PostAdminPermissionsByIdDeclineParams struct {
+	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
+	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
+	// 409 CONFLICT.
+	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
+}
+
+// PostAdminPermissionsByIdDecline200JSONResponseBodySuccess defines parameters for PostAdminPermissionsByIdDecline.
+type PostAdminPermissionsByIdDecline200JSONResponseBodySuccess bool
+
 // GetAdminPersonnelReviewsParams defines parameters for GetAdminPersonnelReviews.
 type GetAdminPersonnelReviewsParams struct {
 	PersonnelId    *int64 `form:"personnel_id,omitempty" json:"personnel_id,omitempty"`
@@ -11736,11 +11894,16 @@ type GetPermissionCategories200JSONResponseBodySuccess bool
 
 // GetPermissionsParams defines parameters for GetPermissions.
 type GetPermissionsParams struct {
-	// TeamId Filter scope regu.
-	TeamId *TeamIdParam `form:"team_id,omitempty" json:"team_id,omitempty"`
+	TeamCode *string `form:"team_code,omitempty" json:"team_code,omitempty"`
+	Type     *string `form:"type,omitempty" json:"type,omitempty"`
 
 	// Status Filter status/enum resource.
 	Status *StatusParam `form:"status,omitempty" json:"status,omitempty"`
+
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
+	Q        *QParam             `form:"q,omitempty" json:"q,omitempty"`
+	FromDate *openapi_types.Date `form:"from_date,omitempty" json:"from_date,omitempty"`
+	ToDate   *openapi_types.Date `form:"to_date,omitempty" json:"to_date,omitempty"`
 
 	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
@@ -11802,6 +11965,14 @@ type GetPermissionsQuota200JSONResponseBodySuccess bool
 // GetPermissionsById200JSONResponseBodySuccess defines parameters for GetPermissionsById.
 type GetPermissionsById200JSONResponseBodySuccess bool
 
+// PostPermissionsByIdApproveParams defines parameters for PostPermissionsByIdApprove.
+type PostPermissionsByIdApproveParams struct {
+	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
+	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
+	// 409 CONFLICT.
+	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
+}
+
 // PostPermissionsByIdApprove200JSONResponseBodySuccess defines parameters for PostPermissionsByIdApprove.
 type PostPermissionsByIdApprove200JSONResponseBodySuccess bool
 
@@ -11815,6 +11986,14 @@ type PostPermissionsByIdCancelParams struct {
 
 // PostPermissionsByIdCancel200JSONResponseBodySuccess defines parameters for PostPermissionsByIdCancel.
 type PostPermissionsByIdCancel200JSONResponseBodySuccess bool
+
+// PostPermissionsByIdDeclineParams defines parameters for PostPermissionsByIdDecline.
+type PostPermissionsByIdDeclineParams struct {
+	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
+	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
+	// 409 CONFLICT.
+	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
+}
 
 // PostPermissionsByIdDecline200JSONResponseBodySuccess defines parameters for PostPermissionsByIdDecline.
 type PostPermissionsByIdDecline200JSONResponseBodySuccess bool
@@ -12458,6 +12637,12 @@ type PatchAdminPermissionCategoriesByCodeJSONRequestBody = LeaveCategoryUpdate
 // PutAdminPermissionCategoriesByCodeQuotasJSONRequestBody defines body for PutAdminPermissionCategoriesByCodeQuotas for application/json ContentType.
 type PutAdminPermissionCategoriesByCodeQuotasJSONRequestBody = LeaveQuotasInput
 
+// PostAdminPermissionsByIdApproveJSONRequestBody defines body for PostAdminPermissionsByIdApprove for application/json ContentType.
+type PostAdminPermissionsByIdApproveJSONRequestBody = PermissionDecision
+
+// PostAdminPermissionsByIdDeclineJSONRequestBody defines body for PostAdminPermissionsByIdDecline for application/json ContentType.
+type PostAdminPermissionsByIdDeclineJSONRequestBody = PermissionDecision
+
 // PostAdminPersonnelByPersonnelIdLeaveLedgerJSONRequestBody defines body for PostAdminPersonnelByPersonnelIdLeaveLedger for application/json ContentType.
 type PostAdminPersonnelByPersonnelIdLeaveLedgerJSONRequestBody = LeaveLedgerInput
 
@@ -12672,10 +12857,10 @@ type PostPanicsByIdFinishJSONRequestBody = PanicResolve
 type PostPermissionsJSONRequestBody = PermissionCreate
 
 // PostPermissionsByIdApproveJSONRequestBody defines body for PostPermissionsByIdApprove for application/json ContentType.
-type PostPermissionsByIdApproveJSONRequestBody = ApprovalNote
+type PostPermissionsByIdApproveJSONRequestBody = PermissionDecision
 
 // PostPermissionsByIdDeclineJSONRequestBody defines body for PostPermissionsByIdDecline for application/json ContentType.
-type PostPermissionsByIdDeclineJSONRequestBody = RejectionNote
+type PostPermissionsByIdDeclineJSONRequestBody = PermissionDecision
 
 // PostPersonnelReviewsJSONRequestBody defines body for PostPersonnelReviews for application/json ContentType.
 type PostPersonnelReviewsJSONRequestBody = PersonnelReviewCreate

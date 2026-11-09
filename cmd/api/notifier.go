@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"siapp/internal/db"
+	"siapp/pkg/leave"
 	"siapp/pkg/notifications"
 	"siapp/pkg/organization"
 	"siapp/pkg/platform/auth"
@@ -15,7 +16,33 @@ type notifier struct {
 	service *notifications.Service
 }
 
-var _ organization.Notifier = notifier{}
+var (
+	_ organization.Notifier = notifier{}
+	_ leave.Notifier        = notifier{}
+)
+
+// NotifyLeave sends the notice of a leave request: LEAVE_REQUESTED and LEAVE_CANCELLED to who
+// decides it, LEAVE_DECIDED to its owner (leave.Notifier).
+func (n notifier) NotifyLeave(ctx context.Context, nt leave.Notice) {
+	typ := notifications.TypeLeaveRequested
+	switch nt.Kind {
+	case leave.NoticeDecided:
+		typ = notifications.TypeLeaveDecided
+	case leave.NoticeCancelled:
+		typ = notifications.TypeLeaveCancelled
+	case leave.NoticeRequested:
+	}
+	n.service.Notify(ctx, notifications.Input{
+		Type:         typ,
+		RecipientIDs: nt.RecipientIDs,
+		Vars: notifications.Vars{
+			BusinessLine: notifications.BusinessLine(nt.BusinessLine), ActorName: nt.PersonName, TeamName: nt.TeamCode,
+			Date: nt.Date, Approved: nt.Approved,
+		},
+		Entity: &notifications.Entity{Type: "LEAVE_REQUEST", ID: nt.RequestID},
+		Data:   map[string]any{"leave_request_id": nt.RequestID, "team_code": nt.TeamCode},
+	})
+}
 
 // MemberMoved sends TEAM_CHANGED to the person who was moved.
 func (n notifier) MemberMoved(ctx context.Context, c organization.MemberChange) {

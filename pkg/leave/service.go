@@ -34,10 +34,21 @@ type ScheduleDay struct {
 	Off bool
 }
 
+// ScheduleInstance is a scheduled shift with its instants: what a LEAVE attendance row copies.
+type ScheduleInstance struct {
+	ScheduleDay
+	ShiftID  int64
+	StartsAt time.Time
+	EndsAt   time.Time
+	Timezone string
+	// TeamCodes are the regu the person serves in that day.
+	TeamCodes []string
+}
+
 // Schedule answers which days of a range a person has a shift on (organization.Shifts is behind
 // it). Only dates that have a schedule row are returned.
 type Schedule interface {
-	Days(ctx context.Context, organizationID, personnelID int64, from, to timeutil.Date) ([]ScheduleDay, error)
+	Instances(ctx context.Context, organizationID, personnelID int64, from, to timeutil.Date) ([]ScheduleInstance, error)
 }
 
 // Attachments is media.Service: a request's doctor's letter is attached to it and shown by it.
@@ -49,6 +60,8 @@ type Attachments interface {
 // Permissions is access.Service: who may read a request besides its owner.
 type Permissions interface {
 	Resolve(ctx context.Context, q *db.Queries, personnelID int64, perm access.Permission, on timeutil.Date) (access.Resolution, error)
+	// DanruOf is who is told of a request of a regu: its DANRU, or the admins when there is none.
+	DanruOf(ctx context.Context, q *db.Queries, teamCode string, sender int64, on timeutil.Date) ([]int64, error)
 }
 
 // Service is the leave use cases.
@@ -60,6 +73,7 @@ type Service struct {
 	schedule Schedule
 	files    Attachments
 	perms    Permissions
+	notifier Notifier
 }
 
 // NewService returns the Service. regions may be nil until it is wired: a REGION_ADMIN is then

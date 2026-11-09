@@ -2193,6 +2193,7 @@ components:
         check_out_distance_meters: { type: integer, nullable: true }
         check_out_within_area: { type: boolean, nullable: true }
         check_out_update_count: { type: integer, description: "Berapa kali jam pulang diperbarui." }
+        leave_request_id: { type: integer, format: int64, nullable: true, description: "Pengajuan izin/cuti/sakit yang membuat catatan LEAVE ini (GET /permissions/{id}); null untuk catatan lain." }
         personel_sync_status: { type: string, enum: [PENDING, SYNCED, FAILED] }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
@@ -2379,6 +2380,53 @@ components:
             id: { type: integer, format: int64 }
             url: { type: string, description: "URL bertanda tangan, berlaku satu jam." }
             content_type: { type: string }
+        person:
+          type: object
+          description: "Hanya untuk yang memutuskan (bukan pemilik)."
+          required: [personnel_id, name]
+          properties:
+            personnel_id: { type: integer, format: int64 }
+            name: { type: string }
+            position: { type: string, nullable: true }
+        overlaps_with:
+          type: array
+          description: "Anggota regu lain dengan izin DISETUJUI yang beririsan hari. Hanya untuk yang memutuskan."
+          items:
+            type: object
+            required: [name, start_date, end_date]
+            properties:
+              name: { type: string }
+              start_date: { type: string, format: date }
+              end_date: { type: string, format: date }
+        coverage:
+          type: object
+          description: "Anggota regu yang hadir pada hari pertama irisan (atau hari mulai), tanpa pemohon. Hanya untuk yang memutuskan."
+          required: [date, present, size]
+          properties:
+            date: { type: string, format: date }
+            present: { type: integer }
+            size: { type: integer }
+        leave_balance:
+          type: object
+          description: "Cuti tahunan saja; hanya pada detail untuk yang memutuskan. `after_approval_days = max(0, remaining_days - working_days)`."
+          required: [remaining_days, after_approval_days]
+          properties:
+            remaining_days: { type: integer }
+            after_approval_days: { type: integer }
+        skipped:
+          type: array
+          description: "Hanya pada jawaban persetujuan: hari cuti yang tidak ditulis karena orangnya sudah PRESENT."
+          items:
+            type: object
+            required: [work_date, team_code]
+            properties:
+              work_date: { type: string, format: date }
+              team_code: { type: string }
+    PermissionDecision:
+      type: object
+      description: Isi persetujuan atau penolakan.
+      properties:
+        note: { type: string, maxLength: 1000, description: "Wajib saat menolak; opsional saat menyetujui." }
     PermissionCreate:
       type: object
       required: [type, start_date, end_date, reason]
@@ -3372,6 +3420,7 @@ components:
         - INSTRUCTION_FEEDBACK
         - SWAP_ASSIGNED
         - PANIC_RESOLVED
+        - LEAVE_CANCELLED
     NotificationPriority:
       type: string
       enum: [NORMAL, HIGH]
@@ -10131,19 +10180,28 @@ paths:
     get:
       operationId: getPermissions
       tags: [Permission]
-      summary: Daftar izin (DANRU = regu untuk approval)
+      summary: Antrean pengajuan regu yang dipimpin pemanggil (DANRU)
+      description: >-
+        Berdasarkan regu yang dipimpin pemanggil SEKARANG (`attendance.leave.approve`, TEAM), bukan
+        berdasarkan DANRU yang tercatat saat diajukan: setelah DANRU diganti, yang baru melihatnya.
+        Terbaru dulu. `type` dan `status` boleh diulang atau dipisah koma. `q` mencari nama atau nomor.
+        Tiap item memuat `person`, `overlaps_with` dan `coverage`.
       security:
         - bearerSession: []
-        - oauth2ClientCredentials: [instructions:read]
-        - apiKey: []
       parameters:
-        - $ref: '#/components/parameters/TeamIdParam'
+        - { name: team_code, in: query, required: false, schema: { type: string, example: 1K-IBMI-S1 } }
+        - { name: type, in: query, required: false, schema: { type: string, example: "LEAVE,SICK" } }
         - $ref: '#/components/parameters/StatusParam'
+        - $ref: '#/components/parameters/QParam'
+        - { name: from_date, in: query, required: false, schema: { type: string, format: date } }
+        - { name: to_date, in: query, required: false, schema: { type: string, format: date } }
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/LimitParam'
       responses:
         '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/ListEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/Permission' } } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
     post:
       operationId: postPermissions
       tags: [Permission]
@@ -10225,25 +10283,147 @@ paths:
     post:
       operationId: postPermissionsByIdApprove
       tags: [Permission]
-      summary: Setujui izin (DANRU)
-      requestBody: { required: false, content: { application/json: { schema: { $ref: '#/components/schemas/ApprovalNote' } } } }
+      summary: Setujui pengajuan (DANRU regu itu)
+      description: >-
+        Satu transaksi. Pemilik tidak pernah memutuskan pengajuannya sendiri (403). Hanya
+        `PENDING` yang bisa diputuskan DANRU; admin juga boleh MENOLAK pengajuan yang sudah
+        disetujui DANRU. Selain itu 409 `LEAVE_ALREADY_DECIDED` (`REJECTED` dan `CANCELLED` final).
+        Menolak wajib disertai `note` (tidak kosong, maks 1000); catatan persetujuan opsional dan
+        disimpan. Menyetujui menulis baris `LEAVE` untuk hari kerja terjadwal (hari yang sudah
+        `PRESENT` dilewati dan didaftar di `skipped`) bila kategorinya membuat hari cuti, dan
+        menurunkan keterlambatan yang tercatat. Menolak cuti tahunan mengembalikan harinya sekali;
+        menolak pengajuan yang sudah disetujui juga menghapus baris `LEAVE`-nya dan mengembalikan
+        keterlambatan. Pemilik menerima `LEAVE_DECIDED`. Idempoten.
+      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyHeader' } ]
+      requestBody: { required: false, content: { application/json: { schema: { $ref: '#/components/schemas/PermissionDecision' } } } }
       responses:
         '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/Permission' } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /permissions/{id}/decline:
     parameters: [ { $ref: '#/components/parameters/IdPath' } ]
     post:
       operationId: postPermissionsByIdDecline
       tags: [Permission]
-      summary: Tolak izin (DANRU)
-      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/RejectionNote' } } } }
+      summary: Tolak pengajuan (DANRU regu itu)
+      description: >-
+        Satu transaksi. Pemilik tidak pernah memutuskan pengajuannya sendiri (403). Hanya
+        `PENDING` yang bisa diputuskan DANRU; admin juga boleh MENOLAK pengajuan yang sudah
+        disetujui DANRU. Selain itu 409 `LEAVE_ALREADY_DECIDED` (`REJECTED` dan `CANCELLED` final).
+        Menolak wajib disertai `note` (tidak kosong, maks 1000); catatan persetujuan opsional dan
+        disimpan. Menyetujui menulis baris `LEAVE` untuk hari kerja terjadwal (hari yang sudah
+        `PRESENT` dilewati dan didaftar di `skipped`) bila kategorinya membuat hari cuti, dan
+        menurunkan keterlambatan yang tercatat. Menolak cuti tahunan mengembalikan harinya sekali;
+        menolak pengajuan yang sudah disetujui juga menghapus baris `LEAVE`-nya dan mengembalikan
+        keterlambatan. Pemilik menerima `LEAVE_DECIDED`. Idempoten.
+      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyHeader' } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PermissionDecision' } } } }
       responses:
         '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/Permission' } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /admin/permissions:
+    get:
+      operationId: getAdminPermissions
+      tags: [Permission]
+      summary: Daftar pengajuan dalam jangkauan admin
+      description: >-
+        ORG_ADMIN: semua. REGION_ADMIN: hanya wilayahnya, apa pun `region_code` yang dikirim.
+        Tempat admin memutuskan pengajuan DANRU sendiri dan regu tanpa DANRU.
+      security:
+        - bearerSession: []
+      parameters:
+        - { name: team_code, in: query, required: false, schema: { type: string, example: 1K-IBMI-S1 } }
+        - { name: type, in: query, required: false, schema: { type: string, example: "LEAVE,SICK" } }
+        - $ref: '#/components/parameters/StatusParam'
+        - $ref: '#/components/parameters/QParam'
+        - { name: from_date, in: query, required: false, schema: { type: string, format: date } }
+        - { name: to_date, in: query, required: false, schema: { type: string, format: date } }
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - { name: project_code, in: query, required: false, schema: { type: string, example: 1K-IBMI-S } }
+        - { name: region_code, in: query, required: false, schema: { type: string, example: OS1 } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/ListEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/Permission' } } } } ] } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /admin/permissions/{id}:
+    parameters: [ { $ref: '#/components/parameters/IdPath' } ]
+    get:
+      operationId: getAdminPermissionsById
+      tags: [Permission]
+      summary: Detail pengajuan dalam jangkauan admin
+      description: "Di luar jangkauan, dan id yang tidak ada: 404 `LEAVE_NOT_FOUND`."
+      security:
+        - bearerSession: []
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/Permission' } } } ] } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/permissions/{id}/approve:
+    parameters: [ { $ref: '#/components/parameters/IdPath' } ]
+    post:
+      operationId: postAdminPermissionsByIdApprove
+      tags: [Permission]
+      summary: Setujui pengajuan (admin)
+      description: >-
+        Pengajuan di luar wilayah REGION_ADMIN: 404.
+        Satu transaksi. Pemilik tidak pernah memutuskan pengajuannya sendiri (403). Hanya
+        `PENDING` yang bisa diputuskan DANRU; admin juga boleh MENOLAK pengajuan yang sudah
+        disetujui DANRU. Selain itu 409 `LEAVE_ALREADY_DECIDED` (`REJECTED` dan `CANCELLED` final).
+        Menolak wajib disertai `note` (tidak kosong, maks 1000); catatan persetujuan opsional dan
+        disimpan. Menyetujui menulis baris `LEAVE` untuk hari kerja terjadwal (hari yang sudah
+        `PRESENT` dilewati dan didaftar di `skipped`) bila kategorinya membuat hari cuti, dan
+        menurunkan keterlambatan yang tercatat. Menolak cuti tahunan mengembalikan harinya sekali;
+        menolak pengajuan yang sudah disetujui juga menghapus baris `LEAVE`-nya dan mengembalikan
+        keterlambatan. Pemilik menerima `LEAVE_DECIDED`. Idempoten.
+      security:
+        - bearerSession: []
+      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyHeader' } ]
+      requestBody: { required: false, content: { application/json: { schema: { $ref: '#/components/schemas/PermissionDecision' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/Permission' } } } ] } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /admin/permissions/{id}/decline:
+    parameters: [ { $ref: '#/components/parameters/IdPath' } ]
+    post:
+      operationId: postAdminPermissionsByIdDecline
+      tags: [Permission]
+      summary: Tolak pengajuan (admin)
+      description: >-
+        Pengajuan di luar wilayah REGION_ADMIN: 404.
+        Satu transaksi. Pemilik tidak pernah memutuskan pengajuannya sendiri (403). Hanya
+        `PENDING` yang bisa diputuskan DANRU; admin juga boleh MENOLAK pengajuan yang sudah
+        disetujui DANRU. Selain itu 409 `LEAVE_ALREADY_DECIDED` (`REJECTED` dan `CANCELLED` final).
+        Menolak wajib disertai `note` (tidak kosong, maks 1000); catatan persetujuan opsional dan
+        disimpan. Menyetujui menulis baris `LEAVE` untuk hari kerja terjadwal (hari yang sudah
+        `PRESENT` dilewati dan didaftar di `skipped`) bila kategorinya membuat hari cuti, dan
+        menurunkan keterlambatan yang tercatat. Menolak cuti tahunan mengembalikan harinya sekali;
+        menolak pengajuan yang sudah disetujui juga menghapus baris `LEAVE`-nya dan mengembalikan
+        keterlambatan. Pemilik menerima `LEAVE_DECIDED`. Idempoten.
+      security:
+        - bearerSession: []
+      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyHeader' } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PermissionDecision' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/Permission' } } } ] } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /shift-swaps:
     get:
       operationId: getShiftSwaps

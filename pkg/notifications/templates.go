@@ -97,6 +97,9 @@ func Render(t Type, v Vars) (title, body string) {
 			return "Izin disetujui", "Izin Anda" + onDate(" untuk ", date) + " telah disetujui."
 		}
 		return "Izin ditolak", "Izin Anda" + onDate(" untuk ", date) + " ditolak."
+	case TypeLeaveCancelled:
+		return "Pengajuan izin dibatalkan",
+			actor + " membatalkan pengajuan izin" + onDate(" untuk ", date) + "."
 	case TypeSwapAssigned:
 		return "Tukar jaga",
 			"Anda mendapat tukar jaga" + by(" dengan ", v.ActorName) + onDate(" pada ", date) + "."

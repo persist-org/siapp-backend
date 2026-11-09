@@ -13,6 +13,7 @@ import (
 
 	"siapp/internal/db"
 	"siapp/pkg/access"
+	"siapp/pkg/leave"
 	"siapp/pkg/media"
 	"siapp/pkg/organization"
 	"siapp/pkg/platform/audit"
@@ -198,6 +199,13 @@ func (s *Service) checkIn(ctx context.Context, p auth.Principal, ref string, c c
 		if err != nil {
 			return err
 		}
+		// ⚠ Two figures: what the clock said (raw, kept so it can be computed from again) and what the
+		// person is held to, which an approved permit covering the day can lower (07.5 Part C).
+		raw := lateMinutes(shift.StartsAt, now, shift.ToleranceMinutes)
+		late, err := leave.EffectiveLateness(ctx, q, p.PersonnelID, shift.Key.WorkDate, shift.StartsAt, now, raw, shift.Location)
+		if err != nil {
+			return fmt.Errorf("effective lateness: %w", err)
+		}
 		lat, lng := fixParams(c.Fix)
 		row, err := q.InsertAttendanceCheckIn(ctx, db.InsertAttendanceCheckInParams{
 			PersonnelID: p.PersonnelID, TeamCode: shift.Key.TeamCode, ProjectCode: shift.Project.Code,
@@ -205,8 +213,9 @@ func (s *Service) checkIn(ctx context.Context, p auth.Principal, ref string, c c
 			ShiftStartsAt: ts(shift.StartsAt), ShiftEndsAt: ts(shift.EndsAt), Timezone: shift.Location.String(),
 			Now: ts(now), Method: nullMethod(c.Method), Latitude: lat, Longitude: lng,
 			AccuracyMeters: accuracyParam(c.AccuracyMeters), DistanceMeters: m.distance, WithinArea: m.inArea,
-			QrDanruID:   int8Param(c.QRDanruID),
-			LateMinutes: int32(min(lateMinutes(shift.StartsAt, now, shift.ToleranceMinutes), math.MaxInt32)), //nolint:gosec // clamped
+			QrDanruID:      int8Param(c.QRDanruID),
+			LateMinutes:    int32(min(late, math.MaxInt32)), //nolint:gosec // clamped
+			LateMinutesRaw: int32(min(raw, math.MaxInt32)),  //nolint:gosec // clamped
 		})
 		if errors.Is(err, pgx.ErrNoRows) {
 			// A parallel check-in committed between the read above and this insert.
@@ -243,6 +252,8 @@ func (s *Service) checkIn(ctx context.Context, p auth.Principal, ref string, c c
 // person may serve in two regu on one day.
 //   - Any PRESENT record without a check-out: ATTENDANCE_PREVIOUS_NOT_CHECKED_OUT (one regu left
 //     open is open, even when another was closed).
+//   - A request of leave, a permit or sick leave that is still alive (PENDING or APPROVED, any
+//     category) covering the day settles it, before anything else is looked at.
 //   - Otherwise any record at all settles it: a PRESENT one with its check-out, an approved LEAVE,
 //     or an ABSENT. ABSENT is only ever written by someone deciding the day (the DANRU marking the
 //     absence, an admin's correction): the day has been dealt with, and blocking on it would turn
@@ -266,6 +277,15 @@ func requirePreviousSettled(ctx context.Context, q *db.Queries, personnelID int6
 	}
 	if err != nil {
 		return fmt.Errorf("previous working day: %w", err)
+	}
+	// A pending or approved request of any category covering the day explains it, whatever its record
+	// looks like (a PRESENT row left open included): the person has dealt with the day (07.5).
+	covered, err := q.HasLiveLeaveCovering(ctx, db.HasLiveLeaveCoveringParams{PersonnelID: personnelID, OnDate: prev})
+	if err != nil {
+		return fmt.Errorf("previous day leave: %w", err)
+	}
+	if covered {
+		return nil
 	}
 	rows, err := q.ListAttendancesOfPersonnelBetween(ctx, db.ListAttendancesOfPersonnelBetweenParams{
 		PersonnelID: personnelID, DateFrom: prev, DateTo: prev,

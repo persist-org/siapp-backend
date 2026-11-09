@@ -112,6 +112,14 @@ type Request struct {
 	Attachment     *media.View
 	// CanCancel is true while the owner may still cancel: the request is waiting.
 	CanCancel bool
+
+	// What follows is filled for someone who decides the request, not for its owner.
+	Person       *Person
+	OverlapsWith []Overlap
+	Coverage     *Coverage
+	Balance      *AnnualBalance
+	// Skipped lists the leave days an approval did not write because the person was present.
+	Skipped []SkippedDay
 }
 
 func clockOf(t pgtype.Time) *string {
@@ -356,7 +364,10 @@ func (s *Service) Submit(ctx context.Context, p auth.Principal, in SubmitInput) 
 		}
 	}
 
-	var id int64
+	var (
+		id     int64
+		notice *Notice
+	)
 	err = database.WithTenant(ctx, s.pool, p.OrganizationID, func(q *db.Queries) error {
 		// 1. The person's row lock: their balance and their requests are one queue.
 		if _, err := q.LockPersonnel(ctx, p.PersonnelID); err != nil {
@@ -438,16 +449,21 @@ func (s *Service) Submit(ctx context.Context, p auth.Principal, in SubmitInput) 
 				return err
 			}
 		}
-		// 7. Audit. The notification to the DANRU is Part C's.
+		// 7. Audit, and the notice to the DANRU (or the admins), sent after the commit.
 		actorID := p.PersonnelID
-		return audit.Record(ctx, q, audit.Entry{
+		if err := audit.Record(ctx, q, audit.Entry{
 			ActorPersonnelID: &actorID, Action: "leave.request.submit", EntityType: "leave_request", EntityID: row.ID,
 			Metadata: map[string]any{"number": number, "category": cat.Code, "days": days},
-		})
+		}); err != nil {
+			return err
+		}
+		notice, err = s.noticeFor(ctx, q, NoticeRequested, row, false)
+		return err
 	})
 	if err != nil {
 		return Request{}, err
 	}
+	s.notify(ctx, notice)
 	return s.Get(ctx, p, id)
 }
 
@@ -482,7 +498,15 @@ func (s *Service) scheduleOf(ctx context.Context, p auth.Principal, from, to tim
 	if s.schedule == nil {
 		return nil, nil
 	}
-	return s.schedule.Days(ctx, p.OrganizationID, p.PersonnelID, from, to)
+	instances, err := s.schedule.Instances(ctx, p.OrganizationID, p.PersonnelID, from, to)
+	if err != nil {
+		return nil, fmt.Errorf("schedule instances: %w", err)
+	}
+	out := make([]ScheduleDay, 0, len(instances))
+	for _, in := range instances {
+		out = append(out, in.ScheduleDay)
+	}
+	return out, nil
 }
 
 // teamOn picks the regu a request is made for: the one named, which the person must serve in on the
@@ -614,7 +638,7 @@ func (s *Service) ListMine(ctx context.Context, p auth.Principal, f Filter) (Pag
 func (s *Service) Get(ctx context.Context, p auth.Principal, id int64) (Request, error) {
 	var out Request
 	err := database.WithTenant(ctx, s.pool, p.OrganizationID, func(q *db.Queries) error {
-		row, err := q.GetLeaveRequestView(ctx, id)
+		row, err := q.GetLeaveRequestViewWithPerson(ctx, id)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNotFound
 		}
@@ -634,8 +658,13 @@ func (s *Service) Get(ctx context.Context, p auth.Principal, id int64) (Request,
 				return ErrNotFound
 			}
 		}
-		out, err = s.requestOf(ctx, q, lr, row.CategoryCode, row.CategoryName, row.DecidedByName)
-		return err
+		if out, err = s.requestOf(ctx, q, lr, row.CategoryCode, row.CategoryName, row.DecidedByName); err != nil {
+			return err
+		}
+		if lr.PersonnelID != p.PersonnelID {
+			return s.enrich(ctx, q, &out, row.PersonName, row.PersonPosition, true)
+		}
+		return nil
 	})
 	return out, err
 }
@@ -648,6 +677,7 @@ func (s *Service) Get(ctx context.Context, p auth.Principal, id int64) (Request,
 // decision) take turns: one wins and the other is told why (KPI approval.go:429-501 has two
 // different 409s, and so does SiAPP). Someone else's request is ErrNotFound.
 func (s *Service) Cancel(ctx context.Context, p auth.Principal, id int64) (Request, error) {
+	var notice *Notice
 	err := database.WithTenant(ctx, s.pool, p.OrganizationID, func(q *db.Queries) error {
 		owner, err := q.GetLeaveRequestView(ctx, id)
 		if errors.Is(err, pgx.ErrNoRows) || err == nil && owner.LeaveRequest.PersonnelID != p.PersonnelID {
@@ -683,13 +713,18 @@ func (s *Service) Cancel(ctx context.Context, p auth.Principal, id int64) (Reque
 			}
 		}
 		actorID := p.PersonnelID
-		return audit.Record(ctx, q, audit.Entry{
+		if err := audit.Record(ctx, q, audit.Entry{
 			ActorPersonnelID: &actorID, Action: "leave.request.cancel", EntityType: "leave_request", EntityID: id,
 			Metadata: map[string]any{"number": locked.Number},
-		})
+		}); err != nil {
+			return err
+		}
+		notice, err = s.noticeFor(ctx, q, NoticeCancelled, locked, false)
+		return err
 	})
 	if err != nil {
 		return Request{}, err
 	}
+	s.notify(ctx, notice)
 	return s.Get(ctx, p, id)
 }

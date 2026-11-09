@@ -57,6 +57,41 @@ type requestJSON struct {
 	CanCancel      bool            `json:"can_cancel"`
 	Sick           *sickJSON       `json:"sick"`
 	Attachment     *attachmentJSON `json:"attachment"`
+
+	// For someone who decides the request; absent for its owner.
+	Person       *personJSON   `json:"person,omitempty"`
+	OverlapsWith []overlapJSON `json:"overlaps_with,omitempty"`
+	Coverage     *coverageJSON `json:"coverage,omitempty"`
+	LeaveBalance *balanceJSON  `json:"leave_balance,omitempty"`
+	Skipped      []skippedJSON `json:"skipped,omitempty"`
+}
+
+type personJSON struct {
+	PersonnelID int64   `json:"personnel_id"`
+	Name        string  `json:"name"`
+	Position    *string `json:"position"`
+}
+
+type overlapJSON struct {
+	Name      string        `json:"name"`
+	StartDate timeutil.Date `json:"start_date"`
+	EndDate   timeutil.Date `json:"end_date"`
+}
+
+type coverageJSON struct {
+	Date    timeutil.Date `json:"date"`
+	Present int           `json:"present"`
+	Size    int           `json:"size"`
+}
+
+type balanceJSON struct {
+	RemainingDays     int `json:"remaining_days"`
+	AfterApprovalDays int `json:"after_approval_days"`
+}
+
+type skippedJSON struct {
+	WorkDate timeutil.Date `json:"work_date"`
+	TeamCode string        `json:"team_code"`
 }
 
 func requestToAPI(r Request) requestJSON {
@@ -80,6 +115,26 @@ func requestToAPI(r Request) requestJSON {
 		}
 	}
 	out.Attachment = attachmentToAPI(r.Attachment)
+
+	if p := r.Person; p != nil {
+		out.Person = &personJSON{PersonnelID: p.PersonnelID, Name: p.Name}
+		if p.Position != "" {
+			out.Person.Position = &p.Position
+		}
+		out.OverlapsWith = make([]overlapJSON, 0, len(r.OverlapsWith))
+		for _, o := range r.OverlapsWith {
+			out.OverlapsWith = append(out.OverlapsWith, overlapJSON{Name: o.Name, StartDate: o.From, EndDate: o.To})
+		}
+	}
+	if c := r.Coverage; c != nil {
+		out.Coverage = &coverageJSON{Date: c.Date, Present: c.Present, Size: c.Size}
+	}
+	if b := r.Balance; b != nil {
+		out.LeaveBalance = &balanceJSON{RemainingDays: b.RemainingDays, AfterApprovalDays: b.AfterApprovalDays}
+	}
+	for _, sk := range r.Skipped {
+		out.Skipped = append(out.Skipped, skippedJSON(sk))
+	}
 	return out
 }
 

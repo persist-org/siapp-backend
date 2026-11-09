@@ -41,6 +41,13 @@ func (h *Handler) MountAdmin(r chi.Router) {
 	r.Put("/leave-client-settings/{client_code}", h.setClientSetting)
 	r.Get("/personnel/{personnel_id}/leave-ledger", h.listLedger)
 	r.Post("/personnel/{personnel_id}/leave-ledger", h.adjustLedger)
+
+	// Deciding as an admin (Part C): an ORG_ADMIN, or the REGION_ADMIN of the request's region. The
+	// usecase checks the reach; outside it a request is not found.
+	r.Get("/permissions", h.adminList)
+	r.Get("/permissions/{id}", h.adminDetail)
+	r.With(h.idempotent).Post("/permissions/{id}/approve", h.adminApprove)
+	r.With(h.idempotent).Post("/permissions/{id}/decline", h.adminDecline)
 }
 
 // MountField adds the routes of the field app. The categories need a signed-in person. The quota
@@ -58,6 +65,12 @@ func (h *Handler) MountField(r chi.Router) {
 	r.With(request).Get("/api/v1/permissions/me", h.mine)
 	r.Get("/api/v1/permissions/{id}", h.detail)
 	r.With(request, h.idempotent).Post("/api/v1/permissions/{id}/cancel", h.cancel)
+
+	// Deciding as the DANRU of the regu (Part C), through attendance.leave.approve.
+	approve := h.access.Require(access.AttendanceLeaveApprove)
+	r.With(approve).Get("/api/v1/permissions", h.queue)
+	r.With(approve, h.idempotent).Post("/api/v1/permissions/{id}/approve", h.approve)
+	r.With(approve, h.idempotent).Post("/api/v1/permissions/{id}/decline", h.decline)
 }
 
 // ---------- JSON ----------

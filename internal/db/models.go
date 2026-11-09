@@ -595,6 +595,7 @@ const (
 	NotificationTypeINSTRUCTIONFEEDBACK   NotificationType = "INSTRUCTION_FEEDBACK"
 	NotificationTypeSWAPASSIGNED          NotificationType = "SWAP_ASSIGNED"
 	NotificationTypePANICRESOLVED         NotificationType = "PANIC_RESOLVED"
+	NotificationTypeLEAVECANCELLED        NotificationType = "LEAVE_CANCELLED"
 )
 
 func (e *NotificationType) Scan(src interface{}) error {
@@ -678,6 +679,7 @@ type OutboxKind string
 
 const (
 	OutboxKindATTENDANCE OutboxKind = "ATTENDANCE"
+	OutboxKindLEAVE      OutboxKind = "LEAVE"
 )
 
 func (e *OutboxKind) Scan(src interface{}) error {
@@ -1199,6 +1201,7 @@ type Attendance struct {
 	PersonelSyncedAt       pgtype.Timestamptz
 	CreatedAt              pgtype.Timestamptz
 	UpdatedAt              pgtype.Timestamptz
+	LateMinutesRaw         int32
 }
 
 type AuditLog struct {

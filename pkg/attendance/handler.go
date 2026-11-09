@@ -76,6 +76,7 @@ type attendanceJSON struct {
 	CheckOutDistance    *int          `json:"check_out_distance_meters"`
 	CheckOutWithinArea  *bool         `json:"check_out_within_area"`
 	CheckOutUpdateCount int           `json:"check_out_update_count"`
+	LeaveRequestID      *int64        `json:"leave_request_id"`
 	PersonelSyncStatus  string        `json:"personel_sync_status"`
 	CreatedAt           string        `json:"created_at"`
 	UpdatedAt           string        `json:"updated_at"`
@@ -90,7 +91,7 @@ func attendanceToAPI(a Attendance) attendanceJSON {
 		CheckInDistance: a.CheckInDistance, CheckInWithinArea: a.CheckInInArea, LateMinutes: a.LateMinutes,
 		CheckOutAt: stamp(a.CheckOutAt), CheckOutMethod: methodName(a.CheckOutMethod),
 		CheckOutDistance: a.CheckOutDistance, CheckOutWithinArea: a.CheckOutInArea,
-		CheckOutUpdateCount: a.CheckOutUpdateCount, PersonelSyncStatus: string(a.PersonelSyncStatus),
+		CheckOutUpdateCount: a.CheckOutUpdateCount, LeaveRequestID: a.LeaveRequestID, PersonelSyncStatus: string(a.PersonelSyncStatus),
 		CreatedAt: timeutil.FormatTimestamp(a.CreatedAt), UpdatedAt: timeutil.FormatTimestamp(a.UpdatedAt),
 	}
 }

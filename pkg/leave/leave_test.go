@@ -67,6 +67,7 @@ type env struct {
 	userID  int64
 	keys    int
 	mu      sync.Mutex
+	sent    *sentNotices
 }
 
 // presigner gives a photo a URL without a storage behind it.
@@ -90,6 +91,8 @@ func newEnv(t *testing.T) *env {
 	e.service.UseSchedule(organization.LeaveSchedule{Shifts: organization.NewShifts(pool)})
 	e.service.UseAttachments(media.NewService(pool, presigner{}, clk, nil))
 	e.service.UsePermissions(perms)
+	e.sent = &sentNotices{}
+	e.service.UseNotifier(e.sent)
 	h := leave.NewHandler(e.service, perms, idem.New(idem.Config{Pool: pool, Identity: auth.Identity}).Middleware(true))
 	srv := testkit.NewServer(t, testkit.Deps{Mount: func(r chi.Router) {
 		r.Route("/api/v1/admin", func(admin chi.Router) {

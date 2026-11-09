@@ -148,6 +148,7 @@ func newRouter(d deps) *chi.Mux {
 	leaveService.UseSchedule(organization.LeaveSchedule{Shifts: organization.NewShifts(d.Pool)})
 	leaveService.UseAttachments(mediaService)
 	leaveService.UsePermissions(accessService)
+	leaveService.UseNotifier(notifier)
 	leaveHandler := leave.NewHandler(leaveService, accessService, idempotency.Middleware(true))
 	leaveHandler.MountField(router)
 

@@ -47,12 +47,12 @@ INSERT INTO attendances (
     personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone,
     status, check_in_at, check_in_method, check_in_media_id, check_in_latitude, check_in_longitude,
     check_in_accuracy_meters, check_in_distance_meters, check_in_within_area, check_in_qr_danru_id,
-    late_minutes, created_at, updated_at)
+    late_minutes, late_minutes_raw, created_at, updated_at)
 VALUES (
     @personnel_id, @team_code, @project_code, @work_date, @shift_id, @shift_starts_at, @shift_ends_at, @timezone,
     'PRESENT', @now, @method, sqlc.narg('media_id'), sqlc.narg('latitude'), sqlc.narg('longitude'),
     sqlc.narg('accuracy_meters'), sqlc.narg('distance_meters'), sqlc.narg('within_area'), sqlc.narg('qr_danru_id'),
-    @late_minutes::int, @now, @now)
+    @late_minutes::int, @late_minutes_raw::int, @now, @now)
 ON CONFLICT (organization_id, personnel_id, team_code, work_date, shift_id) DO NOTHING
 RETURNING *;
 

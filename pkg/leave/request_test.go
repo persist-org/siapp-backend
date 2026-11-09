@@ -47,6 +47,36 @@ type permission struct {
 		ID  int64  `json:"id"`
 		URL string `json:"url"`
 	} `json:"attachment"`
+
+	// For someone who decides it.
+	Person *struct {
+		PersonnelID int64  `json:"personnel_id"`
+		Name        string `json:"name"`
+	} `json:"person"`
+	OverlapsWith []struct {
+		Name      string `json:"name"`
+		StartDate string `json:"start_date"`
+		EndDate   string `json:"end_date"`
+	} `json:"overlaps_with"`
+	Coverage     *coverage `json:"coverage"`
+	LeaveBalance *balance  `json:"leave_balance"`
+	Skipped      []skipped `json:"skipped"`
+}
+
+type skipped struct {
+	WorkDate string `json:"work_date"`
+	TeamCode string `json:"team_code"`
+}
+
+type coverage struct {
+	Date    string `json:"date"`
+	Present int    `json:"present"`
+	Size    int    `json:"size"`
+}
+
+type balance struct {
+	RemainingDays     int `json:"remaining_days"`
+	AfterApprovalDays int `json:"after_approval_days"`
 }
 
 func (e *env) key() string {

@@ -46,6 +46,9 @@ type Attendance struct {
 	CheckOutInArea      *bool
 	CheckOutUpdateCount int
 
+	// LeaveRequestID is the request that made a LEAVE record, nil for any other.
+	LeaveRequestID *int64
+
 	PersonelSyncStatus db.PersonelSyncStatus
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
@@ -61,8 +64,8 @@ func toAttendance(r db.Attendance) Attendance {
 		LateMinutes: int(r.LateMinutes),
 		CheckOutAt:  timePtr(r.CheckOutAt), CheckOutMethod: methodPtr(r.CheckOutMethod),
 		CheckOutDistance: intPtr(r.CheckOutDistanceMeters), CheckOutInArea: boolPtr(r.CheckOutWithinArea),
-		CheckOutUpdateCount: int(r.CheckOutUpdateCount),
-		PersonelSyncStatus:  r.PersonelSyncStatus, CreatedAt: r.CreatedAt.Time, UpdatedAt: r.UpdatedAt.Time,
+		CheckOutUpdateCount: int(r.CheckOutUpdateCount), LeaveRequestID: int8Ptr(r.LeaveRequestID),
+		PersonelSyncStatus: r.PersonelSyncStatus, CreatedAt: r.CreatedAt.Time, UpdatedAt: r.UpdatedAt.Time,
 	}
 	return a
 }
