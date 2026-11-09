@@ -79,7 +79,7 @@ func newEnvWithQR(t *testing.T, secret string) *env {
 	clk := &testClock{now: tuesday}
 	perms := access.NewService(pool, clk)
 	service := attendance.NewService(pool, clk, organization.NewShifts(pool), organization.NewQuery(pool),
-		media.NewService(pool, nil, clk, nil), perms)
+		media.NewService(pool, presigner{}, clk, nil), perms)
 	if secret != "" {
 		qr, err := attendance.NewQRTokens(secret, clk)
 		require.NoError(t, err)

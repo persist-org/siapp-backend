@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"siapp/pkg/access"
+	"siapp/pkg/media"
 	"siapp/pkg/platform/apperr"
 	"siapp/pkg/platform/auth"
 	"siapp/pkg/platform/httpx"
@@ -44,6 +45,12 @@ func (h *Handler) MountField(r chi.Router) {
 	r.With(checkin, h.idempotent).Post("/api/v1/attendances/qr/check-in", record(h.service.QRCheckIn, http.StatusCreated))
 	r.With(checkin, h.idempotent).Post("/api/v1/attendances/qr/check-out", record(h.service.QRCheckOut, http.StatusOK))
 	r.With(h.access.Require(access.AttendanceQRDisplay)).Get("/api/v1/attendances/qr/display", h.qrDisplay)
+
+	// History (07.4). The calendar is the caller's own. The detail has no route permission: whether
+	// the caller may read that record (the owner, or a DANRU whose scope reaches its regu) is decided
+	// by the usecase, and everyone else gets 404.
+	r.With(checkin).Get("/api/v1/attendances/me", h.me)
+	r.Get("/api/v1/attendances/{id}", h.detail)
 }
 
 // ---------- JSON ----------
@@ -121,6 +128,49 @@ func todayToAPI(s CheckableShift) todayJSON {
 	return out
 }
 
+// historyDayJSON is one day of GET /attendances/me.
+type historyDayJSON struct {
+	WorkDate timeutil.Date      `json:"work_date"`
+	Shifts   []historyShiftJSON `json:"shifts"`
+}
+
+type historyShiftJSON struct {
+	AttendanceID  *int64  `json:"attendance_id"`
+	ShiftName     string  `json:"shift_name"`
+	TeamCode      string  `json:"team_code"`
+	TeamName      string  `json:"team_name"`
+	Status        string  `json:"status"`
+	CheckInAt     *string `json:"check_in_at"`
+	CheckInMethod *string `json:"check_in_method"`
+	CheckOutAt    *string `json:"check_out_at"`
+}
+
+// detailJSON is GET /attendances/{id}: the record and what the detail screen shows around it.
+type detailJSON struct {
+	attendanceJSON
+	ProjectName    string      `json:"project_name"`
+	TeamName       string      `json:"team_name"`
+	ShiftName      string      `json:"shift_name"`
+	DanruNames     []string    `json:"danru_names"`
+	CheckInSelfie  *selfieJSON `json:"check_in_selfie"`
+	CheckOutSelfie *selfieJSON `json:"check_out_selfie"`
+}
+
+// selfieJSON is a photo's view: the URL is signed and expires, so it is never stored.
+type selfieJSON struct {
+	ID          int64   `json:"id"`
+	URL         string  `json:"url"`
+	ContentType string  `json:"content_type"`
+	CapturedAt  *string `json:"captured_at"`
+}
+
+func selfieToAPI(v *media.View) *selfieJSON {
+	if v == nil {
+		return nil
+	}
+	return &selfieJSON{ID: v.ID, URL: v.URL, ContentType: v.ContentType, CapturedAt: stamp(v.CapturedAt)}
+}
+
 func stamp(t *time.Time) *string {
 	if t == nil {
 		return nil
@@ -155,6 +205,61 @@ func (h *Handler) today(w http.ResponseWriter, r *http.Request) {
 		out = append(out, todayToAPI(s))
 	}
 	httpx.OK(w, r, http.StatusOK, out)
+}
+
+// me is GET /attendances/me?month=YYYY-MM.
+func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
+	p, ok := auth.From(r.Context())
+	if !ok {
+		httpx.Error(w, r, apperr.ErrUnauthenticated)
+		return
+	}
+	month := r.URL.Query().Get("month")
+	if month == "" {
+		httpx.Error(w, r, apperr.ErrValidation.WithFields(apperr.FieldError{Field: "month", Code: "REQUIRED", Message: "month wajib diisi (YYYY-MM)."}))
+		return
+	}
+	days, err := h.service.Month(r.Context(), p, month)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	out := make([]historyDayJSON, 0, len(days))
+	for _, d := range days {
+		day := historyDayJSON{WorkDate: d.WorkDate, Shifts: make([]historyShiftJSON, 0, len(d.Shifts))}
+		for _, s := range d.Shifts {
+			day.Shifts = append(day.Shifts, historyShiftJSON{
+				AttendanceID: s.AttendanceID, ShiftName: s.ShiftName, TeamCode: s.TeamCode, TeamName: s.TeamName,
+				Status: s.Status, CheckInAt: stamp(s.CheckInAt), CheckInMethod: methodName(s.CheckInMethod), CheckOutAt: stamp(s.CheckOutAt),
+			})
+		}
+		out = append(out, day)
+	}
+	httpx.OK(w, r, http.StatusOK, out)
+}
+
+// detail is GET /attendances/{id}.
+func (h *Handler) detail(w http.ResponseWriter, r *http.Request) {
+	p, ok := auth.From(r.Context())
+	if !ok {
+		httpx.Error(w, r, apperr.ErrUnauthenticated)
+		return
+	}
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || id < 1 {
+		httpx.Error(w, r, ErrNotFound)
+		return
+	}
+	d, err := h.service.Detail(r.Context(), p, id)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.OK(w, r, http.StatusOK, detailJSON{
+		attendanceJSON: attendanceToAPI(d.Attendance),
+		ProjectName:    d.ProjectName, TeamName: d.TeamName, ShiftName: d.ShiftName, DanruNames: d.DanruNames,
+		CheckInSelfie: selfieToAPI(d.CheckInSelfie), CheckOutSelfie: selfieToAPI(d.CheckOutSelfie),
+	})
 }
 
 // record is the handler of every check-in and check-out, selfie or QR: they differ only in the body

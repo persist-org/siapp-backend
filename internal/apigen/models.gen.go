@@ -135,6 +135,147 @@ func (e AttendanceStatus) Valid() bool {
 	}
 }
 
+// Defines values for AttendanceDetailCheckInMethod.
+const (
+	AttendanceDetailCheckInMethodFORCE  AttendanceDetailCheckInMethod = "FORCE"
+	AttendanceDetailCheckInMethodGROUP  AttendanceDetailCheckInMethod = "GROUP"
+	AttendanceDetailCheckInMethodQR     AttendanceDetailCheckInMethod = "QR"
+	AttendanceDetailCheckInMethodSELFIE AttendanceDetailCheckInMethod = "SELFIE"
+)
+
+// Valid indicates whether the value is a known member of the AttendanceDetailCheckInMethod enum.
+func (e AttendanceDetailCheckInMethod) Valid() bool {
+	switch e {
+	case AttendanceDetailCheckInMethodFORCE:
+		return true
+	case AttendanceDetailCheckInMethodGROUP:
+		return true
+	case AttendanceDetailCheckInMethodQR:
+		return true
+	case AttendanceDetailCheckInMethodSELFIE:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AttendanceDetailCheckOutMethod.
+const (
+	AttendanceDetailCheckOutMethodFORCE  AttendanceDetailCheckOutMethod = "FORCE"
+	AttendanceDetailCheckOutMethodGROUP  AttendanceDetailCheckOutMethod = "GROUP"
+	AttendanceDetailCheckOutMethodQR     AttendanceDetailCheckOutMethod = "QR"
+	AttendanceDetailCheckOutMethodSELFIE AttendanceDetailCheckOutMethod = "SELFIE"
+)
+
+// Valid indicates whether the value is a known member of the AttendanceDetailCheckOutMethod enum.
+func (e AttendanceDetailCheckOutMethod) Valid() bool {
+	switch e {
+	case AttendanceDetailCheckOutMethodFORCE:
+		return true
+	case AttendanceDetailCheckOutMethodGROUP:
+		return true
+	case AttendanceDetailCheckOutMethodQR:
+		return true
+	case AttendanceDetailCheckOutMethodSELFIE:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AttendanceDetailPersonelSyncStatus.
+const (
+	AttendanceDetailPersonelSyncStatusFAILED  AttendanceDetailPersonelSyncStatus = "FAILED"
+	AttendanceDetailPersonelSyncStatusPENDING AttendanceDetailPersonelSyncStatus = "PENDING"
+	AttendanceDetailPersonelSyncStatusSYNCED  AttendanceDetailPersonelSyncStatus = "SYNCED"
+)
+
+// Valid indicates whether the value is a known member of the AttendanceDetailPersonelSyncStatus enum.
+func (e AttendanceDetailPersonelSyncStatus) Valid() bool {
+	switch e {
+	case AttendanceDetailPersonelSyncStatusFAILED:
+		return true
+	case AttendanceDetailPersonelSyncStatusPENDING:
+		return true
+	case AttendanceDetailPersonelSyncStatusSYNCED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AttendanceDetailStatus.
+const (
+	AttendanceDetailStatusABSENT  AttendanceDetailStatus = "ABSENT"
+	AttendanceDetailStatusLEAVE   AttendanceDetailStatus = "LEAVE"
+	AttendanceDetailStatusPRESENT AttendanceDetailStatus = "PRESENT"
+)
+
+// Valid indicates whether the value is a known member of the AttendanceDetailStatus enum.
+func (e AttendanceDetailStatus) Valid() bool {
+	switch e {
+	case AttendanceDetailStatusABSENT:
+		return true
+	case AttendanceDetailStatusLEAVE:
+		return true
+	case AttendanceDetailStatusPRESENT:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AttendanceHistoryDayShiftsCheckInMethod.
+const (
+	AttendanceHistoryDayShiftsCheckInMethodFORCE  AttendanceHistoryDayShiftsCheckInMethod = "FORCE"
+	AttendanceHistoryDayShiftsCheckInMethodGROUP  AttendanceHistoryDayShiftsCheckInMethod = "GROUP"
+	AttendanceHistoryDayShiftsCheckInMethodQR     AttendanceHistoryDayShiftsCheckInMethod = "QR"
+	AttendanceHistoryDayShiftsCheckInMethodSELFIE AttendanceHistoryDayShiftsCheckInMethod = "SELFIE"
+)
+
+// Valid indicates whether the value is a known member of the AttendanceHistoryDayShiftsCheckInMethod enum.
+func (e AttendanceHistoryDayShiftsCheckInMethod) Valid() bool {
+	switch e {
+	case AttendanceHistoryDayShiftsCheckInMethodFORCE:
+		return true
+	case AttendanceHistoryDayShiftsCheckInMethodGROUP:
+		return true
+	case AttendanceHistoryDayShiftsCheckInMethodQR:
+		return true
+	case AttendanceHistoryDayShiftsCheckInMethodSELFIE:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AttendanceHistoryDayShiftsStatus.
+const (
+	AttendanceHistoryDayShiftsStatusABSENT   AttendanceHistoryDayShiftsStatus = "ABSENT"
+	AttendanceHistoryDayShiftsStatusLEAVE    AttendanceHistoryDayShiftsStatus = "LEAVE"
+	AttendanceHistoryDayShiftsStatusMISSING  AttendanceHistoryDayShiftsStatus = "MISSING"
+	AttendanceHistoryDayShiftsStatusPRESENT  AttendanceHistoryDayShiftsStatus = "PRESENT"
+	AttendanceHistoryDayShiftsStatusUPCOMING AttendanceHistoryDayShiftsStatus = "UPCOMING"
+)
+
+// Valid indicates whether the value is a known member of the AttendanceHistoryDayShiftsStatus enum.
+func (e AttendanceHistoryDayShiftsStatus) Valid() bool {
+	switch e {
+	case AttendanceHistoryDayShiftsStatusABSENT:
+		return true
+	case AttendanceHistoryDayShiftsStatusLEAVE:
+		return true
+	case AttendanceHistoryDayShiftsStatusMISSING:
+		return true
+	case AttendanceHistoryDayShiftsStatusPRESENT:
+		return true
+	case AttendanceHistoryDayShiftsStatusUPCOMING:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AttendanceTodayStatus.
 const (
 	AttendanceTodayStatusABSENT  AttendanceTodayStatus = "ABSENT"
@@ -6270,6 +6411,65 @@ type AttendanceCorrection struct {
 	Note     *string    `json:"note,omitempty"`
 }
 
+// AttendanceDetail Satu catatan absensi beserta nama proyek, regu, shift, DANRU, dan selfie.
+type AttendanceDetail struct {
+	CheckInAt *time.Time `json:"check_in_at,omitempty"`
+
+	// CheckInDistanceMeters Jarak ke titik proyek; null bila tidak ada fix GPS.
+	CheckInDistanceMeters  *int                            `json:"check_in_distance_meters,omitempty"`
+	CheckInMethod          *AttendanceDetailCheckInMethod  `json:"check_in_method,omitempty"`
+	CheckInSelfie          *AttendanceSelfie               `json:"check_in_selfie,omitempty"`
+	CheckInWithinArea      *bool                           `json:"check_in_within_area,omitempty"`
+	CheckOutAt             *time.Time                      `json:"check_out_at,omitempty"`
+	CheckOutDistanceMeters *int                            `json:"check_out_distance_meters,omitempty"`
+	CheckOutMethod         *AttendanceDetailCheckOutMethod `json:"check_out_method,omitempty"`
+	CheckOutSelfie         *AttendanceSelfie               `json:"check_out_selfie,omitempty"`
+
+	// CheckOutUpdateCount Berapa kali jam pulang diperbarui.
+	CheckOutUpdateCount int       `json:"check_out_update_count"`
+	CheckOutWithinArea  *bool     `json:"check_out_within_area,omitempty"`
+	CreatedAt           time.Time `json:"created_at"`
+
+	// DanruNames DANRU regu pada tanggal kerja, lalu DANRU pemilik QR yang dipindai bila berbeda.
+	DanruNames []string `json:"danru_names"`
+	Id         int64    `json:"id"`
+
+	// LateMinutes Menit keterlambatan absen datang, dibulatkan ke bawah; 0 bila tepat waktu. Absen dalam toleransi shift dihitung tepat waktu; lewat dari itu, keterlambatan dihitung dari jam mulai shift. Disimpan saat absen, tidak berubah bila toleransi diedit kemudian.
+	LateMinutes        int                                `json:"late_minutes"`
+	PersonelSyncStatus AttendanceDetailPersonelSyncStatus `json:"personel_sync_status"`
+	PersonnelId        int64                              `json:"personnel_id"`
+	ProjectCode        string                             `json:"project_code"`
+	ProjectName        string                             `json:"project_name"`
+	ShiftEndsAt        time.Time                          `json:"shift_ends_at"`
+	ShiftId            int64                              `json:"shift_id"`
+
+	// ShiftName Kosong bila shift sudah dihapus.
+	ShiftName string `json:"shift_name"`
+
+	// ShiftStartsAt Salinan jam shift saat absen: tidak ikut berubah bila shift/proyek diedit kemudian.
+	ShiftStartsAt time.Time              `json:"shift_starts_at"`
+	Status        AttendanceDetailStatus `json:"status"`
+	TeamCode      string                 `json:"team_code"`
+	TeamName      string                 `json:"team_name"`
+	Timezone      string                 `json:"timezone"`
+	UpdatedAt     time.Time              `json:"updated_at"`
+
+	// WorkDate Tanggal shift DIMULAI, di zona waktu proyek.
+	WorkDate openapi_types.Date `json:"work_date"`
+}
+
+// AttendanceDetailCheckInMethod defines model for AttendanceDetail.CheckInMethod.
+type AttendanceDetailCheckInMethod string
+
+// AttendanceDetailCheckOutMethod defines model for AttendanceDetail.CheckOutMethod.
+type AttendanceDetailCheckOutMethod string
+
+// AttendanceDetailPersonelSyncStatus defines model for AttendanceDetail.PersonelSyncStatus.
+type AttendanceDetailPersonelSyncStatus string
+
+// AttendanceDetailStatus defines model for AttendanceDetail.Status.
+type AttendanceDetailStatus string
+
 // AttendanceGroupInput defines model for AttendanceGroupInput.
 type AttendanceGroupInput struct {
 	Entries []struct {
@@ -6278,6 +6478,28 @@ type AttendanceGroupInput struct {
 	} `json:"entries"`
 	TeamId int64 `json:"team_id"`
 }
+
+// AttendanceHistoryDay Shift-shift satu tanggal kerja pada kalender absensi.
+type AttendanceHistoryDay struct {
+	Shifts []struct {
+		// AttendanceId null untuk MISSING dan UPCOMING (belum ada catatan).
+		AttendanceId  *int64                                   `json:"attendance_id,omitempty"`
+		CheckInAt     *time.Time                               `json:"check_in_at,omitempty"`
+		CheckInMethod *AttendanceHistoryDayShiftsCheckInMethod `json:"check_in_method,omitempty"`
+		CheckOutAt    *time.Time                               `json:"check_out_at,omitempty"`
+		ShiftName     string                                   `json:"shift_name"`
+		Status        AttendanceHistoryDayShiftsStatus         `json:"status"`
+		TeamCode      string                                   `json:"team_code"`
+		TeamName      string                                   `json:"team_name"`
+	} `json:"shifts"`
+	WorkDate openapi_types.Date `json:"work_date"`
+}
+
+// AttendanceHistoryDayShiftsCheckInMethod defines model for AttendanceHistoryDay.Shifts.CheckInMethod.
+type AttendanceHistoryDayShiftsCheckInMethod string
+
+// AttendanceHistoryDayShiftsStatus defines model for AttendanceHistoryDay.Shifts.Status.
+type AttendanceHistoryDayShiftsStatus string
 
 // AttendanceQrCode defines model for AttendanceQrCode.
 type AttendanceQrCode struct {
@@ -6297,6 +6519,16 @@ type AttendanceQrInput struct {
 
 	// Token Kode yang sedang ditampilkan DANRU (GET /attendances/qr/display).
 	Token string `json:"token"`
+}
+
+// AttendanceSelfie defines model for AttendanceSelfie.
+type AttendanceSelfie struct {
+	CapturedAt  *time.Time `json:"captured_at,omitempty"`
+	ContentType string     `json:"content_type"`
+	Id          int64      `json:"id"`
+
+	// Url URL bertanda tangan, berlaku sekitar satu jam.
+	Url string `json:"url"`
 }
 
 // AttendanceSelfieInput defines model for AttendanceSelfieInput.
@@ -10366,23 +10598,8 @@ type PostAttendancesGroup201JSONResponseBodySuccess bool
 
 // GetAttendancesMeParams defines parameters for GetAttendancesMe.
 type GetAttendancesMeParams struct {
-	// DateFrom Awal rentang (YYYY-MM-DD, relatif TZ proyek).
-	DateFrom *DateFromParam `form:"date_from,omitempty" json:"date_from,omitempty"`
-
-	// DateTo Akhir rentang (YYYY-MM-DD, relatif TZ proyek).
-	DateTo *DateToParam `form:"date_to,omitempty" json:"date_to,omitempty"`
-
-	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
-	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
-
-	// Limit Item per halaman (maks 100).
-	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
-
-	// Since Delta-sync watermark (updated_at). Tanpa since → full pull (DL-34).
-	Since *SinceParam `form:"since,omitempty" json:"since,omitempty"`
-
-	// Cursor Cursor opaque untuk tarik inkremental (DL-34).
-	Cursor *CursorParam `form:"cursor,omitempty" json:"cursor,omitempty"`
+	// Month Bulan, YYYY-MM.
+	Month string `form:"month" json:"month"`
 }
 
 // GetAttendancesMe200JSONResponseBodySuccess defines parameters for GetAttendancesMe.

@@ -29,6 +29,7 @@ type (
 	// shiftSource is organization.Shifts.
 	shiftSource interface {
 		Current(ctx context.Context, organizationID, personnelID int64, at time.Time) ([]organization.ShiftInstance, error)
+		Instances(ctx context.Context, organizationID, personnelID int64, from, to timeutil.Date) ([]organization.ShiftInstance, error)
 	}
 	// siteSource is organization.Query: a regu with its proyek, and a proyek by code inside the
 	// caller's transaction.
@@ -39,6 +40,7 @@ type (
 	// photoStore is media.Service.
 	photoStore interface {
 		Attach(ctx context.Context, q *db.Queries, in media.AttachInput) error
+		Views(ctx context.Context, q *db.Queries, entityType string, entityID int64, ids []int64) ([]media.View, error)
 	}
 	// permissions is access.Service.
 	permissions interface {

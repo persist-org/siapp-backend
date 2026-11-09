@@ -2089,6 +2089,47 @@ components:
         status: { type: string, enum: [PRESENT, LEAVE, ABSENT], nullable: true, description: "null selama shift belum punya catatan." }
         check_in_at: { type: string, format: date-time, nullable: true }
         check_out_at: { type: string, format: date-time, nullable: true }
+    AttendanceHistoryDay:
+      type: object
+      description: Shift-shift satu tanggal kerja pada kalender absensi.
+      required: [work_date, shifts]
+      properties:
+        work_date: { type: string, format: date }
+        shifts:
+          type: array
+          items:
+            type: object
+            required: [shift_name, team_code, team_name, status]
+            properties:
+              attendance_id: { type: integer, format: int64, nullable: true, description: "null untuk MISSING dan UPCOMING (belum ada catatan)." }
+              shift_name: { type: string }
+              team_code: { type: string }
+              team_name: { type: string }
+              status: { type: string, enum: [PRESENT, LEAVE, ABSENT, MISSING, UPCOMING] }
+              check_in_at: { type: string, format: date-time, nullable: true }
+              check_in_method: { type: string, enum: [QR, SELFIE, GROUP, FORCE], nullable: true }
+              check_out_at: { type: string, format: date-time, nullable: true }
+    AttendanceSelfie:
+      type: object
+      required: [id, url, content_type]
+      properties:
+        id: { type: integer, format: int64 }
+        url: { type: string, description: "URL bertanda tangan, berlaku sekitar satu jam." }
+        content_type: { type: string, example: image/jpeg }
+        captured_at: { type: string, format: date-time, nullable: true }
+    AttendanceDetail:
+      description: Satu catatan absensi beserta nama proyek, regu, shift, DANRU, dan selfie.
+      allOf:
+        - { $ref: '#/components/schemas/Attendance' }
+        - type: object
+          required: [project_name, team_name, shift_name, danru_names]
+          properties:
+            project_name: { type: string }
+            team_name: { type: string }
+            shift_name: { type: string, description: "Kosong bila shift sudah dihapus." }
+            danru_names: { type: array, items: { type: string }, description: "DANRU regu pada tanggal kerja, lalu DANRU pemilik QR yang dipindai bila berbeda." }
+            check_in_selfie: { allOf: [ { $ref: '#/components/schemas/AttendanceSelfie' } ], nullable: true }
+            check_out_selfie: { allOf: [ { $ref: '#/components/schemas/AttendanceSelfie' } ], nullable: true }
     AttendanceSelfieInput:
       type: object
       required: [shift_ref, media_ids, latitude, longitude]
@@ -9558,35 +9599,28 @@ paths:
     get:
       operationId: getAttendancesMe
       tags: [Attendance]
-      summary: Riwayat absensi sendiri
+      summary: Kalender absensi sendiri per bulan
+      description: >-
+        Jadwal shift bulan itu digabung dengan catatan absensi yang ada, satu entri per shift per
+        regu. Status diambil dari catatan bila ada; tanpa catatan: `MISSING` bila shift sudah
+        berakhir, `UPCOMING` bila belum (keduanya dihitung, tidak disimpan). Hari OFF dan hari tanpa
+        shift tidak dimuat. Shift lintas tengah malam ada di tanggal mulainya. Ini tampilan lapangan
+        atas bukti yang ditangkap SiAPP; koreksi HR langsung di Personel tidak tercermin di sini.
       parameters:
-        - $ref: '#/components/parameters/DateFromParam'
-        - $ref: '#/components/parameters/DateToParam'
-        - $ref: '#/components/parameters/PageParam'
-        - $ref: '#/components/parameters/LimitParam'
-        - $ref: '#/components/parameters/SinceParam'
-        - $ref: '#/components/parameters/CursorParam'
+        - { name: month, in: query, required: true, description: "Bulan, YYYY-MM.", schema: { type: string, pattern: '^\d{4}-(0[1-9]|1[0-2])$', example: "2026-03" } }
       responses:
         '200':
-          description: >-
-            OK. Delta-sync: bila `since` dikirim, `data` memuat baris ter-upsert dan
-            `deleted` memuat tombstone (DL-34); `meta.server_time` WAJIB.
+          description: OK, tanggal naik.
           content:
             application/json:
               schema:
                 allOf:
                   - { $ref: '#/components/schemas/SuccessEnvelope' }
                   - properties:
-                      data: { type: array, items: { $ref: '#/components/schemas/Attendance' } }
-                      deleted: { type: array, items: { $ref: '#/components/schemas/Tombstone' } }
-                      meta: { $ref: '#/components/schemas/DeltaMeta' }
-              example:
-                success: true
-                data: [{ id: 9001, personnel_id: 1, project_id: 1, method: QR, is_absent: false }]
-                deleted: [{ id: 8800, deleted_at: "2026-06-01T02:00:00Z" }]
-                pagination: { page: 1, limit: 20, total: 1, total_pages: 1 }
-                meta: { request_id: "req_abc", server_time: "2026-06-01T03:00:00Z" }
+                      data: { type: array, items: { $ref: '#/components/schemas/AttendanceHistoryDay' } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /attendances/replaced:
     get:
       operationId: getAttendancesReplaced
@@ -9672,8 +9706,12 @@ paths:
       operationId: getAttendancesById
       tags: [Attendance]
       summary: Detail satu absensi
+      description: >-
+        Untuk pemiliknya, atau siapa pun yang izin `attendance.group.view` / `attendance.absence.view`-nya
+        menjangkau regu catatan itu pada tanggal kerjanya (DANRU regu itu). Selain itu 404, sama
+        dengan catatan yang tidak ada. URL selfie bertanda tangan dan kedaluwarsa; jangan disimpan.
       responses:
-        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/Attendance' } } } ] } } } }
+        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/AttendanceDetail' } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
   /admin/attendances:
