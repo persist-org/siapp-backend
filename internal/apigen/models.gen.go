@@ -7179,14 +7179,14 @@ type CategoryCreate struct {
 	Name          string                         `json:"name"`
 	SortOrder     *int                           `json:"sort_order,omitempty"`
 
-	// Urgency Wajib untuk kategori instruksi
+	// Urgency Wajib untuk kategori instruksi, ditolak untuk kategori laporan.
 	Urgency *CategoryCreateUrgency `json:"urgency,omitempty"`
 }
 
 // CategoryCreateBusinessLines defines model for CategoryCreate.BusinessLines.
 type CategoryCreateBusinessLines string
 
-// CategoryCreateUrgency Wajib untuk kategori instruksi
+// CategoryCreateUrgency Wajib untuk kategori instruksi, ditolak untuk kategori laporan.
 type CategoryCreateUrgency string
 
 // CategoryPatch Field yang tidak dikirim tidak berubah. `business_lines` kosong berarti semua lini bisnis.
@@ -7278,7 +7278,7 @@ type Client struct {
 	Code               *string `json:"code,omitempty"`
 	CompanyBidangUsaha *string `json:"company_bidang_usaha,omitempty"`
 
-	// CompanyCode Diisi manual
+	// CompanyCode Diisi manual, tidak dibentuk server.
 	CompanyCode   *string    `json:"company_code,omitempty"`
 	CompanyPrefix *string    `json:"company_prefix,omitempty"`
 	CreatedAt     *time.Time `json:"created_at,omitempty"`
@@ -7502,7 +7502,27 @@ type ErrorEnvelope struct {
 		// Code Kode error UPPERCASE machine-readable permukaan /api/v1/*.
 		Code ErrorCode `json:"code"`
 
-		// Details Konteks tambahan opsional (mis. scope_required, retry_after).
+		// Details Konteks tambahan opsional (mis. scope_required, retry_after). `details.reason` adalah
+		// kode mesin yang lebih rinci dari `error.code`; yang sudah dirilis tidak pernah diganti
+		// namanya. Reason lintas-modul (reason milik satu endpoint ada pada deskripsi endpoint itu):
+		//
+		// - 401 `AUTH_TOKEN_INVALID`: token hilang, rusak, atau salah tanda tangan; ke layar login.
+		// - 401 `AUTH_TOKEN_EXPIRED` (code `TOKEN_EXPIRED`): token akses lewat masa berlaku;
+		//   refresh sekali lalu ulangi.
+		// - 401 `AUTH_INVALID_CREDENTIALS`, 403 `AUTH_DEVICE_BOUND`, 403
+		//   `AUTH_ORGANIZATION_SUSPENDED`: lihat `POST /auth/login`.
+		// - 409 `IDEMPOTENCY_KEY_REUSED`, `IDEMPOTENCY_KEY_IN_FLIGHT`,
+		//   `IDEMPOTENCY_RESPONSE_NOT_STORED`: lihat header `Idempotency-Key`.
+		// - 422 `OCCURRED_AT_IN_FUTURE`: item offline mengaku terjadi lebih dari 5 menit ke depan.
+		// - 422 `OCCURRED_AT_TOO_OLD`: item offline lebih tua dari jendela offline 7 hari.
+		// - 503 `PERSONEL_UNAVAILABLE` (code `INTERNAL_ERROR`): Personalia tidak menjawab; coba lagi nanti.
+		// - 404 `NOT_FOUND` dengan reason `ATTENDANCE_NOT_FOUND`, `NOTIFICATION_NOT_FOUND`,
+		//   `CATEGORY_NOT_FOUND`, `PANIC_TYPE_NOT_FOUND`, `LETTERHEAD_NOT_FOUND`, `APP_LINK_NOT_FOUND`,
+		//   `LEAVE_CATEGORY_NOT_FOUND`, `LEAVE_CLIENT_NOT_FOUND`: data tidak ada, sudah dihapus, atau
+		//   milik organisasi/orang lain (tidak dibedakan).
+		// - 422 `CATEGORY_KIND_MISMATCH`: kategori bukan untuk jenis data itu.
+		// - 409 `MASTER_IN_USE`: master masih dipakai; nonaktifkan, jangan hapus.
+		// - 409 `ACCESS_OWN_ROLE_PROTECTED`: admin tidak boleh mencabut atau mempersempit perannya sendiri.
 		Details *map[string]interface{} `json:"details,omitempty"`
 		Errors  *[]FieldError           `json:"errors,omitempty"`
 
@@ -7547,7 +7567,7 @@ type FieldPermissionDefinition struct {
 	// Description Nama hak di Tabel 8 manual (Bahasa Indonesia).
 	Description string `json:"description"`
 
-	// Module Modul pemilik hak ini
+	// Module Modul pemilik hak ini, untuk mengelompokkan di layar.
 	Module     string `json:"module"`
 	Permission string `json:"permission"`
 }
@@ -8742,7 +8762,7 @@ type Personnel struct {
 	LastSeenAt       *time.Time          `json:"last_seen_at,omitempty"`
 	MiddleName       *string             `json:"middle_name,omitempty"`
 
-	// Nik 16 digit
+	// Nik 16 digit, PII tinggi (mask + audit).
 	Nik             *string    `json:"nik,omitempty"`
 	Npwp            *string    `json:"npwp,omitempty"`
 	OrganizationId  *int64     `json:"organization_id,omitempty"`
@@ -10712,10 +10732,13 @@ type GetAdminPermissionsById200JSONResponseBodySuccess bool
 
 // PostAdminPermissionsByIdApproveParams defines parameters for PostAdminPermissionsByIdApprove.
 type PostAdminPermissionsByIdApproveParams struct {
-	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
-	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
-	// 409 CONFLICT.
-	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
+	// IdempotencyKey UUID stabil seumur item; tanpa header ini 422 VALIDATION_ERROR. Retry dengan key dan body
+	// yang sama → respons tersimpan dengan header `Idempotent-Replayed: true`; body berbeda +
+	// key sama → 409 CONFLICT `IDEMPOTENCY_KEY_REUSED`. Permintaan pertama dengan key itu masih
+	// berjalan → 409 `IDEMPOTENCY_KEY_IN_FLIGHT` (coba lagi sebentar lagi). Permintaan pertama
+	// berhasil tetapi responsnya tidak bisa disimpan → 409 `IDEMPOTENCY_RESPONSE_NOT_STORED`
+	// (jangan kirim ulang dengan key baru, itu mengulang aksinya; muat ulang datanya).
+	IdempotencyKey IdempotencyKeyRequiredHeader `json:"Idempotency-Key"`
 }
 
 // PostAdminPermissionsByIdApprove200JSONResponseBodySuccess defines parameters for PostAdminPermissionsByIdApprove.
@@ -10723,10 +10746,13 @@ type PostAdminPermissionsByIdApprove200JSONResponseBodySuccess bool
 
 // PostAdminPermissionsByIdDeclineParams defines parameters for PostAdminPermissionsByIdDecline.
 type PostAdminPermissionsByIdDeclineParams struct {
-	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
-	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
-	// 409 CONFLICT.
-	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
+	// IdempotencyKey UUID stabil seumur item; tanpa header ini 422 VALIDATION_ERROR. Retry dengan key dan body
+	// yang sama → respons tersimpan dengan header `Idempotent-Replayed: true`; body berbeda +
+	// key sama → 409 CONFLICT `IDEMPOTENCY_KEY_REUSED`. Permintaan pertama dengan key itu masih
+	// berjalan → 409 `IDEMPOTENCY_KEY_IN_FLIGHT` (coba lagi sebentar lagi). Permintaan pertama
+	// berhasil tetapi responsnya tidak bisa disimpan → 409 `IDEMPOTENCY_RESPONSE_NOT_STORED`
+	// (jangan kirim ulang dengan key baru, itu mengulang aksinya; muat ulang datanya).
+	IdempotencyKey IdempotencyKeyRequiredHeader `json:"Idempotency-Key"`
 }
 
 // PostAdminPermissionsByIdDecline200JSONResponseBodySuccess defines parameters for PostAdminPermissionsByIdDecline.
@@ -11451,7 +11477,10 @@ type GetAttendances200JSONResponseBodySuccess bool
 type PostAttendancesAbsentParams struct {
 	// IdempotencyKey UUID stabil seumur item; tanpa header ini 422 VALIDATION_ERROR. Retry dengan key dan body
 	// yang sama → respons tersimpan dengan header `Idempotent-Replayed: true`; body berbeda +
-	// key sama → 409 CONFLICT.
+	// key sama → 409 CONFLICT `IDEMPOTENCY_KEY_REUSED`. Permintaan pertama dengan key itu masih
+	// berjalan → 409 `IDEMPOTENCY_KEY_IN_FLIGHT` (coba lagi sebentar lagi). Permintaan pertama
+	// berhasil tetapi responsnya tidak bisa disimpan → 409 `IDEMPOTENCY_RESPONSE_NOT_STORED`
+	// (jangan kirim ulang dengan key baru, itu mengulang aksinya; muat ulang datanya).
 	IdempotencyKey IdempotencyKeyRequiredHeader `json:"Idempotency-Key"`
 }
 
@@ -11462,7 +11491,10 @@ type PostAttendancesAbsent201JSONResponseBodySuccess bool
 type PostAttendancesGroupParams struct {
 	// IdempotencyKey UUID stabil seumur item; tanpa header ini 422 VALIDATION_ERROR. Retry dengan key dan body
 	// yang sama → respons tersimpan dengan header `Idempotent-Replayed: true`; body berbeda +
-	// key sama → 409 CONFLICT.
+	// key sama → 409 CONFLICT `IDEMPOTENCY_KEY_REUSED`. Permintaan pertama dengan key itu masih
+	// berjalan → 409 `IDEMPOTENCY_KEY_IN_FLIGHT` (coba lagi sebentar lagi). Permintaan pertama
+	// berhasil tetapi responsnya tidak bisa disimpan → 409 `IDEMPOTENCY_RESPONSE_NOT_STORED`
+	// (jangan kirim ulang dengan key baru, itu mengulang aksinya; muat ulang datanya).
 	IdempotencyKey IdempotencyKeyRequiredHeader `json:"Idempotency-Key"`
 }
 
@@ -11493,7 +11525,10 @@ type GetAttendancesMe200JSONResponseBodySuccess bool
 type PostAttendancesQrCheckInParams struct {
 	// IdempotencyKey UUID stabil seumur item; tanpa header ini 422 VALIDATION_ERROR. Retry dengan key dan body
 	// yang sama → respons tersimpan dengan header `Idempotent-Replayed: true`; body berbeda +
-	// key sama → 409 CONFLICT.
+	// key sama → 409 CONFLICT `IDEMPOTENCY_KEY_REUSED`. Permintaan pertama dengan key itu masih
+	// berjalan → 409 `IDEMPOTENCY_KEY_IN_FLIGHT` (coba lagi sebentar lagi). Permintaan pertama
+	// berhasil tetapi responsnya tidak bisa disimpan → 409 `IDEMPOTENCY_RESPONSE_NOT_STORED`
+	// (jangan kirim ulang dengan key baru, itu mengulang aksinya; muat ulang datanya).
 	IdempotencyKey IdempotencyKeyRequiredHeader `json:"Idempotency-Key"`
 }
 
@@ -11504,7 +11539,10 @@ type PostAttendancesQrCheckIn201JSONResponseBodySuccess bool
 type PostAttendancesQrCheckOutParams struct {
 	// IdempotencyKey UUID stabil seumur item; tanpa header ini 422 VALIDATION_ERROR. Retry dengan key dan body
 	// yang sama → respons tersimpan dengan header `Idempotent-Replayed: true`; body berbeda +
-	// key sama → 409 CONFLICT.
+	// key sama → 409 CONFLICT `IDEMPOTENCY_KEY_REUSED`. Permintaan pertama dengan key itu masih
+	// berjalan → 409 `IDEMPOTENCY_KEY_IN_FLIGHT` (coba lagi sebentar lagi). Permintaan pertama
+	// berhasil tetapi responsnya tidak bisa disimpan → 409 `IDEMPOTENCY_RESPONSE_NOT_STORED`
+	// (jangan kirim ulang dengan key baru, itu mengulang aksinya; muat ulang datanya).
 	IdempotencyKey IdempotencyKeyRequiredHeader `json:"Idempotency-Key"`
 }
 
@@ -11554,7 +11592,10 @@ type GetAttendancesReplacing200JSONResponseBodySuccess bool
 type PostAttendancesSelfieCheckInParams struct {
 	// IdempotencyKey UUID stabil seumur item; tanpa header ini 422 VALIDATION_ERROR. Retry dengan key dan body
 	// yang sama → respons tersimpan dengan header `Idempotent-Replayed: true`; body berbeda +
-	// key sama → 409 CONFLICT.
+	// key sama → 409 CONFLICT `IDEMPOTENCY_KEY_REUSED`. Permintaan pertama dengan key itu masih
+	// berjalan → 409 `IDEMPOTENCY_KEY_IN_FLIGHT` (coba lagi sebentar lagi). Permintaan pertama
+	// berhasil tetapi responsnya tidak bisa disimpan → 409 `IDEMPOTENCY_RESPONSE_NOT_STORED`
+	// (jangan kirim ulang dengan key baru, itu mengulang aksinya; muat ulang datanya).
 	IdempotencyKey IdempotencyKeyRequiredHeader `json:"Idempotency-Key"`
 }
 
@@ -11565,7 +11606,10 @@ type PostAttendancesSelfieCheckIn201JSONResponseBodySuccess bool
 type PostAttendancesSelfieCheckOutParams struct {
 	// IdempotencyKey UUID stabil seumur item; tanpa header ini 422 VALIDATION_ERROR. Retry dengan key dan body
 	// yang sama → respons tersimpan dengan header `Idempotent-Replayed: true`; body berbeda +
-	// key sama → 409 CONFLICT.
+	// key sama → 409 CONFLICT `IDEMPOTENCY_KEY_REUSED`. Permintaan pertama dengan key itu masih
+	// berjalan → 409 `IDEMPOTENCY_KEY_IN_FLIGHT` (coba lagi sebentar lagi). Permintaan pertama
+	// berhasil tetapi responsnya tidak bisa disimpan → 409 `IDEMPOTENCY_RESPONSE_NOT_STORED`
+	// (jangan kirim ulang dengan key baru, itu mengulang aksinya; muat ulang datanya).
 	IdempotencyKey IdempotencyKeyRequiredHeader `json:"Idempotency-Key"`
 }
 
@@ -11582,7 +11626,10 @@ type GetAttendancesById200JSONResponseBodySuccess bool
 type PatchAttendancesByIdCheckOutParams struct {
 	// IdempotencyKey UUID stabil seumur item; tanpa header ini 422 VALIDATION_ERROR. Retry dengan key dan body
 	// yang sama → respons tersimpan dengan header `Idempotent-Replayed: true`; body berbeda +
-	// key sama → 409 CONFLICT.
+	// key sama → 409 CONFLICT `IDEMPOTENCY_KEY_REUSED`. Permintaan pertama dengan key itu masih
+	// berjalan → 409 `IDEMPOTENCY_KEY_IN_FLIGHT` (coba lagi sebentar lagi). Permintaan pertama
+	// berhasil tetapi responsnya tidak bisa disimpan → 409 `IDEMPOTENCY_RESPONSE_NOT_STORED`
+	// (jangan kirim ulang dengan key baru, itu mengulang aksinya; muat ulang datanya).
 	IdempotencyKey IdempotencyKeyRequiredHeader `json:"Idempotency-Key"`
 }
 
@@ -12217,10 +12264,13 @@ type GetPermissions200JSONResponseBodySuccess bool
 
 // PostPermissionsParams defines parameters for PostPermissions.
 type PostPermissionsParams struct {
-	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
-	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
-	// 409 CONFLICT.
-	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
+	// IdempotencyKey UUID stabil seumur item; tanpa header ini 422 VALIDATION_ERROR. Retry dengan key dan body
+	// yang sama → respons tersimpan dengan header `Idempotent-Replayed: true`; body berbeda +
+	// key sama → 409 CONFLICT `IDEMPOTENCY_KEY_REUSED`. Permintaan pertama dengan key itu masih
+	// berjalan → 409 `IDEMPOTENCY_KEY_IN_FLIGHT` (coba lagi sebentar lagi). Permintaan pertama
+	// berhasil tetapi responsnya tidak bisa disimpan → 409 `IDEMPOTENCY_RESPONSE_NOT_STORED`
+	// (jangan kirim ulang dengan key baru, itu mengulang aksinya; muat ulang datanya).
+	IdempotencyKey IdempotencyKeyRequiredHeader `json:"Idempotency-Key"`
 }
 
 // PostPermissions201JSONResponseBodySuccess defines parameters for PostPermissions.
@@ -12267,10 +12317,13 @@ type GetPermissionsById200JSONResponseBodySuccess bool
 
 // PostPermissionsByIdApproveParams defines parameters for PostPermissionsByIdApprove.
 type PostPermissionsByIdApproveParams struct {
-	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
-	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
-	// 409 CONFLICT.
-	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
+	// IdempotencyKey UUID stabil seumur item; tanpa header ini 422 VALIDATION_ERROR. Retry dengan key dan body
+	// yang sama → respons tersimpan dengan header `Idempotent-Replayed: true`; body berbeda +
+	// key sama → 409 CONFLICT `IDEMPOTENCY_KEY_REUSED`. Permintaan pertama dengan key itu masih
+	// berjalan → 409 `IDEMPOTENCY_KEY_IN_FLIGHT` (coba lagi sebentar lagi). Permintaan pertama
+	// berhasil tetapi responsnya tidak bisa disimpan → 409 `IDEMPOTENCY_RESPONSE_NOT_STORED`
+	// (jangan kirim ulang dengan key baru, itu mengulang aksinya; muat ulang datanya).
+	IdempotencyKey IdempotencyKeyRequiredHeader `json:"Idempotency-Key"`
 }
 
 // PostPermissionsByIdApprove200JSONResponseBodySuccess defines parameters for PostPermissionsByIdApprove.
@@ -12278,10 +12331,13 @@ type PostPermissionsByIdApprove200JSONResponseBodySuccess bool
 
 // PostPermissionsByIdCancelParams defines parameters for PostPermissionsByIdCancel.
 type PostPermissionsByIdCancelParams struct {
-	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
-	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
-	// 409 CONFLICT.
-	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
+	// IdempotencyKey UUID stabil seumur item; tanpa header ini 422 VALIDATION_ERROR. Retry dengan key dan body
+	// yang sama → respons tersimpan dengan header `Idempotent-Replayed: true`; body berbeda +
+	// key sama → 409 CONFLICT `IDEMPOTENCY_KEY_REUSED`. Permintaan pertama dengan key itu masih
+	// berjalan → 409 `IDEMPOTENCY_KEY_IN_FLIGHT` (coba lagi sebentar lagi). Permintaan pertama
+	// berhasil tetapi responsnya tidak bisa disimpan → 409 `IDEMPOTENCY_RESPONSE_NOT_STORED`
+	// (jangan kirim ulang dengan key baru, itu mengulang aksinya; muat ulang datanya).
+	IdempotencyKey IdempotencyKeyRequiredHeader `json:"Idempotency-Key"`
 }
 
 // PostPermissionsByIdCancel200JSONResponseBodySuccess defines parameters for PostPermissionsByIdCancel.
@@ -12289,10 +12345,13 @@ type PostPermissionsByIdCancel200JSONResponseBodySuccess bool
 
 // PostPermissionsByIdDeclineParams defines parameters for PostPermissionsByIdDecline.
 type PostPermissionsByIdDeclineParams struct {
-	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
-	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
-	// 409 CONFLICT.
-	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
+	// IdempotencyKey UUID stabil seumur item; tanpa header ini 422 VALIDATION_ERROR. Retry dengan key dan body
+	// yang sama → respons tersimpan dengan header `Idempotent-Replayed: true`; body berbeda +
+	// key sama → 409 CONFLICT `IDEMPOTENCY_KEY_REUSED`. Permintaan pertama dengan key itu masih
+	// berjalan → 409 `IDEMPOTENCY_KEY_IN_FLIGHT` (coba lagi sebentar lagi). Permintaan pertama
+	// berhasil tetapi responsnya tidak bisa disimpan → 409 `IDEMPOTENCY_RESPONSE_NOT_STORED`
+	// (jangan kirim ulang dengan key baru, itu mengulang aksinya; muat ulang datanya).
+	IdempotencyKey IdempotencyKeyRequiredHeader `json:"Idempotency-Key"`
 }
 
 // PostPermissionsByIdDecline200JSONResponseBodySuccess defines parameters for PostPermissionsByIdDecline.
@@ -12739,7 +12798,10 @@ type GetShiftSwaps200JSONResponseBodySuccess bool
 type PostShiftSwapsParams struct {
 	// IdempotencyKey UUID stabil seumur item; tanpa header ini 422 VALIDATION_ERROR. Retry dengan key dan body
 	// yang sama → respons tersimpan dengan header `Idempotent-Replayed: true`; body berbeda +
-	// key sama → 409 CONFLICT.
+	// key sama → 409 CONFLICT `IDEMPOTENCY_KEY_REUSED`. Permintaan pertama dengan key itu masih
+	// berjalan → 409 `IDEMPOTENCY_KEY_IN_FLIGHT` (coba lagi sebentar lagi). Permintaan pertama
+	// berhasil tetapi responsnya tidak bisa disimpan → 409 `IDEMPOTENCY_RESPONSE_NOT_STORED`
+	// (jangan kirim ulang dengan key baru, itu mengulang aksinya; muat ulang datanya).
 	IdempotencyKey IdempotencyKeyRequiredHeader `json:"Idempotency-Key"`
 }
 
