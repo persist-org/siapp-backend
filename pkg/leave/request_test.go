@@ -642,6 +642,23 @@ func TestARequestIsReadByItsOwnerAndTheDanruOfItsRegu(t *testing.T) {
 	e.detail(token2, got.ID).requireFailure(t, http.StatusNotFound, "NOT_FOUND", "LEAVE_NOT_FOUND")
 }
 
+// The detail follows the same rule as the queue and the decision: whoever leads the regu today,
+// not whoever led it on the request's start date.
+func TestADanruReadsARequestByTodayNotByItsStartDate(t *testing.T) {
+	e := newEnv(t)
+	w := e.requestWorld()
+	got := e.mustSubmit(w.guard, leaveBody("LEAVE", "UNPAID", "2026-03-18", "2026-03-18"))
+
+	// The DANRU changes before the start date: the old one steps down, a new one takes over today.
+	e.exec(w.org, "UPDATE team_members SET end_date = '2026-03-09' WHERE team_code = '1K-IBMI-S1' AND personnel_id = $1 AND role = 'DANRU'", w.danruID)
+	newID, newDanru := e.person(w.org, "")
+	e.exec(w.org, "INSERT INTO team_members (team_code, personnel_id, role, start_date) VALUES ('1K-IBMI-S1', $1, 'DANRU', '2026-03-10')", newID)
+
+	require.Equal(t, got.ID, data[permission](t, e.detail(newDanru, got.ID)).ID, "the DANRU of today")
+	e.detail(w.danru, got.ID).requireFailure(t, http.StatusNotFound, "NOT_FOUND", "LEAVE_NOT_FOUND")
+	require.Equal(t, got.ID, data[permission](t, e.detail(w.guard, got.ID)).ID, "the owner still reads it")
+}
+
 func TestADecidedRequestShowsWhoDecidedIt(t *testing.T) {
 	e := newEnv(t)
 	w := e.requestWorld()

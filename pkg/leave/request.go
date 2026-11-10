@@ -631,7 +631,8 @@ func (s *Service) ListMine(ctx context.Context, p auth.Principal, f Filter) (Pag
 }
 
 // Get is GET /permissions/{id}: the owner reads their request, and so does someone whose
-// attendance.leave.approve reaches the request's regu on its first day. Everyone else, and a
+// attendance.leave.approve reaches the request's regu today (the rule of the queue and of the
+// decision, not the request's start date). Everyone else, and a
 // request that is not there, get ErrNotFound (never 403): ids cannot be probed.
 //
 // The admins read requests through /admin routes (Part C).
@@ -650,7 +651,13 @@ func (s *Service) Get(ctx context.Context, p auth.Principal, id int64) (Request,
 			if s.perms == nil {
 				return ErrNotFound
 			}
-			res, err := s.perms.Resolve(ctx, q, p.PersonnelID, access.AttendanceLeaveApprove, dateValue(lr.StartDate))
+			// Today in the regu's project zone, like the queue and the decision: whoever leads
+			// the regu now reads it (a former DANRU no longer does), whatever the start date.
+			_, loc, err := clientAndZone(ctx, q, lr.TeamCode)
+			if err != nil {
+				return err
+			}
+			res, err := s.perms.Resolve(ctx, q, p.PersonnelID, access.AttendanceLeaveApprove, timeutil.BusinessDate(s.clock.Now(), loc))
 			if err != nil {
 				return err
 			}
