@@ -32,6 +32,7 @@ const (
 	// Phase 07.6: DANRU absence, group present, admin correction. These four are the plan's fixed
 	// reason catalog for the phase (docs/plan/07-attendance.md); do not add others beside them.
 	ReasonNoShift               = "ATTENDANCE_NO_SHIFT"
+	ReasonAbsenceTooEarly       = "ABSENCE_SHIFT_NOT_STARTED"
 	ReasonAbsenceAlreadyPresent = "ABSENCE_ALREADY_PRESENT"
 	ReasonGroupAttendanceOff    = "GROUP_ATTENDANCE_DISABLED"
 
@@ -110,6 +111,11 @@ var ErrAlreadyCheckedOut = apperr.New(http.StatusConflict, apperr.CodeDuplicate,
 // ErrNotCheckedOut is returned by "update pulang" for a record that has no check-out yet.
 var ErrNotCheckedOut = apperr.New(http.StatusUnprocessableEntity, apperr.CodeUnprocessable,
 	ReasonNotCheckedOut, "Belum ada absen pulang yang bisa diperbarui.")
+
+// ErrAbsenceTooEarly is returned when a DANRU marks a mangkir for a shift that has not started: nobody
+// can be absent from a shift that is yet to begin, and the record would block the guard's own check-in.
+var ErrAbsenceTooEarly = apperr.New(http.StatusUnprocessableEntity, apperr.CodeUnprocessable,
+	ReasonAbsenceTooEarly, "Shift ini belum dimulai; mangkir hanya bisa dicatat setelah shift dimulai.")
 
 // ErrNoShift is returned by the DANRU absence and group-present endpoints when the target
 // personnel has no shift instance of the given regu on the given work date: there is no shift

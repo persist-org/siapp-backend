@@ -162,6 +162,11 @@ func (s *Service) MarkAbsent(ctx context.Context, p auth.Principal, in AbsentInp
 		if !ok {
 			return ErrNoShift
 		}
+		// ⚠ Not before the shift starts. A mangkir on a shift still to come would sit there, send
+		// the guard a notice, and turn their own check-in away (a record already exists: NOT_ALLOWED).
+		if now.Before(inst.StartsAt) {
+			return ErrAbsenceTooEarly
+		}
 		row, err := s.insertAbsent(ctx, q, p.PersonnelID, in.PersonnelID, in.TeamCode, projectCode, inst, swapID, in.Reason, now)
 		if err != nil {
 			return err
@@ -193,7 +198,8 @@ func (s *Service) absenceNotice(ctx context.Context, q *db.Queries, markedByID i
 	return n, nil
 }
 
-// CancelAbsent is DELETE /attendances/absent/{id}: the DANRU undoing their own mistaken mangkir.
+// CancelAbsent is DELETE /attendances/absent/{id}: the DANRU undoing their own mistaken mangkir (one
+// they marked themselves, not an admin's correction).
 // Same permission as creating one (attendance.absence.create), checked against the record's own
 // team and work date, not today's: a DANRU may be fixing one from yesterday.
 //
@@ -213,6 +219,10 @@ func (s *Service) CancelAbsent(ctx context.Context, p auth.Principal, id int64) 
 		}
 		if row.Status != db.AttendanceStatusABSENT {
 			return ErrNotFound // not a mangkir to undo; the same answer as one that does not exist
+		}
+		// ⚠ Only the mangkir the caller marked: one an admin set through a correction is the admin's.
+		if !row.MarkedAbsentByID.Valid || row.MarkedAbsentByID.Int64 != p.PersonnelID {
+			return ErrNotFound
 		}
 		res, err := s.access.Resolve(ctx, q, p.PersonnelID, access.AttendanceAbsenceNew, dateValue(row.WorkDate))
 		if err != nil {
@@ -433,7 +443,8 @@ func (s *Service) listInto(ctx context.Context, q *db.Queries, out *Page, params
 	}
 	total, err := q.CountAttendances(ctx, db.CountAttendancesParams{
 		TeamCodes: params.TeamCodes, TeamCode: params.TeamCode, ProjectCode: params.ProjectCode,
-		RegionCode: params.RegionCode, FromDate: params.FromDate, ToDate: params.ToDate,
+		RegionCode: params.RegionCode, Status: params.Status, SyncStatus: params.SyncStatus,
+		FromDate: params.FromDate, ToDate: params.ToDate,
 	})
 	if err != nil {
 		return fmt.Errorf("count attendances: %w", err)

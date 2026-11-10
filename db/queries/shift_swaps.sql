@@ -40,28 +40,52 @@ SELECT * FROM shift_swaps WHERE id = @id FOR UPDATE;
 -- name: CancelShiftSwap :one
 UPDATE shift_swaps SET cancelled_at = @now, updated_at = @now WHERE id = @id RETURNING *;
 
--- Cancels the active swaps of one record whose replacer has not checked in yet. Used before the
+-- ⚠ "Started" means the replacer has ANY record of the swap: a check-in, but also a mangkir the DANRU
+-- marked on them for the covered shift. Cancelling then would leave that record pointing at a
+-- cancelled swap.
+--
+-- Takes the row locks of a record's active swaps. Run it before CancelUnstartedSwapsOfAttendance: a
+-- check-in locks its swap the same way, and the cancel below must read what that check-in committed,
+-- which a statement that waits on the lock itself would not (its snapshot is older).
+-- name: LockActiveSwapsOfAttendance :exec
+SELECT id FROM shift_swaps WHERE replaced_attendance_id = @attendance_id AND cancelled_at IS NULL FOR UPDATE;
+
+-- Cancels the active swaps of one record whose replacer has not started yet. Used before the
 -- record is deleted or corrected back to PRESENT: a swap of a guard who is (again) at work covers
 -- nothing. A swap whose replacer already started stays active; HasActiveSwapOfAttendance tells the
 -- caller so it can refuse instead.
 -- name: CancelUnstartedSwapsOfAttendance :exec
 UPDATE shift_swaps sw SET cancelled_at = @now, updated_at = @now
 WHERE sw.replaced_attendance_id = @attendance_id AND sw.cancelled_at IS NULL
-  AND NOT EXISTS (SELECT 1 FROM attendances r WHERE r.shift_swap_id = sw.id AND r.check_in_at IS NOT NULL);
+  AND NOT EXISTS (SELECT 1 FROM attendances r WHERE r.shift_swap_id = sw.id);
 
 -- name: HasActiveSwapOfAttendance :one
 SELECT EXISTS (
   SELECT 1 FROM shift_swaps WHERE replaced_attendance_id = @attendance_id AND cancelled_at IS NULL);
 
--- Same as CancelUnstartedSwapsOfAttendance for every LEAVE row of a leave request about to be
--- revoked (pkg/leave runs it just before deleting those rows).
+-- Same two steps for every LEAVE row of a leave request about to be revoked (pkg/leave runs them
+-- just before deleting those rows). A row that was a mangkir before the leave comes back as one, so
+-- its swap is still wanted and stays.
+-- name: LockActiveSwapsOfLeaveRequest :exec
+SELECT sw.id FROM shift_swaps sw
+WHERE sw.cancelled_at IS NULL AND sw.replaced_attendance_id IN (
+    SELECT a.id FROM attendances a
+    WHERE a.leave_request_id = @leave_request_id AND a.status = 'LEAVE' AND a.check_in_at IS NULL AND NOT a.leave_replaced_absent)
+FOR UPDATE;
+
 -- name: CancelUnstartedSwapsOfLeaveRequest :exec
 UPDATE shift_swaps sw SET cancelled_at = @now, updated_at = @now
 WHERE sw.cancelled_at IS NULL
   AND sw.replaced_attendance_id IN (
     SELECT a.id FROM attendances a
-    WHERE a.leave_request_id = @leave_request_id AND a.status = 'LEAVE' AND a.check_in_at IS NULL)
-  AND NOT EXISTS (SELECT 1 FROM attendances r WHERE r.shift_swap_id = sw.id AND r.check_in_at IS NOT NULL);
+    WHERE a.leave_request_id = @leave_request_id AND a.status = 'LEAVE' AND a.check_in_at IS NULL AND NOT a.leave_replaced_absent)
+  AND NOT EXISTS (SELECT 1 FROM attendances r WHERE r.shift_swap_id = sw.id);
+
+-- ⚠ Serialises the swaps taken by one replacer: the overlap check in Create reads their other shifts
+-- with plain SELECTs, so two parallel swaps of different records would both pass it. The lock ends
+-- with the transaction.
+-- name: LockSwapReplacer :exec
+SELECT pg_advisory_xact_lock(hashtextextended(@key::text, 0));
 
 -- The DANRU's list: active or cancelled swaps of the teams their attendance.swap.create reaches.
 -- name: ListShiftSwaps :many

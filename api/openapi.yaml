@@ -10100,7 +10100,8 @@ paths:
         `date`; di luar jangkauan: 403 `PERMISSION_DENIED`. Personil tidak terjadwal pada regu dan
         tanggal itu (hari OFF, tidak dijadwalkan, atau bukan regu personil): 422
         `ATTENDANCE_NO_SHIFT`. Shift itu sudah punya catatan: 409 `ABSENCE_ALREADY_PRESENT` (sudah
-        absen datang) atau 422 `ATTENDANCE_NOT_ALLOWED` (sudah izin/mangkir). Shift yang diambil
+        absen datang) atau 422 `ATTENDANCE_NOT_ALLOWED` (sudah izin/mangkir). Shift yang belum
+        dimulai: 422 `ABSENCE_SHIFT_NOT_STARTED`. Shift yang diambil
         alih personil lewat tukar jaga aktif di regu itu juga bisa ditandai mangkir; catatannya
         membawa `shift_swap_id` tukar jaga itu.
       parameters: [ { $ref: '#/components/parameters/IdempotencyKeyRequiredHeader' } ]

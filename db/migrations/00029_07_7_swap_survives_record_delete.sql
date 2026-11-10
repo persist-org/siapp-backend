@@ -14,6 +14,9 @@ ALTER TABLE shift_swaps
 
 -- +goose Down
 ALTER TABLE shift_swaps DROP CONSTRAINT shift_swaps_replaced_attendance_id_fkey;
+-- A started swap is still referenced by the replacer's own record: let go of that link first.
+UPDATE attendances SET shift_swap_id = NULL
+WHERE shift_swap_id IN (SELECT id FROM shift_swaps WHERE replaced_attendance_id IS NULL);
 DELETE FROM shift_swaps WHERE replaced_attendance_id IS NULL;
 ALTER TABLE shift_swaps
     ADD CONSTRAINT shift_swaps_replaced_attendance_id_fkey

@@ -144,6 +144,17 @@ func (s *Service) groupCheckIn(ctx context.Context, q *db.Queries, markedByID, p
 	if now.Before(inst.StartsAt.Add(-swapCheckInEarly)) || now.After(inst.EndsAt.Add(organization.CheckOutLate)) {
 		return db.Attendance{}, ErrShiftNotActive
 	}
+	// ⚠ A covered shift: lock the swap and read it again, as self check-in does, so a cancel that
+	// commits in between is not missed (the record would point at a cancelled swap).
+	if swapID != nil {
+		sw, serr := q.GetShiftSwapForUpdate(ctx, *swapID)
+		if errors.Is(serr, pgx.ErrNoRows) || (serr == nil && sw.CancelledAt.Valid) {
+			return db.Attendance{}, ErrShiftNotActive
+		}
+		if serr != nil {
+			return db.Attendance{}, fmt.Errorf("get shift swap: %w", serr)
+		}
+	}
 	key := shiftKey{TeamCode: teamCode, WorkDate: inst.WorkDate, ShiftID: inst.ShiftID}
 	existing, err := existingRecord(ctx, q, personnelID, key)
 	if err != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -293,6 +294,11 @@ func (s *Service) Create(ctx context.Context, p auth.Principal, in CreateSwapInp
 		// shifts (one ends exactly when the next starts) are allowed. The window is the day before to
 		// the day after, not only workDate: an overnight shift that began yesterday, or one that starts
 		// tomorrow night, can still reach into the shift being taken over.
+		// ⚠ One replacer at a time: the checks below only read, so two parallel swaps of different
+		// records would both find the replacer free. The lock waits for the other swap to commit.
+		if err := q.LockSwapReplacer(ctx, "shift_swap_replacer:"+strconv.FormatInt(in.ReplacingPersonnelID, 10)); err != nil {
+			return fmt.Errorf("lock replacer: %w", err)
+		}
 		instances, err := s.shifts.Instances(ctx, p.OrganizationID, in.ReplacingPersonnelID, workDate.AddDays(-1), workDate.AddDays(1))
 		if err != nil {
 			return fmt.Errorf("replacing shifts: %w", err)
@@ -432,11 +438,13 @@ func (s *Service) CancelSwap(ctx context.Context, p auth.Principal, id int64) er
 		if !res.HasTeam(row.TeamCode) {
 			return ErrSwapNotFound
 		}
+		// ⚠ Started = the replacer has any record of the shift: a check-in, or a mangkir the DANRU
+		// marked on them (it carries the swap too, and would be left pointing at a cancelled one).
 		existing, err := existingRecord(ctx, q, row.ReplacingPersonnelID, shiftKey{TeamCode: row.TeamCode, WorkDate: dateValue(row.WorkDate), ShiftID: row.ShiftID})
 		if err != nil {
 			return err
 		}
-		if existing != nil && existing.CheckInAt.Valid {
+		if existing != nil && existing.ShiftSwapID.Valid && existing.ShiftSwapID.Int64 == row.ID {
 			return ErrSwapAlreadyStarted
 		}
 		updated, err := q.CancelShiftSwap(ctx, db.CancelShiftSwapParams{Now: ts(now), ID: id})
@@ -516,6 +524,11 @@ func (s *Service) Replacing(ctx context.Context, p auth.Principal, from, to *tim
 // nothing, so its unstarted swaps are cancelled. A swap whose replacer already checked in cannot be
 // undone silently (the shift was worked, and Personel credited it to the replacer): ErrSwapAlreadyStarted.
 func releaseSwaps(ctx context.Context, q *db.Queries, attendanceID int64, now time.Time) error {
+	// ⚠ Lock the swaps first, in their own statement: a check-in locks its swap too, so one that is
+	// in flight commits before the cancel below looks for the replacer's record.
+	if err := q.LockActiveSwapsOfAttendance(ctx, pgtype.Int8{Int64: attendanceID, Valid: true}); err != nil {
+		return fmt.Errorf("lock swaps: %w", err)
+	}
 	if err := q.CancelUnstartedSwapsOfAttendance(ctx, db.CancelUnstartedSwapsOfAttendanceParams{AttendanceID: pgtype.Int8{Int64: attendanceID, Valid: true}, Now: ts(now)}); err != nil {
 		return fmt.Errorf("cancel swaps: %w", err)
 	}

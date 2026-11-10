@@ -1203,6 +1203,9 @@ type Attendance struct {
 	UpdatedAt              pgtype.Timestamptz
 	LateMinutesRaw         int32
 	AbsentReason           pgtype.Text
+	LeaveReplacedAbsent    bool
+	LeavePrevAbsentByID    pgtype.Int8
+	LeavePrevAbsentReason  pgtype.Text
 }
 
 type AuditLog struct {

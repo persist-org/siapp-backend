@@ -149,7 +149,8 @@ DELETE FROM attendances WHERE leave_request_id = $1 AND status = 'LEAVE' AND che
 `
 
 // The LEAVE rows of a request that nobody has checked into. A row that somehow has a check-in keeps
-// its evidence (DetachLeaveAttendancesOfRequest only drops the link).
+// its evidence (DetachLeaveAttendancesOfRequest only drops the link). Run after
+// RestoreAbsentOfLeaveRequest, which takes the rows that were a mangkir first.
 func (q *Queries) DeleteLeaveAttendancesOfRequest(ctx context.Context, leaveRequestID pgtype.Int8) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteLeaveAttendancesOfRequest, leaveRequestID)
 	if err != nil {
@@ -449,7 +450,7 @@ func (q *Queries) ListApprovedLeaveOverlapping(ctx context.Context, arg ListAppr
 }
 
 const listCheckedInAttendancesBetween = `-- name: ListCheckedInAttendancesBetween :many
-SELECT id, organization_id, personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone, status, check_in_at, check_in_method, check_in_media_id, check_in_latitude, check_in_longitude, check_in_accuracy_meters, check_in_distance_meters, check_in_within_area, check_in_qr_danru_id, late_minutes, check_out_at, check_out_method, check_out_media_id, check_out_latitude, check_out_longitude, check_out_accuracy_meters, check_out_distance_meters, check_out_within_area, check_out_qr_danru_id, check_out_update_count, leave_request_id, marked_absent_by_id, shift_swap_id, personel_sync_status, personel_synced_at, created_at, updated_at, late_minutes_raw, absent_reason FROM attendances
+SELECT id, organization_id, personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone, status, check_in_at, check_in_method, check_in_media_id, check_in_latitude, check_in_longitude, check_in_accuracy_meters, check_in_distance_meters, check_in_within_area, check_in_qr_danru_id, late_minutes, check_out_at, check_out_method, check_out_media_id, check_out_latitude, check_out_longitude, check_out_accuracy_meters, check_out_distance_meters, check_out_within_area, check_out_qr_danru_id, check_out_update_count, leave_request_id, marked_absent_by_id, shift_swap_id, personel_sync_status, personel_synced_at, created_at, updated_at, late_minutes_raw, absent_reason, leave_replaced_absent, leave_prev_absent_by_id, leave_prev_absent_reason FROM attendances
 WHERE personnel_id = $1 AND work_date BETWEEN $2 AND $3
   AND status = 'PRESENT' AND check_in_at IS NOT NULL
 ORDER BY work_date, id
@@ -512,6 +513,9 @@ func (q *Queries) ListCheckedInAttendancesBetween(ctx context.Context, arg ListC
 			&i.UpdatedAt,
 			&i.LateMinutesRaw,
 			&i.AbsentReason,
+			&i.LeaveReplacedAbsent,
+			&i.LeavePrevAbsentByID,
+			&i.LeavePrevAbsentReason,
 		); err != nil {
 			return nil, err
 		}
@@ -644,6 +648,28 @@ func (q *Queries) ListLeaveRequestViews(ctx context.Context, arg ListLeaveReques
 	return items, nil
 }
 
+const restoreAbsentOfLeaveRequest = `-- name: RestoreAbsentOfLeaveRequest :execrows
+UPDATE attendances SET
+    status = 'ABSENT', marked_absent_by_id = leave_prev_absent_by_id, absent_reason = leave_prev_absent_reason,
+    leave_request_id = NULL, leave_replaced_absent = false, leave_prev_absent_by_id = NULL, leave_prev_absent_reason = NULL,
+    updated_at = $1
+WHERE leave_request_id = $2 AND status = 'LEAVE' AND check_in_at IS NULL AND leave_replaced_absent
+`
+
+type RestoreAbsentOfLeaveRequestParams struct {
+	Now            pgtype.Timestamptz
+	LeaveRequestID pgtype.Int8
+}
+
+// A revoked leave gives back the mangkir its approval had turned into LEAVE.
+func (q *Queries) RestoreAbsentOfLeaveRequest(ctx context.Context, arg RestoreAbsentOfLeaveRequestParams) (int64, error) {
+	result, err := q.db.Exec(ctx, restoreAbsentOfLeaveRequest, arg.Now, arg.LeaveRequestID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const setAttendanceLateMinutes = `-- name: SetAttendanceLateMinutes :exec
 UPDATE attendances SET late_minutes = $1, updated_at = $2 WHERE id = $3
 `
@@ -667,7 +693,12 @@ VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8,
     'LEAVE', $9, $10, $10)
 ON CONFLICT (organization_id, personnel_id, team_code, work_date, shift_id) DO UPDATE
-SET status = 'LEAVE', leave_request_id = EXCLUDED.leave_request_id, marked_absent_by_id = NULL, updated_at = EXCLUDED.updated_at
+SET status = 'LEAVE', leave_request_id = EXCLUDED.leave_request_id, marked_absent_by_id = NULL, absent_reason = NULL,
+    -- The mangkir it replaces is remembered (who marked it and why), so a revoke can put it back.
+    leave_replaced_absent = attendances.leave_replaced_absent OR attendances.status = 'ABSENT',
+    leave_prev_absent_by_id = CASE WHEN attendances.status = 'ABSENT' THEN attendances.marked_absent_by_id ELSE attendances.leave_prev_absent_by_id END,
+    leave_prev_absent_reason = CASE WHEN attendances.status = 'ABSENT' THEN attendances.absent_reason ELSE attendances.leave_prev_absent_reason END,
+    updated_at = EXCLUDED.updated_at
 WHERE attendances.status <> 'PRESENT'
 RETURNING id
 `

@@ -17,9 +17,14 @@ UPDATE attendances SET
     status = $1, marked_absent_by_id = $2, absent_reason = $3,
     check_in_at = $4, check_in_method = $5, late_minutes = $6::int,
     check_out_at = $7, check_out_method = $8,
+    -- A record that is no longer LEAVE is no longer the leave's: its revoke must not touch it.
+    leave_request_id = CASE WHEN $1::attendance_status = 'LEAVE' THEN leave_request_id END,
+    leave_replaced_absent = CASE WHEN $1::attendance_status = 'LEAVE' THEN leave_replaced_absent ELSE false END,
+    leave_prev_absent_by_id = CASE WHEN $1::attendance_status = 'LEAVE' THEN leave_prev_absent_by_id END,
+    leave_prev_absent_reason = CASE WHEN $1::attendance_status = 'LEAVE' THEN leave_prev_absent_reason END,
     personel_sync_status = 'PENDING', updated_at = $9
 WHERE id = $10
-RETURNING id, organization_id, personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone, status, check_in_at, check_in_method, check_in_media_id, check_in_latitude, check_in_longitude, check_in_accuracy_meters, check_in_distance_meters, check_in_within_area, check_in_qr_danru_id, late_minutes, check_out_at, check_out_method, check_out_media_id, check_out_latitude, check_out_longitude, check_out_accuracy_meters, check_out_distance_meters, check_out_within_area, check_out_qr_danru_id, check_out_update_count, leave_request_id, marked_absent_by_id, shift_swap_id, personel_sync_status, personel_synced_at, created_at, updated_at, late_minutes_raw, absent_reason
+RETURNING id, organization_id, personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone, status, check_in_at, check_in_method, check_in_media_id, check_in_latitude, check_in_longitude, check_in_accuracy_meters, check_in_distance_meters, check_in_within_area, check_in_qr_danru_id, late_minutes, check_out_at, check_out_method, check_out_media_id, check_out_latitude, check_out_longitude, check_out_accuracy_meters, check_out_distance_meters, check_out_within_area, check_out_qr_danru_id, check_out_update_count, leave_request_id, marked_absent_by_id, shift_swap_id, personel_sync_status, personel_synced_at, created_at, updated_at, late_minutes_raw, absent_reason, leave_replaced_absent, leave_prev_absent_by_id, leave_prev_absent_reason
 `
 
 type CorrectAttendanceParams struct {
@@ -96,6 +101,9 @@ func (q *Queries) CorrectAttendance(ctx context.Context, arg CorrectAttendancePa
 		&i.UpdatedAt,
 		&i.LateMinutesRaw,
 		&i.AbsentReason,
+		&i.LeaveReplacedAbsent,
+		&i.LeavePrevAbsentByID,
+		&i.LeavePrevAbsentReason,
 	)
 	return i, err
 }
@@ -190,7 +198,7 @@ func (q *Queries) DeleteAttendance(ctx context.Context, id int64) error {
 }
 
 const getAttendance = `-- name: GetAttendance :one
-SELECT id, organization_id, personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone, status, check_in_at, check_in_method, check_in_media_id, check_in_latitude, check_in_longitude, check_in_accuracy_meters, check_in_distance_meters, check_in_within_area, check_in_qr_danru_id, late_minutes, check_out_at, check_out_method, check_out_media_id, check_out_latitude, check_out_longitude, check_out_accuracy_meters, check_out_distance_meters, check_out_within_area, check_out_qr_danru_id, check_out_update_count, leave_request_id, marked_absent_by_id, shift_swap_id, personel_sync_status, personel_synced_at, created_at, updated_at, late_minutes_raw, absent_reason FROM attendances WHERE id = $1
+SELECT id, organization_id, personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone, status, check_in_at, check_in_method, check_in_media_id, check_in_latitude, check_in_longitude, check_in_accuracy_meters, check_in_distance_meters, check_in_within_area, check_in_qr_danru_id, late_minutes, check_out_at, check_out_method, check_out_media_id, check_out_latitude, check_out_longitude, check_out_accuracy_meters, check_out_distance_meters, check_out_within_area, check_out_qr_danru_id, check_out_update_count, leave_request_id, marked_absent_by_id, shift_swap_id, personel_sync_status, personel_synced_at, created_at, updated_at, late_minutes_raw, absent_reason, leave_replaced_absent, leave_prev_absent_by_id, leave_prev_absent_reason FROM attendances WHERE id = $1
 `
 
 func (q *Queries) GetAttendance(ctx context.Context, id int64) (Attendance, error) {
@@ -237,12 +245,15 @@ func (q *Queries) GetAttendance(ctx context.Context, id int64) (Attendance, erro
 		&i.UpdatedAt,
 		&i.LateMinutesRaw,
 		&i.AbsentReason,
+		&i.LeaveReplacedAbsent,
+		&i.LeavePrevAbsentByID,
+		&i.LeavePrevAbsentReason,
 	)
 	return i, err
 }
 
 const getAttendanceForUpdate = `-- name: GetAttendanceForUpdate :one
-SELECT id, organization_id, personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone, status, check_in_at, check_in_method, check_in_media_id, check_in_latitude, check_in_longitude, check_in_accuracy_meters, check_in_distance_meters, check_in_within_area, check_in_qr_danru_id, late_minutes, check_out_at, check_out_method, check_out_media_id, check_out_latitude, check_out_longitude, check_out_accuracy_meters, check_out_distance_meters, check_out_within_area, check_out_qr_danru_id, check_out_update_count, leave_request_id, marked_absent_by_id, shift_swap_id, personel_sync_status, personel_synced_at, created_at, updated_at, late_minutes_raw, absent_reason FROM attendances WHERE id = $1 FOR UPDATE
+SELECT id, organization_id, personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone, status, check_in_at, check_in_method, check_in_media_id, check_in_latitude, check_in_longitude, check_in_accuracy_meters, check_in_distance_meters, check_in_within_area, check_in_qr_danru_id, late_minutes, check_out_at, check_out_method, check_out_media_id, check_out_latitude, check_out_longitude, check_out_accuracy_meters, check_out_distance_meters, check_out_within_area, check_out_qr_danru_id, check_out_update_count, leave_request_id, marked_absent_by_id, shift_swap_id, personel_sync_status, personel_synced_at, created_at, updated_at, late_minutes_raw, absent_reason, leave_replaced_absent, leave_prev_absent_by_id, leave_prev_absent_reason FROM attendances WHERE id = $1 FOR UPDATE
 `
 
 // Locked, so a check-out, an "update pulang" and (later) a correction of one record take turns.
@@ -290,12 +301,15 @@ func (q *Queries) GetAttendanceForUpdate(ctx context.Context, id int64) (Attenda
 		&i.UpdatedAt,
 		&i.LateMinutesRaw,
 		&i.AbsentReason,
+		&i.LeaveReplacedAbsent,
+		&i.LeavePrevAbsentByID,
+		&i.LeavePrevAbsentReason,
 	)
 	return i, err
 }
 
 const getAttendanceOfInstance = `-- name: GetAttendanceOfInstance :one
-SELECT id, organization_id, personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone, status, check_in_at, check_in_method, check_in_media_id, check_in_latitude, check_in_longitude, check_in_accuracy_meters, check_in_distance_meters, check_in_within_area, check_in_qr_danru_id, late_minutes, check_out_at, check_out_method, check_out_media_id, check_out_latitude, check_out_longitude, check_out_accuracy_meters, check_out_distance_meters, check_out_within_area, check_out_qr_danru_id, check_out_update_count, leave_request_id, marked_absent_by_id, shift_swap_id, personel_sync_status, personel_synced_at, created_at, updated_at, late_minutes_raw, absent_reason FROM attendances
+SELECT id, organization_id, personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone, status, check_in_at, check_in_method, check_in_media_id, check_in_latitude, check_in_longitude, check_in_accuracy_meters, check_in_distance_meters, check_in_within_area, check_in_qr_danru_id, late_minutes, check_out_at, check_out_method, check_out_media_id, check_out_latitude, check_out_longitude, check_out_accuracy_meters, check_out_distance_meters, check_out_within_area, check_out_qr_danru_id, check_out_update_count, leave_request_id, marked_absent_by_id, shift_swap_id, personel_sync_status, personel_synced_at, created_at, updated_at, late_minutes_raw, absent_reason, leave_replaced_absent, leave_prev_absent_by_id, leave_prev_absent_reason FROM attendances
 WHERE personnel_id = $1 AND team_code = $2 AND work_date = $3 AND shift_id = $4
 `
 
@@ -357,12 +371,15 @@ func (q *Queries) GetAttendanceOfInstance(ctx context.Context, arg GetAttendance
 		&i.UpdatedAt,
 		&i.LateMinutesRaw,
 		&i.AbsentReason,
+		&i.LeaveReplacedAbsent,
+		&i.LeavePrevAbsentByID,
+		&i.LeavePrevAbsentReason,
 	)
 	return i, err
 }
 
 const getAttendanceOfInstanceForUpdate = `-- name: GetAttendanceOfInstanceForUpdate :one
-SELECT id, organization_id, personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone, status, check_in_at, check_in_method, check_in_media_id, check_in_latitude, check_in_longitude, check_in_accuracy_meters, check_in_distance_meters, check_in_within_area, check_in_qr_danru_id, late_minutes, check_out_at, check_out_method, check_out_media_id, check_out_latitude, check_out_longitude, check_out_accuracy_meters, check_out_distance_meters, check_out_within_area, check_out_qr_danru_id, check_out_update_count, leave_request_id, marked_absent_by_id, shift_swap_id, personel_sync_status, personel_synced_at, created_at, updated_at, late_minutes_raw, absent_reason FROM attendances
+SELECT id, organization_id, personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone, status, check_in_at, check_in_method, check_in_media_id, check_in_latitude, check_in_longitude, check_in_accuracy_meters, check_in_distance_meters, check_in_within_area, check_in_qr_danru_id, late_minutes, check_out_at, check_out_method, check_out_media_id, check_out_latitude, check_out_longitude, check_out_accuracy_meters, check_out_distance_meters, check_out_within_area, check_out_qr_danru_id, check_out_update_count, leave_request_id, marked_absent_by_id, shift_swap_id, personel_sync_status, personel_synced_at, created_at, updated_at, late_minutes_raw, absent_reason, leave_replaced_absent, leave_prev_absent_by_id, leave_prev_absent_reason FROM attendances
 WHERE personnel_id = $1 AND team_code = $2 AND work_date = $3 AND shift_id = $4
 FOR UPDATE
 `
@@ -424,6 +441,9 @@ func (q *Queries) GetAttendanceOfInstanceForUpdate(ctx context.Context, arg GetA
 		&i.UpdatedAt,
 		&i.LateMinutesRaw,
 		&i.AbsentReason,
+		&i.LeaveReplacedAbsent,
+		&i.LeavePrevAbsentByID,
+		&i.LeavePrevAbsentReason,
 	)
 	return i, err
 }
@@ -549,7 +569,7 @@ INSERT INTO attendances (
 VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8,
     'ABSENT', $9, $10, $11, $12, $12)
-RETURNING id, organization_id, personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone, status, check_in_at, check_in_method, check_in_media_id, check_in_latitude, check_in_longitude, check_in_accuracy_meters, check_in_distance_meters, check_in_within_area, check_in_qr_danru_id, late_minutes, check_out_at, check_out_method, check_out_media_id, check_out_latitude, check_out_longitude, check_out_accuracy_meters, check_out_distance_meters, check_out_within_area, check_out_qr_danru_id, check_out_update_count, leave_request_id, marked_absent_by_id, shift_swap_id, personel_sync_status, personel_synced_at, created_at, updated_at, late_minutes_raw, absent_reason
+RETURNING id, organization_id, personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone, status, check_in_at, check_in_method, check_in_media_id, check_in_latitude, check_in_longitude, check_in_accuracy_meters, check_in_distance_meters, check_in_within_area, check_in_qr_danru_id, late_minutes, check_out_at, check_out_method, check_out_media_id, check_out_latitude, check_out_longitude, check_out_accuracy_meters, check_out_distance_meters, check_out_within_area, check_out_qr_danru_id, check_out_update_count, leave_request_id, marked_absent_by_id, shift_swap_id, personel_sync_status, personel_synced_at, created_at, updated_at, late_minutes_raw, absent_reason, leave_replaced_absent, leave_prev_absent_by_id, leave_prev_absent_reason
 `
 
 type InsertAttendanceAbsentParams struct {
@@ -630,6 +650,9 @@ func (q *Queries) InsertAttendanceAbsent(ctx context.Context, arg InsertAttendan
 		&i.UpdatedAt,
 		&i.LateMinutesRaw,
 		&i.AbsentReason,
+		&i.LeaveReplacedAbsent,
+		&i.LeavePrevAbsentByID,
+		&i.LeavePrevAbsentReason,
 	)
 	return i, err
 }
@@ -646,7 +669,7 @@ VALUES (
     $14, $15, $16, $17,
     $18::int, $19::int, $20, $9, $9)
 ON CONFLICT (organization_id, personnel_id, team_code, work_date, shift_id) DO NOTHING
-RETURNING id, organization_id, personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone, status, check_in_at, check_in_method, check_in_media_id, check_in_latitude, check_in_longitude, check_in_accuracy_meters, check_in_distance_meters, check_in_within_area, check_in_qr_danru_id, late_minutes, check_out_at, check_out_method, check_out_media_id, check_out_latitude, check_out_longitude, check_out_accuracy_meters, check_out_distance_meters, check_out_within_area, check_out_qr_danru_id, check_out_update_count, leave_request_id, marked_absent_by_id, shift_swap_id, personel_sync_status, personel_synced_at, created_at, updated_at, late_minutes_raw, absent_reason
+RETURNING id, organization_id, personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone, status, check_in_at, check_in_method, check_in_media_id, check_in_latitude, check_in_longitude, check_in_accuracy_meters, check_in_distance_meters, check_in_within_area, check_in_qr_danru_id, late_minutes, check_out_at, check_out_method, check_out_media_id, check_out_latitude, check_out_longitude, check_out_accuracy_meters, check_out_distance_meters, check_out_within_area, check_out_qr_danru_id, check_out_update_count, leave_request_id, marked_absent_by_id, shift_swap_id, personel_sync_status, personel_synced_at, created_at, updated_at, late_minutes_raw, absent_reason, leave_replaced_absent, leave_prev_absent_by_id, leave_prev_absent_reason
 `
 
 type InsertAttendanceCheckInParams struct {
@@ -741,6 +764,9 @@ func (q *Queries) InsertAttendanceCheckIn(ctx context.Context, arg InsertAttenda
 		&i.UpdatedAt,
 		&i.LateMinutesRaw,
 		&i.AbsentReason,
+		&i.LeaveReplacedAbsent,
+		&i.LeavePrevAbsentByID,
+		&i.LeavePrevAbsentReason,
 	)
 	return i, err
 }
@@ -776,7 +802,7 @@ func (q *Queries) InsertPersonelOutbox(ctx context.Context, arg InsertPersonelOu
 }
 
 const listAttendances = `-- name: ListAttendances :many
-SELECT id, organization_id, personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone, status, check_in_at, check_in_method, check_in_media_id, check_in_latitude, check_in_longitude, check_in_accuracy_meters, check_in_distance_meters, check_in_within_area, check_in_qr_danru_id, late_minutes, check_out_at, check_out_method, check_out_media_id, check_out_latitude, check_out_longitude, check_out_accuracy_meters, check_out_distance_meters, check_out_within_area, check_out_qr_danru_id, check_out_update_count, leave_request_id, marked_absent_by_id, shift_swap_id, personel_sync_status, personel_synced_at, created_at, updated_at, late_minutes_raw, absent_reason FROM attendances a
+SELECT id, organization_id, personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone, status, check_in_at, check_in_method, check_in_media_id, check_in_latitude, check_in_longitude, check_in_accuracy_meters, check_in_distance_meters, check_in_within_area, check_in_qr_danru_id, late_minutes, check_out_at, check_out_method, check_out_media_id, check_out_latitude, check_out_longitude, check_out_accuracy_meters, check_out_distance_meters, check_out_within_area, check_out_qr_danru_id, check_out_update_count, leave_request_id, marked_absent_by_id, shift_swap_id, personel_sync_status, personel_synced_at, created_at, updated_at, late_minutes_raw, absent_reason, leave_replaced_absent, leave_prev_absent_by_id, leave_prev_absent_reason FROM attendances a
 WHERE ($1::text[] IS NULL OR a.team_code = ANY($1::text[]))
   AND ($2::text IS NULL OR a.team_code = $2::text)
   AND ($3::text IS NULL OR a.project_code = $3::text)
@@ -870,6 +896,9 @@ func (q *Queries) ListAttendances(ctx context.Context, arg ListAttendancesParams
 			&i.UpdatedAt,
 			&i.LateMinutesRaw,
 			&i.AbsentReason,
+			&i.LeaveReplacedAbsent,
+			&i.LeavePrevAbsentByID,
+			&i.LeavePrevAbsentReason,
 		); err != nil {
 			return nil, err
 		}
@@ -883,7 +912,7 @@ func (q *Queries) ListAttendances(ctx context.Context, arg ListAttendancesParams
 
 const listAttendancesOfPersonnelBetween = `-- name: ListAttendancesOfPersonnelBetween :many
 
-SELECT id, organization_id, personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone, status, check_in_at, check_in_method, check_in_media_id, check_in_latitude, check_in_longitude, check_in_accuracy_meters, check_in_distance_meters, check_in_within_area, check_in_qr_danru_id, late_minutes, check_out_at, check_out_method, check_out_media_id, check_out_latitude, check_out_longitude, check_out_accuracy_meters, check_out_distance_meters, check_out_within_area, check_out_qr_danru_id, check_out_update_count, leave_request_id, marked_absent_by_id, shift_swap_id, personel_sync_status, personel_synced_at, created_at, updated_at, late_minutes_raw, absent_reason FROM attendances
+SELECT id, organization_id, personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone, status, check_in_at, check_in_method, check_in_media_id, check_in_latitude, check_in_longitude, check_in_accuracy_meters, check_in_distance_meters, check_in_within_area, check_in_qr_danru_id, late_minutes, check_out_at, check_out_method, check_out_media_id, check_out_latitude, check_out_longitude, check_out_accuracy_meters, check_out_distance_meters, check_out_within_area, check_out_qr_danru_id, check_out_update_count, leave_request_id, marked_absent_by_id, shift_swap_id, personel_sync_status, personel_synced_at, created_at, updated_at, late_minutes_raw, absent_reason, leave_replaced_absent, leave_prev_absent_by_id, leave_prev_absent_reason FROM attendances
 WHERE personnel_id = $1 AND work_date BETWEEN $2 AND $3
 ORDER BY work_date, id
 `
@@ -947,6 +976,9 @@ func (q *Queries) ListAttendancesOfPersonnelBetween(ctx context.Context, arg Lis
 			&i.UpdatedAt,
 			&i.LateMinutesRaw,
 			&i.AbsentReason,
+			&i.LeaveReplacedAbsent,
+			&i.LeavePrevAbsentByID,
+			&i.LeavePrevAbsentReason,
 		); err != nil {
 			return nil, err
 		}
@@ -1080,7 +1112,7 @@ UPDATE attendances SET
     check_out_update_count = check_out_update_count + $10::int,
     personel_sync_status = 'PENDING', updated_at = $11
 WHERE id = $12
-RETURNING id, organization_id, personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone, status, check_in_at, check_in_method, check_in_media_id, check_in_latitude, check_in_longitude, check_in_accuracy_meters, check_in_distance_meters, check_in_within_area, check_in_qr_danru_id, late_minutes, check_out_at, check_out_method, check_out_media_id, check_out_latitude, check_out_longitude, check_out_accuracy_meters, check_out_distance_meters, check_out_within_area, check_out_qr_danru_id, check_out_update_count, leave_request_id, marked_absent_by_id, shift_swap_id, personel_sync_status, personel_synced_at, created_at, updated_at, late_minutes_raw, absent_reason
+RETURNING id, organization_id, personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone, status, check_in_at, check_in_method, check_in_media_id, check_in_latitude, check_in_longitude, check_in_accuracy_meters, check_in_distance_meters, check_in_within_area, check_in_qr_danru_id, late_minutes, check_out_at, check_out_method, check_out_media_id, check_out_latitude, check_out_longitude, check_out_accuracy_meters, check_out_distance_meters, check_out_within_area, check_out_qr_danru_id, check_out_update_count, leave_request_id, marked_absent_by_id, shift_swap_id, personel_sync_status, personel_synced_at, created_at, updated_at, late_minutes_raw, absent_reason, leave_replaced_absent, leave_prev_absent_by_id, leave_prev_absent_reason
 `
 
 type SetAttendanceCheckOutParams struct {
@@ -1156,6 +1188,9 @@ func (q *Queries) SetAttendanceCheckOut(ctx context.Context, arg SetAttendanceCh
 		&i.UpdatedAt,
 		&i.LateMinutesRaw,
 		&i.AbsentReason,
+		&i.LeaveReplacedAbsent,
+		&i.LeavePrevAbsentByID,
+		&i.LeavePrevAbsentReason,
 	)
 	return i, err
 }

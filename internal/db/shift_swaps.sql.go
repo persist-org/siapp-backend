@@ -46,7 +46,7 @@ func (q *Queries) CancelShiftSwap(ctx context.Context, arg CancelShiftSwapParams
 const cancelUnstartedSwapsOfAttendance = `-- name: CancelUnstartedSwapsOfAttendance :exec
 UPDATE shift_swaps sw SET cancelled_at = $1, updated_at = $1
 WHERE sw.replaced_attendance_id = $2 AND sw.cancelled_at IS NULL
-  AND NOT EXISTS (SELECT 1 FROM attendances r WHERE r.shift_swap_id = sw.id AND r.check_in_at IS NOT NULL)
+  AND NOT EXISTS (SELECT 1 FROM attendances r WHERE r.shift_swap_id = sw.id)
 `
 
 type CancelUnstartedSwapsOfAttendanceParams struct {
@@ -54,7 +54,7 @@ type CancelUnstartedSwapsOfAttendanceParams struct {
 	AttendanceID pgtype.Int8
 }
 
-// Cancels the active swaps of one record whose replacer has not checked in yet. Used before the
+// Cancels the active swaps of one record whose replacer has not started yet. Used before the
 // record is deleted or corrected back to PRESENT: a swap of a guard who is (again) at work covers
 // nothing. A swap whose replacer already started stays active; HasActiveSwapOfAttendance tells the
 // caller so it can refuse instead.
@@ -68,8 +68,8 @@ UPDATE shift_swaps sw SET cancelled_at = $1, updated_at = $1
 WHERE sw.cancelled_at IS NULL
   AND sw.replaced_attendance_id IN (
     SELECT a.id FROM attendances a
-    WHERE a.leave_request_id = $2 AND a.status = 'LEAVE' AND a.check_in_at IS NULL)
-  AND NOT EXISTS (SELECT 1 FROM attendances r WHERE r.shift_swap_id = sw.id AND r.check_in_at IS NOT NULL)
+    WHERE a.leave_request_id = $2 AND a.status = 'LEAVE' AND a.check_in_at IS NULL AND NOT a.leave_replaced_absent)
+  AND NOT EXISTS (SELECT 1 FROM attendances r WHERE r.shift_swap_id = sw.id)
 `
 
 type CancelUnstartedSwapsOfLeaveRequestParams struct {
@@ -77,8 +77,6 @@ type CancelUnstartedSwapsOfLeaveRequestParams struct {
 	LeaveRequestID pgtype.Int8
 }
 
-// Same as CancelUnstartedSwapsOfAttendance for every LEAVE row of a leave request about to be
-// revoked (pkg/leave runs it just before deleting those rows).
 func (q *Queries) CancelUnstartedSwapsOfLeaveRequest(ctx context.Context, arg CancelUnstartedSwapsOfLeaveRequestParams) error {
 	_, err := q.db.Exec(ctx, cancelUnstartedSwapsOfLeaveRequest, arg.Now, arg.LeaveRequestID)
 	return err
@@ -263,7 +261,7 @@ func (q *Queries) ListActiveSwapsOfReplacer(ctx context.Context, arg ListActiveS
 
 const listReplaceableAttendances = `-- name: ListReplaceableAttendances :many
 
-SELECT a.id, a.organization_id, a.personnel_id, a.team_code, a.project_code, a.work_date, a.shift_id, a.shift_starts_at, a.shift_ends_at, a.timezone, a.status, a.check_in_at, a.check_in_method, a.check_in_media_id, a.check_in_latitude, a.check_in_longitude, a.check_in_accuracy_meters, a.check_in_distance_meters, a.check_in_within_area, a.check_in_qr_danru_id, a.late_minutes, a.check_out_at, a.check_out_method, a.check_out_media_id, a.check_out_latitude, a.check_out_longitude, a.check_out_accuracy_meters, a.check_out_distance_meters, a.check_out_within_area, a.check_out_qr_danru_id, a.check_out_update_count, a.leave_request_id, a.marked_absent_by_id, a.shift_swap_id, a.personel_sync_status, a.personel_synced_at, a.created_at, a.updated_at, a.late_minutes_raw, a.absent_reason FROM attendances a
+SELECT a.id, a.organization_id, a.personnel_id, a.team_code, a.project_code, a.work_date, a.shift_id, a.shift_starts_at, a.shift_ends_at, a.timezone, a.status, a.check_in_at, a.check_in_method, a.check_in_media_id, a.check_in_latitude, a.check_in_longitude, a.check_in_accuracy_meters, a.check_in_distance_meters, a.check_in_within_area, a.check_in_qr_danru_id, a.late_minutes, a.check_out_at, a.check_out_method, a.check_out_media_id, a.check_out_latitude, a.check_out_longitude, a.check_out_accuracy_meters, a.check_out_distance_meters, a.check_out_within_area, a.check_out_qr_danru_id, a.check_out_update_count, a.leave_request_id, a.marked_absent_by_id, a.shift_swap_id, a.personel_sync_status, a.personel_synced_at, a.created_at, a.updated_at, a.late_minutes_raw, a.absent_reason, a.leave_replaced_absent, a.leave_prev_absent_by_id, a.leave_prev_absent_reason FROM attendances a
 WHERE a.team_code = $1 AND a.work_date = $2 AND a.status IN ('LEAVE', 'ABSENT')
   AND NOT EXISTS (
     SELECT 1 FROM shift_swaps sw WHERE sw.replaced_attendance_id = a.id AND sw.cancelled_at IS NULL)
@@ -327,6 +325,9 @@ func (q *Queries) ListReplaceableAttendances(ctx context.Context, arg ListReplac
 			&i.UpdatedAt,
 			&i.LateMinutesRaw,
 			&i.AbsentReason,
+			&i.LeaveReplacedAbsent,
+			&i.LeavePrevAbsentByID,
+			&i.LeavePrevAbsentReason,
 		); err != nil {
 			return nil, err
 		}
@@ -553,4 +554,48 @@ func (q *Queries) ListSwapCandidates(ctx context.Context, arg ListSwapCandidates
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockActiveSwapsOfAttendance = `-- name: LockActiveSwapsOfAttendance :exec
+SELECT id FROM shift_swaps WHERE replaced_attendance_id = $1 AND cancelled_at IS NULL FOR UPDATE
+`
+
+// ⚠ "Started" means the replacer has ANY record of the swap: a check-in, but also a mangkir the DANRU
+// marked on them for the covered shift. Cancelling then would leave that record pointing at a
+// cancelled swap.
+//
+// Takes the row locks of a record's active swaps. Run it before CancelUnstartedSwapsOfAttendance: a
+// check-in locks its swap the same way, and the cancel below must read what that check-in committed,
+// which a statement that waits on the lock itself would not (its snapshot is older).
+func (q *Queries) LockActiveSwapsOfAttendance(ctx context.Context, attendanceID pgtype.Int8) error {
+	_, err := q.db.Exec(ctx, lockActiveSwapsOfAttendance, attendanceID)
+	return err
+}
+
+const lockActiveSwapsOfLeaveRequest = `-- name: LockActiveSwapsOfLeaveRequest :exec
+SELECT sw.id FROM shift_swaps sw
+WHERE sw.cancelled_at IS NULL AND sw.replaced_attendance_id IN (
+    SELECT a.id FROM attendances a
+    WHERE a.leave_request_id = $1 AND a.status = 'LEAVE' AND a.check_in_at IS NULL AND NOT a.leave_replaced_absent)
+FOR UPDATE
+`
+
+// Same two steps for every LEAVE row of a leave request about to be revoked (pkg/leave runs them
+// just before deleting those rows). A row that was a mangkir before the leave comes back as one, so
+// its swap is still wanted and stays.
+func (q *Queries) LockActiveSwapsOfLeaveRequest(ctx context.Context, leaveRequestID pgtype.Int8) error {
+	_, err := q.db.Exec(ctx, lockActiveSwapsOfLeaveRequest, leaveRequestID)
+	return err
+}
+
+const lockSwapReplacer = `-- name: LockSwapReplacer :exec
+SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))
+`
+
+// ⚠ Serialises the swaps taken by one replacer: the overlap check in Create reads their other shifts
+// with plain SELECTs, so two parallel swaps of different records would both pass it. The lock ends
+// with the transaction.
+func (q *Queries) LockSwapReplacer(ctx context.Context, key string) error {
+	_, err := q.db.Exec(ctx, lockSwapReplacer, key)
+	return err
 }

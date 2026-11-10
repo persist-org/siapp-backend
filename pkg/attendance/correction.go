@@ -142,6 +142,9 @@ func (s *Service) Correct(ctx context.Context, p auth.Principal, scope access.Ad
 			if checkOut != nil {
 				params.CheckOutAt, params.CheckOutMethod = ts(*checkOut), nullMethod(db.AttendanceMethodFORCE)
 			}
+			if params.CheckOutAt.Valid && params.CheckOutAt.Time.Before(params.CheckInAt.Time) {
+				return correctionValidationError("check_out_at", "Tidak boleh lebih awal dari check_in_at.")
+			}
 		}
 
 		// ⚠ A swap covers an absent or on-leave record. Once the guard is PRESENT it covers nothing:

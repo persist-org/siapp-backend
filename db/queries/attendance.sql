@@ -208,6 +208,11 @@ UPDATE attendances SET
     status = @status, marked_absent_by_id = sqlc.narg('marked_absent_by_id'), absent_reason = sqlc.narg('absent_reason'),
     check_in_at = sqlc.narg('check_in_at'), check_in_method = sqlc.narg('check_in_method'), late_minutes = @late_minutes::int,
     check_out_at = sqlc.narg('check_out_at'), check_out_method = sqlc.narg('check_out_method'),
+    -- A record that is no longer LEAVE is no longer the leave's: its revoke must not touch it.
+    leave_request_id = CASE WHEN @status::attendance_status = 'LEAVE' THEN leave_request_id END,
+    leave_replaced_absent = CASE WHEN @status::attendance_status = 'LEAVE' THEN leave_replaced_absent ELSE false END,
+    leave_prev_absent_by_id = CASE WHEN @status::attendance_status = 'LEAVE' THEN leave_prev_absent_by_id END,
+    leave_prev_absent_reason = CASE WHEN @status::attendance_status = 'LEAVE' THEN leave_prev_absent_reason END,
     personel_sync_status = 'PENDING', updated_at = @now
 WHERE id = @id
 RETURNING *;

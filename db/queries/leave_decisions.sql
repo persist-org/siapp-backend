@@ -105,12 +105,26 @@ VALUES (
     @personnel_id, @team_code, @project_code, @work_date, @shift_id, @shift_starts_at, @shift_ends_at, @timezone,
     'LEAVE', @leave_request_id, @now, @now)
 ON CONFLICT (organization_id, personnel_id, team_code, work_date, shift_id) DO UPDATE
-SET status = 'LEAVE', leave_request_id = EXCLUDED.leave_request_id, marked_absent_by_id = NULL, updated_at = EXCLUDED.updated_at
+SET status = 'LEAVE', leave_request_id = EXCLUDED.leave_request_id, marked_absent_by_id = NULL, absent_reason = NULL,
+    -- The mangkir it replaces is remembered (who marked it and why), so a revoke can put it back.
+    leave_replaced_absent = attendances.leave_replaced_absent OR attendances.status = 'ABSENT',
+    leave_prev_absent_by_id = CASE WHEN attendances.status = 'ABSENT' THEN attendances.marked_absent_by_id ELSE attendances.leave_prev_absent_by_id END,
+    leave_prev_absent_reason = CASE WHEN attendances.status = 'ABSENT' THEN attendances.absent_reason ELSE attendances.leave_prev_absent_reason END,
+    updated_at = EXCLUDED.updated_at
 WHERE attendances.status <> 'PRESENT'
 RETURNING id;
 
+-- A revoked leave gives back the mangkir its approval had turned into LEAVE.
+-- name: RestoreAbsentOfLeaveRequest :execrows
+UPDATE attendances SET
+    status = 'ABSENT', marked_absent_by_id = leave_prev_absent_by_id, absent_reason = leave_prev_absent_reason,
+    leave_request_id = NULL, leave_replaced_absent = false, leave_prev_absent_by_id = NULL, leave_prev_absent_reason = NULL,
+    updated_at = @now
+WHERE leave_request_id = @leave_request_id AND status = 'LEAVE' AND check_in_at IS NULL AND leave_replaced_absent;
+
 -- The LEAVE rows of a request that nobody has checked into. A row that somehow has a check-in keeps
--- its evidence (DetachLeaveAttendancesOfRequest only drops the link).
+-- its evidence (DetachLeaveAttendancesOfRequest only drops the link). Run after
+-- RestoreAbsentOfLeaveRequest, which takes the rows that were a mangkir first.
 -- name: DeleteLeaveAttendancesOfRequest :execrows
 DELETE FROM attendances WHERE leave_request_id = @leave_request_id AND status = 'LEAVE' AND check_in_at IS NULL;
 
