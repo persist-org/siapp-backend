@@ -14,9 +14,10 @@ import (
 )
 
 // Check-in may start this long before a shift, and check-out may end this long after it.
+// CheckOutLate is exported because attendance's "update pulang" closes with the same window.
 const (
 	checkInEarly = 120 * time.Minute
-	checkOutLate = 240 * time.Minute
+	CheckOutLate = 240 * time.Minute
 )
 
 // ShiftInstance is one scheduled shift of a person turned into real instants.
@@ -32,6 +33,10 @@ type ShiftInstance struct {
 	// ProjectCodes are the projects of the person's regu on WorkDate (usually one). Empty
 	// when the person is in no regu that day: the instance is then in WIB, and has no site.
 	ProjectCodes []string
+	// TeamCodes are the regu the person serves in on WorkDate, the ones ProjectCodes belong to.
+	// A person who serves in two regu has one instance of the shift with both: attendance is
+	// kept per regu.
+	TeamCodes []string
 	// StartsAt and EndsAt are UTC. An overnight shift ends on WorkDate + 1. Both are zero for
 	// an OFF day.
 	StartsAt time.Time
@@ -101,7 +106,7 @@ func (s *LocalShifts) resolve(ctx context.Context, organizationID, personnelID i
 			z := zones[day]
 			inst := ShiftInstance{
 				ScheduleID: r.ID, WorkDate: day, ShiftID: r.ShiftID, ShiftName: r.ShiftName, IsOff: r.IsOff,
-				ToleranceMinutes: int(r.ToleranceMinutes), Location: z.loc, ProjectCodes: z.projects,
+				ToleranceMinutes: int(r.ToleranceMinutes), Location: z.loc, ProjectCodes: z.projects, TeamCodes: z.teams,
 			}
 			if !r.IsOff {
 				if z.ambiguous != nil {
@@ -143,7 +148,7 @@ func (s *LocalShifts) Current(ctx context.Context, organizationID, personnelID i
 		if inst.IsOff {
 			continue
 		}
-		if !at.Before(inst.StartsAt.Add(-checkInEarly)) && !at.After(inst.EndsAt.Add(checkOutLate)) {
+		if !at.Before(inst.StartsAt.Add(-checkInEarly)) && !at.After(inst.EndsAt.Add(CheckOutLate)) {
 			out = append(out, inst)
 		}
 	}

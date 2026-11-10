@@ -30,9 +30,11 @@ const (
 	TypeOfflineSubmissionSent = db.NotificationTypeOFFLINESUBMISSIONSENT
 )
 
-// The four types the manual's flows imply and Tabel 7 does not list.
+// The types the manual's flows imply and Tabel 7 does not list.
 const (
-	TypeLeaveDecided        = db.NotificationTypeLEAVEDECIDED
+	TypeLeaveDecided = db.NotificationTypeLEAVEDECIDED
+	// TypeLeaveCancelled tells who was asked to decide a leave that the person withdrew it (07.5).
+	TypeLeaveCancelled      = db.NotificationTypeLEAVECANCELLED
 	TypeInstructionFeedback = db.NotificationTypeINSTRUCTIONFEEDBACK
 	TypeSwapAssigned        = db.NotificationTypeSWAPASSIGNED
 	TypePanicResolved       = db.NotificationTypePANICRESOLVED
@@ -52,7 +54,7 @@ func AllTypes() []Type {
 		TypeLeaveRequested, TypeAbsenceMarked, TypeReportSubmitted, TypeInstructionReceived,
 		TypeTeamChanged, TypePositionChanged, TypePatrolSubmitted, TypePatrolApproved,
 		TypeGuardSubmitted, TypeGuardApproved, TypePanicTriggered, TypeOfflineSubmissionSent,
-		TypeLeaveDecided, TypeInstructionFeedback, TypeSwapAssigned, TypePanicResolved,
+		TypeLeaveDecided, TypeInstructionFeedback, TypeSwapAssigned, TypePanicResolved, TypeLeaveCancelled,
 	}
 }
 

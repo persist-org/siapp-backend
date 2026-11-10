@@ -12,6 +12,93 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AttendanceMethod string
+
+const (
+	AttendanceMethodQR     AttendanceMethod = "QR"
+	AttendanceMethodSELFIE AttendanceMethod = "SELFIE"
+	AttendanceMethodGROUP  AttendanceMethod = "GROUP"
+	AttendanceMethodFORCE  AttendanceMethod = "FORCE"
+)
+
+func (e *AttendanceMethod) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = AttendanceMethod(s)
+	case string:
+		*e = AttendanceMethod(s)
+	default:
+		return fmt.Errorf("unsupported scan type for AttendanceMethod: %T", src)
+	}
+	return nil
+}
+
+type NullAttendanceMethod struct {
+	AttendanceMethod AttendanceMethod
+	Valid            bool // Valid is true if AttendanceMethod is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullAttendanceMethod) Scan(value interface{}) error {
+	if value == nil {
+		ns.AttendanceMethod, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.AttendanceMethod.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullAttendanceMethod) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.AttendanceMethod), nil
+}
+
+type AttendanceStatus string
+
+const (
+	AttendanceStatusPRESENT AttendanceStatus = "PRESENT"
+	AttendanceStatusLEAVE   AttendanceStatus = "LEAVE"
+	AttendanceStatusABSENT  AttendanceStatus = "ABSENT"
+)
+
+func (e *AttendanceStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = AttendanceStatus(s)
+	case string:
+		*e = AttendanceStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for AttendanceStatus: %T", src)
+	}
+	return nil
+}
+
+type NullAttendanceStatus struct {
+	AttendanceStatus AttendanceStatus
+	Valid            bool // Valid is true if AttendanceStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullAttendanceStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.AttendanceStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.AttendanceStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullAttendanceStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.AttendanceStatus), nil
+}
+
 type BusinessLine string
 
 const (
@@ -182,6 +269,179 @@ func (ns NullDevicePlatform) Value() (driver.Value, error) {
 	return string(ns.DevicePlatform), nil
 }
 
+type LeaveCategoryType string
+
+const (
+	LeaveCategoryTypeLEAVE  LeaveCategoryType = "LEAVE"
+	LeaveCategoryTypePERMIT LeaveCategoryType = "PERMIT"
+	LeaveCategoryTypeSICK   LeaveCategoryType = "SICK"
+)
+
+func (e *LeaveCategoryType) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = LeaveCategoryType(s)
+	case string:
+		*e = LeaveCategoryType(s)
+	default:
+		return fmt.Errorf("unsupported scan type for LeaveCategoryType: %T", src)
+	}
+	return nil
+}
+
+type NullLeaveCategoryType struct {
+	LeaveCategoryType LeaveCategoryType
+	Valid             bool // Valid is true if LeaveCategoryType is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullLeaveCategoryType) Scan(value interface{}) error {
+	if value == nil {
+		ns.LeaveCategoryType, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.LeaveCategoryType.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullLeaveCategoryType) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.LeaveCategoryType), nil
+}
+
+type LeaveDecidedLevel string
+
+const (
+	LeaveDecidedLevelDANRU LeaveDecidedLevel = "DANRU"
+	LeaveDecidedLevelADMIN LeaveDecidedLevel = "ADMIN"
+)
+
+func (e *LeaveDecidedLevel) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = LeaveDecidedLevel(s)
+	case string:
+		*e = LeaveDecidedLevel(s)
+	default:
+		return fmt.Errorf("unsupported scan type for LeaveDecidedLevel: %T", src)
+	}
+	return nil
+}
+
+type NullLeaveDecidedLevel struct {
+	LeaveDecidedLevel LeaveDecidedLevel
+	Valid             bool // Valid is true if LeaveDecidedLevel is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullLeaveDecidedLevel) Scan(value interface{}) error {
+	if value == nil {
+		ns.LeaveDecidedLevel, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.LeaveDecidedLevel.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullLeaveDecidedLevel) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.LeaveDecidedLevel), nil
+}
+
+type LeaveLedgerKind string
+
+const (
+	LeaveLedgerKindGRANT  LeaveLedgerKind = "GRANT"
+	LeaveLedgerKindDEDUCT LeaveLedgerKind = "DEDUCT"
+	LeaveLedgerKindREFUND LeaveLedgerKind = "REFUND"
+	LeaveLedgerKindADJUST LeaveLedgerKind = "ADJUST"
+)
+
+func (e *LeaveLedgerKind) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = LeaveLedgerKind(s)
+	case string:
+		*e = LeaveLedgerKind(s)
+	default:
+		return fmt.Errorf("unsupported scan type for LeaveLedgerKind: %T", src)
+	}
+	return nil
+}
+
+type NullLeaveLedgerKind struct {
+	LeaveLedgerKind LeaveLedgerKind
+	Valid           bool // Valid is true if LeaveLedgerKind is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullLeaveLedgerKind) Scan(value interface{}) error {
+	if value == nil {
+		ns.LeaveLedgerKind, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.LeaveLedgerKind.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullLeaveLedgerKind) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.LeaveLedgerKind), nil
+}
+
+type LeaveRequestStatus string
+
+const (
+	LeaveRequestStatusPENDING   LeaveRequestStatus = "PENDING"
+	LeaveRequestStatusAPPROVED  LeaveRequestStatus = "APPROVED"
+	LeaveRequestStatusREJECTED  LeaveRequestStatus = "REJECTED"
+	LeaveRequestStatusCANCELLED LeaveRequestStatus = "CANCELLED"
+)
+
+func (e *LeaveRequestStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = LeaveRequestStatus(s)
+	case string:
+		*e = LeaveRequestStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for LeaveRequestStatus: %T", src)
+	}
+	return nil
+}
+
+type NullLeaveRequestStatus struct {
+	LeaveRequestStatus LeaveRequestStatus
+	Valid              bool // Valid is true if LeaveRequestStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullLeaveRequestStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.LeaveRequestStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.LeaveRequestStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullLeaveRequestStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.LeaveRequestStatus), nil
+}
+
 type MediaPurpose string
 
 const (
@@ -194,6 +454,7 @@ const (
 	MediaPurposeASSETREPORT      MediaPurpose = "ASSET_REPORT"
 	MediaPurposeEMEMO            MediaPurpose = "EMEMO"
 	MediaPurposeLETTERHEADLOGO   MediaPurpose = "LETTERHEAD_LOGO"
+	MediaPurposeLEAVEATTACHMENT  MediaPurpose = "LEAVE_ATTACHMENT"
 )
 
 func (e *MediaPurpose) Scan(src interface{}) error {
@@ -334,6 +595,7 @@ const (
 	NotificationTypeINSTRUCTIONFEEDBACK   NotificationType = "INSTRUCTION_FEEDBACK"
 	NotificationTypeSWAPASSIGNED          NotificationType = "SWAP_ASSIGNED"
 	NotificationTypePANICRESOLVED         NotificationType = "PANIC_RESOLVED"
+	NotificationTypeLEAVECANCELLED        NotificationType = "LEAVE_CANCELLED"
 )
 
 func (e *NotificationType) Scan(src interface{}) error {
@@ -413,6 +675,91 @@ func (ns NullOrganizationStatus) Value() (driver.Value, error) {
 	return string(ns.OrganizationStatus), nil
 }
 
+type OutboxKind string
+
+const (
+	OutboxKindATTENDANCE OutboxKind = "ATTENDANCE"
+	OutboxKindLEAVE      OutboxKind = "LEAVE"
+)
+
+func (e *OutboxKind) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = OutboxKind(s)
+	case string:
+		*e = OutboxKind(s)
+	default:
+		return fmt.Errorf("unsupported scan type for OutboxKind: %T", src)
+	}
+	return nil
+}
+
+type NullOutboxKind struct {
+	OutboxKind OutboxKind
+	Valid      bool // Valid is true if OutboxKind is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullOutboxKind) Scan(value interface{}) error {
+	if value == nil {
+		ns.OutboxKind, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.OutboxKind.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullOutboxKind) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.OutboxKind), nil
+}
+
+type OutboxStatus string
+
+const (
+	OutboxStatusPENDING OutboxStatus = "PENDING"
+	OutboxStatusSENT    OutboxStatus = "SENT"
+	OutboxStatusDEAD    OutboxStatus = "DEAD"
+)
+
+func (e *OutboxStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = OutboxStatus(s)
+	case string:
+		*e = OutboxStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for OutboxStatus: %T", src)
+	}
+	return nil
+}
+
+type NullOutboxStatus struct {
+	OutboxStatus OutboxStatus
+	Valid        bool // Valid is true if OutboxStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullOutboxStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.OutboxStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.OutboxStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullOutboxStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.OutboxStatus), nil
+}
+
 type PermissionScope string
 
 const (
@@ -455,6 +802,49 @@ func (ns NullPermissionScope) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return string(ns.PermissionScope), nil
+}
+
+type PersonelSyncStatus string
+
+const (
+	PersonelSyncStatusPENDING PersonelSyncStatus = "PENDING"
+	PersonelSyncStatusSYNCED  PersonelSyncStatus = "SYNCED"
+	PersonelSyncStatusFAILED  PersonelSyncStatus = "FAILED"
+)
+
+func (e *PersonelSyncStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PersonelSyncStatus(s)
+	case string:
+		*e = PersonelSyncStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PersonelSyncStatus: %T", src)
+	}
+	return nil
+}
+
+type NullPersonelSyncStatus struct {
+	PersonelSyncStatus PersonelSyncStatus
+	Valid              bool // Valid is true if PersonelSyncStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPersonelSyncStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.PersonelSyncStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PersonelSyncStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPersonelSyncStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PersonelSyncStatus), nil
 }
 
 type PersonnelStatus string
@@ -772,6 +1162,52 @@ type AppLink struct {
 	DeletedAt      pgtype.Timestamptz
 }
 
+type Attendance struct {
+	ID                     int64
+	OrganizationID         int64
+	PersonnelID            int64
+	TeamCode               string
+	ProjectCode            string
+	WorkDate               pgtype.Date
+	ShiftID                int64
+	ShiftStartsAt          pgtype.Timestamptz
+	ShiftEndsAt            pgtype.Timestamptz
+	Timezone               string
+	Status                 AttendanceStatus
+	CheckInAt              pgtype.Timestamptz
+	CheckInMethod          NullAttendanceMethod
+	CheckInMediaID         pgtype.Int8
+	CheckInLatitude        *float64
+	CheckInLongitude       *float64
+	CheckInAccuracyMeters  pgtype.Int4
+	CheckInDistanceMeters  pgtype.Int4
+	CheckInWithinArea      pgtype.Bool
+	CheckInQrDanruID       pgtype.Int8
+	LateMinutes            int32
+	CheckOutAt             pgtype.Timestamptz
+	CheckOutMethod         NullAttendanceMethod
+	CheckOutMediaID        pgtype.Int8
+	CheckOutLatitude       *float64
+	CheckOutLongitude      *float64
+	CheckOutAccuracyMeters pgtype.Int4
+	CheckOutDistanceMeters pgtype.Int4
+	CheckOutWithinArea     pgtype.Bool
+	CheckOutQrDanruID      pgtype.Int8
+	CheckOutUpdateCount    int32
+	LeaveRequestID         pgtype.Int8
+	MarkedAbsentByID       pgtype.Int8
+	ShiftSwapID            pgtype.Int8
+	PersonelSyncStatus     PersonelSyncStatus
+	PersonelSyncedAt       pgtype.Timestamptz
+	CreatedAt              pgtype.Timestamptz
+	UpdatedAt              pgtype.Timestamptz
+	LateMinutesRaw         int32
+	AbsentReason           pgtype.Text
+	LeaveReplacedAbsent    bool
+	LeavePrevAbsentByID    pgtype.Int8
+	LeavePrevAbsentReason  pgtype.Text
+}
+
 type AuditLog struct {
 	ID               int64
 	OrganizationID   int64
@@ -877,6 +1313,96 @@ type IdempotencyKey struct {
 	ResponseOmitted  bool
 }
 
+type LeaveCategory struct {
+	ID                int64
+	OrganizationID    int64
+	Code              string
+	Name              string
+	Type              LeaveCategoryType
+	IsAnnual          bool
+	SkipsDayCheck     bool
+	RequiresTimeRange bool
+	RequiresChangeDay bool
+	MakesLeaveDays    bool
+	ExcusesLateness   bool
+	HasQuota          bool
+	SortOrder         int32
+	Active            bool
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
+}
+
+type LeaveCategoryQuota struct {
+	ID             int64
+	OrganizationID int64
+	CategoryID     int64
+	ClientCode     pgtype.Text
+	QuotaDays      int32
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
+type LeaveClientSetting struct {
+	OrganizationID  int64
+	ClientCode      string
+	RequestsEnabled bool
+	UpdatedAt       pgtype.Timestamptz
+}
+
+type LeaveLedger struct {
+	ID             int64
+	OrganizationID int64
+	PersonnelID    int64
+	Kind           LeaveLedgerKind
+	Days           int32
+	BalanceAfter   int32
+	LeaveRequestID pgtype.Int8
+	Note           string
+	CreatedByID    pgtype.Int8
+	CreatedAt      pgtype.Timestamptz
+}
+
+type LeaveRequest struct {
+	ID                  int64
+	OrganizationID      int64
+	Number              string
+	PersonnelID         int64
+	TeamCode            string
+	ProjectCode         string
+	Type                LeaveCategoryType
+	CategoryID          int64
+	StartDate           pgtype.Date
+	EndDate             pgtype.Date
+	StartTime           pgtype.Time
+	EndTime             pgtype.Time
+	WorkingDays         int32
+	Reason              string
+	Responsibility      pgtype.Text
+	ContactInfo         pgtype.Text
+	ChangeDayFrom       pgtype.Date
+	ChangeDayTo         pgtype.Date
+	Hospitalization     pgtype.Bool
+	LetterStatus        pgtype.Bool
+	LetterDate          pgtype.Date
+	Disease             pgtype.Text
+	AttachmentMediaID   pgtype.Int8
+	Status              LeaveRequestStatus
+	ApproverPersonnelID pgtype.Int8
+	DecidedLevel        NullLeaveDecidedLevel
+	DecidedByID         pgtype.Int8
+	DecidedAt           pgtype.Timestamptz
+	DecisionNote        pgtype.Text
+	CancelledAt         pgtype.Timestamptz
+	CreatedAt           pgtype.Timestamptz
+	UpdatedAt           pgtype.Timestamptz
+}
+
+type LeaveRequestCounter struct {
+	OrganizationID int64
+	Type           LeaveCategoryType
+	Counter        int32
+}
+
 type LegacyContactType struct {
 	OrganizationID int64
 	TypeName       string
@@ -954,6 +1480,21 @@ type PanicType struct {
 	DeletedAt         pgtype.Timestamptz
 }
 
+type PersonelOutbox struct {
+	ID             int64
+	OrganizationID int64
+	EventID        pgtype.UUID
+	Kind           OutboxKind
+	AggregateID    int64
+	Payload        json.RawMessage
+	Status         OutboxStatus
+	Attempts       int32
+	NextAttemptAt  pgtype.Timestamptz
+	LastError      pgtype.Text
+	CreatedAt      pgtype.Timestamptz
+	SentAt         pgtype.Timestamptz
+}
+
 type Personnel struct {
 	ID             int64
 	OrganizationID int64
@@ -1015,6 +1556,7 @@ type Project struct {
 	CreatedAt                pgtype.Timestamptz
 	UpdatedAt                pgtype.Timestamptz
 	DeletedAt                pgtype.Timestamptz
+	AllowGroupAttendance     bool
 }
 
 type Region struct {
@@ -1101,6 +1643,24 @@ type ShiftGroupDay struct {
 	ShiftGroupID   int64
 	Weekday        int16
 	ShiftID        int64
+}
+
+type ShiftSwap struct {
+	ID                   int64
+	OrganizationID       int64
+	ReplacedPersonnelID  int64
+	ReplacedAttendanceID pgtype.Int8
+	ReplacingPersonnelID int64
+	TeamCode             string
+	WorkDate             pgtype.Date
+	ShiftID              int64
+	StartsAt             pgtype.Timestamptz
+	EndsAt               pgtype.Timestamptz
+	Note                 pgtype.Text
+	CreatedByID          int64
+	CancelledAt          pgtype.Timestamptz
+	CreatedAt            pgtype.Timestamptz
+	UpdatedAt            pgtype.Timestamptz
 }
 
 type StakeholderType struct {

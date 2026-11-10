@@ -143,6 +143,20 @@ func (qy *Query) TeamWithProject(ctx context.Context, organizationID int64, team
 	return out, err
 }
 
+// ProjectIn returns a proyek by code, through q: the caller's transaction, so a usecase that has
+// just locked a row naming the project reads it in the same snapshot. PROJECT_NOT_FOUND for a
+// project that does not exist, was deleted, or belongs to another organization.
+func (qy *Query) ProjectIn(ctx context.Context, q *db.Queries, code string) (Project, error) {
+	row, err := q.GetProject(ctx, code)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Project{}, ErrProjectNotFound
+	}
+	if err != nil {
+		return Project{}, fmt.Errorf("get project %s: %w", code, err)
+	}
+	return toProject(row), nil
+}
+
 // Directory answers identity's two questions about a person's regu: which koordinator wilayah
 // they serve under (what a REGION_ADMIN's scope is checked against) and which regu they are in
 // (what /auth/me lists). "Today" is each regu's own business date, so it is computed per

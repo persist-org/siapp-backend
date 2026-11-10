@@ -476,6 +476,18 @@ components:
         offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
         409 CONFLICT.
       schema: { type: string, format: uuid }
+    IdempotencyKeyRequiredHeader:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: |
+        UUID stabil seumur item; tanpa header ini 422 VALIDATION_ERROR. Retry dengan key dan body
+        yang sama → respons tersimpan dengan header `Idempotent-Replayed: true`; body berbeda +
+        key sama → 409 CONFLICT `IDEMPOTENCY_KEY_REUSED`. Permintaan pertama dengan key itu masih
+        berjalan → 409 `IDEMPOTENCY_KEY_IN_FLIGHT` (coba lagi sebentar lagi). Permintaan pertama
+        berhasil tetapi responsnya tidak bisa disimpan → 409 `IDEMPOTENCY_RESPONSE_NOT_STORED`
+        (jangan kirim ulang dengan key baru, itu mengulang aksinya; muat ulang datanya).
+      schema: { type: string, format: uuid }
     XRequestIdHeader:
       name: X-Request-Id
       in: header
@@ -682,7 +694,28 @@ components:
             details:
               type: object
               additionalProperties: true
-              description: Konteks tambahan opsional (mis. scope_required, retry_after).
+              description: |
+                Konteks tambahan opsional (mis. scope_required, retry_after). `details.reason` adalah
+                kode mesin yang lebih rinci dari `error.code`; yang sudah dirilis tidak pernah diganti
+                namanya. Reason lintas-modul (reason milik satu endpoint ada pada deskripsi endpoint itu):
+
+                - 401 `AUTH_TOKEN_INVALID`: token hilang, rusak, atau salah tanda tangan; ke layar login.
+                - 401 `AUTH_TOKEN_EXPIRED` (code `TOKEN_EXPIRED`): token akses lewat masa berlaku;
+                  refresh sekali lalu ulangi.
+                - 401 `AUTH_INVALID_CREDENTIALS`, 403 `AUTH_DEVICE_BOUND`, 403
+                  `AUTH_ORGANIZATION_SUSPENDED`: lihat `POST /auth/login`.
+                - 409 `IDEMPOTENCY_KEY_REUSED`, `IDEMPOTENCY_KEY_IN_FLIGHT`,
+                  `IDEMPOTENCY_RESPONSE_NOT_STORED`: lihat header `Idempotency-Key`.
+                - 422 `OCCURRED_AT_IN_FUTURE`: item offline mengaku terjadi lebih dari 5 menit ke depan.
+                - 422 `OCCURRED_AT_TOO_OLD`: item offline lebih tua dari jendela offline 7 hari.
+                - 503 `PERSONEL_UNAVAILABLE` (code `INTERNAL_ERROR`): Personalia tidak menjawab; coba lagi nanti.
+                - 404 `NOT_FOUND` dengan reason `ATTENDANCE_NOT_FOUND`, `NOTIFICATION_NOT_FOUND`,
+                  `CATEGORY_NOT_FOUND`, `PANIC_TYPE_NOT_FOUND`, `LETTERHEAD_NOT_FOUND`, `APP_LINK_NOT_FOUND`,
+                  `LEAVE_CATEGORY_NOT_FOUND`, `LEAVE_CLIENT_NOT_FOUND`: data tidak ada, sudah dihapus, atau
+                  milik organisasi/orang lain (tidak dibedakan).
+                - 422 `CATEGORY_KIND_MISMATCH`: kategori bukan untuk jenis data itu.
+                - 409 `MASTER_IN_USE`: master masih dipakai; nonaktifkan, jangan hapus.
+                - 409 `ACCESS_OWN_ROLE_PROTECTED`: admin tidak boleh mencabut atau mempersempit perannya sendiri.
             errors:
               type: array
               items: { $ref: '#/components/schemas/FieldError' }
@@ -860,7 +893,7 @@ components:
       required: [permission, module, description, business_lines, defaults]
       properties:
         permission: { type: string, maxLength: 64, example: attendance.leave.approve }
-        module: { type: string, example: attendance, description: Modul pemilik hak ini, untuk mengelompokkan di layar. }
+        module: { type: string, example: attendance, description: "Modul pemilik hak ini, untuk mengelompokkan di layar." }
         description: { type: string, example: Persetujuan izin, description: Nama hak di Tabel 8 manual (Bahasa Indonesia). }
         business_lines:
           type: array
@@ -1074,7 +1107,7 @@ components:
         code: { type: string, example: "1K-IBMI" }
         branch_code: { type: string, example: "1K" }
         description: { type: string, description: Nama klien. }
-        company_code: { type: string, nullable: true, description: Diisi manual, tidak dibentuk server. }
+        company_code: { type: string, nullable: true, description: "Diisi manual, tidak dibentuk server." }
         company_prefix: { type: string, example: IBMI, pattern: '^[A-Z0-9]{2,10}$' }
         company_bidang_usaha: { type: string, nullable: true }
         director_name: { type: string, nullable: true }
@@ -1171,6 +1204,7 @@ components:
         attendance_radius_meters: { type: integer, minimum: 1, example: 150 }
         strict_attendance_geofence: { type: boolean }
         gps_tracking_enabled: { type: boolean, description: "Aktifkan tracking GPS personil (DL-48)." }
+        allow_group_attendance: { type: boolean, description: "Absen grup oleh DANRU (07.6) diizinkan. Bawaan false." }
         patrol_interval_minutes: { type: integer, nullable: true, minimum: 1, description: "null = tidak dibatasi (DL-48)." }
         emergency_contacts:
           type: array
@@ -1229,6 +1263,7 @@ components:
         attendance_radius_meters: { type: integer, minimum: 1, maximum: 10000 }
         strict_attendance_geofence: { type: boolean }
         gps_tracking_enabled: { type: boolean }
+        allow_group_attendance: { type: boolean, description: "Aktifkan absen grup oleh DANRU (07.6)." }
         patrol_interval_minutes: { type: integer, minimum: 1, maximum: 1440 }
         emergency_contacts:
           type: array
@@ -1683,7 +1718,7 @@ components:
       properties:
         id: { type: integer, format: int64 }
         organization_id: { type: integer, format: int64 }
-        nik: { type: string, example: "32xxxxxxxxxxxxxx", description: 16 digit, PII tinggi (mask + audit). }
+        nik: { type: string, example: "32xxxxxxxxxxxxxx", description: "16 digit, PII tinggi (mask + audit)." }
         npwp: { type: string, nullable: true }
         first_name: { type: string, example: Andi }
         middle_name: { type: string, nullable: true }
@@ -1860,7 +1895,7 @@ components:
       required: [name]
       properties:
         name: { type: string, maxLength: 100 }
-        urgency: { type: string, enum: [LOW, NORMAL, HIGH], description: Wajib untuk kategori instruksi, ditolak untuk kategori laporan. }
+        urgency: { type: string, enum: [LOW, NORMAL, HIGH], description: "Wajib untuk kategori instruksi, ditolak untuk kategori laporan." }
         business_lines: { type: array, maxItems: 2, items: { type: string, enum: [security, cleaning] } }
         sort_order: { type: integer, minimum: 0, maximum: 10000 }
         is_active: { type: boolean, default: true }
@@ -1877,8 +1912,134 @@ components:
       $ref: '#/components/schemas/Category'
     InstructionCategory:
       $ref: '#/components/schemas/Category'
-    PermissionCategory:
-      allOf: [ { $ref: '#/components/schemas/CodedMaster' } ]
+    LeaveCategoryType:
+      type: string
+      enum: [LEAVE, PERMIT, SICK]
+    LeaveCategory:
+      type: object
+      description: >-
+        Kategori izin, cuti atau sakit. Keistimewaannya ada pada bendera: `is_annual` (memakai saldo
+        buku besar), `skips_day_check` (hari tidak dibandingkan dengan sisa), `requires_time_range`
+        (perlu jam mulai dan selesai; kelas "sebagian hari"), `requires_change_day` (perlu hari
+        tukar), `makes_leave_days` (persetujuan menulis baris LEAVE), `excuses_lateness`
+        (menghapus keterlambatan hari itu), `has_quota`.
+      required: [code, name, type, is_annual, skips_day_check, requires_time_range, requires_change_day, makes_leave_days, excuses_lateness, has_quota, sort_order, is_active, created_at, updated_at]
+      properties:
+        code: { type: string, example: ANNUAL }
+        name: { type: string, example: Cuti Tahunan }
+        type: { $ref: '#/components/schemas/LeaveCategoryType' }
+        is_annual: { type: boolean }
+        skips_day_check: { type: boolean }
+        requires_time_range: { type: boolean }
+        requires_change_day: { type: boolean }
+        makes_leave_days: { type: boolean }
+        excuses_lateness: { type: boolean }
+        has_quota: { type: boolean }
+        sort_order: { type: integer }
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    LeaveCategoryDetail:
+      allOf:
+        - { $ref: '#/components/schemas/LeaveCategory' }
+        - type: object
+          required: [quotas]
+          properties:
+            quotas: { $ref: '#/components/schemas/LeaveQuotas' }
+    LeaveCategoryInput:
+      type: object
+      required: [code, name, type]
+      properties:
+        code: { type: string, pattern: '^[A-Z][A-Z0-9_]{1,39}$' }
+        name: { type: string, maxLength: 100 }
+        type: { $ref: '#/components/schemas/LeaveCategoryType' }
+        is_annual: { type: boolean, default: false }
+        skips_day_check: { type: boolean }
+        requires_time_range: { type: boolean }
+        requires_change_day: { type: boolean }
+        makes_leave_days: { type: boolean, description: "Bawaan true." }
+        excuses_lateness: { type: boolean }
+        has_quota: { type: boolean, description: "Bawaan false untuk SICK, selain itu true." }
+        sort_order: { type: integer, minimum: 0, maximum: 10000 }
+        is_active: { type: boolean }
+    LeaveCategoryUpdate:
+      type: object
+      properties:
+        name: { type: string, maxLength: 100 }
+        skips_day_check: { type: boolean }
+        requires_time_range: { type: boolean }
+        requires_change_day: { type: boolean }
+        makes_leave_days: { type: boolean }
+        excuses_lateness: { type: boolean }
+        has_quota: { type: boolean }
+        sort_order: { type: integer, minimum: 0, maximum: 10000 }
+        is_active: { type: boolean }
+    LeaveCategoryTombstone:
+      type: object
+      description: Kategori yang dinonaktifkan, untuk cache lokal delta-sync (berkunci `code`).
+      required: [code, deleted_at]
+      properties:
+        code: { type: string }
+        deleted_at: { type: string, format: date-time }
+    LeaveQuotas:
+      type: object
+      required: [default_days, clients]
+      properties:
+        default_days: { type: integer, nullable: true, minimum: 0, maximum: 366, description: "null: tidak ada default, klien tanpa barisnya punya 0 hari." }
+        clients:
+          type: array
+          items:
+            type: object
+            required: [client_code, quota_days]
+            properties:
+              client_code: { type: string, example: 1K-IBMI }
+              quota_days: { type: integer, minimum: 0, maximum: 366 }
+    LeaveQuotasInput:
+      type: object
+      properties:
+        default_days: { type: integer, minimum: 0, maximum: 366 }
+        clients:
+          type: array
+          maxItems: 500
+          items:
+            type: object
+            required: [client_code, quota_days]
+            properties:
+              client_code: { type: string, maxLength: 40 }
+              quota_days: { type: integer, minimum: 0, maximum: 366 }
+    LeaveQuota:
+      type: object
+      required: [category_code, quota_days, used_days, remaining_days]
+      properties:
+        category_code: { type: string }
+        quota_days: { type: integer, description: "Batas: saldo untuk cuti tahunan, hari kuota klien untuk lainnya." }
+        used_days: { type: integer, description: "Hari yang dipegang pengajuan menunggu dan disetujui tahun ini." }
+        remaining_days: { type: integer }
+    LeaveApprover:
+      type: object
+      required: [personnel_id, name]
+      properties:
+        personnel_id: { type: integer, format: int64 }
+        name: { type: string }
+    LeaveLedgerEntry:
+      type: object
+      required: [id, kind, days, balance_after, note, created_at]
+      properties:
+        id: { type: integer, format: int64 }
+        kind: { type: string, enum: [GRANT, DEDUCT, REFUND, ADJUST] }
+        days: { type: integer, description: "Bertanda: pengurangan negatif." }
+        balance_after: { type: integer, minimum: 0 }
+        leave_request_id: { type: integer, format: int64, nullable: true }
+        note: { type: string }
+        created_by_id: { type: integer, format: int64, nullable: true }
+        created_at: { type: string, format: date-time }
+    LeaveLedgerInput:
+      type: object
+      required: [kind, days, note]
+      properties:
+        kind: { type: string, enum: [GRANT, ADJUST] }
+        days: { type: integer, minimum: -3660, maximum: 3660, description: "GRANT: lebih dari 0. ADJUST: tidak 0." }
+        note: { type: string, maxLength: 200 }
     Letterhead:
       type: object
       description: >-
@@ -2032,100 +2193,332 @@ components:
     # ---------- 22. attendances ----------
     Attendance:
       type: object
+      description: >-
+        Satu instans shift seseorang di satu regu (orang × regu × tanggal kerja × shift). Ini bukti
+        yang ditangkap SiAPP, bukan catatan resmi: catatan resminya di Persist Personel, yang
+        menerima tiap perubahan lewat outbox (`personel_sync_status`).
+      required: [id, personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone, status, late_minutes, check_out_update_count, personel_sync_status, created_at, updated_at]
       properties:
         id: { type: integer, format: int64 }
-        organization_id: { type: integer, format: int64 }
         personnel_id: { type: integer, format: int64 }
-        project_id: { type: integer, format: int64 }
-        team_id: { type: integer, format: int64, nullable: true }
-        method: { type: string, enum: [QR, SELFIE, SHIFT, FORCE] }
+        team_code: { type: string, example: 1K-IBMI-S1 }
+        project_code: { type: string, example: 1K-IBMI-S }
+        work_date: { type: string, format: date, description: "Tanggal shift DIMULAI, di zona waktu proyek." }
+        shift_id: { type: integer, format: int64 }
+        shift_starts_at: { type: string, format: date-time, description: "Salinan jam shift saat absen: tidak ikut berubah bila shift/proyek diedit kemudian." }
+        shift_ends_at: { type: string, format: date-time }
+        timezone: { type: string, example: Asia/Jakarta }
+        status: { type: string, enum: [PRESENT, LEAVE, ABSENT] }
         check_in_at: { type: string, format: date-time, nullable: true }
+        check_in_method: { type: string, enum: [QR, SELFIE, GROUP, FORCE], nullable: true }
+        check_in_distance_meters: { type: integer, nullable: true, description: "Jarak ke titik proyek; null bila tidak ada fix GPS." }
+        check_in_within_area: { type: boolean, nullable: true }
+        late_minutes: { type: integer, minimum: 0, description: "Menit keterlambatan absen datang, dibulatkan ke bawah; 0 bila tepat waktu. Absen dalam toleransi shift dihitung tepat waktu; lewat dari itu, keterlambatan dihitung dari jam mulai shift. Disimpan saat absen, tidak berubah bila toleransi diedit kemudian." }
         check_out_at: { type: string, format: date-time, nullable: true }
-        latitude: { type: number, format: double, nullable: true, example: -6.2 }
-        longitude: { type: number, format: double, nullable: true, example: 106.8 }
-        photo_url: { type: string, nullable: true, format: uri }
-        timezone: { type: string, enum: [WIB, WITA, WIT] }
-        replaced_by_id: { type: integer, format: int64, nullable: true }
-        is_absent: { type: boolean }
-        local_id: { type: string, nullable: true }
-        synced_at: { type: string, format: date-time, nullable: true }
+        check_out_method: { type: string, enum: [QR, SELFIE, GROUP, FORCE], nullable: true }
+        check_out_distance_meters: { type: integer, nullable: true }
+        check_out_within_area: { type: boolean, nullable: true }
+        check_out_update_count: { type: integer, description: "Berapa kali jam pulang diperbarui." }
+        leave_request_id: { type: integer, format: int64, nullable: true, description: "Pengajuan izin/cuti/sakit yang membuat catatan LEAVE ini (GET /permissions/{id}); null untuk catatan lain." }
+        personel_sync_status: { type: string, enum: [PENDING, SYNCED, FAILED] }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
-    AttendanceQrCheckIn:
+    AttendanceToday:
       type: object
-      required: [qr_token, lat, lng]
+      description: Satu shift yang bisa diabsen sekarang, di satu regu.
+      required: [shift_ref, work_date, project_code, project_name, team_code, team_name, shift_name, starts_at, ends_at, timezone]
       properties:
-        qr_token: { type: string }
-        lat: { type: number, format: double }
-        lng: { type: number, format: double }
-        photo: { type: string, format: uri }
-        local_id: { type: string }
-    AttendanceQrCheckOut:
+        shift_ref: { type: string, description: "Penanda buram shift; kirim apa adanya ke endpoint absen." }
+        attendance_id: { type: integer, format: int64, nullable: true, description: "Ada bila shift sudah punya catatan." }
+        work_date: { type: string, format: date }
+        project_code: { type: string }
+        project_name: { type: string }
+        team_code: { type: string }
+        team_name: { type: string }
+        shift_name: { type: string }
+        starts_at: { type: string, format: date-time }
+        ends_at: { type: string, format: date-time }
+        timezone: { type: string, example: Asia/Jakarta }
+        status: { type: string, enum: [PRESENT, LEAVE, ABSENT], nullable: true, description: "null selama shift belum punya catatan." }
+        check_in_at: { type: string, format: date-time, nullable: true }
+        check_out_at: { type: string, format: date-time, nullable: true }
+    AttendanceHistoryDay:
       type: object
-      required: [qr_token, lat, lng]
+      description: Shift-shift satu tanggal kerja pada kalender absensi.
+      required: [work_date, shifts]
       properties:
-        qr_token: { type: string }
-        lat: { type: number, format: double }
-        lng: { type: number, format: double }
-    AttendanceCheckOutPatch:
-      type: object
-      required: [lat, lng]
-      properties:
-        lat: { type: number, format: double }
-        lng: { type: number, format: double }
-    AttendanceGroupInput:
-      type: object
-      required: [team_id, entries]
-      properties:
-        team_id: { type: integer, format: int64 }
-        entries:
+        work_date: { type: string, format: date }
+        shifts:
           type: array
           items:
             type: object
-            required: [personnel_id, status]
+            required: [shift_name, team_code, team_name, status]
             properties:
-              personnel_id: { type: integer, format: int64 }
-              status: { type: string }
-    AttendanceAbsentInput:
+              attendance_id: { type: integer, format: int64, nullable: true, description: "null untuk MISSING dan UPCOMING (belum ada catatan)." }
+              shift_name: { type: string }
+              team_code: { type: string }
+              team_name: { type: string }
+              status: { type: string, enum: [PRESENT, LEAVE, ABSENT, MISSING, UPCOMING] }
+              check_in_at: { type: string, format: date-time, nullable: true }
+              check_in_method: { type: string, enum: [QR, SELFIE, GROUP, FORCE], nullable: true }
+              check_out_at: { type: string, format: date-time, nullable: true }
+              shift_swap_id: { type: integer, format: int64, nullable: true, description: "Terisi bila ini shift yang diambil alih personil dari orang lain lewat tukar jaga (tukar jaga aktif)." }
+    AttendanceSelfie:
       type: object
-      required: [personnel_id, date]
+      required: [id, url, content_type]
+      properties:
+        id: { type: integer, format: int64 }
+        url: { type: string, description: "URL bertanda tangan, berlaku sekitar satu jam." }
+        content_type: { type: string, example: image/jpeg }
+        captured_at: { type: string, format: date-time, nullable: true }
+    AttendanceDetail:
+      description: Satu catatan absensi beserta nama proyek, regu, shift, DANRU, dan selfie.
+      allOf:
+        - { $ref: '#/components/schemas/Attendance' }
+        - type: object
+          required: [project_name, team_name, shift_name, danru_names]
+          properties:
+            project_name: { type: string }
+            team_name: { type: string }
+            shift_name: { type: string, description: "Kosong bila shift sudah dihapus." }
+            danru_names: { type: array, items: { type: string }, description: "DANRU regu pada tanggal kerja, lalu DANRU pemilik QR yang dipindai bila berbeda." }
+            check_in_selfie: { allOf: [ { $ref: '#/components/schemas/AttendanceSelfie' } ], nullable: true }
+            check_out_selfie: { allOf: [ { $ref: '#/components/schemas/AttendanceSelfie' } ], nullable: true }
+    AttendanceSelfieInput:
+      type: object
+      required: [shift_ref, media_ids, latitude, longitude]
+      properties:
+        shift_ref: { type: string, description: "Dari GET /attendances/today." }
+        media_ids:
+          type: array
+          minItems: 1
+          maxItems: 1
+          items: { type: integer, format: int64 }
+          description: "Tepat satu foto selfie (media dengan purpose ATTENDANCE_SELFIE, sudah di-complete)."
+        latitude: { type: number, format: double, minimum: -90, maximum: 90 }
+        longitude: { type: number, format: double, minimum: -180, maximum: 180 }
+        accuracy_meters: { type: number, format: double, minimum: 0, maximum: 100000 }
+    AttendanceQrInput:
+      type: object
+      required: [shift_ref, token]
+      description: "Latitude dan longitude opsional, tetapi harus dikirim berpasangan."
+      properties:
+        shift_ref: { type: string, description: "Dari GET /attendances/today." }
+        token: { type: string, description: "Kode yang sedang ditampilkan DANRU (GET /attendances/qr/display)." }
+        latitude: { type: number, format: double, minimum: -90, maximum: 90 }
+        longitude: { type: number, format: double, minimum: -180, maximum: 180 }
+        accuracy_meters: { type: number, format: double, minimum: 0, maximum: 100000 }
+    AttendanceQrCode:
+      type: object
+      required: [token, expires_at]
+      properties:
+        token: { type: string }
+        expires_at: { type: string, format: date-time, description: "60 detik sejak kode diterbitkan (toleransi 5 detik di sisi server)." }
+    AttendanceCheckOutPatch:
+      type: object
+      required: [media_ids, latitude, longitude]
+      properties:
+        media_ids:
+          type: array
+          minItems: 1
+          maxItems: 1
+          items: { type: integer, format: int64 }
+        latitude: { type: number, format: double, minimum: -90, maximum: 90 }
+        longitude: { type: number, format: double, minimum: -180, maximum: 180 }
+        accuracy_meters: { type: number, format: double, minimum: 0, maximum: 100000 }
+    AttendanceGroupInput:
+      type: object
+      description: >-
+        Muster satu regu sekaligus untuk satu shift dengan satu lokasi DANRU: setiap personil yang
+        disebut jadi absen datang metode GROUP. Ditolak 422 `GROUP_ATTENDANCE_DISABLED` selama
+        proyek regu belum mengaktifkan `allow_group_attendance`. Satu personil yang gagal (tidak
+        terjadwal pada shift ini, sudah tercatat) tidak menggagalkan personil lain; lihat
+        `data[].error` pada tiap entri.
+      required: [team_code, shift_ref, personnel_ids, latitude, longitude]
+      properties:
+        team_code: { type: string, example: 1K-IBMI-S1 }
+        shift_ref: { type: string, description: "Dari daftar shift regu; harus milik team_code." }
+        personnel_ids: { type: array, minItems: 1, maxItems: 200, items: { type: integer, format: int64 } }
+        latitude: { type: number, format: double, minimum: -90, maximum: 90, description: "Lokasi DANRU, dipakai untuk setiap personil." }
+        longitude: { type: number, format: double, minimum: -180, maximum: 180 }
+    AttendanceGroupResult:
+      type: object
+      required: [personnel_id, attendance, error]
       properties:
         personnel_id: { type: integer, format: int64 }
-        date: { type: string, format: date }
-        reason: { type: string }
+        attendance: { allOf: [ { $ref: '#/components/schemas/Attendance' } ], nullable: true, description: "null bila personil ini gagal (lihat error)." }
+        error:
+          type: object
+          nullable: true
+          description: "null bila personil ini berhasil."
+          properties:
+            reason: { type: string, example: ATTENDANCE_NO_SHIFT }
+            message: { type: string }
+    TeamAttendanceRow:
+      type: object
+      description: Satu personil, satu hari, dari GET /attendances (monitor regu, DANRU).
+      required: [attendance_id, personnel_id, personnel_name, work_date, shift_name, status]
+      properties:
+        attendance_id: { type: integer, format: int64 }
+        personnel_id: { type: integer, format: int64 }
+        personnel_name: { type: string }
+        work_date: { type: string, format: date }
+        shift_name: { type: string, description: "Kosong bila shift sudah dihapus." }
+        status: { type: string, enum: [PRESENT, LEAVE, ABSENT, SWAPPED], description: "`SWAPPED`: catatan izin/mangkir yang sudah punya tukar jaga aktif (tidak disimpan; dengan filter `status` yang tampil status tersimpannya)." }
+        check_in_at: { type: string, format: date-time, nullable: true }
+        check_in_method: { type: string, enum: [QR, SELFIE, GROUP, FORCE], nullable: true }
+        check_in_within_area: { type: boolean, nullable: true }
+        check_out_at: { type: string, format: date-time, nullable: true }
+        check_out_method: { type: string, enum: [QR, SELFIE, GROUP, FORCE], nullable: true }
+        check_out_within_area: { type: boolean, nullable: true }
+    AttendanceAbsentInput:
+      type: object
+      description: >-
+        Mangkir satu personil pada satu regu dan tanggal kerja, ditandai langsung oleh DANRU tanpa
+        personil pernah absen datang.
+      required: [personnel_id, team_code, date, reason]
+      properties:
+        personnel_id: { type: integer, format: int64 }
+        team_code: { type: string, example: 1K-IBMI-S1, description: "Regu personil pada tanggal itu; seseorang bisa bertugas di dua regu dalam satu hari." }
+        date: { type: string, format: date, description: "Tanggal kerja yang ditandai mangkir; tidak harus hari ini." }
+        reason: { type: string, minLength: 1, maxLength: 500, description: "Wajib; kosong atau hanya spasi: 422 `VALIDATION_ERROR`." }
     AttendanceCorrection:
       type: object
+      description: >-
+        `reason` selalu wajib. `status` (PRESENT, LEAVE atau ABSENT) mengubah status catatan;
+        `check_in_at`/`check_out_at` hanya berlaku bila status (baru atau yang sudah ada) PRESENT.
+      required: [reason]
       properties:
-        check_in: { type: string, format: date-time }
-        check_out: { type: string, format: date-time }
-        is_absent: { type: boolean }
-        note: { type: string }
+        status: { type: string, enum: [PRESENT, LEAVE, ABSENT] }
+        check_in_at: { type: string, format: date-time, description: "Wajib bila status menjadi PRESENT dari ABSENT/LEAVE." }
+        check_out_at: { type: string, format: date-time }
+        reason: { type: string, maxLength: 1000, description: "Disimpan di audit log (dan absent_reason bila status ABSENT)." }
 
     # ---------- 23. permissions ----------
     Permission:
       type: object
+      description: >-
+        Satu pengajuan izin, cuti atau sakit (Phase 07.5). `decision` kosong selama masih menunggu
+        dan setelah dibatalkan; `by_name` adalah nama depan yang memutuskan.
+      required: [id, number, team_code, type, category_code, category_name, status, start_date, end_date, working_days, reason, requested_at, can_cancel]
       properties:
         id: { type: integer, format: int64 }
-        organization_id: { type: integer, format: int64 }
-        personnel_id: { type: integer, format: int64 }
-        permission_category_id: { type: integer, format: int64 }
+        number: { type: string, example: LR20261100001, description: "LR, PR atau SR + YYYYMM + 5 digit penghitung per tipe." }
+        team_code: { type: string, example: 1K-IBMI-S1 }
+        type: { $ref: '#/components/schemas/LeaveCategoryType' }
+        category_code: { type: string, example: ANNUAL }
+        category_name: { type: string, example: Cuti Tahunan }
+        status: { type: string, enum: [PENDING, APPROVED, REJECTED, CANCELLED] }
         start_date: { type: string, format: date }
         end_date: { type: string, format: date }
-        reason: { type: string, nullable: true }
-        status: { type: string, enum: [PENDING, APPROVED, REJECTED] }
-        approved_by: { type: integer, format: int64, nullable: true }
-        approved_at: { type: string, format: date-time, nullable: true }
-        created_at: { type: string, format: date-time }
-        updated_at: { type: string, format: date-time }
+        start_time: { type: string, nullable: true, example: "08:00", description: "Jam lokal proyek; hanya kategori sebagian hari." }
+        end_time: { type: string, nullable: true, example: "10:00" }
+        working_days: { type: integer, description: "Hari yang dihitung terhadap kuota; 0 untuk kategori tanpa kuota." }
+        reason: { type: string }
+        responsibility: { type: string, nullable: true }
+        contact_info: { type: string, nullable: true }
+        change_day_from: { type: string, format: date, nullable: true }
+        change_day_to: { type: string, format: date, nullable: true }
+        requested_at: { type: string, format: date-time }
+        decision:
+          type: object
+          nullable: true
+          required: [level, by_name, at]
+          properties:
+            level: { type: string, enum: [DANRU, ADMIN] }
+            by_name: { type: string }
+            at: { type: string, format: date-time }
+            note: { type: string, nullable: true }
+        can_cancel: { type: boolean, description: "True selama pengajuan masih PENDING dan milik pemanggil." }
+        sick:
+          type: object
+          nullable: true
+          required: [hospitalization, letter_status]
+          properties:
+            hospitalization: { type: boolean }
+            letter_status: { type: boolean }
+            letter_date: { type: string, format: date, nullable: true }
+            disease: { type: string, nullable: true }
+        attachment:
+          type: object
+          nullable: true
+          required: [id, url, content_type]
+          properties:
+            id: { type: integer, format: int64 }
+            url: { type: string, description: "URL bertanda tangan, berlaku satu jam." }
+            content_type: { type: string }
+        person:
+          type: object
+          description: "Hanya untuk yang memutuskan (bukan pemilik)."
+          required: [personnel_id, name]
+          properties:
+            personnel_id: { type: integer, format: int64 }
+            name: { type: string }
+            position: { type: string, nullable: true }
+        overlaps_with:
+          type: array
+          description: "Anggota regu lain dengan izin DISETUJUI yang beririsan hari. Hanya untuk yang memutuskan."
+          items:
+            type: object
+            required: [name, start_date, end_date]
+            properties:
+              name: { type: string }
+              start_date: { type: string, format: date }
+              end_date: { type: string, format: date }
+        coverage:
+          type: object
+          description: "Anggota regu yang hadir pada hari pertama irisan (atau hari mulai), tanpa pemohon. Hanya untuk yang memutuskan."
+          required: [date, present, size]
+          properties:
+            date: { type: string, format: date }
+            present: { type: integer }
+            size: { type: integer }
+        leave_balance:
+          type: object
+          description: "Cuti tahunan saja; hanya pada detail untuk yang memutuskan. `after_approval_days = max(0, remaining_days - working_days)`."
+          required: [remaining_days, after_approval_days]
+          properties:
+            remaining_days: { type: integer }
+            after_approval_days: { type: integer }
+        skipped:
+          type: array
+          description: "Hanya pada jawaban persetujuan: hari cuti yang tidak ditulis karena orangnya sudah PRESENT."
+          items:
+            type: object
+            required: [work_date, team_code]
+            properties:
+              work_date: { type: string, format: date }
+              team_code: { type: string }
+    PermissionDecision:
+      type: object
+      description: Isi persetujuan atau penolakan.
+      properties:
+        note: { type: string, maxLength: 1000, description: "Wajib saat menolak; opsional saat menyetujui." }
     PermissionCreate:
       type: object
-      required: [category_id, date_from, date_to]
+      required: [type, start_date, end_date, reason]
       properties:
-        category_id: { type: integer, format: int64 }
-        date_from: { type: string, format: date }
-        date_to: { type: string, format: date }
-        reason: { type: string }
-        attachment: { type: string, format: uri }
+        team_code: { type: string, nullable: true, example: 1K-IBMI-S1, description: "Boleh kosong bila orang itu hanya bertugas di satu regu pada start_date." }
+        type: { $ref: '#/components/schemas/LeaveCategoryType' }
+        category_code: { type: string, nullable: true, example: ANNUAL, description: "Boleh kosong untuk SICK (memakai kategori SICK)." }
+        start_date: { type: string, format: date }
+        end_date: { type: string, format: date }
+        start_time: { type: string, nullable: true, example: "08:00", description: "HH:MM; wajib berpasangan dengan end_time dan hanya untuk kategori sebagian hari." }
+        end_time: { type: string, nullable: true, example: "10:00" }
+        reason: { type: string, minLength: 1, maxLength: 500 }
+        responsibility: { type: string, nullable: true, maxLength: 255 }
+        contact_info: { type: string, nullable: true, maxLength: 255 }
+        change_day_from: { type: string, format: date, nullable: true }
+        change_day_to: { type: string, format: date, nullable: true }
+        hospitalization: { type: boolean, nullable: true, description: "Hanya SICK; wajib." }
+        letter_status: { type: boolean, nullable: true, description: "Hanya SICK; wajib. true mewajibkan satu foto di media_ids." }
+        letter_date: { type: string, format: date, nullable: true }
+        disease: { type: string, nullable: true, maxLength: 500 }
+        media_ids:
+          type: array
+          maxItems: 1
+          items: { type: integer, format: int64 }
+          description: "Satu foto (purpose LEAVE_ATTACHMENT, sudah di-complete)."
     ApprovalNote:
       type: object
       properties:
@@ -2139,32 +2532,63 @@ components:
     # ---------- 24. shift_swaps (replacement) ----------
     ShiftSwap:
       type: object
+      description: >-
+        Satu tukar jaga (tukar jaga berlaku seketika, tidak ada persetujuan): DANRU menunjuk
+        pengganti untuk satu catatan izin/mangkir. `cancelled_at` null berarti masih aktif.
+      required: [id, replaced_personnel_id, replaced_attendance_id, replacing_personnel_id, team_code, work_date, shift_id, starts_at, ends_at, created_by_id, created_at, updated_at]
       properties:
         id: { type: integer, format: int64 }
-        organization_id: { type: integer, format: int64 }
         replaced_personnel_id: { type: integer, format: int64 }
+        replaced_attendance_id: { type: integer, format: int64, nullable: true, description: "Null bila catatan yang diganti sudah dihapus (izin dicabut, mangkir dibatalkan)." }
         replacing_personnel_id: { type: integer, format: int64 }
-        team_id: { type: integer, format: int64, nullable: true }
-        swap_date: { type: string, format: date }
-        reason: { type: string, nullable: true }
-        status: { type: string, enum: [PENDING, APPROVED, REJECTED, CANCELLED] }
-        approved_by: { type: integer, format: int64, nullable: true }
+        team_code: { type: string, example: 1K-IBMI-S1 }
+        work_date: { type: string, format: date }
+        shift_id: { type: integer, format: int64 }
+        starts_at: { type: string, format: date-time }
+        ends_at: { type: string, format: date-time }
+        note: { type: string, nullable: true }
+        created_by_id: { type: integer, format: int64 }
+        cancelled_at: { type: string, format: date-time, nullable: true }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
     ShiftSwapCreate:
       type: object
-      required: [replaced_personnel_id, replacing_personnel_id, swap_date]
+      required: [replaced_attendance_id, replacing_personnel_id]
       properties:
-        replaced_personnel_id: { type: integer, format: int64 }
-        replacing_personnel_id: { type: integer, format: int64 }
-        team_id: { type: integer, format: int64 }
-        swap_date: { type: string, format: date }
-        reason: { type: string }
+        replaced_attendance_id: { type: integer, format: int64, description: "Dari GET /shift-swaps/replaceable." }
+        replacing_personnel_id: { type: integer, format: int64, description: "Dari GET /shift-swaps/candidates." }
+        note: { type: string, maxLength: 500 }
+    ShiftSwapCandidate:
+      type: object
+      required: [personnel_id, name]
+      properties:
+        personnel_id: { type: integer, format: int64 }
+        name: { type: string }
+    AttendanceReplacedRow:
+      type: object
+      description: Satu baris tab "Digantikan" (GET /attendances/replaced).
+      required: [work_date, shift_name, replacing_personnel_name, replacing_check_in_at, replacing_check_out_at]
+      properties:
+        work_date: { type: string, format: date }
+        shift_name: { type: string }
+        replacing_personnel_name: { type: string }
+        replacing_check_in_at: { type: string, format: date-time, nullable: true }
+        replacing_check_out_at: { type: string, format: date-time, nullable: true }
+    AttendanceReplacingRow:
+      type: object
+      description: Satu baris tab "Menggantikan" (GET /attendances/replacing).
+      required: [work_date, shift_name, replaced_personnel_name, check_in_at, check_out_at]
+      properties:
+        work_date: { type: string, format: date }
+        shift_name: { type: string }
+        replaced_personnel_name: { type: string }
+        check_in_at: { type: string, format: date-time, nullable: true }
+        check_out_at: { type: string, format: date-time, nullable: true }
 
     # ---------- media: unggahan foto (Phase 04.1) ----------
     MediaPurpose:
       type: string
-      enum: [PROFILE_PHOTO, ATTENDANCE_SELFIE, REPORT, INSTRUCTION, PATROL_SCAN, PANIC_REPORT, ASSET_REPORT, EMEMO, LETTERHEAD_LOGO]
+      enum: [PROFILE_PHOTO, ATTENDANCE_SELFIE, REPORT, INSTRUCTION, PATROL_SCAN, PANIC_REPORT, ASSET_REPORT, EMEMO, LETTERHEAD_LOGO, LEAVE_ATTACHMENT]
       description: "Untuk apa foto itu. Fitur yang melampirkannya menolak tujuan yang tidak cocok (MEDIA_PURPOSE_MISMATCH). `PROFILE_PHOTO` tidak dapat didaftarkan (422): foto profil berasal dari Persist Personalia."
     MediaStatus:
       type: string
@@ -3094,6 +3518,7 @@ components:
         - INSTRUCTION_FEEDBACK
         - SWAP_ASSIGNED
         - PANIC_RESOLVED
+        - LEAVE_CANCELLED
     NotificationPriority:
       type: string
       enum: [NORMAL, HIGH]
@@ -3235,6 +3660,12 @@ paths:
       description: |
         Seluruh karyawan grup (KPI, IDS, PCD) masuk ke satu organisasi (D17). 403
         AUTH_NOT_IN_GROUP: karyawan itu bekerja untuk PT di luar grup, dan SiAPP tidak melayaninya.
+
+        Kegagalan lain (details.reason): 401 AUTH_INVALID_CREDENTIALS (email atau kata sandi salah;
+        email yang tidak dikenal dijawab sama persis); 403 AUTH_ACCOUNT_DISABLED (karyawan tidak aktif
+        atau tanpa data kerja), AUTH_DEVICE_BOUND (akun terikat ke HP lain), AUTH_ORGANIZATION_SUSPENDED
+        (organisasi dinonaktifkan); 429 terlalu banyak percobaan gagal (lihat `Retry-After`); 503
+        PERSONEL_UNAVAILABLE (Personalia tidak menjawab, atau kunci integrasinya ditolak).
       security: []
       requestBody:
         required: true
@@ -3714,18 +4145,18 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
   /admin/permission-categories:
     get:
-      x-owner: personel
       operationId: getAdminPermissionCategories
-      tags: [Masters]
-      summary: List PermissionCategory
+      tags: [Permission]
+      summary: Daftar kategori izin (ORG_ADMIN)
+      description: >-
+        Kategori izin, cuti dan sakit milik SiAPP (D2), aktif atau tidak. Apa yang istimewa dari
+        sebuah kategori ada pada bendera barisnya, bukan pada kode atau namanya.
       security:
         - bearerSession: []
-        - oauth2ClientCredentials: [masters:read]
-        - apiKey: []
       parameters:
+        - { name: type, in: query, required: false, schema: { $ref: '#/components/schemas/LeaveCategoryType' } }
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/LimitParam'
-        - $ref: '#/components/parameters/SortParam'
         - $ref: '#/components/parameters/QParam'
         - $ref: '#/components/parameters/IsActiveParam'
       responses:
@@ -3736,25 +4167,24 @@ paths:
               schema:
                 allOf:
                   - { $ref: '#/components/schemas/ListEnvelope' }
-                  - properties: { data: { type: array, items: { $ref: '#/components/schemas/PermissionCategory' } } }
+                  - properties: { data: { type: array, items: { $ref: '#/components/schemas/LeaveCategory' } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
     post:
-      x-owner: personel
       operationId: postAdminPermissionCategories
-      tags: [Masters]
-      summary: Buat PermissionCategory
+      tags: [Permission]
+      summary: Buat kategori izin (ORG_ADMIN)
+      description: >-
+        Kode, tipe dan `is_annual` tidak bisa diubah sesudahnya, dan kode tidak pernah dipakai dua
+        kali (409 `LEAVE_CATEGORY_CODE_TAKEN`). Bendera yang saling bertentangan: 422.
       security:
         - bearerSession: []
-        - oauth2ClientCredentials: [masters:write]
-        - apiKey: []
-      parameters:
-        - $ref: '#/components/parameters/IdempotencyKeyHeader'
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/CodedMasterInput' }
+            schema: { $ref: '#/components/schemas/LeaveCategoryInput' }
       responses:
         '201':
           description: Created
@@ -3763,23 +4193,20 @@ paths:
               schema:
                 allOf:
                   - { $ref: '#/components/schemas/SuccessEnvelope' }
-                  - properties: { data: { $ref: '#/components/schemas/PermissionCategory' } }
+                  - properties: { data: { $ref: '#/components/schemas/LeaveCategory' } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
-  /admin/permission-categories/{id}:
+  /admin/permission-categories/{code}:
     parameters:
-      - $ref: '#/components/parameters/IdPath'
+      - { name: code, in: path, required: true, schema: { type: string, example: ANNUAL } }
     get:
-      x-owner: personel
-      operationId: getAdminPermissionCategoriesById
-      tags: [Masters]
-      summary: Detail PermissionCategory
+      operationId: getAdminPermissionCategoriesByCode
+      tags: [Permission]
+      summary: Detail kategori izin beserta kuotanya (ORG_ADMIN)
       security:
         - bearerSession: []
-        - oauth2ClientCredentials: [masters:read]
-        - apiKey: []
       responses:
         '200':
           description: OK
@@ -3788,23 +4215,24 @@ paths:
               schema:
                 allOf:
                   - { $ref: '#/components/schemas/SuccessEnvelope' }
-                  - properties: { data: { $ref: '#/components/schemas/PermissionCategory' } }
+                  - properties: { data: { $ref: '#/components/schemas/LeaveCategoryDetail' } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
     patch:
-      x-owner: personel
-      operationId: patchAdminPermissionCategoriesById
-      tags: [Masters]
-      summary: Ubah PermissionCategory
+      operationId: patchAdminPermissionCategoriesByCode
+      tags: [Permission]
+      summary: Ubah atau nonaktifkan kategori izin (ORG_ADMIN)
+      description: >-
+        Kategori tidak dihapus, hanya dinonaktifkan (`is_active: false`): permintaan lama tetap
+        menunjuk padanya. Kode, tipe dan `is_annual` tidak bisa diubah (422).
       security:
         - bearerSession: []
-        - oauth2ClientCredentials: [masters:write]
-        - apiKey: []
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/CodedMasterInput' }
+            schema: { $ref: '#/components/schemas/LeaveCategoryUpdate' }
       responses:
         '200':
           description: OK
@@ -3813,29 +4241,138 @@ paths:
               schema:
                 allOf:
                   - { $ref: '#/components/schemas/SuccessEnvelope' }
-                  - properties: { data: { $ref: '#/components/schemas/PermissionCategory' } }
+                  - properties: { data: { $ref: '#/components/schemas/LeaveCategory' } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
-    delete:
-      x-owner: personel
-      operationId: deleteAdminPermissionCategoriesById
-      tags: [Masters]
-      summary: Hapus/non-aktifkan PermissionCategory
+  /admin/permission-categories/{code}/quotas:
+    parameters:
+      - { name: code, in: path, required: true, schema: { type: string, example: UNPAID } }
+    put:
+      operationId: putAdminPermissionCategoriesByCodeQuotas
+      tags: [Permission]
+      summary: Ganti kuota hari sebuah kategori (ORG_ADMIN)
+      description: >-
+        Baris yang dikirim adalah baris yang ada sesudahnya. `default_days` berlaku untuk klien tanpa
+        barisnya sendiri; **tanpa baris sama sekali berarti 0 hari**, jadi kategori itu belum bisa
+        diajukan. Cuti tahunan dibatasi saldo (bukan kuota) dan sakit tidak berkuota: keduanya 422
+        `LEAVE_CATEGORY_INVALID`.
       security:
         - bearerSession: []
-        - oauth2ClientCredentials: [masters:write]
-        - apiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LeaveQuotasInput' }
       responses:
         '200':
           description: OK
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { $ref: '#/components/schemas/LeaveQuotas' } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /admin/leave-client-settings/{client_code}:
+    parameters:
+      - { name: client_code, in: path, required: true, schema: { type: string, example: 1K-IBMI } }
+    put:
+      operationId: putAdminLeaveClientSettingsByClientCode
+      tags: [Permission]
+      summary: Nyalakan atau matikan pengajuan izin untuk satu klien (ORG_ADMIN)
+      description: >-
+        Klien tanpa pengaturan dianggap menyala. Klien yang dimatikan: setiap pengajuan bukan sakit
+        gagal dengan `LEAVE_QUOTA_EXCEEDED`.
+      security:
+        - bearerSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [requests_enabled]
+              properties:
+                requests_enabled: { type: boolean }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties:
+                      data:
+                        type: object
+                        required: [client_code, requests_enabled]
+                        properties:
+                          client_code: { type: string }
+                          requests_enabled: { type: boolean }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /admin/personnel/{personnel_id}/leave-ledger:
+    parameters:
+      - { name: personnel_id, in: path, required: true, schema: { type: integer, format: int64 } }
+    get:
+      operationId: getAdminPersonnelByPersonnelIdLeaveLedger
+      tags: [Permission]
+      summary: Riwayat saldo cuti tahunan seorang pegawai
+      description: >-
+        Terbaru dulu; `balance_after` baris pertama adalah saldo sekarang. ORG_ADMIN, atau
+        REGION_ADMIN untuk pegawai yang bertugas di regu di bawah wilayahnya (di luar itu 403, sama
+        dengan pegawai yang tidak ada).
+      security:
+        - bearerSession: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/ListEnvelope' }
+                  - properties: { data: { type: array, items: { $ref: '#/components/schemas/LeaveLedgerEntry' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      operationId: postAdminPersonnelByPersonnelIdLeaveLedger
+      tags: [Permission]
+      summary: Beri saldo cuti tahunan atau koreksi saldo
+      description: >-
+        `GRANT` menambah hari (lebih dari 0). `ADJUST` mengoreksi (positif atau negatif). Saldo tidak
+        boleh di bawah 0 (422 `LEAVE_BALANCE_INSUFFICIENT`). Riwayat hanya ditambah, tidak diubah.
+      security:
+        - bearerSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LeaveLedgerInput' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { $ref: '#/components/schemas/LeaveLedgerEntry' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /admin/instruction-categories:
     get:
       operationId: getAdminInstructionCategories
@@ -9377,65 +9914,102 @@ paths:
       operationId: postAttendancesQrCheckIn
       tags: [Attendance]
       summary: Absen datang via scan QR
-      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyHeader' } ]
-      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AttendanceQrCheckIn' } } } }
+      description: >-
+        Memindai kode yang ditampilkan DANRU. Aturan shift, izin `attendance.checkin`, hari kerja
+        sebelumnya, keterlambatan, dan check-in ganda sama dengan absen selfie; tanpa foto. Koordinat
+        opsional: bila dikirim, diukur terhadap geofence proyek seperti absen selfie (422
+        `ATTENDANCE_OUTSIDE_AREA` untuk geofence ketat). Kode salah/palsu/organisasi lain/kode arah
+        pulang: 422 `ATTENDANCE_QR_INVALID`; kode lewat semenit: 422 `ATTENDANCE_QR_EXPIRED`; kode
+        regu lain: 422 `ATTENDANCE_QR_WRONG_TEAM`. Kunci idempotensi yang sama dengan token berbeda
+        adalah 409 `IDEMPOTENCY_KEY_REUSED`: pindai ulang dengan kunci baru. Tanpa
+        `ATTENDANCE_QR_SECRET`: 503 `ATTENDANCE_QR_UNAVAILABLE` (absen selfie tetap berjalan).
+      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyRequiredHeader' } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AttendanceQrInput' } } } }
       responses:
         '201': { description: Created, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/Attendance' } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
+        '503': { description: "Metode QR belum dinyalakan (ATTENDANCE_QR_UNAVAILABLE).", content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
   /attendances/qr/check-out:
     post:
       operationId: postAttendancesQrCheckOut
       tags: [Attendance]
       summary: Absen pulang via scan QR
-      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyHeader' } ]
-      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AttendanceQrCheckOut' } } } }
+      description: >-
+        Butuh check-in lebih dulu (422 `ATTENDANCE_NOT_CHECKED_IN`); sudah check-out 409
+        `ATTENDANCE_ALREADY_CHECKED_OUT`. Kode harus kode arah pulang (OUT). Aturan kode dan geofence
+        sama dengan check-in QR.
+      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyRequiredHeader' } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AttendanceQrInput' } } } }
       responses:
         '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/Attendance' } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
+        '503': { description: "Metode QR belum dinyalakan (ATTENDANCE_QR_UNAVAILABLE).", content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /attendances/today:
+    get:
+      operationId: getAttendancesToday
+      tags: [Attendance]
+      summary: Shift yang bisa diabsen sekarang
+      description: >-
+        Shift terjadwal milik pemanggil yang jendelanya (2 jam sebelum mulai sampai 4 jam setelah
+        selesai) memuat saat ini, satu per regu tempat ia bertugas hari itu, digabung dengan catatan
+        absensi yang sudah ada. `shift_ref` dari sini yang dikirim ke endpoint absen. Perlu izin
+        `attendance.checkin`.
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/AttendanceToday' } } } } ] } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /attendances/selfie/check-in:
     post:
       operationId: postAttendancesSelfieCheckIn
       tags: [Attendance]
-      summary: Absen datang selfie + GPS + TZ
-      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyHeader' } ]
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              required: [photo, lat, lng]
-              properties:
-                photo: { type: string, format: binary }
-                lat: { type: number, format: double }
-                lng: { type: number, format: double }
+      summary: Absen datang selfie + GPS
+      description: >-
+        Online-only. `shift_ref` harus salah satu shift dari `GET /attendances/today`, selain itu
+        422 `ATTENDANCE_SHIFT_NOT_ACTIVE`. Selfie didaftarkan dulu lewat modul media (purpose
+        `ATTENDANCE_SELFIE`). Di luar radius: geofence ketat menolak (422
+        `ATTENDANCE_OUTSIDE_AREA`), geofence longgar menyimpan dengan `check_in_within_area: false`.
+        Absen terlambat tidak ditolak: catatan menyimpan `late_minutes`. Hari kerja sebelumnya
+        (jadwal terakhir sebelum tanggal shift yang bukan OFF) harus beres. Sudah absen datang tetapi
+        belum absen pulang: 422 `ATTENDANCE_PREVIOUS_NOT_CHECKED_OUT`. Tidak ada catatan sama sekali
+        (alpa): 422 `ATTENDANCE_PREVIOUS_NOT_CHECKED_IN`, hanya bila personil sudah pernah absen
+        datang lewat SiAPP sebelum hari itu (hari sebelum absen pertamanya tidak dinilai). Keduanya
+        memuat `previous_work_date`. Dianggap beres: absen pulang yang lengkap, izin yang disetujui
+        (LEAVE), atau mangkir yang sudah ditandai (ABSENT). Check-in ganda 409
+        `ATTENDANCE_ALREADY_CHECKED_IN`; shift yang sudah tercatat izin/mangkir 422
+        `ATTENDANCE_NOT_ALLOWED`; proyek tanpa koordinat 422 `PROJECT_NOT_CONFIGURED`. Foto yang
+        bukan milik pemanggil atau tidak ada: 404 `MEDIA_NOT_FOUND` (aturan modul media).
+      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyRequiredHeader' } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AttendanceSelfieInput' } } } }
       responses:
         '201': { description: Created, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/Attendance' } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '413': { description: PAYLOAD_TOO_LARGE, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
   /attendances/selfie/check-out:
     post:
       operationId: postAttendancesSelfieCheckOut
       tags: [Attendance]
       summary: Absen pulang selfie + GPS
-      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyHeader' } ]
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              required: [photo, lat, lng]
-              properties:
-                photo: { type: string, format: binary }
-                lat: { type: number, format: double }
-                lng: { type: number, format: double }
+      description: >-
+        Butuh check-in lebih dulu (422 `ATTENDANCE_NOT_CHECKED_IN`). Sudah check-out: 409
+        `ATTENDANCE_ALREADY_CHECKED_OUT`, gunakan `PATCH /attendances/{id}/check-out`. Aturan
+        geofence sama dengan check-in.
+      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyRequiredHeader' } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AttendanceSelfieInput' } } } }
       responses:
         '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/Attendance' } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
   /attendances/{id}/check-out:
     parameters: [ { $ref: '#/components/parameters/IdPath' } ]
@@ -9443,113 +10017,217 @@ paths:
       operationId: patchAttendancesByIdCheckOut
       tags: [Attendance]
       summary: Update jam pulang
+      description: >-
+        Menimpa check-out catatan milik sendiri dengan selfie dan fix baru, selama jendela check-out
+        shift masih terbuka. Nilai lama masuk audit log, event `CHECK_OUT_UPDATED` ke Personel,
+        dan `check_out_update_count` bertambah. Belum ada check-out: 422
+        `ATTENDANCE_NOT_CHECKED_OUT`. Jendela check-out sudah tutup (4 jam setelah shift selesai):
+        422 `ATTENDANCE_SHIFT_NOT_ACTIVE`. Geofence memakai proyek yang tersimpan di catatan, dengan
+        aturan yang sama dengan check-out. Catatan orang lain atau organisasi lain: 404.
+      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyRequiredHeader' } ]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AttendanceCheckOutPatch' } } } }
       responses:
         '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/Attendance' } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /attendances/me:
     get:
       operationId: getAttendancesMe
       tags: [Attendance]
-      summary: Riwayat absensi sendiri
+      summary: Kalender absensi sendiri per bulan
+      description: >-
+        Jadwal shift bulan itu digabung dengan catatan absensi yang ada, satu entri per shift per
+        regu. Status diambil dari catatan bila ada; tanpa catatan: `MISSING` bila shift sudah
+        berakhir, `UPCOMING` bila belum (keduanya dihitung, tidak disimpan). Hari OFF dan hari tanpa
+        shift tidak dimuat. Shift lintas tengah malam ada di tanggal mulainya. Shift yang diambil alih
+        lewat tukar jaga aktif ikut dimuat (dengan `shift_swap_id`), juga sebelum pengganti absen
+        datang. Ini tampilan lapangan
+        atas bukti yang ditangkap SiAPP; koreksi HR langsung di Personel tidak tercermin di sini.
       parameters:
-        - $ref: '#/components/parameters/DateFromParam'
-        - $ref: '#/components/parameters/DateToParam'
-        - $ref: '#/components/parameters/PageParam'
-        - $ref: '#/components/parameters/LimitParam'
-        - $ref: '#/components/parameters/SinceParam'
-        - $ref: '#/components/parameters/CursorParam'
+        - { name: month, in: query, required: true, description: "Bulan, YYYY-MM.", schema: { type: string, pattern: '^\d{4}-(0[1-9]|1[0-2])$', example: "2026-03" } }
       responses:
         '200':
-          description: >-
-            OK. Delta-sync: bila `since` dikirim, `data` memuat baris ter-upsert dan
-            `deleted` memuat tombstone (DL-34); `meta.server_time` WAJIB.
+          description: OK, tanggal naik.
           content:
             application/json:
               schema:
                 allOf:
                   - { $ref: '#/components/schemas/SuccessEnvelope' }
                   - properties:
-                      data: { type: array, items: { $ref: '#/components/schemas/Attendance' } }
-                      deleted: { type: array, items: { $ref: '#/components/schemas/Tombstone' } }
-                      meta: { $ref: '#/components/schemas/DeltaMeta' }
-              example:
-                success: true
-                data: [{ id: 9001, personnel_id: 1, project_id: 1, method: QR, is_absent: false }]
-                deleted: [{ id: 8800, deleted_at: "2026-06-01T02:00:00Z" }]
-                pagination: { page: 1, limit: 20, total: 1, total_pages: 1 }
-                meta: { request_id: "req_abc", server_time: "2026-06-01T03:00:00Z" }
+                      data: { type: array, items: { $ref: '#/components/schemas/AttendanceHistoryDay' } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /attendances/replaced:
     get:
       operationId: getAttendancesReplaced
       tags: [Attendance]
       summary: Tab "Digantikan"
+      description: "Shift milik pemanggil yang diambil alih orang lain (tukar jaga aktif saja), terbaru lebih dulu. Tanpa date_from/date_to: seluruh riwayat."
       parameters: [ { $ref: '#/components/parameters/DateFromParam' }, { $ref: '#/components/parameters/DateToParam' } ]
       responses:
-        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/ListEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/Attendance' } } } } ] } } } }
+        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/AttendanceReplacedRow' } } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
   /attendances/replacing:
     get:
       operationId: getAttendancesReplacing
       tags: [Attendance]
       summary: Tab "Menggantikan"
+      description: "Shift orang lain yang diambil alih pemanggil (tukar jaga aktif saja), terbaru lebih dulu. Tanpa date_from/date_to: seluruh riwayat."
       parameters: [ { $ref: '#/components/parameters/DateFromParam' }, { $ref: '#/components/parameters/DateToParam' } ]
       responses:
-        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/ListEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/Attendance' } } } } ] } } } }
+        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/AttendanceReplacingRow' } } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
   /attendances/qr/display:
     get:
       operationId: getAttendancesQrDisplay
       tags: [Attendance]
       summary: Tampil/generate QR absensi regu (DANRU)
-      parameters: [ { $ref: '#/components/parameters/TeamIdParam' } ]
+      description: >-
+        Kode berputar: berlaku 60 detik, aplikasi meminta ulang tiap ~30 detik. Perlu izin
+        `attendance.qr.display` untuk regu itu; regu di luar jangkauan izin (atau tidak ada): 403
+        `PERMISSION_DENIED`. Respons tidak boleh di-cache (`Cache-Control: no-store`).
+      parameters:
+        - { name: team_code, in: query, required: true, description: "Kode regu yang kodenya ditampilkan.", schema: { type: string, example: "1K-IBMI-S1" } }
+        - { name: direction, in: query, required: true, description: "IN untuk absen datang, OUT untuk absen pulang.", schema: { type: string, enum: [IN, OUT] } }
       responses:
-        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessEnvelope' } } } }
+        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/AttendanceQrCode' } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '503': { description: "Metode QR belum dinyalakan (ATTENDANCE_QR_UNAVAILABLE).", content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
   /attendances/group:
     post:
       operationId: postAttendancesGroup
       tags: [Attendance]
       summary: Absensi Group (DANRU)
-      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyHeader' } ]
+      description: >-
+        DANRU memuster personil dari satu shift dalam satu panggilan, absen datang metode GROUP
+        dengan lokasi DANRU sendiri. Perlu izin `attendance.group.view` yang menjangkau
+        `team_code`; di luar jangkauan: 403 `PERMISSION_DENIED`. Ditolak 422
+        `GROUP_ATTENDANCE_DISABLED` selama proyek regu belum mengaktifkan
+        `allow_group_attendance`. 201 selalu dikembalikan bila permintaan tervalidasi: setiap
+        personil punya hasilnya sendiri pada `data[]` (lihat `AttendanceGroupResult`), satu yang
+        gagal (tidak terjadwal pada shift ini, sudah tercatat) tidak menggagalkan yang lain.
+      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyRequiredHeader' } ]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AttendanceGroupInput' } } } }
       responses:
-        '201': { description: Created, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/Attendance' } } } } ] } } } }
+        '201': { description: Created, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/AttendanceGroupResult' } } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
   /attendances/absent:
     post:
       operationId: postAttendancesAbsent
       tags: [Attendance]
       summary: Buat Mangkir (DANRU)
-      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyHeader' } ]
+      description: >-
+        DANRU menandai satu personil mangkir pada satu regu dan tanggal kerja, tanpa personil itu
+        pernah absen. Perlu izin `attendance.absence.create` yang menjangkau `team_code` pada
+        `date`; di luar jangkauan: 403 `PERMISSION_DENIED`. Personil tidak terjadwal pada regu dan
+        tanggal itu (hari OFF, tidak dijadwalkan, atau bukan regu personil): 422
+        `ATTENDANCE_NO_SHIFT`. Shift itu sudah punya catatan: 409 `ABSENCE_ALREADY_PRESENT` (sudah
+        absen datang) atau 422 `ATTENDANCE_NOT_ALLOWED` (sudah izin/mangkir). Shift yang belum
+        dimulai: 422 `ABSENCE_SHIFT_NOT_STARTED`. Shift yang diambil
+        alih personil lewat tukar jaga aktif di regu itu juga bisa ditandai mangkir; catatannya
+        membawa `shift_swap_id` tukar jaga itu.
+      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyRequiredHeader' } ]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AttendanceAbsentInput' } } } }
       responses:
         '201': { description: Created, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/Attendance' } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /attendances/absent/{id}:
+    parameters: [ { $ref: '#/components/parameters/IdPath' } ]
+    delete:
+      operationId: deleteAttendancesAbsentById
+      tags: [Attendance]
+      summary: Batalkan Mangkir (DANRU)
+      description: >-
+        DANRU membatalkan mangkir yang keliru ditandai: baris dihapus (bukan diubah statusnya) dan
+        sebuah event `ABSENT_CANCELLED` dikirim ke Personel. Sama izinnya dengan membuat mangkir,
+        dinilai dari tanggal kerja dan regu catatan itu, bukan hari ini. Catatan yang bukan mangkir,
+        tidak ada, atau di luar jangkauan izin pemanggil: 404 (sama untuk ketiganya, sehingga id
+        tidak bisa diuji coba). Bila mangkir itu sudah ditutup tukar jaga, tukar jaga yang belum
+        dimulai ikut dibatalkan; bila pengganti sudah absen datang: 409 `SWAP_ALREADY_STARTED` dan
+        catatan tetap ada.
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessEnvelope' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /attendances/group-summary:
+    get:
+      operationId: getAttendancesGroupSummary
+      tags: [Attendance]
+      summary: Ringkasan bulanan regu (DANRU)
+      description: >-
+        Hitungan per hari kerja regu sebulan: `scheduled` (personil yang terjadwal, bukan OFF),
+        `present`, `leave`, `absent`, `missing` (terjadwal tapi belum ada catatan sama sekali, baik
+        hari itu sudah lewat atau belum), `swapped` (izin/mangkir yang sudah ada tukar jaga aktif,
+        subset dari `leave`/`absent`). Izin sama dengan `GET /attendances`.
+      parameters:
+        - { name: team_code, in: query, required: true, schema: { type: string, example: 1K-IBMI-S1 } }
+        - { name: month, in: query, required: true, description: "Bulan, YYYY-MM.", schema: { type: string, pattern: '^\d{4}-(0[1-9]|1[0-2])$', example: "2026-03" } }
+      responses:
+        '200':
+          description: OK, tanggal naik.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          required: [work_date, scheduled, present, leave, absent, missing, swapped]
+                          properties:
+                            work_date: { type: string, format: date }
+                            scheduled: { type: integer }
+                            present: { type: integer }
+                            leave: { type: integer }
+                            absent: { type: integer }
+                            missing: { type: integer }
+                            swapped: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /attendances:
     get:
       operationId: getAttendances
       tags: [Attendance]
       summary: Monitor kehadiran regu (DANRU)
+      description: >-
+        Setiap personil dan harinya dari regu yang dijangkau izin `attendance.group.view` atau
+        `attendance.absence.view` pemanggil, terbaru lebih dulu. Tanpa `team_code`: setiap regu yang
+        dijangkau salah satu izin itu; kosong keduanya: 403 `PERMISSION_DENIED`. `team_code` di luar
+        jangkauan: 403 `PERMISSION_DENIED` juga, sama dengan regu yang tidak dijangkau sama sekali.
+        Pemegang izin hanya sebagai `SELF` (anggota biasa) hanya melihat catatannya sendiri, mis.
+        riwayat mangkir `?status=ABSENT&month=`. `month` tidak bisa dipakai bersama `date_from`/
+        `date_to` (422).
       security:
         - bearerSession: []
         - oauth2ClientCredentials: [attendance:read]
         - apiKey: []
       parameters:
-        - $ref: '#/components/parameters/TeamIdParam'
-        - $ref: '#/components/parameters/ProjectIdParam'
+        - { name: team_code, in: query, description: "Regu tertentu; selain itu setiap regu yang dijangkau.", schema: { type: string, example: 1K-IBMI-S1 } }
+        - { name: project_code, in: query, description: "Proyek tertentu.", schema: { type: string, example: 1K-IBMI-S } }
+        - { name: status, in: query, description: "Status tersimpan; `ABSENT` untuk riwayat mangkir.", schema: { type: string, enum: [PRESENT, LEAVE, ABSENT] } }
+        - { name: month, in: query, description: "Bulan, YYYY-MM.", schema: { type: string, pattern: '^\d{4}-(0[1-9]|1[0-2])$', example: "2026-03" } }
         - $ref: '#/components/parameters/DateFromParam'
         - $ref: '#/components/parameters/DateToParam'
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/LimitParam'
       responses:
-        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/ListEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/Attendance' } } } } ] } } } }
+        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/ListEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/TeamAttendanceRow' } } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
   /attendances/{id}:
@@ -9558,8 +10236,12 @@ paths:
       operationId: getAttendancesById
       tags: [Attendance]
       summary: Detail satu absensi
+      description: >-
+        Untuk pemiliknya, atau siapa pun yang izin `attendance.group.view` / `attendance.absence.view`-nya
+        menjangkau regu catatan itu pada tanggal kerjanya (DANRU regu itu). Selain itu 404, sama
+        dengan catatan yang tidak ada. URL selfie bertanda tangan dan kedaluwarsa; jangan disimpan.
       responses:
-        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/Attendance' } } } ] } } } }
+        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/AttendanceDetail' } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
   /admin/attendances:
@@ -9567,13 +10249,18 @@ paths:
       operationId: getAdminAttendances
       tags: [Attendance]
       summary: Monitor kehadiran (web admin, WEB-25)
+      description: >-
+        Setiap catatan dalam jangkauan admin: ORG_ADMIN melihat semua, REGION_ADMIN hanya proyek di
+        bawah wilayahnya.
       security:
         - bearerSession: []
         - oauth2ClientCredentials: [attendance:read]
         - apiKey: []
       parameters:
-        - $ref: '#/components/parameters/ProjectIdParam'
-        - $ref: '#/components/parameters/TeamIdParam'
+        - { name: team_code, in: query, schema: { type: string, example: 1K-IBMI-S1 } }
+        - { name: project_code, in: query, schema: { type: string, example: 1K-IBMI-S } }
+        - { name: status, in: query, description: "Status tersimpan.", schema: { type: string, enum: [PRESENT, LEAVE, ABSENT] } }
+        - { name: sync_status, in: query, description: "Status kirim ke Personel.", schema: { type: string, enum: [PENDING, SYNCED, FAILED] } }
         - $ref: '#/components/parameters/DateFromParam'
         - $ref: '#/components/parameters/DateToParam'
         - $ref: '#/components/parameters/PageParam'
@@ -9588,11 +10275,24 @@ paths:
       operationId: patchAdminAttendancesById
       tags: [Attendance]
       summary: Koreksi kehadiran
+      description: >-
+        `reason` selalu wajib. `status: ABSENT` menjadikan catatan mangkir (menghapus jam
+        datang/pulang bila ada); `status: PRESENT` (dari ABSENT/LEAVE atau yang sudah PRESENT) perlu
+        `check_in_at` bila belum ada; `check_in_at`/`check_out_at` tanpa `status` mengoreksi jam
+        catatan yang sudah hadir. Metode tersimpan `FORCE`; keterlambatan dihitung ulang terhadap
+        toleransi shift saat ini dan izin yang disetujui, seperti absen datang biasa. Satu event
+        `CORRECTED` selalu dikirim ke Personel, apa pun yang berubah. Di luar jangkauan wilayah
+        admin, atau tidak ada: 404. `reason` kosong, atau tidak ada satu pun dari `status`/
+        `check_in_at`/`check_out_at`: 422 `VALIDATION_ERROR`. Mengubah catatan bertukar jaga menjadi
+        `PRESENT` membatalkan tukar jaga yang belum dimulai; bila pengganti sudah absen datang: 409
+        `SWAP_ALREADY_STARTED`.
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AttendanceCorrection' } } } }
       responses:
         '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/Attendance' } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
   /admin/attendances/export:
     get:
@@ -9612,94 +10312,418 @@ paths:
     get:
       operationId: getPermissionCategories
       tags: [Permission]
-      summary: Daftar kategori izin (lookup)
+      summary: Daftar kategori izin, cuti dan sakit (lookup, delta-sync)
       description: >-
-        Kategori izin milik Persist Personel (LOCK/01 §2), dibaca lewat cache; SiAPP tidak menyimpannya.
-        Personel tidak dapat menjawab → 503 PERSONEL_UNAVAILABLE.
+        Kategori milik SiAPP (D2), tidak lagi dibaca dari Personel. Dua bentuk jawaban:
+
+        - **Tanpa `since`**: semua baris aktif sekaligus, dengan `meta.server_time` sebagai
+          watermark pertama klien.
+        - **Dengan `since`** (delta-sync, DL-34/DL-57): baris yang berubah di `data`, dan yang
+          dinonaktifkan di `deleted` (tombstone, berkunci `code`). Simpan `meta.server_time`.
+
+        `type` menyaring satu tipe (LEAVE, PERMIT atau SICK).
+      parameters:
+        - { name: type, in: query, required: false, schema: { $ref: '#/components/schemas/LeaveCategoryType' } }
+        - $ref: '#/components/parameters/SinceParam'
       responses:
-        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/ListEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/PermissionCategory' } } } } ] } } } }
+        '200':
+          description: OK. `meta.server_time` WAJIB.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/LeaveCategory' } }
+                      deleted: { type: array, items: { $ref: '#/components/schemas/LeaveCategoryTombstone' } }
+                      pagination: { $ref: '#/components/schemas/Pagination' }
+                      meta: { $ref: '#/components/schemas/DeltaMeta' }
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /permissions/quota:
+    get:
+      operationId: getPermissionsQuota
+      tags: [Permission]
+      summary: Sisa kuota milik sendiri untuk satu kategori
+      description: >-
+        Cuti tahunan: `quota_days` adalah saldo buku besar. Kategori lain: hari kuota klien regu itu
+        (bila tidak ada baris, 0) dikurangi hari yang dipegang pengajuan menunggu dan disetujui
+        tahun ini. `team_code` boleh dikosongkan bila orang itu hanya bertugas di satu regu.
+        Sakit dan kategori tanpa kuota: 422 `LEAVE_CATEGORY_INVALID`. Perlu `attendance.leave.request`.
+      parameters:
+        - { name: category_code, in: query, required: true, schema: { type: string, example: ANNUAL } }
+        - { name: team_code, in: query, required: false, schema: { type: string, example: 1K-IBMI-S1 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { $ref: '#/components/schemas/LeaveQuota' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /permissions/approver:
+    get:
+      operationId: getPermissionsApprover
+      tags: [Permission]
+      summary: Siapa yang akan memutuskan pengajuan di sebuah regu
+      description: >-
+        DANRU regu itu hari ini. Regu tanpa DANRU, atau pemanggil sendiri DANRU-nya: 404
+        `LEAVE_NO_APPROVER` (pengajuan tetap bisa dibuat; admin yang memutuskan). Perlu
+        `attendance.leave.request`.
+      parameters:
+        - { name: team_code, in: query, required: false, schema: { type: string, example: 1K-IBMI-S1 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { $ref: '#/components/schemas/LeaveApprover' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /permissions:
     get:
       operationId: getPermissions
       tags: [Permission]
-      summary: Daftar izin (DANRU = regu untuk approval)
+      summary: Antrean pengajuan regu yang dipimpin pemanggil (DANRU)
+      description: >-
+        Berdasarkan regu yang dipimpin pemanggil SEKARANG (`attendance.leave.approve`, TEAM), bukan
+        berdasarkan DANRU yang tercatat saat diajukan: setelah DANRU diganti, yang baru melihatnya.
+        Terbaru dulu. `type` dan `status` boleh diulang atau dipisah koma. `q` mencari nama atau nomor.
+        Tiap item memuat `person`, `overlaps_with` dan `coverage`.
       security:
         - bearerSession: []
-        - oauth2ClientCredentials: [instructions:read]
-        - apiKey: []
       parameters:
-        - $ref: '#/components/parameters/TeamIdParam'
+        - { name: team_code, in: query, required: false, schema: { type: string, example: 1K-IBMI-S1 } }
+        - { name: type, in: query, required: false, schema: { type: string, example: "LEAVE,SICK" } }
         - $ref: '#/components/parameters/StatusParam'
+        - $ref: '#/components/parameters/QParam'
+        - { name: from_date, in: query, required: false, schema: { type: string, format: date } }
+        - { name: to_date, in: query, required: false, schema: { type: string, format: date } }
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/LimitParam'
       responses:
         '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/ListEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/Permission' } } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
     post:
       operationId: postPermissions
       tags: [Permission]
-      summary: Ajukan izin
-      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyHeader' } ]
+      summary: Ajukan izin, cuti atau sakit
+      description: >-
+        Satu transaksi, urutan seperti Personalia: orang dikunci, regu dan DANRU ditentukan,
+        tumpang tindih, hari kerja, kuota, nomor, baris, foto, lalu pemotongan saldo (cuti tahunan
+        dipotong SAAT diajukan dan dikembalikan bila ditolak atau dibatalkan). Perlu
+        `attendance.leave.request`. Idempoten.
+
+        - 403: bukan anggota regu yang disebut pada `start_date`.
+        - 409 `LEAVE_OVERLAP`: bertabrakan dengan pengajuan lain yang masih berlaku.
+        - 422 `LEAVE_SCHEDULE_MISSING` (ada tanggal tanpa jadwal; `details.dates`),
+          `LEAVE_NO_WORKING_DAYS`, `LEAVE_QUOTA_EXCEEDED` (field `category_code`),
+          `LEAVE_CATEGORY_INVALID` (tipe tidak cocok atau kategori nonaktif), dan kesalahan isian
+          per field.
+      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyRequiredHeader' } ]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PermissionCreate' } } } }
       responses:
         '201': { description: Created, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/Permission' } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
   /permissions/me:
     get:
       operationId: getPermissionsMe
       tags: [Permission]
-      summary: Riwayat izin sendiri
-      parameters: [ { $ref: '#/components/parameters/StatusParam' }, { $ref: '#/components/parameters/DateFromParam' }, { $ref: '#/components/parameters/DateToParam' } ]
+      summary: Riwayat pengajuan sendiri
+      description: >-
+        Terbaru dulu, tanpa jendela bawaan. `type` dan `status` boleh diulang atau dipisah koma.
+        `from_date` dan `to_date` menyaring pengajuan yang harinya beririsan dengan rentang itu.
+        Perlu `attendance.leave.request`.
+      parameters:
+        - { name: type, in: query, required: false, schema: { type: string, example: "LEAVE,SICK" } }
+        - $ref: '#/components/parameters/StatusParam'
+        - { name: from_date, in: query, required: false, schema: { type: string, format: date } }
+        - { name: to_date, in: query, required: false, schema: { type: string, format: date } }
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
       responses:
         '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/ListEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/Permission' } } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /permissions/{id}:
+    parameters: [ { $ref: '#/components/parameters/IdPath' } ]
+    get:
+      operationId: getPermissionsById
+      tags: [Permission]
+      summary: Detail satu pengajuan
+      description: >-
+        Pemilik, atau DANRU yang `attendance.leave.approve`-nya mencakup regu pengajuan pada hari
+        pertamanya. Selain itu, dan id yang tidak ada, 404 `LEAVE_NOT_FOUND` (tidak pernah 403).
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/Permission' } } } ] } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /permissions/{id}/cancel:
+    parameters: [ { $ref: '#/components/parameters/IdPath' } ]
+    post:
+      operationId: postPermissionsByIdCancel
+      tags: [Permission]
+      summary: Batalkan pengajuan sendiri
+      description: >-
+        Hanya pemilik dan hanya selagi `PENDING`; pengajuan orang lain 404 `LEAVE_NOT_FOUND`.
+        Sudah dibatalkan: 409 `LEAVE_ALREADY_CANCELLED`; sudah diputuskan: 409 `LEAVE_CANNOT_CANCEL`.
+        Cuti tahunan mendapat harinya kembali, sekali. Tanpa badan. Idempoten.
+      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyRequiredHeader' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/Permission' } } } ] } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /permissions/{id}/approve:
     parameters: [ { $ref: '#/components/parameters/IdPath' } ]
     post:
       operationId: postPermissionsByIdApprove
       tags: [Permission]
-      summary: Setujui izin (DANRU)
-      requestBody: { required: false, content: { application/json: { schema: { $ref: '#/components/schemas/ApprovalNote' } } } }
+      summary: Setujui pengajuan (DANRU regu itu)
+      description: >-
+        Satu transaksi. Pemilik tidak pernah memutuskan pengajuannya sendiri (403). Hanya
+        `PENDING` yang bisa diputuskan DANRU; admin juga boleh MENOLAK pengajuan yang sudah
+        disetujui DANRU. Selain itu 409 `LEAVE_ALREADY_DECIDED` (`REJECTED` dan `CANCELLED` final).
+        Menolak wajib disertai `note` (tidak kosong, maks 1000); catatan persetujuan opsional dan
+        disimpan. Menyetujui menulis baris `LEAVE` untuk hari kerja terjadwal (hari yang sudah
+        `PRESENT` dilewati dan didaftar di `skipped`) bila kategorinya membuat hari cuti, dan
+        menurunkan keterlambatan yang tercatat. Menolak cuti tahunan mengembalikan harinya sekali;
+        menolak pengajuan yang sudah disetujui juga menghapus baris `LEAVE`-nya dan mengembalikan
+        keterlambatan. Pemilik menerima `LEAVE_DECIDED`. Idempoten.
+      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyRequiredHeader' } ]
+      requestBody: { required: false, content: { application/json: { schema: { $ref: '#/components/schemas/PermissionDecision' } } } }
       responses:
         '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/Permission' } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /permissions/{id}/decline:
     parameters: [ { $ref: '#/components/parameters/IdPath' } ]
     post:
       operationId: postPermissionsByIdDecline
       tags: [Permission]
-      summary: Tolak izin (DANRU)
-      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/RejectionNote' } } } }
+      summary: Tolak pengajuan (DANRU regu itu)
+      description: >-
+        Satu transaksi. Pemilik tidak pernah memutuskan pengajuannya sendiri (403). Hanya
+        `PENDING` yang bisa diputuskan DANRU; admin juga boleh MENOLAK pengajuan yang sudah
+        disetujui DANRU. Selain itu 409 `LEAVE_ALREADY_DECIDED` (`REJECTED` dan `CANCELLED` final).
+        Menolak wajib disertai `note` (tidak kosong, maks 1000); catatan persetujuan opsional dan
+        disimpan. Menyetujui menulis baris `LEAVE` untuk hari kerja terjadwal (hari yang sudah
+        `PRESENT` dilewati dan didaftar di `skipped`) bila kategorinya membuat hari cuti, dan
+        menurunkan keterlambatan yang tercatat. Menolak cuti tahunan mengembalikan harinya sekali;
+        menolak pengajuan yang sudah disetujui juga menghapus baris `LEAVE`-nya dan mengembalikan
+        keterlambatan. Pemilik menerima `LEAVE_DECIDED`. Idempoten.
+      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyRequiredHeader' } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PermissionDecision' } } } }
       responses:
         '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/Permission' } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /admin/permissions:
+    get:
+      operationId: getAdminPermissions
+      tags: [Permission]
+      summary: Daftar pengajuan dalam jangkauan admin
+      description: >-
+        ORG_ADMIN: semua. REGION_ADMIN: hanya wilayahnya, apa pun `region_code` yang dikirim.
+        Tempat admin memutuskan pengajuan DANRU sendiri dan regu tanpa DANRU.
+      security:
+        - bearerSession: []
+      parameters:
+        - { name: team_code, in: query, required: false, schema: { type: string, example: 1K-IBMI-S1 } }
+        - { name: type, in: query, required: false, schema: { type: string, example: "LEAVE,SICK" } }
+        - $ref: '#/components/parameters/StatusParam'
+        - $ref: '#/components/parameters/QParam'
+        - { name: from_date, in: query, required: false, schema: { type: string, format: date } }
+        - { name: to_date, in: query, required: false, schema: { type: string, format: date } }
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - { name: project_code, in: query, required: false, schema: { type: string, example: 1K-IBMI-S } }
+        - { name: region_code, in: query, required: false, schema: { type: string, example: OS1 } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/ListEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/Permission' } } } } ] } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /admin/permissions/{id}:
+    parameters: [ { $ref: '#/components/parameters/IdPath' } ]
+    get:
+      operationId: getAdminPermissionsById
+      tags: [Permission]
+      summary: Detail pengajuan dalam jangkauan admin
+      description: "Di luar jangkauan, dan id yang tidak ada: 404 `LEAVE_NOT_FOUND`."
+      security:
+        - bearerSession: []
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/Permission' } } } ] } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/permissions/{id}/approve:
+    parameters: [ { $ref: '#/components/parameters/IdPath' } ]
+    post:
+      operationId: postAdminPermissionsByIdApprove
+      tags: [Permission]
+      summary: Setujui pengajuan (admin)
+      description: >-
+        Pengajuan di luar wilayah REGION_ADMIN: 404.
+        Satu transaksi. Pemilik tidak pernah memutuskan pengajuannya sendiri (403). Hanya
+        `PENDING` yang bisa diputuskan DANRU; admin juga boleh MENOLAK pengajuan yang sudah
+        disetujui DANRU. Selain itu 409 `LEAVE_ALREADY_DECIDED` (`REJECTED` dan `CANCELLED` final).
+        Menolak wajib disertai `note` (tidak kosong, maks 1000); catatan persetujuan opsional dan
+        disimpan. Menyetujui menulis baris `LEAVE` untuk hari kerja terjadwal (hari yang sudah
+        `PRESENT` dilewati dan didaftar di `skipped`) bila kategorinya membuat hari cuti, dan
+        menurunkan keterlambatan yang tercatat. Menolak cuti tahunan mengembalikan harinya sekali;
+        menolak pengajuan yang sudah disetujui juga menghapus baris `LEAVE`-nya dan mengembalikan
+        keterlambatan. Pemilik menerima `LEAVE_DECIDED`. Idempoten.
+      security:
+        - bearerSession: []
+      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyRequiredHeader' } ]
+      requestBody: { required: false, content: { application/json: { schema: { $ref: '#/components/schemas/PermissionDecision' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/Permission' } } } ] } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /admin/permissions/{id}/decline:
+    parameters: [ { $ref: '#/components/parameters/IdPath' } ]
+    post:
+      operationId: postAdminPermissionsByIdDecline
+      tags: [Permission]
+      summary: Tolak pengajuan (admin)
+      description: >-
+        Pengajuan di luar wilayah REGION_ADMIN: 404.
+        Satu transaksi. Pemilik tidak pernah memutuskan pengajuannya sendiri (403). Hanya
+        `PENDING` yang bisa diputuskan DANRU; admin juga boleh MENOLAK pengajuan yang sudah
+        disetujui DANRU. Selain itu 409 `LEAVE_ALREADY_DECIDED` (`REJECTED` dan `CANCELLED` final).
+        Menolak wajib disertai `note` (tidak kosong, maks 1000); catatan persetujuan opsional dan
+        disimpan. Menyetujui menulis baris `LEAVE` untuk hari kerja terjadwal (hari yang sudah
+        `PRESENT` dilewati dan didaftar di `skipped`) bila kategorinya membuat hari cuti, dan
+        menurunkan keterlambatan yang tercatat. Menolak cuti tahunan mengembalikan harinya sekali;
+        menolak pengajuan yang sudah disetujui juga menghapus baris `LEAVE`-nya dan mengembalikan
+        keterlambatan. Pemilik menerima `LEAVE_DECIDED`. Idempoten.
+      security:
+        - bearerSession: []
+      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyRequiredHeader' } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PermissionDecision' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/Permission' } } } ] } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /shift-swaps/replaceable:
+    get:
+      operationId: getShiftSwapsReplaceable
+      tags: [Permission]
+      summary: Catatan yang bisa ditukar (DANRU)
+      description: >-
+        Catatan LEAVE/ABSENT regu pada satu tanggal yang belum punya tukar jaga aktif. Perlu izin
+        `attendance.swap.create` yang menjangkau `team_code`; di luar jangkauan: 403
+        `PERMISSION_DENIED`.
+      parameters:
+        - { name: team_code, in: query, required: true, schema: { type: string, example: 1K-IBMI-S1 } }
+        - { name: work_date, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/Attendance' } } } } ] } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /shift-swaps/candidates:
+    get:
+      operationId: getShiftSwapsCandidates
+      tags: [Permission]
+      summary: Personil yang bisa jadi pengganti (DANRU)
+      description: >-
+        Anggota regu pada satu tanggal yang tidak sedang izin atau mangkir hari itu. Regu apa pun
+        yang dijangkau izin pemanggil, sehingga pengganti lintas regu dan lintas proyek bisa
+        dicari. Personil yang ditampilkan bisa saja masih bentrok shift sendiri; itu baru dicek
+        saat `POST /shift-swaps`.
+      parameters:
+        - { name: team_code, in: query, required: true, schema: { type: string, example: 1K-IBMI-S1 } }
+        - { name: work_date, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/ShiftSwapCandidate' } } } } ] } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /shift-swaps:
     get:
       operationId: getShiftSwaps
       tags: [Permission]
       summary: Daftar tukar jaga / pengganti
-      parameters: [ { $ref: '#/components/parameters/StatusParam' }, { $ref: '#/components/parameters/DateFromParam' }, { $ref: '#/components/parameters/DateToParam' } ]
+      description: >-
+        Setiap tukar jaga (aktif dan dibatalkan) dari regu yang dijangkau izin
+        `attendance.swap.create` pemanggil, terbaru lebih dulu.
+      parameters:
+        - { name: active, in: query, description: "true: hanya aktif. false: hanya dibatalkan. Kosong: keduanya.", schema: { type: boolean } }
+        - $ref: '#/components/parameters/DateFromParam'
+        - $ref: '#/components/parameters/DateToParam'
       responses:
-        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/ListEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/ShiftSwap' } } } } ] } } } }
+        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/ShiftSwap' } } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
     post:
       operationId: postShiftSwaps
       tags: [Permission]
       summary: Tukar Jaga / ajukan pengganti (DANRU)
-      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyHeader' } ]
+      description: >-
+        Berlaku seketika, tidak ada persetujuan. Perlu izin `attendance.swap.create` yang
+        menjangkau regu catatan yang ditukar DAN regu tempat pengganti bertugas hari itu; selain
+        itu (atau `replaced_attendance_id` tidak ada): 404 `SWAP_NOT_FOUND`. Catatan bukan
+        izin/mangkir: 422 `SWAP_REPLACED_NOT_ABSENT`. Pengganti sudah punya tukar jaga aktif untuk
+        catatan ini: 409 `SWAP_ALREADY_EXISTS`. Shift pengganti sendiri bentrok (shift kembali
+        belakangan diperbolehkan): 422 `SWAP_SHIFT_OVERLAP`.
+      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyRequiredHeader' } ]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ShiftSwapCreate' } } } }
       responses:
         '201': { description: Created, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/ShiftSwap' } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
+  /shift-swaps/{id}:
+    parameters: [ { $ref: '#/components/parameters/IdPath' } ]
+    delete:
+      operationId: deleteShiftSwapsById
+      tags: [Permission]
+      summary: Batalkan tukar jaga
+      description: >-
+        Hanya sebelum pengganti absen datang pada shift yang ditukar; sesudahnya 409
+        `SWAP_ALREADY_STARTED`. Tidak ada, sudah dibatalkan, atau di luar jangkauan izin pemanggil:
+        404 `SWAP_NOT_FOUND` (sama untuk ketiganya).
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessEnvelope' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
 
   # ============ REPORT (operations) ============
   /report-categories:

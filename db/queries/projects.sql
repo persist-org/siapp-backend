@@ -60,6 +60,7 @@ UPDATE projects SET
     attendance_radius_meters   = COALESCE(sqlc.narg('attendance_radius_meters'), attendance_radius_meters),
     strict_attendance_geofence = COALESCE(sqlc.narg('strict_attendance_geofence'), strict_attendance_geofence),
     gps_tracking_enabled       = COALESCE(sqlc.narg('gps_tracking_enabled'), gps_tracking_enabled),
+    allow_group_attendance     = COALESCE(sqlc.narg('allow_group_attendance'), allow_group_attendance),
     patrol_interval_minutes    = COALESCE(sqlc.narg('patrol_interval_minutes'), patrol_interval_minutes),
     emergency_contacts         = COALESCE(sqlc.narg('emergency_contacts')::jsonb, emergency_contacts),
     active                     = COALESCE(sqlc.narg('active'), active),

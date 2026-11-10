@@ -45,7 +45,6 @@ func (h *Handler) MountField(r chi.Router) {
 	r.Get("/api/v1/report-categories", h.fieldCategories(KindReport))
 	r.Get("/api/v1/instruction-categories", h.fieldCategories(KindInstruction))
 	r.Get("/api/v1/panic-types", h.fieldPanicTypes)
-	r.Get("/api/v1/permission-categories", h.permissionCategories)
 	h.mountFieldMore(r)
 }
 
@@ -329,25 +328,6 @@ func (h *Handler) fieldPanicTypes(w http.ResponseWriter, r *http.Request) {
 		out = append(out, panicTypeToAPI(t))
 	}
 	httpx.ListAt(w, r, out, fullPage(len(out)), serverTime)
-}
-
-func (h *Handler) permissionCategories(w http.ResponseWriter, r *http.Request) {
-	p, ok := auth.From(r.Context())
-	if !ok {
-		httpx.Error(w, r, apperr.ErrUnauthenticated)
-		return
-	}
-	rows, err := h.service.LeaveCategories(r.Context(), p)
-	if err != nil {
-		httpx.Error(w, r, err)
-		return
-	}
-	out := make([]apigen.PermissionCategory, 0, len(rows))
-	for _, c := range rows {
-		id, name, active := c.ID, c.Name, true
-		out = append(out, apigen.PermissionCategory{Id: &id, Name: &name, IsActive: &active})
-	}
-	httpx.List(w, r, out, fullPage(len(out)))
 }
 
 // ---------- shared ----------

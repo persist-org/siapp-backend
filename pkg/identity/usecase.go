@@ -15,6 +15,7 @@ import (
 
 	"siapp/internal/db"
 	"siapp/pkg/access"
+	"siapp/pkg/leave"
 	"siapp/pkg/masterdata"
 	"siapp/pkg/platform/apperr"
 	"siapp/pkg/platform/auth"
@@ -123,6 +124,10 @@ func (u *Usecase) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 	// defaults in place runs a few cheap reads and writes nothing (not even a sequence value).
 	if _, err := masterdata.EnsureDefaults(ctx, u.pool, u.clock, id.OrganizationID); err != nil {
 		return LoginResult{}, fmt.Errorf("seed master data: %w", err)
+	}
+	// And the leave categories (07.5), the same way.
+	if _, err := leave.EnsureDefaults(ctx, u.pool, u.clock, id.OrganizationID); err != nil {
+		return LoginResult{}, fmt.Errorf("seed leave categories: %w", err)
 	}
 
 	var out LoginResult

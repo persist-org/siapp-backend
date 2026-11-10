@@ -214,7 +214,7 @@ func projectToAPI(p Project) apigen.Project {
 		City: p.City, Address: p.Address, Phone: p.Phone, Email: p.Email, Timezone: &tz,
 		Latitude: p.Latitude, Longitude: p.Longitude, Configured: &configured,
 		AttendanceRadiusMeters: &p.AttendanceRadiusMeters, StrictAttendanceGeofence: &p.StrictAttendanceGeofence,
-		GpsTrackingEnabled: &p.GPSTrackingEnabled, PatrolIntervalMinutes: p.PatrolIntervalMinutes,
+		GpsTrackingEnabled: &p.GPSTrackingEnabled, AllowGroupAttendance: &p.AllowGroupAttendance, PatrolIntervalMinutes: p.PatrolIntervalMinutes,
 		EmergencyContacts: &contacts, IsActive: &p.Active, CreatedAt: &p.CreatedAt, UpdatedAt: &p.UpdatedAt,
 	}
 }

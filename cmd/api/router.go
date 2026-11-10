@@ -9,7 +9,9 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"siapp/pkg/access"
+	"siapp/pkg/attendance"
 	"siapp/pkg/identity"
+	"siapp/pkg/leave"
 	"siapp/pkg/masterdata"
 	"siapp/pkg/media"
 	"siapp/pkg/notifications"
@@ -33,12 +35,9 @@ type deps struct {
 	// RedisPrefix goes in front of every Redis key; tests use a random one.
 	RedisPrefix string
 	Personel    *personel.Client
-	// Leave is the leave seam (S5) of Personel, for /permission-categories. Nil until Personel
-	// serves it: that route then answers 503 PERSONEL_UNAVAILABLE.
-	Leave    personel.Leave
-	Tokens   *auth.Tokens
-	Clock    clock.Clock
-	ClientIP func(*http.Request) string
+	Tokens      *auth.Tokens
+	Clock       clock.Clock
+	ClientIP    func(*http.Request) string
 	// MediaStorage is the driver STORAGE_DRIVER chose, already checked at start-up.
 	MediaStorage media.Storage
 	// PushQueue is where Notify queues its push tasks for the worker. Nil (the guard test) leaves
@@ -49,6 +48,8 @@ type deps struct {
 	Hub *realtime.Hub
 	// PersonelWebhookSecret is PERSONEL_WEBHOOK_SECRET.
 	PersonelWebhookSecret string
+	// AttendanceQRSecret is ATTENDANCE_QR_SECRET. Empty leaves the QR method off.
+	AttendanceQRSecret string
 }
 
 // adminPrefix is the group every web admin route lives under. access.RequireAdmin guards the
@@ -111,9 +112,6 @@ func newRouter(d deps) *chi.Mux {
 	// The Personel webhook (05.3): public, authenticated by the HMAC signature of its body. It
 	// invalidates the same Redis cache every reader of Personel data goes through.
 	personelCache := personel.NewCached(d.Personel, nil, d.Redis, d.Logger)
-	if d.Leave != nil {
-		personelCache.UseLeave(d.Leave)
-	}
 	identity.NewPersonelEvents(identity.PersonelEventsConfig{
 		Pool: d.Pool, Directory: personelCache, Cache: personelCache, Revocations: revocations,
 		Redis: d.Redis, RedisPrefix: d.RedisPrefix, Secret: d.PersonelWebhookSecret,
@@ -123,11 +121,38 @@ func newRouter(d deps) *chi.Mux {
 	// Master data (module 06): categories, panic types, stakeholders, letterheads, app links and
 	// the leave categories Personel owns. Modules that point at a master register a usage check on
 	// this service when they land, so a referenced master is refused a delete (MASTER_IN_USE).
-	masterdataService := masterdata.NewService(d.Pool, d.Clock, personelCache)
+	masterdataService := masterdata.NewService(d.Pool, d.Clock)
 	// A letterhead's logo is a photo that goes through the media module.
 	masterdataService.UseLogoStore(mediaService)
 	masterdataHandler := masterdata.NewHandler(masterdataService)
 	masterdataHandler.MountField(router)
+
+	// Attendance capture (module 07): today's shifts and the selfie check-in/out. The shifts come
+	// from module 02, the photos from module 04; every change also lands in the Personel outbox,
+	// which the worker delivers in Phase 07.3.
+	accessService := access.NewService(d.Pool, d.Clock)
+	attendanceService := attendance.NewService(d.Pool, d.Clock, organization.NewShifts(d.Pool), organization.NewQuery(d.Pool), mediaService, accessService)
+	attendanceService.UseNotifier(notifier)
+	if d.AttendanceQRSecret != "" {
+		qr, err := attendance.NewQRTokens(d.AttendanceQRSecret, d.Clock)
+		if err != nil {
+			panic(err) // config.Load refuses a short secret, so this is a test or a caller that skipped it
+		}
+		attendanceService.UseQR(qr)
+	}
+	attendanceHandler := attendance.NewHandler(attendanceService, accessService, idempotency.Middleware(true))
+	attendanceHandler.MountField(router)
+
+	// Leave, permit and sick requests (07.5): SiAPP's own, nothing of it goes through Personalia.
+	// Part A is the categories, quotas and the ledger of annual leave; Part B the requests.
+	leaveService := leave.NewService(d.Pool, d.Clock)
+	leaveService.UseRegionLookup(directory)
+	leaveService.UseSchedule(organization.LeaveSchedule{Shifts: organization.NewShifts(d.Pool)})
+	leaveService.UseAttachments(mediaService)
+	leaveService.UsePermissions(accessService)
+	leaveService.UseNotifier(notifier)
+	leaveHandler := leave.NewHandler(leaveService, accessService, idempotency.Middleware(true))
+	leaveHandler.MountField(router)
 
 	// The WebSocket (05.3). The hub is shared with the Redis subscriber main starts, which feeds
 	// it the events other instances publish.
@@ -136,7 +161,7 @@ func newRouter(d deps) *chi.Mux {
 		hub = realtime.NewHub(d.Logger)
 	}
 	realtime.NewHandler(d.Tokens, revocations, realtime.NewTickets(d.Redis, d.RedisPrefix), hub,
-		realtime.NewAuthorizer(d.Pool, access.NewService(d.Pool, d.Clock), d.Clock), d.Clock, d.Logger,
+		realtime.NewAuthorizer(d.Pool, accessService, d.Clock), d.Clock, d.Logger,
 		realtime.Config{OriginPatterns: realtime.OriginPatternsOf(d.CORSOrigins)}).Mount(router)
 
 	// ⚠ The admin group: access.RequireAdmin is mounted ONCE here, so every route a module
@@ -147,6 +172,8 @@ func newRouter(d deps) *chi.Mux {
 		accessHandler.MountAdmin(admin)
 		organizationHandler.MountAdmin(admin)
 		masterdataHandler.MountAdmin(admin)
+		leaveHandler.MountAdmin(admin)
+		attendanceHandler.MountAdmin(admin)
 	})
 
 	return router

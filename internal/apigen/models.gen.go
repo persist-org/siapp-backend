@@ -45,45 +45,273 @@ func (e ApiKeyStatus) Valid() bool {
 	}
 }
 
-// Defines values for AttendanceMethod.
+// Defines values for AttendanceCheckInMethod.
 const (
-	FORCE  AttendanceMethod = "FORCE"
-	QR     AttendanceMethod = "QR"
-	SELFIE AttendanceMethod = "SELFIE"
-	SHIFT  AttendanceMethod = "SHIFT"
+	AttendanceCheckInMethodFORCE  AttendanceCheckInMethod = "FORCE"
+	AttendanceCheckInMethodGROUP  AttendanceCheckInMethod = "GROUP"
+	AttendanceCheckInMethodQR     AttendanceCheckInMethod = "QR"
+	AttendanceCheckInMethodSELFIE AttendanceCheckInMethod = "SELFIE"
 )
 
-// Valid indicates whether the value is a known member of the AttendanceMethod enum.
-func (e AttendanceMethod) Valid() bool {
+// Valid indicates whether the value is a known member of the AttendanceCheckInMethod enum.
+func (e AttendanceCheckInMethod) Valid() bool {
 	switch e {
-	case FORCE:
+	case AttendanceCheckInMethodFORCE:
 		return true
-	case QR:
+	case AttendanceCheckInMethodGROUP:
 		return true
-	case SELFIE:
+	case AttendanceCheckInMethodQR:
 		return true
-	case SHIFT:
+	case AttendanceCheckInMethodSELFIE:
 		return true
 	default:
 		return false
 	}
 }
 
-// Defines values for AttendanceTimezone.
+// Defines values for AttendanceCheckOutMethod.
 const (
-	AttendanceTimezoneWIB  AttendanceTimezone = "WIB"
-	AttendanceTimezoneWIT  AttendanceTimezone = "WIT"
-	AttendanceTimezoneWITA AttendanceTimezone = "WITA"
+	AttendanceCheckOutMethodFORCE  AttendanceCheckOutMethod = "FORCE"
+	AttendanceCheckOutMethodGROUP  AttendanceCheckOutMethod = "GROUP"
+	AttendanceCheckOutMethodQR     AttendanceCheckOutMethod = "QR"
+	AttendanceCheckOutMethodSELFIE AttendanceCheckOutMethod = "SELFIE"
 )
 
-// Valid indicates whether the value is a known member of the AttendanceTimezone enum.
-func (e AttendanceTimezone) Valid() bool {
+// Valid indicates whether the value is a known member of the AttendanceCheckOutMethod enum.
+func (e AttendanceCheckOutMethod) Valid() bool {
 	switch e {
-	case AttendanceTimezoneWIB:
+	case AttendanceCheckOutMethodFORCE:
 		return true
-	case AttendanceTimezoneWIT:
+	case AttendanceCheckOutMethodGROUP:
 		return true
-	case AttendanceTimezoneWITA:
+	case AttendanceCheckOutMethodQR:
+		return true
+	case AttendanceCheckOutMethodSELFIE:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AttendancePersonelSyncStatus.
+const (
+	AttendancePersonelSyncStatusFAILED  AttendancePersonelSyncStatus = "FAILED"
+	AttendancePersonelSyncStatusPENDING AttendancePersonelSyncStatus = "PENDING"
+	AttendancePersonelSyncStatusSYNCED  AttendancePersonelSyncStatus = "SYNCED"
+)
+
+// Valid indicates whether the value is a known member of the AttendancePersonelSyncStatus enum.
+func (e AttendancePersonelSyncStatus) Valid() bool {
+	switch e {
+	case AttendancePersonelSyncStatusFAILED:
+		return true
+	case AttendancePersonelSyncStatusPENDING:
+		return true
+	case AttendancePersonelSyncStatusSYNCED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AttendanceStatus.
+const (
+	AttendanceStatusABSENT  AttendanceStatus = "ABSENT"
+	AttendanceStatusLEAVE   AttendanceStatus = "LEAVE"
+	AttendanceStatusPRESENT AttendanceStatus = "PRESENT"
+)
+
+// Valid indicates whether the value is a known member of the AttendanceStatus enum.
+func (e AttendanceStatus) Valid() bool {
+	switch e {
+	case AttendanceStatusABSENT:
+		return true
+	case AttendanceStatusLEAVE:
+		return true
+	case AttendanceStatusPRESENT:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AttendanceCorrectionStatus.
+const (
+	AttendanceCorrectionStatusABSENT  AttendanceCorrectionStatus = "ABSENT"
+	AttendanceCorrectionStatusLEAVE   AttendanceCorrectionStatus = "LEAVE"
+	AttendanceCorrectionStatusPRESENT AttendanceCorrectionStatus = "PRESENT"
+)
+
+// Valid indicates whether the value is a known member of the AttendanceCorrectionStatus enum.
+func (e AttendanceCorrectionStatus) Valid() bool {
+	switch e {
+	case AttendanceCorrectionStatusABSENT:
+		return true
+	case AttendanceCorrectionStatusLEAVE:
+		return true
+	case AttendanceCorrectionStatusPRESENT:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AttendanceDetailCheckInMethod.
+const (
+	AttendanceDetailCheckInMethodFORCE  AttendanceDetailCheckInMethod = "FORCE"
+	AttendanceDetailCheckInMethodGROUP  AttendanceDetailCheckInMethod = "GROUP"
+	AttendanceDetailCheckInMethodQR     AttendanceDetailCheckInMethod = "QR"
+	AttendanceDetailCheckInMethodSELFIE AttendanceDetailCheckInMethod = "SELFIE"
+)
+
+// Valid indicates whether the value is a known member of the AttendanceDetailCheckInMethod enum.
+func (e AttendanceDetailCheckInMethod) Valid() bool {
+	switch e {
+	case AttendanceDetailCheckInMethodFORCE:
+		return true
+	case AttendanceDetailCheckInMethodGROUP:
+		return true
+	case AttendanceDetailCheckInMethodQR:
+		return true
+	case AttendanceDetailCheckInMethodSELFIE:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AttendanceDetailCheckOutMethod.
+const (
+	AttendanceDetailCheckOutMethodFORCE  AttendanceDetailCheckOutMethod = "FORCE"
+	AttendanceDetailCheckOutMethodGROUP  AttendanceDetailCheckOutMethod = "GROUP"
+	AttendanceDetailCheckOutMethodQR     AttendanceDetailCheckOutMethod = "QR"
+	AttendanceDetailCheckOutMethodSELFIE AttendanceDetailCheckOutMethod = "SELFIE"
+)
+
+// Valid indicates whether the value is a known member of the AttendanceDetailCheckOutMethod enum.
+func (e AttendanceDetailCheckOutMethod) Valid() bool {
+	switch e {
+	case AttendanceDetailCheckOutMethodFORCE:
+		return true
+	case AttendanceDetailCheckOutMethodGROUP:
+		return true
+	case AttendanceDetailCheckOutMethodQR:
+		return true
+	case AttendanceDetailCheckOutMethodSELFIE:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AttendanceDetailPersonelSyncStatus.
+const (
+	AttendanceDetailPersonelSyncStatusFAILED  AttendanceDetailPersonelSyncStatus = "FAILED"
+	AttendanceDetailPersonelSyncStatusPENDING AttendanceDetailPersonelSyncStatus = "PENDING"
+	AttendanceDetailPersonelSyncStatusSYNCED  AttendanceDetailPersonelSyncStatus = "SYNCED"
+)
+
+// Valid indicates whether the value is a known member of the AttendanceDetailPersonelSyncStatus enum.
+func (e AttendanceDetailPersonelSyncStatus) Valid() bool {
+	switch e {
+	case AttendanceDetailPersonelSyncStatusFAILED:
+		return true
+	case AttendanceDetailPersonelSyncStatusPENDING:
+		return true
+	case AttendanceDetailPersonelSyncStatusSYNCED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AttendanceDetailStatus.
+const (
+	AttendanceDetailStatusABSENT  AttendanceDetailStatus = "ABSENT"
+	AttendanceDetailStatusLEAVE   AttendanceDetailStatus = "LEAVE"
+	AttendanceDetailStatusPRESENT AttendanceDetailStatus = "PRESENT"
+)
+
+// Valid indicates whether the value is a known member of the AttendanceDetailStatus enum.
+func (e AttendanceDetailStatus) Valid() bool {
+	switch e {
+	case AttendanceDetailStatusABSENT:
+		return true
+	case AttendanceDetailStatusLEAVE:
+		return true
+	case AttendanceDetailStatusPRESENT:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AttendanceHistoryDayShiftsCheckInMethod.
+const (
+	AttendanceHistoryDayShiftsCheckInMethodFORCE  AttendanceHistoryDayShiftsCheckInMethod = "FORCE"
+	AttendanceHistoryDayShiftsCheckInMethodGROUP  AttendanceHistoryDayShiftsCheckInMethod = "GROUP"
+	AttendanceHistoryDayShiftsCheckInMethodQR     AttendanceHistoryDayShiftsCheckInMethod = "QR"
+	AttendanceHistoryDayShiftsCheckInMethodSELFIE AttendanceHistoryDayShiftsCheckInMethod = "SELFIE"
+)
+
+// Valid indicates whether the value is a known member of the AttendanceHistoryDayShiftsCheckInMethod enum.
+func (e AttendanceHistoryDayShiftsCheckInMethod) Valid() bool {
+	switch e {
+	case AttendanceHistoryDayShiftsCheckInMethodFORCE:
+		return true
+	case AttendanceHistoryDayShiftsCheckInMethodGROUP:
+		return true
+	case AttendanceHistoryDayShiftsCheckInMethodQR:
+		return true
+	case AttendanceHistoryDayShiftsCheckInMethodSELFIE:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AttendanceHistoryDayShiftsStatus.
+const (
+	AttendanceHistoryDayShiftsStatusABSENT   AttendanceHistoryDayShiftsStatus = "ABSENT"
+	AttendanceHistoryDayShiftsStatusLEAVE    AttendanceHistoryDayShiftsStatus = "LEAVE"
+	AttendanceHistoryDayShiftsStatusMISSING  AttendanceHistoryDayShiftsStatus = "MISSING"
+	AttendanceHistoryDayShiftsStatusPRESENT  AttendanceHistoryDayShiftsStatus = "PRESENT"
+	AttendanceHistoryDayShiftsStatusUPCOMING AttendanceHistoryDayShiftsStatus = "UPCOMING"
+)
+
+// Valid indicates whether the value is a known member of the AttendanceHistoryDayShiftsStatus enum.
+func (e AttendanceHistoryDayShiftsStatus) Valid() bool {
+	switch e {
+	case AttendanceHistoryDayShiftsStatusABSENT:
+		return true
+	case AttendanceHistoryDayShiftsStatusLEAVE:
+		return true
+	case AttendanceHistoryDayShiftsStatusMISSING:
+		return true
+	case AttendanceHistoryDayShiftsStatusPRESENT:
+		return true
+	case AttendanceHistoryDayShiftsStatusUPCOMING:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AttendanceTodayStatus.
+const (
+	AttendanceTodayStatusABSENT  AttendanceTodayStatus = "ABSENT"
+	AttendanceTodayStatusLEAVE   AttendanceTodayStatus = "LEAVE"
+	AttendanceTodayStatusPRESENT AttendanceTodayStatus = "PRESENT"
+)
+
+// Valid indicates whether the value is a known member of the AttendanceTodayStatus enum.
+func (e AttendanceTodayStatus) Valid() bool {
+	switch e {
+	case AttendanceTodayStatusABSENT:
+		return true
+	case AttendanceTodayStatusLEAVE:
+		return true
+	case AttendanceTodayStatusPRESENT:
 		return true
 	default:
 		return false
@@ -408,6 +636,69 @@ func (e InvoiceStatus) Valid() bool {
 	}
 }
 
+// Defines values for LeaveCategoryType.
+const (
+	LeaveCategoryTypeLEAVE  LeaveCategoryType = "LEAVE"
+	LeaveCategoryTypePERMIT LeaveCategoryType = "PERMIT"
+	LeaveCategoryTypeSICK   LeaveCategoryType = "SICK"
+)
+
+// Valid indicates whether the value is a known member of the LeaveCategoryType enum.
+func (e LeaveCategoryType) Valid() bool {
+	switch e {
+	case LeaveCategoryTypeLEAVE:
+		return true
+	case LeaveCategoryTypePERMIT:
+		return true
+	case LeaveCategoryTypeSICK:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for LeaveLedgerEntryKind.
+const (
+	LeaveLedgerEntryKindADJUST LeaveLedgerEntryKind = "ADJUST"
+	LeaveLedgerEntryKindDEDUCT LeaveLedgerEntryKind = "DEDUCT"
+	LeaveLedgerEntryKindGRANT  LeaveLedgerEntryKind = "GRANT"
+	LeaveLedgerEntryKindREFUND LeaveLedgerEntryKind = "REFUND"
+)
+
+// Valid indicates whether the value is a known member of the LeaveLedgerEntryKind enum.
+func (e LeaveLedgerEntryKind) Valid() bool {
+	switch e {
+	case LeaveLedgerEntryKindADJUST:
+		return true
+	case LeaveLedgerEntryKindDEDUCT:
+		return true
+	case LeaveLedgerEntryKindGRANT:
+		return true
+	case LeaveLedgerEntryKindREFUND:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for LeaveLedgerInputKind.
+const (
+	LeaveLedgerInputKindADJUST LeaveLedgerInputKind = "ADJUST"
+	LeaveLedgerInputKindGRANT  LeaveLedgerInputKind = "GRANT"
+)
+
+// Valid indicates whether the value is a known member of the LeaveLedgerInputKind enum.
+func (e LeaveLedgerInputKind) Valid() bool {
+	switch e {
+	case LeaveLedgerInputKindADJUST:
+		return true
+	case LeaveLedgerInputKindGRANT:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListEnvelopeSuccess.
 const (
 	ListEnvelopeSuccessTrue ListEnvelopeSuccess = true
@@ -540,6 +831,7 @@ const (
 	ATTENDANCESELFIE MediaPurpose = "ATTENDANCE_SELFIE"
 	EMEMO            MediaPurpose = "EMEMO"
 	INSTRUCTION      MediaPurpose = "INSTRUCTION"
+	LEAVEATTACHMENT  MediaPurpose = "LEAVE_ATTACHMENT"
 	LETTERHEADLOGO   MediaPurpose = "LETTERHEAD_LOGO"
 	PANICREPORT      MediaPurpose = "PANIC_REPORT"
 	PATROLSCAN       MediaPurpose = "PATROL_SCAN"
@@ -557,6 +849,8 @@ func (e MediaPurpose) Valid() bool {
 	case EMEMO:
 		return true
 	case INSTRUCTION:
+		return true
+	case LEAVEATTACHMENT:
 		return true
 	case LETTERHEADLOGO:
 		return true
@@ -652,6 +946,7 @@ const (
 	GUARDSUBMITTED        NotificationType = "GUARD_SUBMITTED"
 	INSTRUCTIONFEEDBACK   NotificationType = "INSTRUCTION_FEEDBACK"
 	INSTRUCTIONRECEIVED   NotificationType = "INSTRUCTION_RECEIVED"
+	LEAVECANCELLED        NotificationType = "LEAVE_CANCELLED"
 	LEAVEDECIDED          NotificationType = "LEAVE_DECIDED"
 	LEAVEREQUESTED        NotificationType = "LEAVE_REQUESTED"
 	OFFLINESUBMISSIONSENT NotificationType = "OFFLINE_SUBMISSION_SENT"
@@ -677,6 +972,8 @@ func (e NotificationType) Valid() bool {
 	case INSTRUCTIONFEEDBACK:
 		return true
 	case INSTRUCTIONRECEIVED:
+		return true
+	case LEAVECANCELLED:
 		return true
 	case LEAVEDECIDED:
 		return true
@@ -947,19 +1244,19 @@ func (e OrganizationErrorReason) Valid() bool {
 
 // Defines values for OrganizationSettingsDefaultTimezone.
 const (
-	OrganizationSettingsDefaultTimezoneWIB  OrganizationSettingsDefaultTimezone = "WIB"
-	OrganizationSettingsDefaultTimezoneWIT  OrganizationSettingsDefaultTimezone = "WIT"
-	OrganizationSettingsDefaultTimezoneWITA OrganizationSettingsDefaultTimezone = "WITA"
+	WIB  OrganizationSettingsDefaultTimezone = "WIB"
+	WIT  OrganizationSettingsDefaultTimezone = "WIT"
+	WITA OrganizationSettingsDefaultTimezone = "WITA"
 )
 
 // Valid indicates whether the value is a known member of the OrganizationSettingsDefaultTimezone enum.
 func (e OrganizationSettingsDefaultTimezone) Valid() bool {
 	switch e {
-	case OrganizationSettingsDefaultTimezoneWIB:
+	case WIB:
 		return true
-	case OrganizationSettingsDefaultTimezoneWIT:
+	case WIT:
 		return true
-	case OrganizationSettingsDefaultTimezoneWITA:
+	case WITA:
 		return true
 	default:
 		return false
@@ -1038,17 +1335,38 @@ func (e PatrolZoneInputType) Valid() bool {
 	}
 }
 
+// Defines values for PermissionDecisionLevel.
+const (
+	PermissionDecisionLevelADMIN PermissionDecisionLevel = "ADMIN"
+	PermissionDecisionLevelDANRU PermissionDecisionLevel = "DANRU"
+)
+
+// Valid indicates whether the value is a known member of the PermissionDecisionLevel enum.
+func (e PermissionDecisionLevel) Valid() bool {
+	switch e {
+	case PermissionDecisionLevelADMIN:
+		return true
+	case PermissionDecisionLevelDANRU:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PermissionStatus.
 const (
-	PermissionStatusAPPROVED PermissionStatus = "APPROVED"
-	PermissionStatusPENDING  PermissionStatus = "PENDING"
-	PermissionStatusREJECTED PermissionStatus = "REJECTED"
+	PermissionStatusAPPROVED  PermissionStatus = "APPROVED"
+	PermissionStatusCANCELLED PermissionStatus = "CANCELLED"
+	PermissionStatusPENDING   PermissionStatus = "PENDING"
+	PermissionStatusREJECTED  PermissionStatus = "REJECTED"
 )
 
 // Valid indicates whether the value is a known member of the PermissionStatus enum.
 func (e PermissionStatus) Valid() bool {
 	switch e {
 	case PermissionStatusAPPROVED:
+		return true
+	case PermissionStatusCANCELLED:
 		return true
 	case PermissionStatusPENDING:
 		return true
@@ -1272,30 +1590,6 @@ func (e ScheduleType) Valid() bool {
 	}
 }
 
-// Defines values for ShiftSwapStatus.
-const (
-	ShiftSwapStatusAPPROVED  ShiftSwapStatus = "APPROVED"
-	ShiftSwapStatusCANCELLED ShiftSwapStatus = "CANCELLED"
-	ShiftSwapStatusPENDING   ShiftSwapStatus = "PENDING"
-	ShiftSwapStatusREJECTED  ShiftSwapStatus = "REJECTED"
-)
-
-// Valid indicates whether the value is a known member of the ShiftSwapStatus enum.
-func (e ShiftSwapStatus) Valid() bool {
-	switch e {
-	case ShiftSwapStatusAPPROVED:
-		return true
-	case ShiftSwapStatusCANCELLED:
-		return true
-	case ShiftSwapStatusPENDING:
-		return true
-	case ShiftSwapStatusREJECTED:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for SubscriptionBillingCycle.
 const (
 	SubscriptionBillingCycleAnnual  SubscriptionBillingCycle = "annual"
@@ -1365,6 +1659,78 @@ const (
 func (e SuccessEnvelopeSuccess) Valid() bool {
 	switch e {
 	case SuccessEnvelopeSuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TeamAttendanceRowCheckInMethod.
+const (
+	TeamAttendanceRowCheckInMethodFORCE  TeamAttendanceRowCheckInMethod = "FORCE"
+	TeamAttendanceRowCheckInMethodGROUP  TeamAttendanceRowCheckInMethod = "GROUP"
+	TeamAttendanceRowCheckInMethodQR     TeamAttendanceRowCheckInMethod = "QR"
+	TeamAttendanceRowCheckInMethodSELFIE TeamAttendanceRowCheckInMethod = "SELFIE"
+)
+
+// Valid indicates whether the value is a known member of the TeamAttendanceRowCheckInMethod enum.
+func (e TeamAttendanceRowCheckInMethod) Valid() bool {
+	switch e {
+	case TeamAttendanceRowCheckInMethodFORCE:
+		return true
+	case TeamAttendanceRowCheckInMethodGROUP:
+		return true
+	case TeamAttendanceRowCheckInMethodQR:
+		return true
+	case TeamAttendanceRowCheckInMethodSELFIE:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TeamAttendanceRowCheckOutMethod.
+const (
+	TeamAttendanceRowCheckOutMethodFORCE  TeamAttendanceRowCheckOutMethod = "FORCE"
+	TeamAttendanceRowCheckOutMethodGROUP  TeamAttendanceRowCheckOutMethod = "GROUP"
+	TeamAttendanceRowCheckOutMethodQR     TeamAttendanceRowCheckOutMethod = "QR"
+	TeamAttendanceRowCheckOutMethodSELFIE TeamAttendanceRowCheckOutMethod = "SELFIE"
+)
+
+// Valid indicates whether the value is a known member of the TeamAttendanceRowCheckOutMethod enum.
+func (e TeamAttendanceRowCheckOutMethod) Valid() bool {
+	switch e {
+	case TeamAttendanceRowCheckOutMethodFORCE:
+		return true
+	case TeamAttendanceRowCheckOutMethodGROUP:
+		return true
+	case TeamAttendanceRowCheckOutMethodQR:
+		return true
+	case TeamAttendanceRowCheckOutMethodSELFIE:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TeamAttendanceRowStatus.
+const (
+	TeamAttendanceRowStatusABSENT  TeamAttendanceRowStatus = "ABSENT"
+	TeamAttendanceRowStatusLEAVE   TeamAttendanceRowStatus = "LEAVE"
+	TeamAttendanceRowStatusPRESENT TeamAttendanceRowStatus = "PRESENT"
+	TeamAttendanceRowStatusSWAPPED TeamAttendanceRowStatus = "SWAPPED"
+)
+
+// Valid indicates whether the value is a known member of the TeamAttendanceRowStatus enum.
+func (e TeamAttendanceRowStatus) Valid() bool {
+	switch e {
+	case TeamAttendanceRowStatusABSENT:
+		return true
+	case TeamAttendanceRowStatusLEAVE:
+		return true
+	case TeamAttendanceRowStatusPRESENT:
+		return true
+	case TeamAttendanceRowStatusSWAPPED:
 		return true
 	default:
 		return false
@@ -1797,6 +2163,48 @@ const (
 func (e PatchAdminAssetsById200JSONResponseBodySuccess) Valid() bool {
 	switch e {
 	case PatchAdminAssetsById200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetAdminAttendancesParamsStatus.
+const (
+	GetAdminAttendancesParamsStatusABSENT  GetAdminAttendancesParamsStatus = "ABSENT"
+	GetAdminAttendancesParamsStatusLEAVE   GetAdminAttendancesParamsStatus = "LEAVE"
+	GetAdminAttendancesParamsStatusPRESENT GetAdminAttendancesParamsStatus = "PRESENT"
+)
+
+// Valid indicates whether the value is a known member of the GetAdminAttendancesParamsStatus enum.
+func (e GetAdminAttendancesParamsStatus) Valid() bool {
+	switch e {
+	case GetAdminAttendancesParamsStatusABSENT:
+		return true
+	case GetAdminAttendancesParamsStatusLEAVE:
+		return true
+	case GetAdminAttendancesParamsStatusPRESENT:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetAdminAttendancesParamsSyncStatus.
+const (
+	GetAdminAttendancesParamsSyncStatusFAILED  GetAdminAttendancesParamsSyncStatus = "FAILED"
+	GetAdminAttendancesParamsSyncStatusPENDING GetAdminAttendancesParamsSyncStatus = "PENDING"
+	GetAdminAttendancesParamsSyncStatusSYNCED  GetAdminAttendancesParamsSyncStatus = "SYNCED"
+)
+
+// Valid indicates whether the value is a known member of the GetAdminAttendancesParamsSyncStatus enum.
+func (e GetAdminAttendancesParamsSyncStatus) Valid() bool {
+	switch e {
+	case GetAdminAttendancesParamsSyncStatusFAILED:
+		return true
+	case GetAdminAttendancesParamsSyncStatusPENDING:
+		return true
+	case GetAdminAttendancesParamsSyncStatusSYNCED:
 		return true
 	default:
 		return false
@@ -2271,6 +2679,21 @@ func (e PatchAdminInstructionCategoriesById200JSONResponseBodySuccess) Valid() b
 	}
 }
 
+// Defines values for PutAdminLeaveClientSettingsByClientCode200JSONResponseBodySuccess.
+const (
+	PutAdminLeaveClientSettingsByClientCode200JSONResponseBodySuccessTrue PutAdminLeaveClientSettingsByClientCode200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PutAdminLeaveClientSettingsByClientCode200JSONResponseBodySuccess enum.
+func (e PutAdminLeaveClientSettingsByClientCode200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PutAdminLeaveClientSettingsByClientCode200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetAdminLetterheads200JSONResponseBodySuccess.
 const (
 	GetAdminLetterheads200JSONResponseBodySuccessTrue GetAdminLetterheads200JSONResponseBodySuccess = true
@@ -2529,30 +2952,105 @@ func (e PostAdminPermissionCategories201JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
-// Defines values for GetAdminPermissionCategoriesById200JSONResponseBodySuccess.
+// Defines values for GetAdminPermissionCategoriesByCode200JSONResponseBodySuccess.
 const (
-	GetAdminPermissionCategoriesById200JSONResponseBodySuccessTrue GetAdminPermissionCategoriesById200JSONResponseBodySuccess = true
+	GetAdminPermissionCategoriesByCode200JSONResponseBodySuccessTrue GetAdminPermissionCategoriesByCode200JSONResponseBodySuccess = true
 )
 
-// Valid indicates whether the value is a known member of the GetAdminPermissionCategoriesById200JSONResponseBodySuccess enum.
-func (e GetAdminPermissionCategoriesById200JSONResponseBodySuccess) Valid() bool {
+// Valid indicates whether the value is a known member of the GetAdminPermissionCategoriesByCode200JSONResponseBodySuccess enum.
+func (e GetAdminPermissionCategoriesByCode200JSONResponseBodySuccess) Valid() bool {
 	switch e {
-	case GetAdminPermissionCategoriesById200JSONResponseBodySuccessTrue:
+	case GetAdminPermissionCategoriesByCode200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
 	}
 }
 
-// Defines values for PatchAdminPermissionCategoriesById200JSONResponseBodySuccess.
+// Defines values for PatchAdminPermissionCategoriesByCode200JSONResponseBodySuccess.
 const (
-	PatchAdminPermissionCategoriesById200JSONResponseBodySuccessTrue PatchAdminPermissionCategoriesById200JSONResponseBodySuccess = true
+	PatchAdminPermissionCategoriesByCode200JSONResponseBodySuccessTrue PatchAdminPermissionCategoriesByCode200JSONResponseBodySuccess = true
 )
 
-// Valid indicates whether the value is a known member of the PatchAdminPermissionCategoriesById200JSONResponseBodySuccess enum.
-func (e PatchAdminPermissionCategoriesById200JSONResponseBodySuccess) Valid() bool {
+// Valid indicates whether the value is a known member of the PatchAdminPermissionCategoriesByCode200JSONResponseBodySuccess enum.
+func (e PatchAdminPermissionCategoriesByCode200JSONResponseBodySuccess) Valid() bool {
 	switch e {
-	case PatchAdminPermissionCategoriesById200JSONResponseBodySuccessTrue:
+	case PatchAdminPermissionCategoriesByCode200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PutAdminPermissionCategoriesByCodeQuotas200JSONResponseBodySuccess.
+const (
+	PutAdminPermissionCategoriesByCodeQuotas200JSONResponseBodySuccessTrue PutAdminPermissionCategoriesByCodeQuotas200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PutAdminPermissionCategoriesByCodeQuotas200JSONResponseBodySuccess enum.
+func (e PutAdminPermissionCategoriesByCodeQuotas200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PutAdminPermissionCategoriesByCodeQuotas200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetAdminPermissions200JSONResponseBodySuccess.
+const (
+	GetAdminPermissions200JSONResponseBodySuccessTrue GetAdminPermissions200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetAdminPermissions200JSONResponseBodySuccess enum.
+func (e GetAdminPermissions200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetAdminPermissions200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetAdminPermissionsById200JSONResponseBodySuccess.
+const (
+	GetAdminPermissionsById200JSONResponseBodySuccessTrue GetAdminPermissionsById200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetAdminPermissionsById200JSONResponseBodySuccess enum.
+func (e GetAdminPermissionsById200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetAdminPermissionsById200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostAdminPermissionsByIdApprove200JSONResponseBodySuccess.
+const (
+	PostAdminPermissionsByIdApprove200JSONResponseBodySuccessTrue PostAdminPermissionsByIdApprove200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostAdminPermissionsByIdApprove200JSONResponseBodySuccess enum.
+func (e PostAdminPermissionsByIdApprove200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostAdminPermissionsByIdApprove200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostAdminPermissionsByIdDecline200JSONResponseBodySuccess.
+const (
+	PostAdminPermissionsByIdDecline200JSONResponseBodySuccessTrue PostAdminPermissionsByIdDecline200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostAdminPermissionsByIdDecline200JSONResponseBodySuccess enum.
+func (e PostAdminPermissionsByIdDecline200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostAdminPermissionsByIdDecline200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
@@ -2586,6 +3084,36 @@ const (
 func (e GetAdminPersonnelReviews200JSONResponseBodySuccess) Valid() bool {
 	switch e {
 	case GetAdminPersonnelReviews200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetAdminPersonnelByPersonnelIdLeaveLedger200JSONResponseBodySuccess.
+const (
+	GetAdminPersonnelByPersonnelIdLeaveLedger200JSONResponseBodySuccessTrue GetAdminPersonnelByPersonnelIdLeaveLedger200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetAdminPersonnelByPersonnelIdLeaveLedger200JSONResponseBodySuccess enum.
+func (e GetAdminPersonnelByPersonnelIdLeaveLedger200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetAdminPersonnelByPersonnelIdLeaveLedger200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostAdminPersonnelByPersonnelIdLeaveLedger201JSONResponseBodySuccess.
+const (
+	PostAdminPersonnelByPersonnelIdLeaveLedger201JSONResponseBodySuccessTrue PostAdminPersonnelByPersonnelIdLeaveLedger201JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostAdminPersonnelByPersonnelIdLeaveLedger201JSONResponseBodySuccess enum.
+func (e PostAdminPersonnelByPersonnelIdLeaveLedger201JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostAdminPersonnelByPersonnelIdLeaveLedger201JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
@@ -3741,6 +4269,27 @@ func (e GetAssets200JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
+// Defines values for GetAttendancesParamsStatus.
+const (
+	GetAttendancesParamsStatusABSENT  GetAttendancesParamsStatus = "ABSENT"
+	GetAttendancesParamsStatusLEAVE   GetAttendancesParamsStatus = "LEAVE"
+	GetAttendancesParamsStatusPRESENT GetAttendancesParamsStatus = "PRESENT"
+)
+
+// Valid indicates whether the value is a known member of the GetAttendancesParamsStatus enum.
+func (e GetAttendancesParamsStatus) Valid() bool {
+	switch e {
+	case GetAttendancesParamsStatusABSENT:
+		return true
+	case GetAttendancesParamsStatusLEAVE:
+		return true
+	case GetAttendancesParamsStatusPRESENT:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetAttendances200JSONResponseBodySuccess.
 const (
 	GetAttendances200JSONResponseBodySuccessTrue GetAttendances200JSONResponseBodySuccess = true
@@ -3786,6 +4335,21 @@ func (e PostAttendancesGroup201JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
+// Defines values for GetAttendancesGroupSummary200JSONResponseBodySuccess.
+const (
+	GetAttendancesGroupSummary200JSONResponseBodySuccessTrue GetAttendancesGroupSummary200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetAttendancesGroupSummary200JSONResponseBodySuccess enum.
+func (e GetAttendancesGroupSummary200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetAttendancesGroupSummary200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetAttendancesMe200JSONResponseBodySuccess.
 const (
 	GetAttendancesMe200JSONResponseBodySuccessTrue GetAttendancesMe200JSONResponseBodySuccess = true
@@ -3825,6 +4389,39 @@ const (
 func (e PostAttendancesQrCheckOut200JSONResponseBodySuccess) Valid() bool {
 	switch e {
 	case PostAttendancesQrCheckOut200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetAttendancesQrDisplayParamsDirection.
+const (
+	IN  GetAttendancesQrDisplayParamsDirection = "IN"
+	OUT GetAttendancesQrDisplayParamsDirection = "OUT"
+)
+
+// Valid indicates whether the value is a known member of the GetAttendancesQrDisplayParamsDirection enum.
+func (e GetAttendancesQrDisplayParamsDirection) Valid() bool {
+	switch e {
+	case IN:
+		return true
+	case OUT:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetAttendancesQrDisplay200JSONResponseBodySuccess.
+const (
+	GetAttendancesQrDisplay200JSONResponseBodySuccessTrue GetAttendancesQrDisplay200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetAttendancesQrDisplay200JSONResponseBodySuccess enum.
+func (e GetAttendancesQrDisplay200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetAttendancesQrDisplay200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
@@ -3885,6 +4482,21 @@ const (
 func (e PostAttendancesSelfieCheckOut200JSONResponseBodySuccess) Valid() bool {
 	switch e {
 	case PostAttendancesSelfieCheckOut200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetAttendancesToday200JSONResponseBodySuccess.
+const (
+	GetAttendancesToday200JSONResponseBodySuccessTrue GetAttendancesToday200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetAttendancesToday200JSONResponseBodySuccess enum.
+func (e GetAttendancesToday200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetAttendancesToday200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
@@ -4920,6 +5532,21 @@ func (e PostPermissions201JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
+// Defines values for GetPermissionsApprover200JSONResponseBodySuccess.
+const (
+	GetPermissionsApprover200JSONResponseBodySuccessTrue GetPermissionsApprover200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetPermissionsApprover200JSONResponseBodySuccess enum.
+func (e GetPermissionsApprover200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetPermissionsApprover200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetPermissionsMe200JSONResponseBodySuccess.
 const (
 	GetPermissionsMe200JSONResponseBodySuccessTrue GetPermissionsMe200JSONResponseBodySuccess = true
@@ -4935,6 +5562,36 @@ func (e GetPermissionsMe200JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
+// Defines values for GetPermissionsQuota200JSONResponseBodySuccess.
+const (
+	GetPermissionsQuota200JSONResponseBodySuccessTrue GetPermissionsQuota200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetPermissionsQuota200JSONResponseBodySuccess enum.
+func (e GetPermissionsQuota200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetPermissionsQuota200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetPermissionsById200JSONResponseBodySuccess.
+const (
+	GetPermissionsById200JSONResponseBodySuccessTrue GetPermissionsById200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetPermissionsById200JSONResponseBodySuccess enum.
+func (e GetPermissionsById200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetPermissionsById200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PostPermissionsByIdApprove200JSONResponseBodySuccess.
 const (
 	PostPermissionsByIdApprove200JSONResponseBodySuccessTrue PostPermissionsByIdApprove200JSONResponseBodySuccess = true
@@ -4944,6 +5601,21 @@ const (
 func (e PostPermissionsByIdApprove200JSONResponseBodySuccess) Valid() bool {
 	switch e {
 	case PostPermissionsByIdApprove200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostPermissionsByIdCancel200JSONResponseBodySuccess.
+const (
+	PostPermissionsByIdCancel200JSONResponseBodySuccessTrue PostPermissionsByIdCancel200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostPermissionsByIdCancel200JSONResponseBodySuccess enum.
+func (e PostPermissionsByIdCancel200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostPermissionsByIdCancel200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
@@ -5682,6 +6354,36 @@ func (e PostShiftSwaps201JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
+// Defines values for GetShiftSwapsCandidates200JSONResponseBodySuccess.
+const (
+	GetShiftSwapsCandidates200JSONResponseBodySuccessTrue GetShiftSwapsCandidates200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetShiftSwapsCandidates200JSONResponseBodySuccess enum.
+func (e GetShiftSwapsCandidates200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetShiftSwapsCandidates200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetShiftSwapsReplaceable200JSONResponseBodySuccess.
+const (
+	GetShiftSwapsReplaceable200JSONResponseBodySuccessTrue GetShiftSwapsReplaceable200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetShiftSwapsReplaceable200JSONResponseBodySuccess enum.
+func (e GetShiftSwapsReplaceable200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetShiftSwapsReplaceable200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetTeams200JSONResponseBodySuccess.
 const (
 	GetTeams200JSONResponseBodySuccessTrue GetTeams200JSONResponseBodySuccess = true
@@ -6084,79 +6786,291 @@ type AssetReportCreate struct {
 	Title  string    `json:"title"`
 }
 
-// Attendance defines model for Attendance.
+// Attendance Satu instans shift seseorang di satu regu (orang × regu × tanggal kerja × shift). Ini bukti yang ditangkap SiAPP, bukan catatan resmi: catatan resminya di Persist Personel, yang menerima tiap perubahan lewat outbox (`personel_sync_status`).
 type Attendance struct {
-	CheckInAt      *time.Time          `json:"check_in_at,omitempty"`
-	CheckOutAt     *time.Time          `json:"check_out_at,omitempty"`
-	CreatedAt      *time.Time          `json:"created_at,omitempty"`
-	Id             *int64              `json:"id,omitempty"`
-	IsAbsent       *bool               `json:"is_absent,omitempty"`
-	Latitude       *float64            `json:"latitude,omitempty"`
-	LocalId        *string             `json:"local_id,omitempty"`
-	Longitude      *float64            `json:"longitude,omitempty"`
-	Method         *AttendanceMethod   `json:"method,omitempty"`
-	OrganizationId *int64              `json:"organization_id,omitempty"`
-	PersonnelId    *int64              `json:"personnel_id,omitempty"`
-	PhotoUrl       *string             `json:"photo_url,omitempty"`
-	ProjectId      *int64              `json:"project_id,omitempty"`
-	ReplacedById   *int64              `json:"replaced_by_id,omitempty"`
-	SyncedAt       *time.Time          `json:"synced_at,omitempty"`
-	TeamId         *int64              `json:"team_id,omitempty"`
-	Timezone       *AttendanceTimezone `json:"timezone,omitempty"`
-	UpdatedAt      *time.Time          `json:"updated_at,omitempty"`
+	CheckInAt *time.Time `json:"check_in_at,omitempty"`
+
+	// CheckInDistanceMeters Jarak ke titik proyek; null bila tidak ada fix GPS.
+	CheckInDistanceMeters  *int                      `json:"check_in_distance_meters,omitempty"`
+	CheckInMethod          *AttendanceCheckInMethod  `json:"check_in_method,omitempty"`
+	CheckInWithinArea      *bool                     `json:"check_in_within_area,omitempty"`
+	CheckOutAt             *time.Time                `json:"check_out_at,omitempty"`
+	CheckOutDistanceMeters *int                      `json:"check_out_distance_meters,omitempty"`
+	CheckOutMethod         *AttendanceCheckOutMethod `json:"check_out_method,omitempty"`
+
+	// CheckOutUpdateCount Berapa kali jam pulang diperbarui.
+	CheckOutUpdateCount int       `json:"check_out_update_count"`
+	CheckOutWithinArea  *bool     `json:"check_out_within_area,omitempty"`
+	CreatedAt           time.Time `json:"created_at"`
+	Id                  int64     `json:"id"`
+
+	// LateMinutes Menit keterlambatan absen datang, dibulatkan ke bawah; 0 bila tepat waktu. Absen dalam toleransi shift dihitung tepat waktu; lewat dari itu, keterlambatan dihitung dari jam mulai shift. Disimpan saat absen, tidak berubah bila toleransi diedit kemudian.
+	LateMinutes int `json:"late_minutes"`
+
+	// LeaveRequestId Pengajuan izin/cuti/sakit yang membuat catatan LEAVE ini (GET /permissions/{id}); null untuk catatan lain.
+	LeaveRequestId     *int64                       `json:"leave_request_id,omitempty"`
+	PersonelSyncStatus AttendancePersonelSyncStatus `json:"personel_sync_status"`
+	PersonnelId        int64                        `json:"personnel_id"`
+	ProjectCode        string                       `json:"project_code"`
+	ShiftEndsAt        time.Time                    `json:"shift_ends_at"`
+	ShiftId            int64                        `json:"shift_id"`
+
+	// ShiftStartsAt Salinan jam shift saat absen: tidak ikut berubah bila shift/proyek diedit kemudian.
+	ShiftStartsAt time.Time        `json:"shift_starts_at"`
+	Status        AttendanceStatus `json:"status"`
+	TeamCode      string           `json:"team_code"`
+	Timezone      string           `json:"timezone"`
+	UpdatedAt     time.Time        `json:"updated_at"`
+
+	// WorkDate Tanggal shift DIMULAI, di zona waktu proyek.
+	WorkDate openapi_types.Date `json:"work_date"`
 }
 
-// AttendanceMethod defines model for Attendance.Method.
-type AttendanceMethod string
+// AttendanceCheckInMethod defines model for Attendance.CheckInMethod.
+type AttendanceCheckInMethod string
 
-// AttendanceTimezone defines model for Attendance.Timezone.
-type AttendanceTimezone string
+// AttendanceCheckOutMethod defines model for Attendance.CheckOutMethod.
+type AttendanceCheckOutMethod string
 
-// AttendanceAbsentInput defines model for AttendanceAbsentInput.
+// AttendancePersonelSyncStatus defines model for Attendance.PersonelSyncStatus.
+type AttendancePersonelSyncStatus string
+
+// AttendanceStatus defines model for Attendance.Status.
+type AttendanceStatus string
+
+// AttendanceAbsentInput Mangkir satu personil pada satu regu dan tanggal kerja, ditandai langsung oleh DANRU tanpa personil pernah absen datang.
 type AttendanceAbsentInput struct {
+	// Date Tanggal kerja yang ditandai mangkir; tidak harus hari ini.
 	Date        openapi_types.Date `json:"date"`
 	PersonnelId int64              `json:"personnel_id"`
-	Reason      *string            `json:"reason,omitempty"`
+
+	// Reason Wajib; kosong atau hanya spasi: 422 `VALIDATION_ERROR`.
+	Reason string `json:"reason"`
+
+	// TeamCode Regu personil pada tanggal itu; seseorang bisa bertugas di dua regu dalam satu hari.
+	TeamCode string `json:"team_code"`
 }
 
 // AttendanceCheckOutPatch defines model for AttendanceCheckOutPatch.
 type AttendanceCheckOutPatch struct {
-	Lat float64 `json:"lat"`
-	Lng float64 `json:"lng"`
+	AccuracyMeters *float64 `json:"accuracy_meters,omitempty"`
+	Latitude       float64  `json:"latitude"`
+	Longitude      float64  `json:"longitude"`
+	MediaIds       []int64  `json:"media_ids"`
 }
 
-// AttendanceCorrection defines model for AttendanceCorrection.
+// AttendanceCorrection `reason` selalu wajib. `status` (PRESENT, LEAVE atau ABSENT) mengubah status catatan; `check_in_at`/`check_out_at` hanya berlaku bila status (baru atau yang sudah ada) PRESENT.
 type AttendanceCorrection struct {
-	CheckIn  *time.Time `json:"check_in,omitempty"`
-	CheckOut *time.Time `json:"check_out,omitempty"`
-	IsAbsent *bool      `json:"is_absent,omitempty"`
-	Note     *string    `json:"note,omitempty"`
+	// CheckInAt Wajib bila status menjadi PRESENT dari ABSENT/LEAVE.
+	CheckInAt  *time.Time `json:"check_in_at,omitempty"`
+	CheckOutAt *time.Time `json:"check_out_at,omitempty"`
+
+	// Reason Disimpan di audit log (dan absent_reason bila status ABSENT).
+	Reason string                      `json:"reason"`
+	Status *AttendanceCorrectionStatus `json:"status,omitempty"`
 }
 
-// AttendanceGroupInput defines model for AttendanceGroupInput.
+// AttendanceCorrectionStatus defines model for AttendanceCorrection.Status.
+type AttendanceCorrectionStatus string
+
+// AttendanceDetail Satu catatan absensi beserta nama proyek, regu, shift, DANRU, dan selfie.
+type AttendanceDetail struct {
+	CheckInAt *time.Time `json:"check_in_at,omitempty"`
+
+	// CheckInDistanceMeters Jarak ke titik proyek; null bila tidak ada fix GPS.
+	CheckInDistanceMeters  *int                            `json:"check_in_distance_meters,omitempty"`
+	CheckInMethod          *AttendanceDetailCheckInMethod  `json:"check_in_method,omitempty"`
+	CheckInSelfie          *AttendanceSelfie               `json:"check_in_selfie,omitempty"`
+	CheckInWithinArea      *bool                           `json:"check_in_within_area,omitempty"`
+	CheckOutAt             *time.Time                      `json:"check_out_at,omitempty"`
+	CheckOutDistanceMeters *int                            `json:"check_out_distance_meters,omitempty"`
+	CheckOutMethod         *AttendanceDetailCheckOutMethod `json:"check_out_method,omitempty"`
+	CheckOutSelfie         *AttendanceSelfie               `json:"check_out_selfie,omitempty"`
+
+	// CheckOutUpdateCount Berapa kali jam pulang diperbarui.
+	CheckOutUpdateCount int       `json:"check_out_update_count"`
+	CheckOutWithinArea  *bool     `json:"check_out_within_area,omitempty"`
+	CreatedAt           time.Time `json:"created_at"`
+
+	// DanruNames DANRU regu pada tanggal kerja, lalu DANRU pemilik QR yang dipindai bila berbeda.
+	DanruNames []string `json:"danru_names"`
+	Id         int64    `json:"id"`
+
+	// LateMinutes Menit keterlambatan absen datang, dibulatkan ke bawah; 0 bila tepat waktu. Absen dalam toleransi shift dihitung tepat waktu; lewat dari itu, keterlambatan dihitung dari jam mulai shift. Disimpan saat absen, tidak berubah bila toleransi diedit kemudian.
+	LateMinutes int `json:"late_minutes"`
+
+	// LeaveRequestId Pengajuan izin/cuti/sakit yang membuat catatan LEAVE ini (GET /permissions/{id}); null untuk catatan lain.
+	LeaveRequestId     *int64                             `json:"leave_request_id,omitempty"`
+	PersonelSyncStatus AttendanceDetailPersonelSyncStatus `json:"personel_sync_status"`
+	PersonnelId        int64                              `json:"personnel_id"`
+	ProjectCode        string                             `json:"project_code"`
+	ProjectName        string                             `json:"project_name"`
+	ShiftEndsAt        time.Time                          `json:"shift_ends_at"`
+	ShiftId            int64                              `json:"shift_id"`
+
+	// ShiftName Kosong bila shift sudah dihapus.
+	ShiftName string `json:"shift_name"`
+
+	// ShiftStartsAt Salinan jam shift saat absen: tidak ikut berubah bila shift/proyek diedit kemudian.
+	ShiftStartsAt time.Time              `json:"shift_starts_at"`
+	Status        AttendanceDetailStatus `json:"status"`
+	TeamCode      string                 `json:"team_code"`
+	TeamName      string                 `json:"team_name"`
+	Timezone      string                 `json:"timezone"`
+	UpdatedAt     time.Time              `json:"updated_at"`
+
+	// WorkDate Tanggal shift DIMULAI, di zona waktu proyek.
+	WorkDate openapi_types.Date `json:"work_date"`
+}
+
+// AttendanceDetailCheckInMethod defines model for AttendanceDetail.CheckInMethod.
+type AttendanceDetailCheckInMethod string
+
+// AttendanceDetailCheckOutMethod defines model for AttendanceDetail.CheckOutMethod.
+type AttendanceDetailCheckOutMethod string
+
+// AttendanceDetailPersonelSyncStatus defines model for AttendanceDetail.PersonelSyncStatus.
+type AttendanceDetailPersonelSyncStatus string
+
+// AttendanceDetailStatus defines model for AttendanceDetail.Status.
+type AttendanceDetailStatus string
+
+// AttendanceGroupInput Muster satu regu sekaligus untuk satu shift dengan satu lokasi DANRU: setiap personil yang disebut jadi absen datang metode GROUP. Ditolak 422 `GROUP_ATTENDANCE_DISABLED` selama proyek regu belum mengaktifkan `allow_group_attendance`. Satu personil yang gagal (tidak terjadwal pada shift ini, sudah tercatat) tidak menggagalkan personil lain; lihat `data[].error` pada tiap entri.
 type AttendanceGroupInput struct {
-	Entries []struct {
-		PersonnelId int64  `json:"personnel_id"`
-		Status      string `json:"status"`
-	} `json:"entries"`
-	TeamId int64 `json:"team_id"`
+	// Latitude Lokasi DANRU, dipakai untuk setiap personil.
+	Latitude     float64 `json:"latitude"`
+	Longitude    float64 `json:"longitude"`
+	PersonnelIds []int64 `json:"personnel_ids"`
+
+	// ShiftRef Dari daftar shift regu; harus milik team_code.
+	ShiftRef string `json:"shift_ref"`
+	TeamCode string `json:"team_code"`
 }
 
-// AttendanceQrCheckIn defines model for AttendanceQrCheckIn.
-type AttendanceQrCheckIn struct {
-	Lat     float64 `json:"lat"`
-	Lng     float64 `json:"lng"`
-	LocalId *string `json:"local_id,omitempty"`
-	Photo   *string `json:"photo,omitempty"`
-	QrToken string  `json:"qr_token"`
+// AttendanceGroupResult defines model for AttendanceGroupResult.
+type AttendanceGroupResult struct {
+	// Attendance null bila personil ini gagal (lihat error).
+	Attendance Attendance `json:"attendance"`
+
+	// Error null bila personil ini berhasil.
+	Error struct {
+		Message *string `json:"message,omitempty"`
+		Reason  *string `json:"reason,omitempty"`
+	} `json:"error"`
+	PersonnelId int64 `json:"personnel_id"`
 }
 
-// AttendanceQrCheckOut defines model for AttendanceQrCheckOut.
-type AttendanceQrCheckOut struct {
-	Lat     float64 `json:"lat"`
-	Lng     float64 `json:"lng"`
-	QrToken string  `json:"qr_token"`
+// AttendanceHistoryDay Shift-shift satu tanggal kerja pada kalender absensi.
+type AttendanceHistoryDay struct {
+	Shifts []struct {
+		// AttendanceId null untuk MISSING dan UPCOMING (belum ada catatan).
+		AttendanceId  *int64                                   `json:"attendance_id,omitempty"`
+		CheckInAt     *time.Time                               `json:"check_in_at,omitempty"`
+		CheckInMethod *AttendanceHistoryDayShiftsCheckInMethod `json:"check_in_method,omitempty"`
+		CheckOutAt    *time.Time                               `json:"check_out_at,omitempty"`
+		ShiftName     string                                   `json:"shift_name"`
+
+		// ShiftSwapId Terisi bila ini shift yang diambil alih personil dari orang lain lewat tukar jaga (tukar jaga aktif).
+		ShiftSwapId *int64                           `json:"shift_swap_id,omitempty"`
+		Status      AttendanceHistoryDayShiftsStatus `json:"status"`
+		TeamCode    string                           `json:"team_code"`
+		TeamName    string                           `json:"team_name"`
+	} `json:"shifts"`
+	WorkDate openapi_types.Date `json:"work_date"`
 }
+
+// AttendanceHistoryDayShiftsCheckInMethod defines model for AttendanceHistoryDay.Shifts.CheckInMethod.
+type AttendanceHistoryDayShiftsCheckInMethod string
+
+// AttendanceHistoryDayShiftsStatus defines model for AttendanceHistoryDay.Shifts.Status.
+type AttendanceHistoryDayShiftsStatus string
+
+// AttendanceQrCode defines model for AttendanceQrCode.
+type AttendanceQrCode struct {
+	// ExpiresAt 60 detik sejak kode diterbitkan (toleransi 5 detik di sisi server).
+	ExpiresAt time.Time `json:"expires_at"`
+	Token     string    `json:"token"`
+}
+
+// AttendanceQrInput Latitude dan longitude opsional, tetapi harus dikirim berpasangan.
+type AttendanceQrInput struct {
+	AccuracyMeters *float64 `json:"accuracy_meters,omitempty"`
+	Latitude       *float64 `json:"latitude,omitempty"`
+	Longitude      *float64 `json:"longitude,omitempty"`
+
+	// ShiftRef Dari GET /attendances/today.
+	ShiftRef string `json:"shift_ref"`
+
+	// Token Kode yang sedang ditampilkan DANRU (GET /attendances/qr/display).
+	Token string `json:"token"`
+}
+
+// AttendanceReplacedRow Satu baris tab "Digantikan" (GET /attendances/replaced).
+type AttendanceReplacedRow struct {
+	ReplacingCheckInAt     time.Time          `json:"replacing_check_in_at"`
+	ReplacingCheckOutAt    time.Time          `json:"replacing_check_out_at"`
+	ReplacingPersonnelName string             `json:"replacing_personnel_name"`
+	ShiftName              string             `json:"shift_name"`
+	WorkDate               openapi_types.Date `json:"work_date"`
+}
+
+// AttendanceReplacingRow Satu baris tab "Menggantikan" (GET /attendances/replacing).
+type AttendanceReplacingRow struct {
+	CheckInAt             time.Time          `json:"check_in_at"`
+	CheckOutAt            time.Time          `json:"check_out_at"`
+	ReplacedPersonnelName string             `json:"replaced_personnel_name"`
+	ShiftName             string             `json:"shift_name"`
+	WorkDate              openapi_types.Date `json:"work_date"`
+}
+
+// AttendanceSelfie defines model for AttendanceSelfie.
+type AttendanceSelfie struct {
+	CapturedAt  *time.Time `json:"captured_at,omitempty"`
+	ContentType string     `json:"content_type"`
+	Id          int64      `json:"id"`
+
+	// Url URL bertanda tangan, berlaku sekitar satu jam.
+	Url string `json:"url"`
+}
+
+// AttendanceSelfieInput defines model for AttendanceSelfieInput.
+type AttendanceSelfieInput struct {
+	AccuracyMeters *float64 `json:"accuracy_meters,omitempty"`
+	Latitude       float64  `json:"latitude"`
+	Longitude      float64  `json:"longitude"`
+
+	// MediaIds Tepat satu foto selfie (media dengan purpose ATTENDANCE_SELFIE, sudah di-complete).
+	MediaIds []int64 `json:"media_ids"`
+
+	// ShiftRef Dari GET /attendances/today.
+	ShiftRef string `json:"shift_ref"`
+}
+
+// AttendanceToday Satu shift yang bisa diabsen sekarang, di satu regu.
+type AttendanceToday struct {
+	// AttendanceId Ada bila shift sudah punya catatan.
+	AttendanceId *int64     `json:"attendance_id,omitempty"`
+	CheckInAt    *time.Time `json:"check_in_at,omitempty"`
+	CheckOutAt   *time.Time `json:"check_out_at,omitempty"`
+	EndsAt       time.Time  `json:"ends_at"`
+	ProjectCode  string     `json:"project_code"`
+	ProjectName  string     `json:"project_name"`
+	ShiftName    string     `json:"shift_name"`
+
+	// ShiftRef Penanda buram shift; kirim apa adanya ke endpoint absen.
+	ShiftRef string    `json:"shift_ref"`
+	StartsAt time.Time `json:"starts_at"`
+
+	// Status null selama shift belum punya catatan.
+	Status   *AttendanceTodayStatus `json:"status,omitempty"`
+	TeamCode string                 `json:"team_code"`
+	TeamName string                 `json:"team_name"`
+	Timezone string                 `json:"timezone"`
+	WorkDate openapi_types.Date     `json:"work_date"`
+}
+
+// AttendanceTodayStatus null selama shift belum punya catatan.
+type AttendanceTodayStatus string
 
 // Branch defines model for Branch.
 type Branch struct {
@@ -6265,14 +7179,14 @@ type CategoryCreate struct {
 	Name          string                         `json:"name"`
 	SortOrder     *int                           `json:"sort_order,omitempty"`
 
-	// Urgency Wajib untuk kategori instruksi
+	// Urgency Wajib untuk kategori instruksi, ditolak untuk kategori laporan.
 	Urgency *CategoryCreateUrgency `json:"urgency,omitempty"`
 }
 
 // CategoryCreateBusinessLines defines model for CategoryCreate.BusinessLines.
 type CategoryCreateBusinessLines string
 
-// CategoryCreateUrgency Wajib untuk kategori instruksi
+// CategoryCreateUrgency Wajib untuk kategori instruksi, ditolak untuk kategori laporan.
 type CategoryCreateUrgency string
 
 // CategoryPatch Field yang tidak dikirim tidak berubah. `business_lines` kosong berarti semua lini bisnis.
@@ -6364,7 +7278,7 @@ type Client struct {
 	Code               *string `json:"code,omitempty"`
 	CompanyBidangUsaha *string `json:"company_bidang_usaha,omitempty"`
 
-	// CompanyCode Diisi manual
+	// CompanyCode Diisi manual, tidak dibentuk server.
 	CompanyCode   *string    `json:"company_code,omitempty"`
 	CompanyPrefix *string    `json:"company_prefix,omitempty"`
 	CreatedAt     *time.Time `json:"created_at,omitempty"`
@@ -6588,7 +7502,27 @@ type ErrorEnvelope struct {
 		// Code Kode error UPPERCASE machine-readable permukaan /api/v1/*.
 		Code ErrorCode `json:"code"`
 
-		// Details Konteks tambahan opsional (mis. scope_required, retry_after).
+		// Details Konteks tambahan opsional (mis. scope_required, retry_after). `details.reason` adalah
+		// kode mesin yang lebih rinci dari `error.code`; yang sudah dirilis tidak pernah diganti
+		// namanya. Reason lintas-modul (reason milik satu endpoint ada pada deskripsi endpoint itu):
+		//
+		// - 401 `AUTH_TOKEN_INVALID`: token hilang, rusak, atau salah tanda tangan; ke layar login.
+		// - 401 `AUTH_TOKEN_EXPIRED` (code `TOKEN_EXPIRED`): token akses lewat masa berlaku;
+		//   refresh sekali lalu ulangi.
+		// - 401 `AUTH_INVALID_CREDENTIALS`, 403 `AUTH_DEVICE_BOUND`, 403
+		//   `AUTH_ORGANIZATION_SUSPENDED`: lihat `POST /auth/login`.
+		// - 409 `IDEMPOTENCY_KEY_REUSED`, `IDEMPOTENCY_KEY_IN_FLIGHT`,
+		//   `IDEMPOTENCY_RESPONSE_NOT_STORED`: lihat header `Idempotency-Key`.
+		// - 422 `OCCURRED_AT_IN_FUTURE`: item offline mengaku terjadi lebih dari 5 menit ke depan.
+		// - 422 `OCCURRED_AT_TOO_OLD`: item offline lebih tua dari jendela offline 7 hari.
+		// - 503 `PERSONEL_UNAVAILABLE` (code `INTERNAL_ERROR`): Personalia tidak menjawab; coba lagi nanti.
+		// - 404 `NOT_FOUND` dengan reason `ATTENDANCE_NOT_FOUND`, `NOTIFICATION_NOT_FOUND`,
+		//   `CATEGORY_NOT_FOUND`, `PANIC_TYPE_NOT_FOUND`, `LETTERHEAD_NOT_FOUND`, `APP_LINK_NOT_FOUND`,
+		//   `LEAVE_CATEGORY_NOT_FOUND`, `LEAVE_CLIENT_NOT_FOUND`: data tidak ada, sudah dihapus, atau
+		//   milik organisasi/orang lain (tidak dibedakan).
+		// - 422 `CATEGORY_KIND_MISMATCH`: kategori bukan untuk jenis data itu.
+		// - 409 `MASTER_IN_USE`: master masih dipakai; nonaktifkan, jangan hapus.
+		// - 409 `ACCESS_OWN_ROLE_PROTECTED`: admin tidak boleh mencabut atau mempersempit perannya sendiri.
 		Details *map[string]interface{} `json:"details,omitempty"`
 		Errors  *[]FieldError           `json:"errors,omitempty"`
 
@@ -6633,7 +7567,7 @@ type FieldPermissionDefinition struct {
 	// Description Nama hak di Tabel 8 manual (Bahasa Indonesia).
 	Description string `json:"description"`
 
-	// Module Modul pemilik hak ini
+	// Module Modul pemilik hak ini, untuk mengelompokkan di layar.
 	Module     string `json:"module"`
 	Permission string `json:"permission"`
 }
@@ -6806,6 +7740,151 @@ type InvoiceLine struct {
 
 	// UnitPrice Nominal sebagai string desimal (DL-38) — jangan float.
 	UnitPrice *Money `json:"unit_price,omitempty"`
+}
+
+// LeaveApprover defines model for LeaveApprover.
+type LeaveApprover struct {
+	Name        string `json:"name"`
+	PersonnelId int64  `json:"personnel_id"`
+}
+
+// LeaveCategory Kategori izin, cuti atau sakit. Keistimewaannya ada pada bendera: `is_annual` (memakai saldo buku besar), `skips_day_check` (hari tidak dibandingkan dengan sisa), `requires_time_range` (perlu jam mulai dan selesai; kelas "sebagian hari"), `requires_change_day` (perlu hari tukar), `makes_leave_days` (persetujuan menulis baris LEAVE), `excuses_lateness` (menghapus keterlambatan hari itu), `has_quota`.
+type LeaveCategory struct {
+	Code              string            `json:"code"`
+	CreatedAt         time.Time         `json:"created_at"`
+	ExcusesLateness   bool              `json:"excuses_lateness"`
+	HasQuota          bool              `json:"has_quota"`
+	IsActive          bool              `json:"is_active"`
+	IsAnnual          bool              `json:"is_annual"`
+	MakesLeaveDays    bool              `json:"makes_leave_days"`
+	Name              string            `json:"name"`
+	RequiresChangeDay bool              `json:"requires_change_day"`
+	RequiresTimeRange bool              `json:"requires_time_range"`
+	SkipsDayCheck     bool              `json:"skips_day_check"`
+	SortOrder         int               `json:"sort_order"`
+	Type              LeaveCategoryType `json:"type"`
+	UpdatedAt         time.Time         `json:"updated_at"`
+}
+
+// LeaveCategoryDetail defines model for LeaveCategoryDetail.
+type LeaveCategoryDetail struct {
+	Code              string            `json:"code"`
+	CreatedAt         time.Time         `json:"created_at"`
+	ExcusesLateness   bool              `json:"excuses_lateness"`
+	HasQuota          bool              `json:"has_quota"`
+	IsActive          bool              `json:"is_active"`
+	IsAnnual          bool              `json:"is_annual"`
+	MakesLeaveDays    bool              `json:"makes_leave_days"`
+	Name              string            `json:"name"`
+	Quotas            LeaveQuotas       `json:"quotas"`
+	RequiresChangeDay bool              `json:"requires_change_day"`
+	RequiresTimeRange bool              `json:"requires_time_range"`
+	SkipsDayCheck     bool              `json:"skips_day_check"`
+	SortOrder         int               `json:"sort_order"`
+	Type              LeaveCategoryType `json:"type"`
+	UpdatedAt         time.Time         `json:"updated_at"`
+}
+
+// LeaveCategoryInput defines model for LeaveCategoryInput.
+type LeaveCategoryInput struct {
+	Code            string `json:"code"`
+	ExcusesLateness *bool  `json:"excuses_lateness,omitempty"`
+
+	// HasQuota Bawaan false untuk SICK, selain itu true.
+	HasQuota *bool `json:"has_quota,omitempty"`
+	IsActive *bool `json:"is_active,omitempty"`
+	IsAnnual *bool `json:"is_annual,omitempty"`
+
+	// MakesLeaveDays Bawaan true.
+	MakesLeaveDays    *bool             `json:"makes_leave_days,omitempty"`
+	Name              string            `json:"name"`
+	RequiresChangeDay *bool             `json:"requires_change_day,omitempty"`
+	RequiresTimeRange *bool             `json:"requires_time_range,omitempty"`
+	SkipsDayCheck     *bool             `json:"skips_day_check,omitempty"`
+	SortOrder         *int              `json:"sort_order,omitempty"`
+	Type              LeaveCategoryType `json:"type"`
+}
+
+// LeaveCategoryTombstone Kategori yang dinonaktifkan, untuk cache lokal delta-sync (berkunci `code`).
+type LeaveCategoryTombstone struct {
+	Code      string    `json:"code"`
+	DeletedAt time.Time `json:"deleted_at"`
+}
+
+// LeaveCategoryType defines model for LeaveCategoryType.
+type LeaveCategoryType string
+
+// LeaveCategoryUpdate defines model for LeaveCategoryUpdate.
+type LeaveCategoryUpdate struct {
+	ExcusesLateness   *bool   `json:"excuses_lateness,omitempty"`
+	HasQuota          *bool   `json:"has_quota,omitempty"`
+	IsActive          *bool   `json:"is_active,omitempty"`
+	MakesLeaveDays    *bool   `json:"makes_leave_days,omitempty"`
+	Name              *string `json:"name,omitempty"`
+	RequiresChangeDay *bool   `json:"requires_change_day,omitempty"`
+	RequiresTimeRange *bool   `json:"requires_time_range,omitempty"`
+	SkipsDayCheck     *bool   `json:"skips_day_check,omitempty"`
+	SortOrder         *int    `json:"sort_order,omitempty"`
+}
+
+// LeaveLedgerEntry defines model for LeaveLedgerEntry.
+type LeaveLedgerEntry struct {
+	BalanceAfter int       `json:"balance_after"`
+	CreatedAt    time.Time `json:"created_at"`
+	CreatedById  *int64    `json:"created_by_id,omitempty"`
+
+	// Days Bertanda: pengurangan negatif.
+	Days           int                  `json:"days"`
+	Id             int64                `json:"id"`
+	Kind           LeaveLedgerEntryKind `json:"kind"`
+	LeaveRequestId *int64               `json:"leave_request_id,omitempty"`
+	Note           string               `json:"note"`
+}
+
+// LeaveLedgerEntryKind defines model for LeaveLedgerEntry.Kind.
+type LeaveLedgerEntryKind string
+
+// LeaveLedgerInput defines model for LeaveLedgerInput.
+type LeaveLedgerInput struct {
+	// Days GRANT: lebih dari 0. ADJUST: tidak 0.
+	Days int                  `json:"days"`
+	Kind LeaveLedgerInputKind `json:"kind"`
+	Note string               `json:"note"`
+}
+
+// LeaveLedgerInputKind defines model for LeaveLedgerInput.Kind.
+type LeaveLedgerInputKind string
+
+// LeaveQuota defines model for LeaveQuota.
+type LeaveQuota struct {
+	CategoryCode string `json:"category_code"`
+
+	// QuotaDays Batas: saldo untuk cuti tahunan, hari kuota klien untuk lainnya.
+	QuotaDays     int `json:"quota_days"`
+	RemainingDays int `json:"remaining_days"`
+
+	// UsedDays Hari yang dipegang pengajuan menunggu dan disetujui tahun ini.
+	UsedDays int `json:"used_days"`
+}
+
+// LeaveQuotas defines model for LeaveQuotas.
+type LeaveQuotas struct {
+	Clients []struct {
+		ClientCode string `json:"client_code"`
+		QuotaDays  int    `json:"quota_days"`
+	} `json:"clients"`
+
+	// DefaultDays null: tidak ada default, klien tanpa barisnya punya 0 hari.
+	DefaultDays int `json:"default_days"`
+}
+
+// LeaveQuotasInput defines model for LeaveQuotasInput.
+type LeaveQuotasInput struct {
+	Clients *[]struct {
+		ClientCode string `json:"client_code"`
+		QuotaDays  int    `json:"quota_days"`
+	} `json:"clients,omitempty"`
+	DefaultDays *int `json:"default_days,omitempty"`
 }
 
 // Letterhead Kop surat untuk ekspor (WEB-12). Satu organisasi punya paling banyak satu kop default; kop pertama otomatis jadi default. `logo_url` adalah URL bertanda tangan (berlaku 1 jam, tidak disimpan) dari foto `logo_media_id`.
@@ -7506,35 +8585,131 @@ type PaymentCreate struct {
 	Reference *string   `json:"reference,omitempty"`
 }
 
-// Permission defines model for Permission.
+// Permission Satu pengajuan izin, cuti atau sakit (Phase 07.5). `decision` kosong selama masih menunggu dan setelah dibatalkan; `by_name` adalah nama depan yang memutuskan.
 type Permission struct {
-	ApprovedAt           *time.Time          `json:"approved_at,omitempty"`
-	ApprovedBy           *int64              `json:"approved_by,omitempty"`
-	CreatedAt            *time.Time          `json:"created_at,omitempty"`
-	EndDate              *openapi_types.Date `json:"end_date,omitempty"`
-	Id                   *int64              `json:"id,omitempty"`
-	OrganizationId       *int64              `json:"organization_id,omitempty"`
-	PermissionCategoryId *int64              `json:"permission_category_id,omitempty"`
-	PersonnelId          *int64              `json:"personnel_id,omitempty"`
-	Reason               *string             `json:"reason,omitempty"`
-	StartDate            *openapi_types.Date `json:"start_date,omitempty"`
-	Status               *PermissionStatus   `json:"status,omitempty"`
-	UpdatedAt            *time.Time          `json:"updated_at,omitempty"`
+	Attachment *struct {
+		ContentType string `json:"content_type"`
+		Id          int64  `json:"id"`
+
+		// Url URL bertanda tangan, berlaku satu jam.
+		Url string `json:"url"`
+	} `json:"attachment,omitempty"`
+
+	// CanCancel True selama pengajuan masih PENDING dan milik pemanggil.
+	CanCancel     bool                `json:"can_cancel"`
+	CategoryCode  string              `json:"category_code"`
+	CategoryName  string              `json:"category_name"`
+	ChangeDayFrom *openapi_types.Date `json:"change_day_from,omitempty"`
+	ChangeDayTo   *openapi_types.Date `json:"change_day_to,omitempty"`
+	ContactInfo   *string             `json:"contact_info,omitempty"`
+
+	// Coverage Anggota regu yang hadir pada hari pertama irisan (atau hari mulai), tanpa pemohon. Hanya untuk yang memutuskan.
+	Coverage *struct {
+		Date    openapi_types.Date `json:"date"`
+		Present int                `json:"present"`
+		Size    int                `json:"size"`
+	} `json:"coverage,omitempty"`
+	Decision *struct {
+		At     time.Time               `json:"at"`
+		ByName string                  `json:"by_name"`
+		Level  PermissionDecisionLevel `json:"level"`
+		Note   *string                 `json:"note,omitempty"`
+	} `json:"decision,omitempty"`
+	EndDate openapi_types.Date `json:"end_date"`
+	EndTime *string            `json:"end_time,omitempty"`
+	Id      int64              `json:"id"`
+
+	// LeaveBalance Cuti tahunan saja; hanya pada detail untuk yang memutuskan. `after_approval_days = max(0, remaining_days - working_days)`.
+	LeaveBalance *struct {
+		AfterApprovalDays int `json:"after_approval_days"`
+		RemainingDays     int `json:"remaining_days"`
+	} `json:"leave_balance,omitempty"`
+
+	// Number LR, PR atau SR + YYYYMM + 5 digit penghitung per tipe.
+	Number string `json:"number"`
+
+	// OverlapsWith Anggota regu lain dengan izin DISETUJUI yang beririsan hari. Hanya untuk yang memutuskan.
+	OverlapsWith *[]struct {
+		EndDate   openapi_types.Date `json:"end_date"`
+		Name      string             `json:"name"`
+		StartDate openapi_types.Date `json:"start_date"`
+	} `json:"overlaps_with,omitempty"`
+
+	// Person Hanya untuk yang memutuskan (bukan pemilik).
+	Person *struct {
+		Name        string  `json:"name"`
+		PersonnelId int64   `json:"personnel_id"`
+		Position    *string `json:"position,omitempty"`
+	} `json:"person,omitempty"`
+	Reason         string    `json:"reason"`
+	RequestedAt    time.Time `json:"requested_at"`
+	Responsibility *string   `json:"responsibility,omitempty"`
+	Sick           *struct {
+		Disease         *string             `json:"disease,omitempty"`
+		Hospitalization bool                `json:"hospitalization"`
+		LetterDate      *openapi_types.Date `json:"letter_date,omitempty"`
+		LetterStatus    bool                `json:"letter_status"`
+	} `json:"sick,omitempty"`
+
+	// Skipped Hanya pada jawaban persetujuan: hari cuti yang tidak ditulis karena orangnya sudah PRESENT.
+	Skipped *[]struct {
+		TeamCode string             `json:"team_code"`
+		WorkDate openapi_types.Date `json:"work_date"`
+	} `json:"skipped,omitempty"`
+	StartDate openapi_types.Date `json:"start_date"`
+
+	// StartTime Jam lokal proyek; hanya kategori sebagian hari.
+	StartTime *string           `json:"start_time,omitempty"`
+	Status    PermissionStatus  `json:"status"`
+	TeamCode  string            `json:"team_code"`
+	Type      LeaveCategoryType `json:"type"`
+
+	// WorkingDays Hari yang dihitung terhadap kuota; 0 untuk kategori tanpa kuota.
+	WorkingDays int `json:"working_days"`
 }
+
+// PermissionDecisionLevel defines model for Permission.Decision.Level.
+type PermissionDecisionLevel string
 
 // PermissionStatus defines model for Permission.Status.
 type PermissionStatus string
 
-// PermissionCategory Master umum (qualifications, client_types, client_groups, stakeholder_types, panic_types, report_categories, instruction_categories, permission_categories).
-type PermissionCategory = CodedMaster
-
 // PermissionCreate defines model for PermissionCreate.
 type PermissionCreate struct {
-	Attachment *string            `json:"attachment,omitempty"`
-	CategoryId int64              `json:"category_id"`
-	DateFrom   openapi_types.Date `json:"date_from"`
-	DateTo     openapi_types.Date `json:"date_to"`
-	Reason     *string            `json:"reason,omitempty"`
+	// CategoryCode Boleh kosong untuk SICK (memakai kategori SICK).
+	CategoryCode  *string             `json:"category_code,omitempty"`
+	ChangeDayFrom *openapi_types.Date `json:"change_day_from,omitempty"`
+	ChangeDayTo   *openapi_types.Date `json:"change_day_to,omitempty"`
+	ContactInfo   *string             `json:"contact_info,omitempty"`
+	Disease       *string             `json:"disease,omitempty"`
+	EndDate       openapi_types.Date  `json:"end_date"`
+	EndTime       *string             `json:"end_time,omitempty"`
+
+	// Hospitalization Hanya SICK; wajib.
+	Hospitalization *bool               `json:"hospitalization,omitempty"`
+	LetterDate      *openapi_types.Date `json:"letter_date,omitempty"`
+
+	// LetterStatus Hanya SICK; wajib. true mewajibkan satu foto di media_ids.
+	LetterStatus *bool `json:"letter_status,omitempty"`
+
+	// MediaIds Satu foto (purpose LEAVE_ATTACHMENT, sudah di-complete).
+	MediaIds       *[]int64           `json:"media_ids,omitempty"`
+	Reason         string             `json:"reason"`
+	Responsibility *string            `json:"responsibility,omitempty"`
+	StartDate      openapi_types.Date `json:"start_date"`
+
+	// StartTime HH:MM; wajib berpasangan dengan end_time dan hanya untuk kategori sebagian hari.
+	StartTime *string `json:"start_time,omitempty"`
+
+	// TeamCode Boleh kosong bila orang itu hanya bertugas di satu regu pada start_date.
+	TeamCode *string           `json:"team_code,omitempty"`
+	Type     LeaveCategoryType `json:"type"`
+}
+
+// PermissionDecision Isi persetujuan atau penolakan.
+type PermissionDecision struct {
+	// Note Wajib saat menolak; opsional saat menyetujui.
+	Note *string `json:"note,omitempty"`
 }
 
 // PermissionScope Jangkauan hak yang dimiliki seseorang. `SELF`: hanya catatannya sendiri. `TEAM`: catatan regu tempat ia memegang peran itu.
@@ -7587,7 +8762,7 @@ type Personnel struct {
 	LastSeenAt       *time.Time          `json:"last_seen_at,omitempty"`
 	MiddleName       *string             `json:"middle_name,omitempty"`
 
-	// Nik 16 digit
+	// Nik 16 digit, PII tinggi (mask + audit).
 	Nik             *string    `json:"nik,omitempty"`
 	Npwp            *string    `json:"npwp,omitempty"`
 	OrganizationId  *int64     `json:"organization_id,omitempty"`
@@ -7733,8 +8908,11 @@ type PositionInputLevel string
 
 // Project defines model for Project.
 type Project struct {
-	Address                *string `json:"address,omitempty"`
-	AttendanceRadiusMeters *int    `json:"attendance_radius_meters,omitempty"`
+	Address *string `json:"address,omitempty"`
+
+	// AllowGroupAttendance Absen grup oleh DANRU (07.6) diizinkan. Bawaan false.
+	AllowGroupAttendance   *bool `json:"allow_group_attendance,omitempty"`
+	AttendanceRadiusMeters *int  `json:"attendance_radius_meters,omitempty"`
 
 	// BusinessLine Bidang usaha proyek (DL-20). security membentuk kode berakhiran S, cleaning berakhiran C; satu klien paling banyak satu proyek per bidang.
 	BusinessLine       *BusinessLine `json:"business_line,omitempty"`
@@ -7851,7 +9029,10 @@ type ProjectTimezone string
 // `emergency_contacts` dikirim = menggantikan seluruh daftar; `[]` mengosongkan; tidak dikirim = tetap.
 // Hasil akhir latitude dan longitude harus lengkap berpasangan (422 bila tidak).
 type ProjectUpdate struct {
-	Address                *string `json:"address,omitempty"`
+	Address *string `json:"address,omitempty"`
+
+	// AllowGroupAttendance Aktifkan absen grup oleh DANRU (07.6).
+	AllowGroupAttendance   *bool   `json:"allow_group_attendance,omitempty"`
 	AttendanceRadiusMeters *int    `json:"attendance_radius_meters,omitempty"`
 	City                   *string `json:"city,omitempty"`
 	CompanyBidangUsaha     *string `json:"company_bidang_usaha,omitempty"`
@@ -8255,31 +9436,41 @@ type ShiftInput struct {
 	ToleranceMinutes *int `json:"tolerance_minutes,omitempty"`
 }
 
-// ShiftSwap defines model for ShiftSwap.
+// ShiftSwap Satu tukar jaga (tukar jaga berlaku seketika, tidak ada persetujuan): DANRU menunjuk pengganti untuk satu catatan izin/mangkir. `cancelled_at` null berarti masih aktif.
 type ShiftSwap struct {
-	ApprovedBy           *int64              `json:"approved_by,omitempty"`
-	CreatedAt            *time.Time          `json:"created_at,omitempty"`
-	Id                   *int64              `json:"id,omitempty"`
-	OrganizationId       *int64              `json:"organization_id,omitempty"`
-	Reason               *string             `json:"reason,omitempty"`
-	ReplacedPersonnelId  *int64              `json:"replaced_personnel_id,omitempty"`
-	ReplacingPersonnelId *int64              `json:"replacing_personnel_id,omitempty"`
-	Status               *ShiftSwapStatus    `json:"status,omitempty"`
-	SwapDate             *openapi_types.Date `json:"swap_date,omitempty"`
-	TeamId               *int64              `json:"team_id,omitempty"`
-	UpdatedAt            *time.Time          `json:"updated_at,omitempty"`
+	CancelledAt *time.Time `json:"cancelled_at,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	CreatedById int64      `json:"created_by_id"`
+	EndsAt      time.Time  `json:"ends_at"`
+	Id          int64      `json:"id"`
+	Note        *string    `json:"note,omitempty"`
+
+	// ReplacedAttendanceId Null bila catatan yang diganti sudah dihapus (izin dicabut, mangkir dibatalkan).
+	ReplacedAttendanceId int64              `json:"replaced_attendance_id"`
+	ReplacedPersonnelId  int64              `json:"replaced_personnel_id"`
+	ReplacingPersonnelId int64              `json:"replacing_personnel_id"`
+	ShiftId              int64              `json:"shift_id"`
+	StartsAt             time.Time          `json:"starts_at"`
+	TeamCode             string             `json:"team_code"`
+	UpdatedAt            time.Time          `json:"updated_at"`
+	WorkDate             openapi_types.Date `json:"work_date"`
 }
 
-// ShiftSwapStatus defines model for ShiftSwap.Status.
-type ShiftSwapStatus string
+// ShiftSwapCandidate defines model for ShiftSwapCandidate.
+type ShiftSwapCandidate struct {
+	Name        string `json:"name"`
+	PersonnelId int64  `json:"personnel_id"`
+}
 
 // ShiftSwapCreate defines model for ShiftSwapCreate.
 type ShiftSwapCreate struct {
-	Reason               *string            `json:"reason,omitempty"`
-	ReplacedPersonnelId  int64              `json:"replaced_personnel_id"`
-	ReplacingPersonnelId int64              `json:"replacing_personnel_id"`
-	SwapDate             openapi_types.Date `json:"swap_date"`
-	TeamId               *int64             `json:"team_id,omitempty"`
+	Note *string `json:"note,omitempty"`
+
+	// ReplacedAttendanceId Dari GET /shift-swaps/replaceable.
+	ReplacedAttendanceId int64 `json:"replaced_attendance_id"`
+
+	// ReplacingPersonnelId Dari GET /shift-swaps/candidates.
+	ReplacingPersonnelId int64 `json:"replacing_personnel_id"`
 }
 
 // ShiftUpdate Semua field opsional; yang tidak dikirim tidak berubah. `is_off` tidak dapat dikirim (422).
@@ -8432,6 +9623,35 @@ type Team struct {
 	// ValidateShift Validasi shift saat absensi (DL-48).
 	ValidateShift *bool `json:"validate_shift,omitempty"`
 }
+
+// TeamAttendanceRow Satu personil, satu hari, dari GET /attendances (monitor regu, DANRU).
+type TeamAttendanceRow struct {
+	AttendanceId       int64                            `json:"attendance_id"`
+	CheckInAt          *time.Time                       `json:"check_in_at,omitempty"`
+	CheckInMethod      *TeamAttendanceRowCheckInMethod  `json:"check_in_method,omitempty"`
+	CheckInWithinArea  *bool                            `json:"check_in_within_area,omitempty"`
+	CheckOutAt         *time.Time                       `json:"check_out_at,omitempty"`
+	CheckOutMethod     *TeamAttendanceRowCheckOutMethod `json:"check_out_method,omitempty"`
+	CheckOutWithinArea *bool                            `json:"check_out_within_area,omitempty"`
+	PersonnelId        int64                            `json:"personnel_id"`
+	PersonnelName      string                           `json:"personnel_name"`
+
+	// ShiftName Kosong bila shift sudah dihapus.
+	ShiftName string `json:"shift_name"`
+
+	// Status `SWAPPED`: catatan izin/mangkir yang sudah punya tukar jaga aktif (tidak disimpan; dengan filter `status` yang tampil status tersimpannya).
+	Status   TeamAttendanceRowStatus `json:"status"`
+	WorkDate openapi_types.Date      `json:"work_date"`
+}
+
+// TeamAttendanceRowCheckInMethod defines model for TeamAttendanceRow.CheckInMethod.
+type TeamAttendanceRowCheckInMethod string
+
+// TeamAttendanceRowCheckOutMethod defines model for TeamAttendanceRow.CheckOutMethod.
+type TeamAttendanceRowCheckOutMethod string
+
+// TeamAttendanceRowStatus `SWAPPED`: catatan izin/mangkir yang sudah punya tukar jaga aktif (tidak disimpan; dengan filter `status` yang tampil status tersimpannya).
+type TeamAttendanceRowStatus string
 
 // TeamDetail Detail regu untuk layar Regu (§3.2.5).
 type TeamDetail struct {
@@ -8840,6 +10060,9 @@ type IdPath = int64
 // IdempotencyKeyHeader defines model for IdempotencyKeyHeader.
 type IdempotencyKeyHeader = openapi_types.UUID
 
+// IdempotencyKeyRequiredHeader defines model for IdempotencyKeyRequiredHeader.
+type IdempotencyKeyRequiredHeader = openapi_types.UUID
+
 // IsActiveParam defines model for IsActiveParam.
 type IsActiveParam = bool
 
@@ -9047,11 +10270,14 @@ type PatchAdminAssetsById200JSONResponseBodySuccess bool
 
 // GetAdminAttendancesParams defines parameters for GetAdminAttendances.
 type GetAdminAttendancesParams struct {
-	// ProjectId Filter scope proyek.
-	ProjectId *ProjectIdParam `form:"project_id,omitempty" json:"project_id,omitempty"`
+	TeamCode    *string `form:"team_code,omitempty" json:"team_code,omitempty"`
+	ProjectCode *string `form:"project_code,omitempty" json:"project_code,omitempty"`
 
-	// TeamId Filter scope regu.
-	TeamId *TeamIdParam `form:"team_id,omitempty" json:"team_id,omitempty"`
+	// Status Status tersimpan.
+	Status *GetAdminAttendancesParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+
+	// SyncStatus Status kirim ke Personel.
+	SyncStatus *GetAdminAttendancesParamsSyncStatus `form:"sync_status,omitempty" json:"sync_status,omitempty"`
 
 	// DateFrom Awal rentang (YYYY-MM-DD, relatif TZ proyek).
 	DateFrom *DateFromParam `form:"date_from,omitempty" json:"date_from,omitempty"`
@@ -9065,6 +10291,12 @@ type GetAdminAttendancesParams struct {
 	// Limit Item per halaman (maks 100).
 	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
 }
+
+// GetAdminAttendancesParamsStatus defines parameters for GetAdminAttendances.
+type GetAdminAttendancesParamsStatus string
+
+// GetAdminAttendancesParamsSyncStatus defines parameters for GetAdminAttendances.
+type GetAdminAttendancesParamsSyncStatus string
 
 // GetAdminAttendances200JSONResponseBodySuccess defines parameters for GetAdminAttendances.
 type GetAdminAttendances200JSONResponseBodySuccess bool
@@ -9311,6 +10543,14 @@ type GetAdminInstructionCategoriesById200JSONResponseBodySuccess bool
 // PatchAdminInstructionCategoriesById200JSONResponseBodySuccess defines parameters for PatchAdminInstructionCategoriesById.
 type PatchAdminInstructionCategoriesById200JSONResponseBodySuccess bool
 
+// PutAdminLeaveClientSettingsByClientCodeJSONBody defines parameters for PutAdminLeaveClientSettingsByClientCode.
+type PutAdminLeaveClientSettingsByClientCodeJSONBody struct {
+	RequestsEnabled bool `json:"requests_enabled"`
+}
+
+// PutAdminLeaveClientSettingsByClientCode200JSONResponseBodySuccess defines parameters for PutAdminLeaveClientSettingsByClientCode.
+type PutAdminLeaveClientSettingsByClientCode200JSONResponseBodySuccess bool
+
 // GetAdminLetterheadsParams defines parameters for GetAdminLetterheads.
 type GetAdminLetterheadsParams struct {
 	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
@@ -9432,14 +10672,13 @@ type PostAdminPanicsByIdResolve200JSONResponseBodySuccess bool
 
 // GetAdminPermissionCategoriesParams defines parameters for GetAdminPermissionCategories.
 type GetAdminPermissionCategoriesParams struct {
+	Type *LeaveCategoryType `form:"type,omitempty" json:"type,omitempty"`
+
 	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
 	// Limit Item per halaman (maks 100).
 	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
-
-	// Sort Sortir per-resource, mis. `created_at:desc`.
-	Sort *SortParam `form:"sort,omitempty" json:"sort,omitempty"`
 
 	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
@@ -9451,22 +10690,73 @@ type GetAdminPermissionCategoriesParams struct {
 // GetAdminPermissionCategories200JSONResponseBodySuccess defines parameters for GetAdminPermissionCategories.
 type GetAdminPermissionCategories200JSONResponseBodySuccess bool
 
-// PostAdminPermissionCategoriesParams defines parameters for PostAdminPermissionCategories.
-type PostAdminPermissionCategoriesParams struct {
-	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
-	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
-	// 409 CONFLICT.
-	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
-}
-
 // PostAdminPermissionCategories201JSONResponseBodySuccess defines parameters for PostAdminPermissionCategories.
 type PostAdminPermissionCategories201JSONResponseBodySuccess bool
 
-// GetAdminPermissionCategoriesById200JSONResponseBodySuccess defines parameters for GetAdminPermissionCategoriesById.
-type GetAdminPermissionCategoriesById200JSONResponseBodySuccess bool
+// GetAdminPermissionCategoriesByCode200JSONResponseBodySuccess defines parameters for GetAdminPermissionCategoriesByCode.
+type GetAdminPermissionCategoriesByCode200JSONResponseBodySuccess bool
 
-// PatchAdminPermissionCategoriesById200JSONResponseBodySuccess defines parameters for PatchAdminPermissionCategoriesById.
-type PatchAdminPermissionCategoriesById200JSONResponseBodySuccess bool
+// PatchAdminPermissionCategoriesByCode200JSONResponseBodySuccess defines parameters for PatchAdminPermissionCategoriesByCode.
+type PatchAdminPermissionCategoriesByCode200JSONResponseBodySuccess bool
+
+// PutAdminPermissionCategoriesByCodeQuotas200JSONResponseBodySuccess defines parameters for PutAdminPermissionCategoriesByCodeQuotas.
+type PutAdminPermissionCategoriesByCodeQuotas200JSONResponseBodySuccess bool
+
+// GetAdminPermissionsParams defines parameters for GetAdminPermissions.
+type GetAdminPermissionsParams struct {
+	TeamCode *string `form:"team_code,omitempty" json:"team_code,omitempty"`
+	Type     *string `form:"type,omitempty" json:"type,omitempty"`
+
+	// Status Filter status/enum resource.
+	Status *StatusParam `form:"status,omitempty" json:"status,omitempty"`
+
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
+	Q        *QParam             `form:"q,omitempty" json:"q,omitempty"`
+	FromDate *openapi_types.Date `form:"from_date,omitempty" json:"from_date,omitempty"`
+	ToDate   *openapi_types.Date `form:"to_date,omitempty" json:"to_date,omitempty"`
+
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
+	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
+
+	// Limit Item per halaman (maks 100).
+	Limit       *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
+	ProjectCode *string     `form:"project_code,omitempty" json:"project_code,omitempty"`
+	RegionCode  *string     `form:"region_code,omitempty" json:"region_code,omitempty"`
+}
+
+// GetAdminPermissions200JSONResponseBodySuccess defines parameters for GetAdminPermissions.
+type GetAdminPermissions200JSONResponseBodySuccess bool
+
+// GetAdminPermissionsById200JSONResponseBodySuccess defines parameters for GetAdminPermissionsById.
+type GetAdminPermissionsById200JSONResponseBodySuccess bool
+
+// PostAdminPermissionsByIdApproveParams defines parameters for PostAdminPermissionsByIdApprove.
+type PostAdminPermissionsByIdApproveParams struct {
+	// IdempotencyKey UUID stabil seumur item; tanpa header ini 422 VALIDATION_ERROR. Retry dengan key dan body
+	// yang sama → respons tersimpan dengan header `Idempotent-Replayed: true`; body berbeda +
+	// key sama → 409 CONFLICT `IDEMPOTENCY_KEY_REUSED`. Permintaan pertama dengan key itu masih
+	// berjalan → 409 `IDEMPOTENCY_KEY_IN_FLIGHT` (coba lagi sebentar lagi). Permintaan pertama
+	// berhasil tetapi responsnya tidak bisa disimpan → 409 `IDEMPOTENCY_RESPONSE_NOT_STORED`
+	// (jangan kirim ulang dengan key baru, itu mengulang aksinya; muat ulang datanya).
+	IdempotencyKey IdempotencyKeyRequiredHeader `json:"Idempotency-Key"`
+}
+
+// PostAdminPermissionsByIdApprove200JSONResponseBodySuccess defines parameters for PostAdminPermissionsByIdApprove.
+type PostAdminPermissionsByIdApprove200JSONResponseBodySuccess bool
+
+// PostAdminPermissionsByIdDeclineParams defines parameters for PostAdminPermissionsByIdDecline.
+type PostAdminPermissionsByIdDeclineParams struct {
+	// IdempotencyKey UUID stabil seumur item; tanpa header ini 422 VALIDATION_ERROR. Retry dengan key dan body
+	// yang sama → respons tersimpan dengan header `Idempotent-Replayed: true`; body berbeda +
+	// key sama → 409 CONFLICT `IDEMPOTENCY_KEY_REUSED`. Permintaan pertama dengan key itu masih
+	// berjalan → 409 `IDEMPOTENCY_KEY_IN_FLIGHT` (coba lagi sebentar lagi). Permintaan pertama
+	// berhasil tetapi responsnya tidak bisa disimpan → 409 `IDEMPOTENCY_RESPONSE_NOT_STORED`
+	// (jangan kirim ulang dengan key baru, itu mengulang aksinya; muat ulang datanya).
+	IdempotencyKey IdempotencyKeyRequiredHeader `json:"Idempotency-Key"`
+}
+
+// PostAdminPermissionsByIdDecline200JSONResponseBodySuccess defines parameters for PostAdminPermissionsByIdDecline.
+type PostAdminPermissionsByIdDecline200JSONResponseBodySuccess bool
 
 // GetAdminPersonnelReviewsParams defines parameters for GetAdminPersonnelReviews.
 type GetAdminPersonnelReviewsParams struct {
@@ -9500,6 +10790,21 @@ type GetAdminPersonnelReviewsParamsType string
 
 // GetAdminPersonnelReviews200JSONResponseBodySuccess defines parameters for GetAdminPersonnelReviews.
 type GetAdminPersonnelReviews200JSONResponseBodySuccess bool
+
+// GetAdminPersonnelByPersonnelIdLeaveLedgerParams defines parameters for GetAdminPersonnelByPersonnelIdLeaveLedger.
+type GetAdminPersonnelByPersonnelIdLeaveLedgerParams struct {
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
+	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
+
+	// Limit Item per halaman (maks 100).
+	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetAdminPersonnelByPersonnelIdLeaveLedger200JSONResponseBodySuccess defines parameters for GetAdminPersonnelByPersonnelIdLeaveLedger.
+type GetAdminPersonnelByPersonnelIdLeaveLedger200JSONResponseBodySuccess bool
+
+// PostAdminPersonnelByPersonnelIdLeaveLedger201JSONResponseBodySuccess defines parameters for PostAdminPersonnelByPersonnelIdLeaveLedger.
+type PostAdminPersonnelByPersonnelIdLeaveLedger201JSONResponseBodySuccess bool
 
 // PostAdminPersonnelByPersonnelIdSchedules201JSONResponseBodySuccess defines parameters for PostAdminPersonnelByPersonnelIdSchedules.
 type PostAdminPersonnelByPersonnelIdSchedules201JSONResponseBodySuccess bool
@@ -10137,11 +11442,17 @@ type GetAssets200JSONResponseBodySuccess bool
 
 // GetAttendancesParams defines parameters for GetAttendances.
 type GetAttendancesParams struct {
-	// TeamId Filter scope regu.
-	TeamId *TeamIdParam `form:"team_id,omitempty" json:"team_id,omitempty"`
+	// TeamCode Regu tertentu; selain itu setiap regu yang dijangkau.
+	TeamCode *string `form:"team_code,omitempty" json:"team_code,omitempty"`
 
-	// ProjectId Filter scope proyek.
-	ProjectId *ProjectIdParam `form:"project_id,omitempty" json:"project_id,omitempty"`
+	// ProjectCode Proyek tertentu.
+	ProjectCode *string `form:"project_code,omitempty" json:"project_code,omitempty"`
+
+	// Status Status tersimpan; `ABSENT` untuk riwayat mangkir.
+	Status *GetAttendancesParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+
+	// Month Bulan, YYYY-MM.
+	Month *string `form:"month,omitempty" json:"month,omitempty"`
 
 	// DateFrom Awal rentang (YYYY-MM-DD, relatif TZ proyek).
 	DateFrom *DateFromParam `form:"date_from,omitempty" json:"date_from,omitempty"`
@@ -10156,15 +11467,21 @@ type GetAttendancesParams struct {
 	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// GetAttendancesParamsStatus defines parameters for GetAttendances.
+type GetAttendancesParamsStatus string
+
 // GetAttendances200JSONResponseBodySuccess defines parameters for GetAttendances.
 type GetAttendances200JSONResponseBodySuccess bool
 
 // PostAttendancesAbsentParams defines parameters for PostAttendancesAbsent.
 type PostAttendancesAbsentParams struct {
-	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
-	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
-	// 409 CONFLICT.
-	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
+	// IdempotencyKey UUID stabil seumur item; tanpa header ini 422 VALIDATION_ERROR. Retry dengan key dan body
+	// yang sama → respons tersimpan dengan header `Idempotent-Replayed: true`; body berbeda +
+	// key sama → 409 CONFLICT `IDEMPOTENCY_KEY_REUSED`. Permintaan pertama dengan key itu masih
+	// berjalan → 409 `IDEMPOTENCY_KEY_IN_FLIGHT` (coba lagi sebentar lagi). Permintaan pertama
+	// berhasil tetapi responsnya tidak bisa disimpan → 409 `IDEMPOTENCY_RESPONSE_NOT_STORED`
+	// (jangan kirim ulang dengan key baru, itu mengulang aksinya; muat ulang datanya).
+	IdempotencyKey IdempotencyKeyRequiredHeader `json:"Idempotency-Key"`
 }
 
 // PostAttendancesAbsent201JSONResponseBodySuccess defines parameters for PostAttendancesAbsent.
@@ -10172,34 +11489,33 @@ type PostAttendancesAbsent201JSONResponseBodySuccess bool
 
 // PostAttendancesGroupParams defines parameters for PostAttendancesGroup.
 type PostAttendancesGroupParams struct {
-	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
-	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
-	// 409 CONFLICT.
-	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
+	// IdempotencyKey UUID stabil seumur item; tanpa header ini 422 VALIDATION_ERROR. Retry dengan key dan body
+	// yang sama → respons tersimpan dengan header `Idempotent-Replayed: true`; body berbeda +
+	// key sama → 409 CONFLICT `IDEMPOTENCY_KEY_REUSED`. Permintaan pertama dengan key itu masih
+	// berjalan → 409 `IDEMPOTENCY_KEY_IN_FLIGHT` (coba lagi sebentar lagi). Permintaan pertama
+	// berhasil tetapi responsnya tidak bisa disimpan → 409 `IDEMPOTENCY_RESPONSE_NOT_STORED`
+	// (jangan kirim ulang dengan key baru, itu mengulang aksinya; muat ulang datanya).
+	IdempotencyKey IdempotencyKeyRequiredHeader `json:"Idempotency-Key"`
 }
 
 // PostAttendancesGroup201JSONResponseBodySuccess defines parameters for PostAttendancesGroup.
 type PostAttendancesGroup201JSONResponseBodySuccess bool
 
+// GetAttendancesGroupSummaryParams defines parameters for GetAttendancesGroupSummary.
+type GetAttendancesGroupSummaryParams struct {
+	TeamCode string `form:"team_code" json:"team_code"`
+
+	// Month Bulan, YYYY-MM.
+	Month string `form:"month" json:"month"`
+}
+
+// GetAttendancesGroupSummary200JSONResponseBodySuccess defines parameters for GetAttendancesGroupSummary.
+type GetAttendancesGroupSummary200JSONResponseBodySuccess bool
+
 // GetAttendancesMeParams defines parameters for GetAttendancesMe.
 type GetAttendancesMeParams struct {
-	// DateFrom Awal rentang (YYYY-MM-DD, relatif TZ proyek).
-	DateFrom *DateFromParam `form:"date_from,omitempty" json:"date_from,omitempty"`
-
-	// DateTo Akhir rentang (YYYY-MM-DD, relatif TZ proyek).
-	DateTo *DateToParam `form:"date_to,omitempty" json:"date_to,omitempty"`
-
-	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
-	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
-
-	// Limit Item per halaman (maks 100).
-	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
-
-	// Since Delta-sync watermark (updated_at). Tanpa since → full pull (DL-34).
-	Since *SinceParam `form:"since,omitempty" json:"since,omitempty"`
-
-	// Cursor Cursor opaque untuk tarik inkremental (DL-34).
-	Cursor *CursorParam `form:"cursor,omitempty" json:"cursor,omitempty"`
+	// Month Bulan, YYYY-MM.
+	Month string `form:"month" json:"month"`
 }
 
 // GetAttendancesMe200JSONResponseBodySuccess defines parameters for GetAttendancesMe.
@@ -10207,10 +11523,13 @@ type GetAttendancesMe200JSONResponseBodySuccess bool
 
 // PostAttendancesQrCheckInParams defines parameters for PostAttendancesQrCheckIn.
 type PostAttendancesQrCheckInParams struct {
-	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
-	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
-	// 409 CONFLICT.
-	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
+	// IdempotencyKey UUID stabil seumur item; tanpa header ini 422 VALIDATION_ERROR. Retry dengan key dan body
+	// yang sama → respons tersimpan dengan header `Idempotent-Replayed: true`; body berbeda +
+	// key sama → 409 CONFLICT `IDEMPOTENCY_KEY_REUSED`. Permintaan pertama dengan key itu masih
+	// berjalan → 409 `IDEMPOTENCY_KEY_IN_FLIGHT` (coba lagi sebentar lagi). Permintaan pertama
+	// berhasil tetapi responsnya tidak bisa disimpan → 409 `IDEMPOTENCY_RESPONSE_NOT_STORED`
+	// (jangan kirim ulang dengan key baru, itu mengulang aksinya; muat ulang datanya).
+	IdempotencyKey IdempotencyKeyRequiredHeader `json:"Idempotency-Key"`
 }
 
 // PostAttendancesQrCheckIn201JSONResponseBodySuccess defines parameters for PostAttendancesQrCheckIn.
@@ -10218,10 +11537,13 @@ type PostAttendancesQrCheckIn201JSONResponseBodySuccess bool
 
 // PostAttendancesQrCheckOutParams defines parameters for PostAttendancesQrCheckOut.
 type PostAttendancesQrCheckOutParams struct {
-	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
-	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
-	// 409 CONFLICT.
-	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
+	// IdempotencyKey UUID stabil seumur item; tanpa header ini 422 VALIDATION_ERROR. Retry dengan key dan body
+	// yang sama → respons tersimpan dengan header `Idempotent-Replayed: true`; body berbeda +
+	// key sama → 409 CONFLICT `IDEMPOTENCY_KEY_REUSED`. Permintaan pertama dengan key itu masih
+	// berjalan → 409 `IDEMPOTENCY_KEY_IN_FLIGHT` (coba lagi sebentar lagi). Permintaan pertama
+	// berhasil tetapi responsnya tidak bisa disimpan → 409 `IDEMPOTENCY_RESPONSE_NOT_STORED`
+	// (jangan kirim ulang dengan key baru, itu mengulang aksinya; muat ulang datanya).
+	IdempotencyKey IdempotencyKeyRequiredHeader `json:"Idempotency-Key"`
 }
 
 // PostAttendancesQrCheckOut200JSONResponseBodySuccess defines parameters for PostAttendancesQrCheckOut.
@@ -10229,9 +11551,18 @@ type PostAttendancesQrCheckOut200JSONResponseBodySuccess bool
 
 // GetAttendancesQrDisplayParams defines parameters for GetAttendancesQrDisplay.
 type GetAttendancesQrDisplayParams struct {
-	// TeamId Filter scope regu.
-	TeamId *TeamIdParam `form:"team_id,omitempty" json:"team_id,omitempty"`
+	// TeamCode Kode regu yang kodenya ditampilkan.
+	TeamCode string `form:"team_code" json:"team_code"`
+
+	// Direction IN untuk absen datang, OUT untuk absen pulang.
+	Direction GetAttendancesQrDisplayParamsDirection `form:"direction" json:"direction"`
 }
+
+// GetAttendancesQrDisplayParamsDirection defines parameters for GetAttendancesQrDisplay.
+type GetAttendancesQrDisplayParamsDirection string
+
+// GetAttendancesQrDisplay200JSONResponseBodySuccess defines parameters for GetAttendancesQrDisplay.
+type GetAttendancesQrDisplay200JSONResponseBodySuccess bool
 
 // GetAttendancesReplacedParams defines parameters for GetAttendancesReplaced.
 type GetAttendancesReplacedParams struct {
@@ -10257,44 +11588,50 @@ type GetAttendancesReplacingParams struct {
 // GetAttendancesReplacing200JSONResponseBodySuccess defines parameters for GetAttendancesReplacing.
 type GetAttendancesReplacing200JSONResponseBodySuccess bool
 
-// PostAttendancesSelfieCheckInMultipartBody defines parameters for PostAttendancesSelfieCheckIn.
-type PostAttendancesSelfieCheckInMultipartBody struct {
-	Lat   float64            `json:"lat"`
-	Lng   float64            `json:"lng"`
-	Photo openapi_types.File `json:"photo"`
-}
-
 // PostAttendancesSelfieCheckInParams defines parameters for PostAttendancesSelfieCheckIn.
 type PostAttendancesSelfieCheckInParams struct {
-	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
-	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
-	// 409 CONFLICT.
-	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
+	// IdempotencyKey UUID stabil seumur item; tanpa header ini 422 VALIDATION_ERROR. Retry dengan key dan body
+	// yang sama → respons tersimpan dengan header `Idempotent-Replayed: true`; body berbeda +
+	// key sama → 409 CONFLICT `IDEMPOTENCY_KEY_REUSED`. Permintaan pertama dengan key itu masih
+	// berjalan → 409 `IDEMPOTENCY_KEY_IN_FLIGHT` (coba lagi sebentar lagi). Permintaan pertama
+	// berhasil tetapi responsnya tidak bisa disimpan → 409 `IDEMPOTENCY_RESPONSE_NOT_STORED`
+	// (jangan kirim ulang dengan key baru, itu mengulang aksinya; muat ulang datanya).
+	IdempotencyKey IdempotencyKeyRequiredHeader `json:"Idempotency-Key"`
 }
 
 // PostAttendancesSelfieCheckIn201JSONResponseBodySuccess defines parameters for PostAttendancesSelfieCheckIn.
 type PostAttendancesSelfieCheckIn201JSONResponseBodySuccess bool
 
-// PostAttendancesSelfieCheckOutMultipartBody defines parameters for PostAttendancesSelfieCheckOut.
-type PostAttendancesSelfieCheckOutMultipartBody struct {
-	Lat   float64            `json:"lat"`
-	Lng   float64            `json:"lng"`
-	Photo openapi_types.File `json:"photo"`
-}
-
 // PostAttendancesSelfieCheckOutParams defines parameters for PostAttendancesSelfieCheckOut.
 type PostAttendancesSelfieCheckOutParams struct {
-	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
-	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
-	// 409 CONFLICT.
-	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
+	// IdempotencyKey UUID stabil seumur item; tanpa header ini 422 VALIDATION_ERROR. Retry dengan key dan body
+	// yang sama → respons tersimpan dengan header `Idempotent-Replayed: true`; body berbeda +
+	// key sama → 409 CONFLICT `IDEMPOTENCY_KEY_REUSED`. Permintaan pertama dengan key itu masih
+	// berjalan → 409 `IDEMPOTENCY_KEY_IN_FLIGHT` (coba lagi sebentar lagi). Permintaan pertama
+	// berhasil tetapi responsnya tidak bisa disimpan → 409 `IDEMPOTENCY_RESPONSE_NOT_STORED`
+	// (jangan kirim ulang dengan key baru, itu mengulang aksinya; muat ulang datanya).
+	IdempotencyKey IdempotencyKeyRequiredHeader `json:"Idempotency-Key"`
 }
 
 // PostAttendancesSelfieCheckOut200JSONResponseBodySuccess defines parameters for PostAttendancesSelfieCheckOut.
 type PostAttendancesSelfieCheckOut200JSONResponseBodySuccess bool
 
+// GetAttendancesToday200JSONResponseBodySuccess defines parameters for GetAttendancesToday.
+type GetAttendancesToday200JSONResponseBodySuccess bool
+
 // GetAttendancesById200JSONResponseBodySuccess defines parameters for GetAttendancesById.
 type GetAttendancesById200JSONResponseBodySuccess bool
+
+// PatchAttendancesByIdCheckOutParams defines parameters for PatchAttendancesByIdCheckOut.
+type PatchAttendancesByIdCheckOutParams struct {
+	// IdempotencyKey UUID stabil seumur item; tanpa header ini 422 VALIDATION_ERROR. Retry dengan key dan body
+	// yang sama → respons tersimpan dengan header `Idempotent-Replayed: true`; body berbeda +
+	// key sama → 409 CONFLICT `IDEMPOTENCY_KEY_REUSED`. Permintaan pertama dengan key itu masih
+	// berjalan → 409 `IDEMPOTENCY_KEY_IN_FLIGHT` (coba lagi sebentar lagi). Permintaan pertama
+	// berhasil tetapi responsnya tidak bisa disimpan → 409 `IDEMPOTENCY_RESPONSE_NOT_STORED`
+	// (jangan kirim ulang dengan key baru, itu mengulang aksinya; muat ulang datanya).
+	IdempotencyKey IdempotencyKeyRequiredHeader `json:"Idempotency-Key"`
+}
 
 // PatchAttendancesByIdCheckOut200JSONResponseBodySuccess defines parameters for PatchAttendancesByIdCheckOut.
 type PatchAttendancesByIdCheckOut200JSONResponseBodySuccess bool
@@ -10891,16 +12228,29 @@ type GetPatrolPendingApprovalsParams struct {
 // GetPatrolPendingApprovals200JSONResponseBodySuccess defines parameters for GetPatrolPendingApprovals.
 type GetPatrolPendingApprovals200JSONResponseBodySuccess bool
 
+// GetPermissionCategoriesParams defines parameters for GetPermissionCategories.
+type GetPermissionCategoriesParams struct {
+	Type *LeaveCategoryType `form:"type,omitempty" json:"type,omitempty"`
+
+	// Since Delta-sync watermark (updated_at). Tanpa since → full pull (DL-34).
+	Since *SinceParam `form:"since,omitempty" json:"since,omitempty"`
+}
+
 // GetPermissionCategories200JSONResponseBodySuccess defines parameters for GetPermissionCategories.
 type GetPermissionCategories200JSONResponseBodySuccess bool
 
 // GetPermissionsParams defines parameters for GetPermissions.
 type GetPermissionsParams struct {
-	// TeamId Filter scope regu.
-	TeamId *TeamIdParam `form:"team_id,omitempty" json:"team_id,omitempty"`
+	TeamCode *string `form:"team_code,omitempty" json:"team_code,omitempty"`
+	Type     *string `form:"type,omitempty" json:"type,omitempty"`
 
 	// Status Filter status/enum resource.
 	Status *StatusParam `form:"status,omitempty" json:"status,omitempty"`
+
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
+	Q        *QParam             `form:"q,omitempty" json:"q,omitempty"`
+	FromDate *openapi_types.Date `form:"from_date,omitempty" json:"from_date,omitempty"`
+	ToDate   *openapi_types.Date `form:"to_date,omitempty" json:"to_date,omitempty"`
 
 	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
@@ -10914,32 +12264,95 @@ type GetPermissions200JSONResponseBodySuccess bool
 
 // PostPermissionsParams defines parameters for PostPermissions.
 type PostPermissionsParams struct {
-	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
-	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
-	// 409 CONFLICT.
-	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
+	// IdempotencyKey UUID stabil seumur item; tanpa header ini 422 VALIDATION_ERROR. Retry dengan key dan body
+	// yang sama → respons tersimpan dengan header `Idempotent-Replayed: true`; body berbeda +
+	// key sama → 409 CONFLICT `IDEMPOTENCY_KEY_REUSED`. Permintaan pertama dengan key itu masih
+	// berjalan → 409 `IDEMPOTENCY_KEY_IN_FLIGHT` (coba lagi sebentar lagi). Permintaan pertama
+	// berhasil tetapi responsnya tidak bisa disimpan → 409 `IDEMPOTENCY_RESPONSE_NOT_STORED`
+	// (jangan kirim ulang dengan key baru, itu mengulang aksinya; muat ulang datanya).
+	IdempotencyKey IdempotencyKeyRequiredHeader `json:"Idempotency-Key"`
 }
 
 // PostPermissions201JSONResponseBodySuccess defines parameters for PostPermissions.
 type PostPermissions201JSONResponseBodySuccess bool
 
+// GetPermissionsApproverParams defines parameters for GetPermissionsApprover.
+type GetPermissionsApproverParams struct {
+	TeamCode *string `form:"team_code,omitempty" json:"team_code,omitempty"`
+}
+
+// GetPermissionsApprover200JSONResponseBodySuccess defines parameters for GetPermissionsApprover.
+type GetPermissionsApprover200JSONResponseBodySuccess bool
+
 // GetPermissionsMeParams defines parameters for GetPermissionsMe.
 type GetPermissionsMeParams struct {
+	Type *string `form:"type,omitempty" json:"type,omitempty"`
+
 	// Status Filter status/enum resource.
-	Status *StatusParam `form:"status,omitempty" json:"status,omitempty"`
+	Status   *StatusParam        `form:"status,omitempty" json:"status,omitempty"`
+	FromDate *openapi_types.Date `form:"from_date,omitempty" json:"from_date,omitempty"`
+	ToDate   *openapi_types.Date `form:"to_date,omitempty" json:"to_date,omitempty"`
 
-	// DateFrom Awal rentang (YYYY-MM-DD, relatif TZ proyek).
-	DateFrom *DateFromParam `form:"date_from,omitempty" json:"date_from,omitempty"`
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
+	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 
-	// DateTo Akhir rentang (YYYY-MM-DD, relatif TZ proyek).
-	DateTo *DateToParam `form:"date_to,omitempty" json:"date_to,omitempty"`
+	// Limit Item per halaman (maks 100).
+	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // GetPermissionsMe200JSONResponseBodySuccess defines parameters for GetPermissionsMe.
 type GetPermissionsMe200JSONResponseBodySuccess bool
 
+// GetPermissionsQuotaParams defines parameters for GetPermissionsQuota.
+type GetPermissionsQuotaParams struct {
+	CategoryCode string  `form:"category_code" json:"category_code"`
+	TeamCode     *string `form:"team_code,omitempty" json:"team_code,omitempty"`
+}
+
+// GetPermissionsQuota200JSONResponseBodySuccess defines parameters for GetPermissionsQuota.
+type GetPermissionsQuota200JSONResponseBodySuccess bool
+
+// GetPermissionsById200JSONResponseBodySuccess defines parameters for GetPermissionsById.
+type GetPermissionsById200JSONResponseBodySuccess bool
+
+// PostPermissionsByIdApproveParams defines parameters for PostPermissionsByIdApprove.
+type PostPermissionsByIdApproveParams struct {
+	// IdempotencyKey UUID stabil seumur item; tanpa header ini 422 VALIDATION_ERROR. Retry dengan key dan body
+	// yang sama → respons tersimpan dengan header `Idempotent-Replayed: true`; body berbeda +
+	// key sama → 409 CONFLICT `IDEMPOTENCY_KEY_REUSED`. Permintaan pertama dengan key itu masih
+	// berjalan → 409 `IDEMPOTENCY_KEY_IN_FLIGHT` (coba lagi sebentar lagi). Permintaan pertama
+	// berhasil tetapi responsnya tidak bisa disimpan → 409 `IDEMPOTENCY_RESPONSE_NOT_STORED`
+	// (jangan kirim ulang dengan key baru, itu mengulang aksinya; muat ulang datanya).
+	IdempotencyKey IdempotencyKeyRequiredHeader `json:"Idempotency-Key"`
+}
+
 // PostPermissionsByIdApprove200JSONResponseBodySuccess defines parameters for PostPermissionsByIdApprove.
 type PostPermissionsByIdApprove200JSONResponseBodySuccess bool
+
+// PostPermissionsByIdCancelParams defines parameters for PostPermissionsByIdCancel.
+type PostPermissionsByIdCancelParams struct {
+	// IdempotencyKey UUID stabil seumur item; tanpa header ini 422 VALIDATION_ERROR. Retry dengan key dan body
+	// yang sama → respons tersimpan dengan header `Idempotent-Replayed: true`; body berbeda +
+	// key sama → 409 CONFLICT `IDEMPOTENCY_KEY_REUSED`. Permintaan pertama dengan key itu masih
+	// berjalan → 409 `IDEMPOTENCY_KEY_IN_FLIGHT` (coba lagi sebentar lagi). Permintaan pertama
+	// berhasil tetapi responsnya tidak bisa disimpan → 409 `IDEMPOTENCY_RESPONSE_NOT_STORED`
+	// (jangan kirim ulang dengan key baru, itu mengulang aksinya; muat ulang datanya).
+	IdempotencyKey IdempotencyKeyRequiredHeader `json:"Idempotency-Key"`
+}
+
+// PostPermissionsByIdCancel200JSONResponseBodySuccess defines parameters for PostPermissionsByIdCancel.
+type PostPermissionsByIdCancel200JSONResponseBodySuccess bool
+
+// PostPermissionsByIdDeclineParams defines parameters for PostPermissionsByIdDecline.
+type PostPermissionsByIdDeclineParams struct {
+	// IdempotencyKey UUID stabil seumur item; tanpa header ini 422 VALIDATION_ERROR. Retry dengan key dan body
+	// yang sama → respons tersimpan dengan header `Idempotent-Replayed: true`; body berbeda +
+	// key sama → 409 CONFLICT `IDEMPOTENCY_KEY_REUSED`. Permintaan pertama dengan key itu masih
+	// berjalan → 409 `IDEMPOTENCY_KEY_IN_FLIGHT` (coba lagi sebentar lagi). Permintaan pertama
+	// berhasil tetapi responsnya tidak bisa disimpan → 409 `IDEMPOTENCY_RESPONSE_NOT_STORED`
+	// (jangan kirim ulang dengan key baru, itu mengulang aksinya; muat ulang datanya).
+	IdempotencyKey IdempotencyKeyRequiredHeader `json:"Idempotency-Key"`
+}
 
 // PostPermissionsByIdDecline200JSONResponseBodySuccess defines parameters for PostPermissionsByIdDecline.
 type PostPermissionsByIdDecline200JSONResponseBodySuccess bool
@@ -11368,8 +12781,8 @@ type PostScansByIdDecline200JSONResponseBodySuccess bool
 
 // GetShiftSwapsParams defines parameters for GetShiftSwaps.
 type GetShiftSwapsParams struct {
-	// Status Filter status/enum resource.
-	Status *StatusParam `form:"status,omitempty" json:"status,omitempty"`
+	// Active true: hanya aktif. false: hanya dibatalkan. Kosong: keduanya.
+	Active *bool `form:"active,omitempty" json:"active,omitempty"`
 
 	// DateFrom Awal rentang (YYYY-MM-DD, relatif TZ proyek).
 	DateFrom *DateFromParam `form:"date_from,omitempty" json:"date_from,omitempty"`
@@ -11383,14 +12796,35 @@ type GetShiftSwaps200JSONResponseBodySuccess bool
 
 // PostShiftSwapsParams defines parameters for PostShiftSwaps.
 type PostShiftSwapsParams struct {
-	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
-	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
-	// 409 CONFLICT.
-	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
+	// IdempotencyKey UUID stabil seumur item; tanpa header ini 422 VALIDATION_ERROR. Retry dengan key dan body
+	// yang sama → respons tersimpan dengan header `Idempotent-Replayed: true`; body berbeda +
+	// key sama → 409 CONFLICT `IDEMPOTENCY_KEY_REUSED`. Permintaan pertama dengan key itu masih
+	// berjalan → 409 `IDEMPOTENCY_KEY_IN_FLIGHT` (coba lagi sebentar lagi). Permintaan pertama
+	// berhasil tetapi responsnya tidak bisa disimpan → 409 `IDEMPOTENCY_RESPONSE_NOT_STORED`
+	// (jangan kirim ulang dengan key baru, itu mengulang aksinya; muat ulang datanya).
+	IdempotencyKey IdempotencyKeyRequiredHeader `json:"Idempotency-Key"`
 }
 
 // PostShiftSwaps201JSONResponseBodySuccess defines parameters for PostShiftSwaps.
 type PostShiftSwaps201JSONResponseBodySuccess bool
+
+// GetShiftSwapsCandidatesParams defines parameters for GetShiftSwapsCandidates.
+type GetShiftSwapsCandidatesParams struct {
+	TeamCode string             `form:"team_code" json:"team_code"`
+	WorkDate openapi_types.Date `form:"work_date" json:"work_date"`
+}
+
+// GetShiftSwapsCandidates200JSONResponseBodySuccess defines parameters for GetShiftSwapsCandidates.
+type GetShiftSwapsCandidates200JSONResponseBodySuccess bool
+
+// GetShiftSwapsReplaceableParams defines parameters for GetShiftSwapsReplaceable.
+type GetShiftSwapsReplaceableParams struct {
+	TeamCode string             `form:"team_code" json:"team_code"`
+	WorkDate openapi_types.Date `form:"work_date" json:"work_date"`
+}
+
+// GetShiftSwapsReplaceable200JSONResponseBodySuccess defines parameters for GetShiftSwapsReplaceable.
+type GetShiftSwapsReplaceable200JSONResponseBodySuccess bool
 
 // GetTeamsParams defines parameters for GetTeams.
 type GetTeamsParams struct {
@@ -11550,6 +12984,9 @@ type PostAdminInstructionCategoriesJSONRequestBody = CategoryCreate
 // PatchAdminInstructionCategoriesByIdJSONRequestBody defines body for PatchAdminInstructionCategoriesById for application/json ContentType.
 type PatchAdminInstructionCategoriesByIdJSONRequestBody = CategoryPatch
 
+// PutAdminLeaveClientSettingsByClientCodeJSONRequestBody defines body for PutAdminLeaveClientSettingsByClientCode for application/json ContentType.
+type PutAdminLeaveClientSettingsByClientCodeJSONRequestBody PutAdminLeaveClientSettingsByClientCodeJSONBody
+
 // PostAdminLetterheadsJSONRequestBody defines body for PostAdminLetterheads for application/json ContentType.
 type PostAdminLetterheadsJSONRequestBody = LetterheadCreate
 
@@ -11572,10 +13009,22 @@ type PatchAdminPanicTypesByIdJSONRequestBody = PanicTypePatch
 type PostAdminPanicsByIdResolveJSONRequestBody = PanicResolve
 
 // PostAdminPermissionCategoriesJSONRequestBody defines body for PostAdminPermissionCategories for application/json ContentType.
-type PostAdminPermissionCategoriesJSONRequestBody = CodedMasterInput
+type PostAdminPermissionCategoriesJSONRequestBody = LeaveCategoryInput
 
-// PatchAdminPermissionCategoriesByIdJSONRequestBody defines body for PatchAdminPermissionCategoriesById for application/json ContentType.
-type PatchAdminPermissionCategoriesByIdJSONRequestBody = CodedMasterInput
+// PatchAdminPermissionCategoriesByCodeJSONRequestBody defines body for PatchAdminPermissionCategoriesByCode for application/json ContentType.
+type PatchAdminPermissionCategoriesByCodeJSONRequestBody = LeaveCategoryUpdate
+
+// PutAdminPermissionCategoriesByCodeQuotasJSONRequestBody defines body for PutAdminPermissionCategoriesByCodeQuotas for application/json ContentType.
+type PutAdminPermissionCategoriesByCodeQuotasJSONRequestBody = LeaveQuotasInput
+
+// PostAdminPermissionsByIdApproveJSONRequestBody defines body for PostAdminPermissionsByIdApprove for application/json ContentType.
+type PostAdminPermissionsByIdApproveJSONRequestBody = PermissionDecision
+
+// PostAdminPermissionsByIdDeclineJSONRequestBody defines body for PostAdminPermissionsByIdDecline for application/json ContentType.
+type PostAdminPermissionsByIdDeclineJSONRequestBody = PermissionDecision
+
+// PostAdminPersonnelByPersonnelIdLeaveLedgerJSONRequestBody defines body for PostAdminPersonnelByPersonnelIdLeaveLedger for application/json ContentType.
+type PostAdminPersonnelByPersonnelIdLeaveLedgerJSONRequestBody = LeaveLedgerInput
 
 // PostAdminPersonnelByPersonnelIdSchedulesJSONRequestBody defines body for PostAdminPersonnelByPersonnelIdSchedules for application/json ContentType.
 type PostAdminPersonnelByPersonnelIdSchedulesJSONRequestBody = ScheduleEntriesInput
@@ -11695,16 +13144,16 @@ type PostAttendancesAbsentJSONRequestBody = AttendanceAbsentInput
 type PostAttendancesGroupJSONRequestBody = AttendanceGroupInput
 
 // PostAttendancesQrCheckInJSONRequestBody defines body for PostAttendancesQrCheckIn for application/json ContentType.
-type PostAttendancesQrCheckInJSONRequestBody = AttendanceQrCheckIn
+type PostAttendancesQrCheckInJSONRequestBody = AttendanceQrInput
 
 // PostAttendancesQrCheckOutJSONRequestBody defines body for PostAttendancesQrCheckOut for application/json ContentType.
-type PostAttendancesQrCheckOutJSONRequestBody = AttendanceQrCheckOut
+type PostAttendancesQrCheckOutJSONRequestBody = AttendanceQrInput
 
-// PostAttendancesSelfieCheckInMultipartRequestBody defines body for PostAttendancesSelfieCheckIn for multipart/form-data ContentType.
-type PostAttendancesSelfieCheckInMultipartRequestBody PostAttendancesSelfieCheckInMultipartBody
+// PostAttendancesSelfieCheckInJSONRequestBody defines body for PostAttendancesSelfieCheckIn for application/json ContentType.
+type PostAttendancesSelfieCheckInJSONRequestBody = AttendanceSelfieInput
 
-// PostAttendancesSelfieCheckOutMultipartRequestBody defines body for PostAttendancesSelfieCheckOut for multipart/form-data ContentType.
-type PostAttendancesSelfieCheckOutMultipartRequestBody PostAttendancesSelfieCheckOutMultipartBody
+// PostAttendancesSelfieCheckOutJSONRequestBody defines body for PostAttendancesSelfieCheckOut for application/json ContentType.
+type PostAttendancesSelfieCheckOutJSONRequestBody = AttendanceSelfieInput
 
 // PatchAttendancesByIdCheckOutJSONRequestBody defines body for PatchAttendancesByIdCheckOut for application/json ContentType.
 type PatchAttendancesByIdCheckOutJSONRequestBody = AttendanceCheckOutPatch
@@ -11788,10 +13237,10 @@ type PostPanicsByIdFinishJSONRequestBody = PanicResolve
 type PostPermissionsJSONRequestBody = PermissionCreate
 
 // PostPermissionsByIdApproveJSONRequestBody defines body for PostPermissionsByIdApprove for application/json ContentType.
-type PostPermissionsByIdApproveJSONRequestBody = ApprovalNote
+type PostPermissionsByIdApproveJSONRequestBody = PermissionDecision
 
 // PostPermissionsByIdDeclineJSONRequestBody defines body for PostPermissionsByIdDecline for application/json ContentType.
-type PostPermissionsByIdDeclineJSONRequestBody = RejectionNote
+type PostPermissionsByIdDeclineJSONRequestBody = PermissionDecision
 
 // PostPersonnelReviewsJSONRequestBody defines body for PostPersonnelReviews for application/json ContentType.
 type PostPersonnelReviewsJSONRequestBody = PersonnelReviewCreate

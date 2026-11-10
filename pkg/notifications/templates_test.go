@@ -27,7 +27,7 @@ func TestAllTypesListsEveryTypeOnce(t *testing.T) {
 		require.False(t, seen[typ], "%s is listed twice", typ)
 		seen[typ] = true
 	}
-	require.Len(t, seen, 16, "the 12 types of Tabel 7 and the 4 the manual's flows imply")
+	require.Len(t, seen, 17, "the 12 types of Tabel 7, the 4 the manual's flows imply and LEAVE_CANCELLED (07.5)")
 }
 
 // The unit test the plan asks for: every type renders a non-empty title and body in both
@@ -180,6 +180,8 @@ func TestRenderDropsWhatIsMissing(t *testing.T) {
 			"Izin disetujui", "Izin Anda untuk 30 Oktober 2026 telah disetujui."},
 		{"leave declined, no date", notifications.TypeLeaveDecided, notifications.Vars{},
 			"Izin ditolak", "Izin Anda ditolak."},
+		{"leave canceled", notifications.TypeLeaveCancelled, notifications.Vars{ActorName: "Budi", Date: oct30},
+			"Pengajuan izin dibatalkan", "Budi membatalkan pengajuan izin untuk 30 Oktober 2026."},
 		{"moved to a regu with no name", notifications.TypeTeamChanged, notifications.Vars{},
 			"Perpindahan regu", "Anda dipindahkan ke regu lain."},
 		{"a role change with neither a role nor a position", notifications.TypePositionChanged, notifications.Vars{},

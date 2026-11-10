@@ -124,6 +124,7 @@ func run() error {
 
 		Hub:                   hub,
 		PersonelWebhookSecret: cfg.PersonelWebhookSecret,
+		AttendanceQRSecret:    cfg.AttendanceQRSecret,
 	})
 	srv := httpx.NewServer(cfg.HTTPAddr, router)
 

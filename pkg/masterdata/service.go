@@ -17,7 +17,6 @@ import (
 	"siapp/pkg/media"
 	"siapp/pkg/platform/apperr"
 	"siapp/pkg/platform/clock"
-	"siapp/pkg/platform/personel"
 )
 
 // deltaOverlap is how far back a delta pull moves its lower bound, so a row whose transaction
@@ -25,11 +24,6 @@ import (
 // updated_at is the statement time, the row is visible only at commit). The price is that a change
 // of the last few seconds can arrive twice, which is harmless: the app upserts by id.
 const deltaOverlap = 5 * time.Second
-
-// LeaveSource is where leave categories come from: Personel, through its cache.
-type LeaveSource interface {
-	LeaveTypes(ctx context.Context, orgID int64) ([]personel.LeaveType, error)
-}
 
 // LogoStore is what a letterhead's logo needs from the media module: claiming the uploaded photo
 // for the letterhead, and a signed URL to show it. *media.Service is one.
@@ -48,7 +42,6 @@ type UsageCheck func(ctx context.Context, q *db.Queries, id int64) (bool, error)
 type Service struct {
 	pool  *pgxpool.Pool
 	clock clock.Clock
-	leave LeaveSource
 
 	// Modules that point at a master register a check, while the router is wired: reports and
 	// instructions for their categories (11, 12), panic for its types (09).
@@ -58,10 +51,9 @@ type Service struct {
 	logos           LogoStore
 }
 
-// NewService returns the service. leave may be nil: /permission-categories then answers 503 until
-// Personel serves leave types.
-func NewService(pool *pgxpool.Pool, clk clock.Clock, leave LeaveSource) *Service {
-	return &Service{pool: pool, clock: clk, leave: leave, categoryUsage: map[db.CategoryKind][]UsageCheck{}}
+// NewService returns the service.
+func NewService(pool *pgxpool.Pool, clk clock.Clock) *Service {
+	return &Service{pool: pool, clock: clk, categoryUsage: map[db.CategoryKind][]UsageCheck{}}
 }
 
 // UseCategoryUsage registers a check that stops the delete of a category of this kind that

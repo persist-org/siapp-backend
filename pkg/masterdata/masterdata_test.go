@@ -21,7 +21,6 @@ import (
 	"siapp/pkg/masterdata"
 	"siapp/pkg/platform/auth"
 	"siapp/pkg/platform/database"
-	"siapp/pkg/platform/personel"
 	"siapp/pkg/platform/testkit"
 )
 
@@ -57,17 +56,14 @@ type env struct {
 }
 
 // newEnv serves the admin group (RequireAdmin and the master data) and the field routes on a
-// clean database. Leave types come from the in-process fake Personalia through the cache.
+// clean database.
 func newEnv(t *testing.T) *env {
 	t.Helper()
 	testkit.Reset(t)
 	pool := testkit.Pool(t)
-	fake, personelClient := testkit.NewPersonel(t)
-	cache := personel.NewCached(personelClient, nil, testkit.Redis(t), nil)
-	cache.UseLeave(fake)
 
 	clk := &testClock{now: time.Now().UTC().Truncate(time.Second)}
-	service := masterdata.NewService(pool, clk, cache)
+	service := masterdata.NewService(pool, clk)
 	logos := newFakeLogos()
 	service.UseLogoStore(logos)
 	h := masterdata.NewHandler(service)
@@ -645,7 +641,7 @@ func TestCategoriesAreFilteredByTheBusinessLinesOfTheCallersProjects(t *testing.
 
 func TestTheFieldRoutesNeedASignedInPerson(t *testing.T) {
 	e := newEnv(t)
-	for _, path := range []string{"/report-categories", "/instruction-categories", "/panic-types", "/permission-categories"} {
+	for _, path := range []string{"/report-categories", "/instruction-categories", "/panic-types"} {
 		r := e.raw("", http.MethodGet, path, nil)
 		require.Equal(t, http.StatusUnauthorized, r.Status, "%s: %s", path, r.Raw)
 	}
@@ -681,47 +677,6 @@ func TestAssertCategory(t *testing.T) {
 	require.NoError(t, e.service.AssertCategory(as(org), report.ID, masterdata.KindReport))
 	require.Equal(t, http.StatusOK, e.api(admin, http.MethodDelete, "/admin/report-categories/"+itoa(report.ID), nil).Status)
 	require.ErrorIs(t, e.service.AssertCategory(as(org), report.ID, masterdata.KindReport), masterdata.ErrCategoryNotFound)
-}
-
-// ---------- leave categories ----------
-
-func TestPermissionCategoriesAreTheLeaveTypesOfPersonel(t *testing.T) {
-	e := newEnv(t)
-	org := testkit.NewOrg(t)
-	_, token := e.person(org, "")
-
-	r := e.api(token, http.MethodGet, "/permission-categories", nil)
-	require.Equal(t, http.StatusOK, r.Status, "body: %s", r.Raw)
-	got := data[[]struct {
-		ID       int64  `json:"id"`
-		Name     string `json:"name"`
-		IsActive bool   `json:"is_active"`
-	}](t, r)
-	require.Len(t, got, 3)
-	require.Equal(t, "Sakit", got[0].Name)
-	require.Equal(t, "Izin", got[1].Name)
-	require.Equal(t, "Cuti", got[2].Name)
-	require.True(t, got[0].IsActive)
-
-	// SiAPP stores none: there is no table, and no admin route to write one.
-	e.inTenant(org, func(tx pgx.Tx) {
-		var n int
-		require.NoError(t, tx.QueryRow(t.Context(), "SELECT count(*) FROM information_schema.tables WHERE table_name LIKE '%leave%' OR table_name LIKE 'permission_categor%'").Scan(&n))
-		require.Zero(t, n)
-	})
-}
-
-func TestPermissionCategoriesAnswer503WhenPersonelHasNoLeaveSeam(t *testing.T) {
-	testkit.Reset(t)
-	pool := testkit.Pool(t)
-	_, client := testkit.NewPersonel(t)
-	cache := personel.NewCached(client, nil, testkit.Redis(t), nil) // no UseLeave
-	clk := &testClock{now: time.Now().UTC().Truncate(time.Second)}
-	srv := testkit.NewServer(t, testkit.Deps{Mount: masterdata.NewHandler(masterdata.NewService(pool, clk, cache)).MountField})
-	org := testkit.NewOrg(t)
-	e := &env{t: t, srv: srv.URL}
-	r := e.raw(testkit.Token(t, org, 1), http.MethodGet, "/permission-categories", nil)
-	r.requireFailure(t, http.StatusServiceUnavailable, "INTERNAL_ERROR", "PERSONEL_UNAVAILABLE")
 }
 
 func itoa(n int64) string {
