@@ -671,7 +671,7 @@ func (h *Handler) swapCandidates(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]candidateJSON, 0, len(rows))
 	for _, c := range rows {
-		out = append(out, candidateJSON{PersonnelID: c.PersonnelID, Name: c.Name})
+		out = append(out, candidateJSON(c))
 	}
 	httpx.OK(w, r, http.StatusOK, out)
 }
