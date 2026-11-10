@@ -449,7 +449,7 @@ func (q *Queries) ListApprovedLeaveOverlapping(ctx context.Context, arg ListAppr
 }
 
 const listCheckedInAttendancesBetween = `-- name: ListCheckedInAttendancesBetween :many
-SELECT id, organization_id, personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone, status, check_in_at, check_in_method, check_in_media_id, check_in_latitude, check_in_longitude, check_in_accuracy_meters, check_in_distance_meters, check_in_within_area, check_in_qr_danru_id, late_minutes, check_out_at, check_out_method, check_out_media_id, check_out_latitude, check_out_longitude, check_out_accuracy_meters, check_out_distance_meters, check_out_within_area, check_out_qr_danru_id, check_out_update_count, leave_request_id, marked_absent_by_id, shift_swap_id, personel_sync_status, personel_synced_at, created_at, updated_at, late_minutes_raw FROM attendances
+SELECT id, organization_id, personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone, status, check_in_at, check_in_method, check_in_media_id, check_in_latitude, check_in_longitude, check_in_accuracy_meters, check_in_distance_meters, check_in_within_area, check_in_qr_danru_id, late_minutes, check_out_at, check_out_method, check_out_media_id, check_out_latitude, check_out_longitude, check_out_accuracy_meters, check_out_distance_meters, check_out_within_area, check_out_qr_danru_id, check_out_update_count, leave_request_id, marked_absent_by_id, shift_swap_id, personel_sync_status, personel_synced_at, created_at, updated_at, late_minutes_raw, absent_reason FROM attendances
 WHERE personnel_id = $1 AND work_date BETWEEN $2 AND $3
   AND status = 'PRESENT' AND check_in_at IS NOT NULL
 ORDER BY work_date, id
@@ -511,6 +511,7 @@ func (q *Queries) ListCheckedInAttendancesBetween(ctx context.Context, arg ListC
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.LateMinutesRaw,
+			&i.AbsentReason,
 		); err != nil {
 			return nil, err
 		}

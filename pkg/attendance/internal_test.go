@@ -111,3 +111,29 @@ func TestMeasure(t *testing.T) {
 		require.ErrorIs(t, err, organization.ErrProjectNotConfigured)
 	})
 }
+
+func TestIntervalsOverlap(t *testing.T) {
+	at := func(h int) time.Time {
+		return time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC).Add(time.Duration(h) * time.Hour)
+	}
+	tests := []struct {
+		name                 string
+		aStart, aEnd, bStart int
+		bEnd                 int
+		want                 bool
+	}{
+		{"overlapping", 8, 17, 16, 24, true},
+		{"contained", 8, 17, 10, 12, true},
+		{"back to back is allowed", 8, 16, 16, 24, false},
+		{"apart", 8, 12, 14, 18, false},
+		// An overnight shift (22:00 to 06:00 the next day) against the morning shift of that next day.
+		{"overnight reaching into the next morning", 22, 30, 29, 37, true},
+		{"overnight ending as the next shift starts", 22, 30, 30, 38, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, intervalsOverlap(at(tc.aStart), at(tc.aEnd), at(tc.bStart), at(tc.bEnd)))
+			require.Equal(t, tc.want, intervalsOverlap(at(tc.bStart), at(tc.bEnd), at(tc.aStart), at(tc.aEnd)), "symmetric")
+		})
+	}
+}

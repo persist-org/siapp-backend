@@ -132,6 +132,7 @@ func newRouter(d deps) *chi.Mux {
 	// which the worker delivers in Phase 07.3.
 	accessService := access.NewService(d.Pool, d.Clock)
 	attendanceService := attendance.NewService(d.Pool, d.Clock, organization.NewShifts(d.Pool), organization.NewQuery(d.Pool), mediaService, accessService)
+	attendanceService.UseNotifier(notifier)
 	if d.AttendanceQRSecret != "" {
 		qr, err := attendance.NewQRTokens(d.AttendanceQRSecret, d.Clock)
 		if err != nil {

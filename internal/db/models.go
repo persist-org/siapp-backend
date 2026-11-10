@@ -1646,7 +1646,7 @@ type ShiftSwap struct {
 	ID                   int64
 	OrganizationID       int64
 	ReplacedPersonnelID  int64
-	ReplacedAttendanceID int64
+	ReplacedAttendanceID pgtype.Int8
 	ReplacingPersonnelID int64
 	TeamCode             string
 	WorkDate             pgtype.Date

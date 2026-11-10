@@ -95,23 +95,30 @@ RETURNING id, event_id;
 -- name: InsertAttendanceAbsent :one
 INSERT INTO attendances (
     personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone,
-    status, marked_absent_by_id, absent_reason, created_at, updated_at)
+    status, marked_absent_by_id, absent_reason, shift_swap_id, created_at, updated_at)
 VALUES (
     @personnel_id, @team_code, @project_code, @work_date, @shift_id, @shift_starts_at, @shift_ends_at, @timezone,
-    'ABSENT', @marked_absent_by_id, sqlc.narg('absent_reason'), @now, @now)
+    'ABSENT', @marked_absent_by_id, sqlc.narg('absent_reason'), sqlc.narg('shift_swap_id'), @now, @now)
 RETURNING *;
 
 -- The regu monitor (GET /attendances, DANRU): per member and day, with the person's name and the
 -- shift's, newest first. A deleted shift keeps its record but not its name (LEFT JOIN).
 -- name: ListTeamAttendanceRows :many
+-- Scope: a record of one of team_codes (the regu the caller's group/absence view reaches), or the
+-- caller's own (self_id, set when they hold either permission, even as SELF only: a MEMBER sees
+-- their own mangkir history and nothing of the regu). "swapped" is a LEAVE/ABSENT record that has an
+-- active shift swap.
 SELECT a.id, a.personnel_id, p.full_name, a.work_date, COALESCE(sh.name, '') AS shift_name,
   a.status, a.check_in_at, a.check_in_method, a.check_in_within_area,
-  a.check_out_at, a.check_out_method, a.check_out_within_area
+  a.check_out_at, a.check_out_method, a.check_out_within_area,
+  EXISTS (SELECT 1 FROM shift_swaps sw WHERE sw.replaced_attendance_id = a.id AND sw.cancelled_at IS NULL) AS swapped
 FROM attendances a
 JOIN personnels p ON p.id = a.personnel_id
 LEFT JOIN shifts sh ON sh.id = a.shift_id
-WHERE a.team_code = ANY(@team_codes::text[])
+WHERE (a.team_code = ANY(@team_codes::text[]) OR a.personnel_id = sqlc.narg('self_id')::bigint)
+  AND (sqlc.narg('team_code')::text IS NULL OR a.team_code = sqlc.narg('team_code')::text)
   AND (sqlc.narg('project_code')::text IS NULL OR a.project_code = sqlc.narg('project_code')::text)
+  AND (sqlc.narg('status')::text IS NULL OR a.status::text = sqlc.narg('status')::text)
   AND (sqlc.narg('from_date')::date IS NULL OR a.work_date >= sqlc.narg('from_date')::date)
   AND (sqlc.narg('to_date')::date IS NULL OR a.work_date <= sqlc.narg('to_date')::date)
 ORDER BY a.work_date DESC, a.id DESC
@@ -119,8 +126,10 @@ LIMIT @page_limit OFFSET @page_offset;
 
 -- name: CountTeamAttendanceRows :one
 SELECT count(*) FROM attendances a
-WHERE a.team_code = ANY(@team_codes::text[])
+WHERE (a.team_code = ANY(@team_codes::text[]) OR a.personnel_id = sqlc.narg('self_id')::bigint)
+  AND (sqlc.narg('team_code')::text IS NULL OR a.team_code = sqlc.narg('team_code')::text)
   AND (sqlc.narg('project_code')::text IS NULL OR a.project_code = sqlc.narg('project_code')::text)
+  AND (sqlc.narg('status')::text IS NULL OR a.status::text = sqlc.narg('status')::text)
   AND (sqlc.narg('from_date')::date IS NULL OR a.work_date >= sqlc.narg('from_date')::date)
   AND (sqlc.narg('to_date')::date IS NULL OR a.work_date <= sqlc.narg('to_date')::date);
 
@@ -137,6 +146,8 @@ WHERE (sqlc.narg('team_codes')::text[] IS NULL OR a.team_code = ANY(sqlc.narg('t
         JOIN clients cl ON cl.organization_id = pr.organization_id AND cl.code = pr.client_code
         JOIN branches b ON b.organization_id = cl.organization_id AND b.code = cl.branch_code
         WHERE pr.code = a.project_code AND b.region_code = sqlc.narg('region_code')::text))
+  AND (sqlc.narg('status')::text IS NULL OR a.status::text = sqlc.narg('status')::text)
+  AND (sqlc.narg('sync_status')::text IS NULL OR a.personel_sync_status::text = sqlc.narg('sync_status')::text)
   AND (sqlc.narg('from_date')::date IS NULL OR a.work_date >= sqlc.narg('from_date')::date)
   AND (sqlc.narg('to_date')::date IS NULL OR a.work_date <= sqlc.narg('to_date')::date)
 ORDER BY a.work_date DESC, a.id DESC
@@ -152,6 +163,8 @@ WHERE (sqlc.narg('team_codes')::text[] IS NULL OR a.team_code = ANY(sqlc.narg('t
         JOIN clients cl ON cl.organization_id = pr.organization_id AND cl.code = pr.client_code
         JOIN branches b ON b.organization_id = cl.organization_id AND b.code = cl.branch_code
         WHERE pr.code = a.project_code AND b.region_code = sqlc.narg('region_code')::text))
+  AND (sqlc.narg('status')::text IS NULL OR a.status::text = sqlc.narg('status')::text)
+  AND (sqlc.narg('sync_status')::text IS NULL OR a.personel_sync_status::text = sqlc.narg('sync_status')::text)
   AND (sqlc.narg('from_date')::date IS NULL OR a.work_date >= sqlc.narg('from_date')::date)
   AND (sqlc.narg('to_date')::date IS NULL OR a.work_date <= sqlc.narg('to_date')::date);
 

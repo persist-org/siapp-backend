@@ -144,6 +144,14 @@ func (s *Service) Correct(ctx context.Context, p auth.Principal, scope access.Ad
 			}
 		}
 
+		// ⚠ A swap covers an absent or on-leave record. Once the guard is PRESENT it covers nothing:
+		// cancel it, or refuse when the replacer already worked the shift (both would be credited).
+		if newStatus == db.AttendanceStatusPRESENT && row.Status != db.AttendanceStatusPRESENT {
+			if err := releaseSwaps(ctx, q, row.ID, now); err != nil {
+				return err
+			}
+		}
+
 		before := correctionSnapshot(row)
 		updated, err := q.CorrectAttendance(ctx, params)
 		if err != nil {
@@ -207,6 +215,7 @@ func (s *Service) ListForAdmin(ctx context.Context, p auth.Principal, scope acce
 	err := database.WithTenant(ctx, s.pool, p.OrganizationID, func(q *db.Queries) error {
 		return s.listInto(ctx, q, &out, db.ListAttendancesParams{
 			TeamCode: textOrNull(f.TeamCode), ProjectCode: textOrNull(f.ProjectCode), RegionCode: textOrNull(f.RegionCode),
+			Status: textOrNull(f.Status), SyncStatus: textOrNull(f.SyncStatus),
 			FromDate: dateParamPtr(f.From), ToDate: dateParamPtr(f.To),
 			PageOffset: int32(f.Offset), PageLimit: int32(f.Limit), //nolint:gosec // bounded by httpx.ParseListQuery
 		})

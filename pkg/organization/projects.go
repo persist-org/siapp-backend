@@ -54,7 +54,7 @@ type Project struct {
 	EmergencyContacts        []EmergencyContact
 	// AllowGroupAttendance turns on the DANRU's group check-in (07.6): off by default, since it
 	// records presence without each guard's own evidence. Set directly in the database or seed
-	// data for now; there is no admin endpoint yet to toggle it.
+	// data, or by PATCH /projects/{code}.
 	AllowGroupAttendance bool
 	Active               bool
 	CreatedAt            time.Time
@@ -107,6 +107,7 @@ type ProjectUpdate struct {
 	AttendanceRadiusMeters   *int               `json:"attendance_radius_meters" validate:"omitempty,gte=1,lte=10000"`
 	StrictAttendanceGeofence *bool              `json:"strict_attendance_geofence"`
 	GPSTrackingEnabled       *bool              `json:"gps_tracking_enabled"`
+	AllowGroupAttendance     *bool              `json:"allow_group_attendance"`
 	PatrolIntervalMinutes    *int               `json:"patrol_interval_minutes" validate:"omitempty,gte=1,lte=1440"`
 	EmergencyContacts        []EmergencyContact `json:"emergency_contacts" validate:"omitempty,dive"`
 	Active                   *bool              `json:"is_active"`
@@ -284,6 +285,7 @@ func (p *Projects) Update(ctx context.Context, actor auth.Principal, scope acces
 			Phone: textPtr(in.Phone), Email: textPtr(in.Email), Timezone: textPtr(in.Timezone),
 			Latitude: in.Latitude, Longitude: in.Longitude, AttendanceRadiusMeters: int4OrNull(in.AttendanceRadiusMeters),
 			StrictAttendanceGeofence: boolOrNull(in.StrictAttendanceGeofence), GpsTrackingEnabled: boolOrNull(in.GPSTrackingEnabled),
+			AllowGroupAttendance:  boolOrNull(in.AllowGroupAttendance),
 			PatrolIntervalMinutes: int4OrNull(in.PatrolIntervalMinutes), EmergencyContacts: contacts,
 			Active: boolOrNull(in.Active), Actor: personnelRef(actor), Now: ts(p.clock.Now()),
 		})
@@ -473,7 +475,7 @@ func projectMeta(p Project) map[string]any {
 		"city": p.City, "address": p.Address, "phone": p.Phone, "email": p.Email, "timezone": p.Timezone,
 		"latitude": p.Latitude, "longitude": p.Longitude, "attendance_radius_meters": p.AttendanceRadiusMeters,
 		"strict_attendance_geofence": p.StrictAttendanceGeofence, "gps_tracking_enabled": p.GPSTrackingEnabled,
-		"patrol_interval_minutes": p.PatrolIntervalMinutes, "emergency_contacts": len(p.EmergencyContacts),
+		"allow_group_attendance": p.AllowGroupAttendance, "patrol_interval_minutes": p.PatrolIntervalMinutes, "emergency_contacts": len(p.EmergencyContacts),
 		"active": p.Active,
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -47,10 +48,14 @@ func textOrNull(s string) pgtype.Text {
 // TeamCodes' position: the two lists are deduped independently (schedules.go's zonesBetween), so
 // they are NOT index-aligned when a person serves two regu of the same project, or other such
 // overlaps. Looking the team up by code is the only safe way to its project.
-func (s *Service) instanceFor(ctx context.Context, organizationID, personnelID int64, teamCode string, date timeutil.Date) (inst organization.ShiftInstance, projectCode string, ok bool, err error) {
+//
+// 07.7: a shift the person covers for someone else (an active swap in that regu) is theirs too, so
+// it is found when the schedule has no such shift; swapID is then set and the record written for it
+// carries the swap, like a check-in on it does.
+func (s *Service) instanceFor(ctx context.Context, q *db.Queries, organizationID, personnelID int64, teamCode string, date timeutil.Date) (inst organization.ShiftInstance, projectCode string, swapID *int64, ok bool, err error) {
 	instances, err := s.shifts.Instances(ctx, organizationID, personnelID, date, date)
 	if err != nil {
-		return organization.ShiftInstance{}, "", false, fmt.Errorf("shift instances: %w", err)
+		return organization.ShiftInstance{}, "", nil, false, fmt.Errorf("shift instances: %w", err)
 	}
 	for _, in := range instances {
 		if in.IsOff || !slices.Contains(in.TeamCodes, teamCode) {
@@ -58,24 +63,28 @@ func (s *Service) instanceFor(ctx context.Context, organizationID, personnelID i
 		}
 		site, err := s.sites.TeamWithProject(ctx, organizationID, teamCode)
 		if errors.Is(err, organization.ErrTeamNotFound) {
-			return organization.ShiftInstance{}, "", false, nil
+			return organization.ShiftInstance{}, "", nil, false, nil
 		}
 		if err != nil {
-			return organization.ShiftInstance{}, "", false, fmt.Errorf("team %s: %w", teamCode, err)
+			return organization.ShiftInstance{}, "", nil, false, fmt.Errorf("team %s: %w", teamCode, err)
 		}
-		return in, site.Project.Code, true, nil
+		return in, site.Project.Code, nil, true, nil
 	}
-	return organization.ShiftInstance{}, "", false, nil
+	in, projectCode, id, ok, err := s.coveredInstance(ctx, q, organizationID, personnelID, teamCode, date, 0)
+	if err != nil || !ok {
+		return organization.ShiftInstance{}, "", nil, false, err
+	}
+	return in, projectCode, &id, true, nil
 }
 
 // insertAbsent writes a fresh ABSENT record for personnelID's shift instance and its outbox event,
-// inside the caller's transaction. Shared by MarkAbsent and GroupPresent's ABSENT entries.
+// inside the caller's transaction. swapID is set when the shift is one the person covers (07.7).
 //
 // ⚠ A place that already has a record is not the caller's to turn into an absence: a PRESENT row
 // is ABSENCE_ALREADY_PRESENT (a guard who came to work), an existing LEAVE or ABSENT is
 // NOT_ALLOWED. An admin correcting an existing record instead goes through Correct (Part C), which
 // locks and updates the row rather than inserting one.
-func (s *Service) insertAbsent(ctx context.Context, q *db.Queries, markedByID, personnelID int64, teamCode, projectCode string, inst organization.ShiftInstance, reason string, now time.Time) (db.Attendance, error) {
+func (s *Service) insertAbsent(ctx context.Context, q *db.Queries, markedByID, personnelID int64, teamCode, projectCode string, inst organization.ShiftInstance, swapID *int64, reason string, now time.Time) (db.Attendance, error) {
 	existing, err := existingRecord(ctx, q, personnelID, shiftKey{TeamCode: teamCode, WorkDate: inst.WorkDate, ShiftID: inst.ShiftID})
 	if err != nil {
 		return db.Attendance{}, err
@@ -90,7 +99,7 @@ func (s *Service) insertAbsent(ctx context.Context, q *db.Queries, markedByID, p
 		PersonnelID: personnelID, TeamCode: teamCode, ProjectCode: projectCode, WorkDate: dateParam(inst.WorkDate),
 		ShiftID: inst.ShiftID, ShiftStartsAt: ts(inst.StartsAt), ShiftEndsAt: ts(inst.EndsAt),
 		Timezone: inst.Location.String(), MarkedAbsentByID: pgtype.Int8{Int64: markedByID, Valid: true},
-		AbsentReason: textOrNull(reason), Now: ts(now),
+		AbsentReason: textOrNull(reason), ShiftSwapID: int8Param(swapID), Now: ts(now),
 	})
 	if err != nil {
 		return db.Attendance{}, fmt.Errorf("insert absent: %w", err)
@@ -115,8 +124,9 @@ type AbsentInput struct {
 	TeamCode    string `json:"team_code" validate:"required"`
 	// Date is the work date (YYYY-MM-DD) the person is marked absent for: their shift instance of
 	// TeamCode on that date, which may be a different regu's shift than the caller's own today.
-	Date   string `json:"date" validate:"required"`
-	Reason string `json:"reason" validate:"omitempty,max=500"`
+	Date string `json:"date" validate:"required"`
+	// Reason is required (mobile spec ATT §6.3).
+	Reason string `json:"reason" validate:"required,max=500"`
 }
 
 // MarkAbsent is POST /attendances/absent: the DANRU recording a team member's mangkir directly,
@@ -129,8 +139,14 @@ func (s *Service) MarkAbsent(ctx context.Context, p auth.Principal, in AbsentInp
 			Field: "date", Code: "INVALID", Message: "date harus berformat YYYY-MM-DD.",
 		})
 	}
+	if strings.TrimSpace(in.Reason) == "" {
+		return Attendance{}, apperr.ErrValidation.WithFields(apperr.FieldError{
+			Field: "reason", Code: "REQUIRED", Message: "Alasan wajib diisi.",
+		})
+	}
 	now := s.clock.Now()
 	var out Attendance
+	var notice Notice
 	err = database.WithTenant(ctx, s.pool, p.OrganizationID, func(q *db.Queries) error {
 		res, err := s.access.Resolve(ctx, q, p.PersonnelID, access.AttendanceAbsenceNew, date)
 		if err != nil {
@@ -139,21 +155,42 @@ func (s *Service) MarkAbsent(ctx context.Context, p auth.Principal, in AbsentInp
 		if !res.HasTeam(in.TeamCode) {
 			return access.ErrPermissionDenied
 		}
-		inst, projectCode, ok, err := s.instanceFor(ctx, p.OrganizationID, in.PersonnelID, in.TeamCode, date)
+		inst, projectCode, swapID, ok, err := s.instanceFor(ctx, q, p.OrganizationID, in.PersonnelID, in.TeamCode, date)
 		if err != nil {
 			return err
 		}
 		if !ok {
 			return ErrNoShift
 		}
-		row, err := s.insertAbsent(ctx, q, p.PersonnelID, in.PersonnelID, in.TeamCode, projectCode, inst, in.Reason, now)
+		row, err := s.insertAbsent(ctx, q, p.PersonnelID, in.PersonnelID, in.TeamCode, projectCode, inst, swapID, in.Reason, now)
 		if err != nil {
 			return err
 		}
 		out = toAttendance(row)
+		if notice, err = s.absenceNotice(ctx, q, p.PersonnelID, row); err != nil {
+			return err
+		}
 		return nil
 	})
-	return out, err
+	if err != nil {
+		return out, err
+	}
+	s.notify(ctx, notice) // after commit: the person is told of a mangkir that is on record
+	return out, nil
+}
+
+// absenceNotice is the ABSENCE_MARKED notice to the person marked absent, naming the DANRU.
+func (s *Service) absenceNotice(ctx context.Context, q *db.Queries, markedByID int64, row db.Attendance) (Notice, error) {
+	n, err := s.noticeBase(ctx, q, NoticeAbsenceMarked, row.TeamCode, row.ProjectCode, dateValue(row.WorkDate))
+	if err != nil || s.notifier == nil {
+		return Notice{}, err
+	}
+	n.RecipientIDs = []int64{row.PersonnelID}
+	n.EntityType, n.EntityID = entityType, row.ID
+	if n.ActorName, err = s.personName(ctx, q, markedByID); err != nil {
+		return Notice{}, err
+	}
+	return n, nil
 }
 
 // CancelAbsent is DELETE /attendances/absent/{id}: the DANRU undoing their own mistaken mangkir.
@@ -183,6 +220,11 @@ func (s *Service) CancelAbsent(ctx context.Context, p auth.Principal, id int64) 
 		}
 		if !res.HasTeam(row.TeamCode) {
 			return ErrNotFound // outside the caller's reach: the same answer as not existing
+		}
+		// A covered mangkir: cancel its swap first (the record is going away), or refuse when the
+		// replacer has already worked the shift.
+		if err := releaseSwaps(ctx, q, id, now); err != nil {
+			return err
 		}
 		if err := writeEvent(ctx, q, row, eventAbsentCancelled, now); err != nil {
 			return err
@@ -227,7 +269,7 @@ func (s *Service) GroupSummary(ctx context.Context, p auth.Principal, teamCode, 
 	}
 	var out []GroupSummaryDay
 	err = database.WithTenant(ctx, s.pool, p.OrganizationID, func(q *db.Queries) error {
-		teams, terr := s.reachableTeams(ctx, q, p.PersonnelID, timeutil.BusinessDate(s.clock.Now(), wib))
+		teams, _, terr := s.reachableTeams(ctx, q, p.PersonnelID, timeutil.BusinessDate(s.clock.Now(), wib))
 		if terr != nil {
 			return terr
 		}
@@ -259,9 +301,13 @@ type Filter struct {
 	TeamCode    string
 	ProjectCode string
 	RegionCode  string
-	From, To    *timeutil.Date
-	Limit       int
-	Offset      int
+	// Status is PRESENT, LEAVE or ABSENT (the stored statuses); "" keeps all.
+	Status string
+	// SyncStatus is PENDING, SYNCED or FAILED, the admin monitor only; "" keeps all.
+	SyncStatus string
+	From, To   *timeutil.Date
+	Limit      int
+	Offset     int
 }
 
 // Page is a page of the admin monitor list (Part C's ListForAdmin).
@@ -297,21 +343,23 @@ type TeamPage struct {
 // reachableTeams is every regu a grant of AttendanceGroupView or AttendanceAbsenceView reaches,
 // resolved once for "today" in WIB: a monitor spans every regu and project the caller leads, each
 // possibly in its own zone, so there is no one business date to resolve a list against (the same
-// simplification pkg/leave's admin list makes).
-func (s *Service) reachableTeams(ctx context.Context, q *db.Queries, personnelID int64, on timeutil.Date) ([]string, error) {
-	var teams []string
+// simplification pkg/leave's admin list makes). own is true when the caller holds either permission
+// at all, even as SELF only (a MEMBER's own mangkir history): their own records are then readable
+// whatever regu they are in.
+func (s *Service) reachableTeams(ctx context.Context, q *db.Queries, personnelID int64, on timeutil.Date) (teams []string, own bool, err error) {
 	for _, perm := range []access.Permission{access.AttendanceGroupView, access.AttendanceAbsenceView} {
 		res, err := s.access.Resolve(ctx, q, personnelID, perm, on)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
+		own = own || res.Allowed
 		for _, t := range res.TeamCodes {
 			if !slices.Contains(teams, t) {
 				teams = append(teams, t)
 			}
 		}
 	}
-	return teams, nil
+	return teams, own, nil
 }
 
 // List is GET /attendances: every regu's member-and-day within the caller's attendance.group.view
@@ -320,22 +368,27 @@ func (s *Service) reachableTeams(ctx context.Context, q *db.Queries, personnelID
 func (s *Service) List(ctx context.Context, p auth.Principal, f Filter) (TeamPage, error) {
 	var out TeamPage
 	err := database.WithTenant(ctx, s.pool, p.OrganizationID, func(q *db.Queries) error {
-		teams, err := s.reachableTeams(ctx, q, p.PersonnelID, timeutil.BusinessDate(s.clock.Now(), wib))
+		teams, own, err := s.reachableTeams(ctx, q, p.PersonnelID, timeutil.BusinessDate(s.clock.Now(), wib))
 		if err != nil {
 			return err
 		}
-		if f.TeamCode != "" {
-			if !slices.Contains(teams, f.TeamCode) {
-				return access.ErrPermissionDenied
-			}
-			teams = []string{f.TeamCode}
-		}
-		if len(teams) == 0 {
+		// ⚠ No permission at all: refused. A caller with only a SELF grant is let through and sees
+		// their own records only (the SQL scope is "a reached regu OR my own"), so for them a
+		// team_code outside their reach is an answer limited to their own records, never a probe of
+		// that regu. A caller with a wider grant asking for a regu outside it is refused.
+		if len(teams) == 0 && !own {
 			return access.ErrPermissionDenied
 		}
+		if f.TeamCode != "" && !slices.Contains(teams, f.TeamCode) && len(teams) > 0 {
+			return access.ErrPermissionDenied
+		}
+		var selfID pgtype.Int8
+		if own {
+			selfID = pgtype.Int8{Int64: p.PersonnelID, Valid: true}
+		}
 		params := db.ListTeamAttendanceRowsParams{
-			TeamCodes: teams, ProjectCode: textOrNull(f.ProjectCode),
-			FromDate: dateParamPtr(f.From), ToDate: dateParamPtr(f.To),
+			TeamCodes: teams, SelfID: selfID, TeamCode: textOrNull(f.TeamCode), ProjectCode: textOrNull(f.ProjectCode),
+			Status: textOrNull(f.Status), FromDate: dateParamPtr(f.From), ToDate: dateParamPtr(f.To),
 			PageOffset: int32(f.Offset), PageLimit: int32(f.Limit), //nolint:gosec // bounded by httpx.ParseListQuery
 		}
 		rows, err := q.ListTeamAttendanceRows(ctx, params)
@@ -344,15 +397,20 @@ func (s *Service) List(ctx context.Context, p auth.Principal, f Filter) (TeamPag
 		}
 		out.Rows = make([]TeamAttendanceRow, 0, len(rows))
 		for _, r := range rows {
+			status := string(r.Status)
+			if r.Swapped && f.Status == "" {
+				status = StatusSwapped // a covered LEAVE/ABSENT; filtering by status shows the stored one
+			}
 			out.Rows = append(out.Rows, TeamAttendanceRow{
 				AttendanceID: r.ID, PersonnelID: r.PersonnelID, PersonnelName: r.FullName,
-				WorkDate: dateValue(r.WorkDate), ShiftName: r.ShiftName, Status: string(r.Status),
+				WorkDate: dateValue(r.WorkDate), ShiftName: r.ShiftName, Status: status,
 				CheckInAt: timePtr(r.CheckInAt), CheckInMethod: methodPtr(r.CheckInMethod), CheckInWithinArea: boolPtr(r.CheckInWithinArea),
 				CheckOutAt: timePtr(r.CheckOutAt), CheckOutMethod: methodPtr(r.CheckOutMethod), CheckOutWithinArea: boolPtr(r.CheckOutWithinArea),
 			})
 		}
 		total, err := q.CountTeamAttendanceRows(ctx, db.CountTeamAttendanceRowsParams{
-			TeamCodes: params.TeamCodes, ProjectCode: params.ProjectCode, FromDate: params.FromDate, ToDate: params.ToDate,
+			TeamCodes: params.TeamCodes, SelfID: params.SelfID, TeamCode: params.TeamCode, ProjectCode: params.ProjectCode,
+			Status: params.Status, FromDate: params.FromDate, ToDate: params.ToDate,
 		})
 		if err != nil {
 			return fmt.Errorf("count team attendance rows: %w", err)

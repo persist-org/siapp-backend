@@ -60,6 +60,8 @@ type Service struct {
 	access permissions
 	// qr is nil while ATTENDANCE_QR_SECRET is not set: the QR endpoints then answer 503.
 	qr *QRTokens
+	// notifier is nil until cmd/api plugs one in (UseNotifier): nothing is then sent.
+	notifier Notifier
 }
 
 // NewService returns the Service.
@@ -185,6 +187,19 @@ func (s *Service) checkIn(ctx context.Context, p auth.Principal, ref string, c c
 	err = database.WithTenant(ctx, s.pool, p.OrganizationID, func(q *db.Queries) error {
 		if err := s.allow(ctx, q, p.PersonnelID, shift.Key.WorkDate); err != nil {
 			return err
+		}
+		// ⚠ A covered shift: s.find read the swap before this transaction, so a DANRU may have
+		// cancelled it since. Lock it and re-read. CancelSwap locks the same row, so either this
+		// check-in commits first (and the cancel then answers SWAP_ALREADY_STARTED) or the cancel does
+		// (and this answers SHIFT_NOT_ACTIVE): never a record pointing at a cancelled swap.
+		if shift.SwapID != nil {
+			sw, serr := q.GetShiftSwapForUpdate(ctx, *shift.SwapID)
+			if errors.Is(serr, pgx.ErrNoRows) || (serr == nil && sw.CancelledAt.Valid) {
+				return ErrShiftNotActive
+			}
+			if serr != nil {
+				return fmt.Errorf("get shift swap: %w", serr)
+			}
 		}
 		existing, err := existingRecord(ctx, q, p.PersonnelID, shift.Key)
 		if err != nil {

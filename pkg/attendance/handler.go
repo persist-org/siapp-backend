@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -108,6 +110,12 @@ func (h *Handler) adminList(w http.ResponseWriter, r *http.Request) {
 	f := Filter{
 		TeamCode: r.URL.Query().Get("team_code"), ProjectCode: r.URL.Query().Get("project_code"),
 		Limit: query.Limit, Offset: query.Offset(),
+	}
+	if f.Status, ok = enumQueryParam(w, r, "status", statusValues); !ok {
+		return
+	}
+	if f.SyncStatus, ok = enumQueryParam(w, r, "sync_status", syncStatusValues); !ok {
+		return
 	}
 	if f.From, ok = dateQueryParam(w, r, "date_from"); !ok {
 		return
@@ -242,6 +250,7 @@ type historyShiftJSON struct {
 	CheckInAt     *string `json:"check_in_at"`
 	CheckInMethod *string `json:"check_in_method"`
 	CheckOutAt    *string `json:"check_out_at"`
+	ShiftSwapID   *int64  `json:"shift_swap_id"`
 }
 
 // detailJSON is GET /attendances/{id}: the record and what the detail screen shows around it.
@@ -330,6 +339,7 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 			day.Shifts = append(day.Shifts, historyShiftJSON{
 				AttendanceID: s.AttendanceID, ShiftName: s.ShiftName, TeamCode: s.TeamCode, TeamName: s.TeamName,
 				Status: s.Status, CheckInAt: stamp(s.CheckInAt), CheckInMethod: methodName(s.CheckInMethod), CheckOutAt: stamp(s.CheckOutAt),
+				ShiftSwapID: s.ShiftSwapID,
 			})
 		}
 		out = append(out, day)
@@ -399,10 +409,16 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 		TeamCode: r.URL.Query().Get("team_code"), ProjectCode: r.URL.Query().Get("project_code"),
 		Limit: query.Limit, Offset: query.Offset(),
 	}
+	if f.Status, ok = enumQueryParam(w, r, "status", statusValues); !ok {
+		return
+	}
 	if f.From, ok = dateQueryParam(w, r, "date_from"); !ok {
 		return
 	}
 	if f.To, ok = dateQueryParam(w, r, "date_to"); !ok {
+		return
+	}
+	if f.From, f.To, ok = monthQueryParam(w, r, f.From, f.To); !ok {
 		return
 	}
 	page, err := h.service.List(r.Context(), p, f)
@@ -460,6 +476,53 @@ func (h *Handler) groupSummary(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	httpx.OK(w, r, http.StatusOK, out)
+}
+
+// The stored statuses a list can be filtered by (MISSING, UPCOMING and SWAPPED are computed), and
+// the Personel sync states.
+var (
+	statusValues     = []string{"PRESENT", "LEAVE", "ABSENT"}
+	syncStatusValues = []string{"PENDING", "SYNCED", "FAILED"}
+)
+
+// enumQueryParam reads an optional query parameter that must be one of allowed (any case), returned
+// upper-cased. ok is false when the answer is already written.
+func enumQueryParam(w http.ResponseWriter, r *http.Request, name string, allowed []string) (string, bool) {
+	s := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get(name)))
+	if s == "" {
+		return "", true
+	}
+	if !slices.Contains(allowed, s) {
+		httpx.Error(w, r, apperr.ErrValidation.WithFields(apperr.FieldError{
+			Field: name, Code: "INVALID", Message: name + " harus salah satu dari " + strings.Join(allowed, ", ") + ".",
+		}))
+		return "", false
+	}
+	return s, true
+}
+
+// monthQueryParam turns an optional month=YYYY-MM into the date range it covers. Together with
+// date_from/date_to it is ambiguous, so that is a validation error. ok is false when the answer is
+// already written.
+func monthQueryParam(w http.ResponseWriter, r *http.Request, from, to *timeutil.Date) (*timeutil.Date, *timeutil.Date, bool) {
+	month := r.URL.Query().Get("month")
+	if month == "" {
+		return from, to, true
+	}
+	if from != nil || to != nil {
+		httpx.Error(w, r, apperr.ErrValidation.WithFields(apperr.FieldError{
+			Field: "month", Code: "INVALID", Message: "month tidak bisa dipakai bersama date_from/date_to.",
+		}))
+		return nil, nil, false
+	}
+	first, last, err := timeutil.MonthRange(month)
+	if err != nil {
+		httpx.Error(w, r, apperr.ErrValidation.WithFields(apperr.FieldError{
+			Field: "month", Code: "INVALID", Message: "month harus berformat YYYY-MM.",
+		}))
+		return nil, nil, false
+	}
+	return &first, &last, true
 }
 
 // dateQueryParam reads an optional YYYY-MM-DD query parameter. ok is false when the answer is
@@ -616,7 +679,7 @@ func (h *Handler) swapCandidates(w http.ResponseWriter, r *http.Request) {
 type swapJSON struct {
 	ID                   int64   `json:"id"`
 	ReplacedPersonnelID  int64   `json:"replaced_personnel_id"`
-	ReplacedAttendanceID int64   `json:"replaced_attendance_id"`
+	ReplacedAttendanceID *int64  `json:"replaced_attendance_id"`
 	ReplacingPersonnelID int64   `json:"replacing_personnel_id"`
 	TeamCode             string  `json:"team_code"`
 	WorkDate             string  `json:"work_date"`

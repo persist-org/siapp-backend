@@ -62,14 +62,61 @@ func (s *Service) activeSwapsNear(ctx context.Context, organizationID, personnel
 	return out, err
 }
 
+// intervalsOverlap reports whether [aStart, aEnd) and [bStart, bEnd) share any time. Half-open on
+// purpose: back-to-back shifts do not overlap.
+func intervalsOverlap(aStart, aEnd, bStart, bEnd time.Time) bool {
+	return aStart.Before(bEnd) && bStart.Before(aEnd)
+}
+
+// coveredInstance finds the shift personnelID covers in teamCode on date through an active swap, as a
+// ShiftInstance (the shape mark-absent and group check-in work with), with the swap's id and its
+// project. shiftID 0 means any shift. ok is false when they cover nothing there.
+func (s *Service) coveredInstance(ctx context.Context, q *db.Queries, organizationID, personnelID int64, teamCode string, date timeutil.Date, shiftID int64) (inst organization.ShiftInstance, projectCode string, swapID int64, ok bool, err error) {
+	rows, err := q.ListActiveSwapsOfReplacer(ctx, db.ListActiveSwapsOfReplacerParams{
+		PersonnelID: personnelID, DateFrom: dateParam(date), DateTo: dateParam(date),
+	})
+	if err != nil {
+		return organization.ShiftInstance{}, "", 0, false, fmt.Errorf("active swaps: %w", err)
+	}
+	for _, sw := range rows {
+		if sw.TeamCode != teamCode || (shiftID != 0 && sw.ShiftID != shiftID) {
+			continue
+		}
+		site, err := s.sites.TeamWithProject(ctx, organizationID, teamCode)
+		if errors.Is(err, organization.ErrTeamNotFound) {
+			return organization.ShiftInstance{}, "", 0, false, nil
+		}
+		if err != nil {
+			return organization.ShiftInstance{}, "", 0, false, fmt.Errorf("team %s: %w", teamCode, err)
+		}
+		loc, err := time.LoadLocation(site.Project.Timezone)
+		if err != nil {
+			return organization.ShiftInstance{}, "", 0, false, fmt.Errorf("load location %s: %w", site.Project.Timezone, err)
+		}
+		in := organization.ShiftInstance{
+			WorkDate: date, ShiftID: sw.ShiftID, Location: loc, TeamCodes: []string{teamCode},
+			ProjectCodes: []string{site.Project.Code}, StartsAt: sw.StartsAt.Time, EndsAt: sw.EndsAt.Time,
+		}
+		if sh, serr := q.GetShift(ctx, sw.ShiftID); serr == nil {
+			in.ShiftName, in.ToleranceMinutes = sh.Name, int(sh.ToleranceMinutes)
+		} else if !errors.Is(serr, pgx.ErrNoRows) {
+			return organization.ShiftInstance{}, "", 0, false, fmt.Errorf("get shift: %w", serr)
+		}
+		return in, site.Project.Code, sw.ID, true, nil
+	}
+	return organization.ShiftInstance{}, "", 0, false, nil
+}
+
 // Phase 07.7: shift swap (tukar jaga). The DANRU assigns a replacement for an absent guard; the
 // replacement holds the extra shift at once, no approval step.
 
 // Swap is one shift swap.
 type Swap struct {
-	ID                   int64
-	ReplacedPersonnelID  int64
-	ReplacedAttendanceID int64
+	ID                  int64
+	ReplacedPersonnelID int64
+	// ReplacedAttendanceID is nil once the replaced record was deleted (leave revoked, mangkir
+	// cancelled); the swap keeps its own snapshot of team, date and shift.
+	ReplacedAttendanceID *int64
 	ReplacingPersonnelID int64
 	TeamCode             string
 	WorkDate             timeutil.Date
@@ -85,7 +132,7 @@ type Swap struct {
 
 func toSwap(r db.ShiftSwap) Swap {
 	return Swap{
-		ID: r.ID, ReplacedPersonnelID: r.ReplacedPersonnelID, ReplacedAttendanceID: r.ReplacedAttendanceID,
+		ID: r.ID, ReplacedPersonnelID: r.ReplacedPersonnelID, ReplacedAttendanceID: int8Ptr(r.ReplacedAttendanceID),
 		ReplacingPersonnelID: r.ReplacingPersonnelID, TeamCode: r.TeamCode, WorkDate: dateValue(r.WorkDate),
 		ShiftID: r.ShiftID, StartsAt: r.StartsAt.Time, EndsAt: r.EndsAt.Time, Note: textPtrValue(r.Note),
 		CreatedByID: r.CreatedByID, CancelledAt: timePtr(r.CancelledAt), CreatedAt: r.CreatedAt.Time, UpdatedAt: r.UpdatedAt.Time,
@@ -186,6 +233,7 @@ type CreateSwapInput struct {
 func (s *Service) Create(ctx context.Context, p auth.Principal, in CreateSwapInput) (Swap, error) {
 	now := s.clock.Now()
 	var out Swap
+	var notices []Notice
 	err := database.WithTenant(ctx, s.pool, p.OrganizationID, func(q *db.Queries) error {
 		replaced, err := q.GetAttendanceForUpdate(ctx, in.ReplacedAttendanceID)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -241,21 +289,34 @@ func (s *Service) Create(ctx context.Context, p auth.Principal, in CreateSwapInp
 			}
 		}
 
-		instances, err := s.shifts.Instances(ctx, p.OrganizationID, in.ReplacingPersonnelID, workDate, workDate)
+		// ⚠ Interval rule: two shifts clash when each starts before the other ends, so back-to-back
+		// shifts (one ends exactly when the next starts) are allowed. The window is the day before to
+		// the day after, not only workDate: an overnight shift that began yesterday, or one that starts
+		// tomorrow night, can still reach into the shift being taken over.
+		instances, err := s.shifts.Instances(ctx, p.OrganizationID, in.ReplacingPersonnelID, workDate.AddDays(-1), workDate.AddDays(1))
 		if err != nil {
 			return fmt.Errorf("replacing shifts: %w", err)
 		}
 		for _, inst := range instances {
-			if inst.IsOff {
-				continue
+			if !inst.IsOff && intervalsOverlap(inst.StartsAt, inst.EndsAt, replaced.ShiftStartsAt.Time, replaced.ShiftEndsAt.Time) {
+				return ErrSwapShiftOverlap
 			}
-			if inst.StartsAt.Before(replaced.ShiftEndsAt.Time) && replaced.ShiftStartsAt.Time.Before(inst.EndsAt) {
+		}
+		// The replacer's other covered shifts are shifts of theirs too.
+		others, err := q.ListActiveSwapsOfReplacer(ctx, db.ListActiveSwapsOfReplacerParams{
+			PersonnelID: in.ReplacingPersonnelID, DateFrom: dateParam(workDate.AddDays(-1)), DateTo: dateParam(workDate.AddDays(1)),
+		})
+		if err != nil {
+			return fmt.Errorf("replacing swaps: %w", err)
+		}
+		for _, o := range others {
+			if intervalsOverlap(o.StartsAt.Time, o.EndsAt.Time, replaced.ShiftStartsAt.Time, replaced.ShiftEndsAt.Time) {
 				return ErrSwapShiftOverlap
 			}
 		}
 
 		row, err := q.InsertShiftSwap(ctx, db.InsertShiftSwapParams{
-			ReplacedPersonnelID: replaced.PersonnelID, ReplacedAttendanceID: replaced.ID, ReplacingPersonnelID: in.ReplacingPersonnelID,
+			ReplacedPersonnelID: replaced.PersonnelID, ReplacedAttendanceID: pgtype.Int8{Int64: replaced.ID, Valid: true}, ReplacingPersonnelID: in.ReplacingPersonnelID,
 			TeamCode: replaced.TeamCode, WorkDate: replaced.WorkDate, ShiftID: replaced.ShiftID,
 			StartsAt: replaced.ShiftStartsAt, EndsAt: replaced.ShiftEndsAt, Note: textOrNull(in.Note),
 			CreatedByID: p.PersonnelID, Now: ts(now),
@@ -278,9 +339,41 @@ func (s *Service) Create(ctx context.Context, p auth.Principal, in CreateSwapInp
 			return err
 		}
 		out = toSwap(row)
+		if notices, err = s.swapNotices(ctx, q, replaced, in.ReplacingPersonnelID, row.ID); err != nil {
+			return err
+		}
 		return nil
 	})
-	return out, err
+	if err != nil {
+		return out, err
+	}
+	s.notify(ctx, notices...) // after commit, to both people
+	return out, nil
+}
+
+// swapNotices are the SWAP_ASSIGNED notices of a new swap: one to each of the two people, each
+// naming the other.
+func (s *Service) swapNotices(ctx context.Context, q *db.Queries, replaced db.Attendance, replacingID, swapID int64) ([]Notice, error) {
+	if s.notifier == nil {
+		return nil, nil
+	}
+	replacedName, err := s.personName(ctx, q, replaced.PersonnelID)
+	if err != nil {
+		return nil, err
+	}
+	replacingName, err := s.personName(ctx, q, replacingID)
+	if err != nil {
+		return nil, err
+	}
+	base, err := s.noticeBase(ctx, q, NoticeSwapAssigned, replaced.TeamCode, replaced.ProjectCode, dateValue(replaced.WorkDate))
+	if err != nil {
+		return nil, err
+	}
+	base.EntityType, base.EntityID = "SHIFT_SWAP", swapID
+	toReplaced, toReplacing := base, base
+	toReplaced.RecipientIDs, toReplaced.ActorName = []int64{replaced.PersonnelID}, replacingName
+	toReplacing.RecipientIDs, toReplacing.ActorName = []int64{replacingID}, replacedName
+	return []Notice{toReplaced, toReplacing}, nil
 }
 
 // SwapFilter narrows GET /shift-swaps.
@@ -353,7 +446,7 @@ func (s *Service) CancelSwap(ctx context.Context, p auth.Principal, id int64) er
 		actorID := p.PersonnelID
 		return audit.Record(ctx, q, audit.Entry{
 			ActorPersonnelID: &actorID, Action: "shift_swap.cancel", EntityType: "shift_swap", EntityID: updated.ID,
-			Metadata: map[string]any{"replaced_attendance_id": updated.ReplacedAttendanceID, "team_code": updated.TeamCode},
+			Metadata: map[string]any{"replaced_attendance_id": int8Ptr(updated.ReplacedAttendanceID), "team_code": updated.TeamCode},
 		})
 	})
 }
@@ -416,4 +509,22 @@ func (s *Service) Replacing(ctx context.Context, p auth.Principal, from, to *tim
 		return nil
 	})
 	return out, err
+}
+
+// releaseSwaps is called when a record that may carry a swap stops being absent (an admin turns it
+// back to PRESENT) or is deleted (a mangkir cancelled): a swap of a guard who is at work covers
+// nothing, so its unstarted swaps are cancelled. A swap whose replacer already checked in cannot be
+// undone silently (the shift was worked, and Personel credited it to the replacer): ErrSwapAlreadyStarted.
+func releaseSwaps(ctx context.Context, q *db.Queries, attendanceID int64, now time.Time) error {
+	if err := q.CancelUnstartedSwapsOfAttendance(ctx, db.CancelUnstartedSwapsOfAttendanceParams{AttendanceID: pgtype.Int8{Int64: attendanceID, Valid: true}, Now: ts(now)}); err != nil {
+		return fmt.Errorf("cancel swaps: %w", err)
+	}
+	started, err := q.HasActiveSwapOfAttendance(ctx, pgtype.Int8{Int64: attendanceID, Valid: true})
+	if err != nil {
+		return fmt.Errorf("active swap: %w", err)
+	}
+	if started {
+		return ErrSwapAlreadyStarted
+	}
+	return nil
 }

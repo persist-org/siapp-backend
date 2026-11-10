@@ -12,6 +12,183 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const correctAttendance = `-- name: CorrectAttendance :one
+UPDATE attendances SET
+    status = $1, marked_absent_by_id = $2, absent_reason = $3,
+    check_in_at = $4, check_in_method = $5, late_minutes = $6::int,
+    check_out_at = $7, check_out_method = $8,
+    personel_sync_status = 'PENDING', updated_at = $9
+WHERE id = $10
+RETURNING id, organization_id, personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone, status, check_in_at, check_in_method, check_in_media_id, check_in_latitude, check_in_longitude, check_in_accuracy_meters, check_in_distance_meters, check_in_within_area, check_in_qr_danru_id, late_minutes, check_out_at, check_out_method, check_out_media_id, check_out_latitude, check_out_longitude, check_out_accuracy_meters, check_out_distance_meters, check_out_within_area, check_out_qr_danru_id, check_out_update_count, leave_request_id, marked_absent_by_id, shift_swap_id, personel_sync_status, personel_synced_at, created_at, updated_at, late_minutes_raw, absent_reason
+`
+
+type CorrectAttendanceParams struct {
+	Status           AttendanceStatus
+	MarkedAbsentByID pgtype.Int8
+	AbsentReason     pgtype.Text
+	CheckInAt        pgtype.Timestamptz
+	CheckInMethod    NullAttendanceMethod
+	LateMinutes      int32
+	CheckOutAt       pgtype.Timestamptz
+	CheckOutMethod   NullAttendanceMethod
+	Now              pgtype.Timestamptz
+	ID               int64
+}
+
+// Updates whichever of check-in, check-out and absence an admin correction (PATCH
+// /admin/attendances/{id}) touches; always stamps the capture method FORCE on the side it edits,
+// and always marks personel_sync_status PENDING so the correction reaches Persist Personel. The
+// caller reads the row with GetAttendanceForUpdate first and passes back every field, changed or
+// not: sqlc.narg lets a field that a correction does not touch keep its current value only when
+// the caller re-sends it, so the Go side (not SQL) decides what "untouched" means per transition.
+func (q *Queries) CorrectAttendance(ctx context.Context, arg CorrectAttendanceParams) (Attendance, error) {
+	row := q.db.QueryRow(ctx, correctAttendance,
+		arg.Status,
+		arg.MarkedAbsentByID,
+		arg.AbsentReason,
+		arg.CheckInAt,
+		arg.CheckInMethod,
+		arg.LateMinutes,
+		arg.CheckOutAt,
+		arg.CheckOutMethod,
+		arg.Now,
+		arg.ID,
+	)
+	var i Attendance
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.PersonnelID,
+		&i.TeamCode,
+		&i.ProjectCode,
+		&i.WorkDate,
+		&i.ShiftID,
+		&i.ShiftStartsAt,
+		&i.ShiftEndsAt,
+		&i.Timezone,
+		&i.Status,
+		&i.CheckInAt,
+		&i.CheckInMethod,
+		&i.CheckInMediaID,
+		&i.CheckInLatitude,
+		&i.CheckInLongitude,
+		&i.CheckInAccuracyMeters,
+		&i.CheckInDistanceMeters,
+		&i.CheckInWithinArea,
+		&i.CheckInQrDanruID,
+		&i.LateMinutes,
+		&i.CheckOutAt,
+		&i.CheckOutMethod,
+		&i.CheckOutMediaID,
+		&i.CheckOutLatitude,
+		&i.CheckOutLongitude,
+		&i.CheckOutAccuracyMeters,
+		&i.CheckOutDistanceMeters,
+		&i.CheckOutWithinArea,
+		&i.CheckOutQrDanruID,
+		&i.CheckOutUpdateCount,
+		&i.LeaveRequestID,
+		&i.MarkedAbsentByID,
+		&i.ShiftSwapID,
+		&i.PersonelSyncStatus,
+		&i.PersonelSyncedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.LateMinutesRaw,
+		&i.AbsentReason,
+	)
+	return i, err
+}
+
+const countAttendances = `-- name: CountAttendances :one
+SELECT count(*) FROM attendances a
+WHERE ($1::text[] IS NULL OR a.team_code = ANY($1::text[]))
+  AND ($2::text IS NULL OR a.team_code = $2::text)
+  AND ($3::text IS NULL OR a.project_code = $3::text)
+  AND ($4::text IS NULL OR EXISTS (
+        SELECT 1 FROM projects pr
+        JOIN clients cl ON cl.organization_id = pr.organization_id AND cl.code = pr.client_code
+        JOIN branches b ON b.organization_id = cl.organization_id AND b.code = cl.branch_code
+        WHERE pr.code = a.project_code AND b.region_code = $4::text))
+  AND ($5::text IS NULL OR a.status::text = $5::text)
+  AND ($6::text IS NULL OR a.personel_sync_status::text = $6::text)
+  AND ($7::date IS NULL OR a.work_date >= $7::date)
+  AND ($8::date IS NULL OR a.work_date <= $8::date)
+`
+
+type CountAttendancesParams struct {
+	TeamCodes   []string
+	TeamCode    pgtype.Text
+	ProjectCode pgtype.Text
+	RegionCode  pgtype.Text
+	Status      pgtype.Text
+	SyncStatus  pgtype.Text
+	FromDate    pgtype.Date
+	ToDate      pgtype.Date
+}
+
+func (q *Queries) CountAttendances(ctx context.Context, arg CountAttendancesParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countAttendances,
+		arg.TeamCodes,
+		arg.TeamCode,
+		arg.ProjectCode,
+		arg.RegionCode,
+		arg.Status,
+		arg.SyncStatus,
+		arg.FromDate,
+		arg.ToDate,
+	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countTeamAttendanceRows = `-- name: CountTeamAttendanceRows :one
+SELECT count(*) FROM attendances a
+WHERE (a.team_code = ANY($1::text[]) OR a.personnel_id = $2::bigint)
+  AND ($3::text IS NULL OR a.team_code = $3::text)
+  AND ($4::text IS NULL OR a.project_code = $4::text)
+  AND ($5::text IS NULL OR a.status::text = $5::text)
+  AND ($6::date IS NULL OR a.work_date >= $6::date)
+  AND ($7::date IS NULL OR a.work_date <= $7::date)
+`
+
+type CountTeamAttendanceRowsParams struct {
+	TeamCodes   []string
+	SelfID      pgtype.Int8
+	TeamCode    pgtype.Text
+	ProjectCode pgtype.Text
+	Status      pgtype.Text
+	FromDate    pgtype.Date
+	ToDate      pgtype.Date
+}
+
+func (q *Queries) CountTeamAttendanceRows(ctx context.Context, arg CountTeamAttendanceRowsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countTeamAttendanceRows,
+		arg.TeamCodes,
+		arg.SelfID,
+		arg.TeamCode,
+		arg.ProjectCode,
+		arg.Status,
+		arg.FromDate,
+		arg.ToDate,
+	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const deleteAttendance = `-- name: DeleteAttendance :exec
+DELETE FROM attendances WHERE id = $1
+`
+
+// The DANRU undoing their own mistaken mangkir (DELETE /attendances/absent/{id}): the row is gone
+// for real, there is no "no record" status to revert it to.
+func (q *Queries) DeleteAttendance(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, deleteAttendance, id)
+	return err
+}
+
 const getAttendance = `-- name: GetAttendance :one
 SELECT id, organization_id, personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone, status, check_in_at, check_in_method, check_in_media_id, check_in_latitude, check_in_longitude, check_in_accuracy_meters, check_in_distance_meters, check_in_within_area, check_in_qr_danru_id, late_minutes, check_out_at, check_out_method, check_out_media_id, check_out_latitude, check_out_longitude, check_out_accuracy_meters, check_out_distance_meters, check_out_within_area, check_out_qr_danru_id, check_out_update_count, leave_request_id, marked_absent_by_id, shift_swap_id, personel_sync_status, personel_synced_at, created_at, updated_at, late_minutes_raw, absent_reason FROM attendances WHERE id = $1
 `
@@ -274,6 +451,75 @@ func (q *Queries) GetPreviousWorkingDay(ctx context.Context, arg GetPreviousWork
 	return work_date, err
 }
 
+const groupSummary = `-- name: GroupSummary :many
+SELECT s.work_date,
+  count(*)::int AS scheduled,
+  count(*) FILTER (WHERE a.status = 'PRESENT')::int AS present,
+  count(*) FILTER (WHERE a.status = 'LEAVE')::int AS leave,
+  count(*) FILTER (WHERE a.status = 'ABSENT')::int AS absent,
+  count(*) FILTER (WHERE a.id IS NULL)::int AS missing,
+  count(*) FILTER (WHERE EXISTS (
+    SELECT 1 FROM shift_swaps sw WHERE sw.replaced_attendance_id = a.id AND sw.cancelled_at IS NULL))::int AS swapped
+FROM schedules s
+JOIN shifts sh ON sh.id = s.shift_id AND NOT sh.is_off
+JOIN team_members tm ON tm.personnel_id = s.personnel_id AND tm.team_code = $1
+  AND s.work_date >= tm.start_date AND (tm.end_date IS NULL OR s.work_date <= tm.end_date)
+LEFT JOIN attendances a ON a.personnel_id = s.personnel_id AND a.team_code = $1
+  AND a.work_date = s.work_date AND a.shift_id = s.shift_id
+WHERE s.work_date BETWEEN $2 AND $3
+GROUP BY s.work_date
+ORDER BY s.work_date
+`
+
+type GroupSummaryParams struct {
+	TeamCode string
+	DateFrom pgtype.Date
+	DateTo   pgtype.Date
+}
+
+type GroupSummaryRow struct {
+	WorkDate  pgtype.Date
+	Scheduled int32
+	Present   int32
+	Leave     int32
+	Absent    int32
+	Missing   int32
+	Swapped   int32
+}
+
+// The regu's per-day counts for GET /attendances/group-summary, one GROUP BY query instead of a
+// loop per day: how many of the team's scheduled, non-OFF shift instances landed in each bucket.
+// "missing" has no record at all yet, whether the shift already ended or not (there is no
+// UPCOMING bucket here, unlike the personal calendar of 07.4). "swapped" (07.7) is a LEAVE/ABSENT
+// record with an active shift_swaps row: covered, not missing.
+func (q *Queries) GroupSummary(ctx context.Context, arg GroupSummaryParams) ([]GroupSummaryRow, error) {
+	rows, err := q.db.Query(ctx, groupSummary, arg.TeamCode, arg.DateFrom, arg.DateTo)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GroupSummaryRow{}
+	for rows.Next() {
+		var i GroupSummaryRow
+		if err := rows.Scan(
+			&i.WorkDate,
+			&i.Scheduled,
+			&i.Present,
+			&i.Leave,
+			&i.Absent,
+			&i.Missing,
+			&i.Swapped,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const hasCheckInBefore = `-- name: HasCheckInBefore :one
 SELECT EXISTS (
     SELECT 1 FROM attendances
@@ -293,6 +539,99 @@ func (q *Queries) HasCheckInBefore(ctx context.Context, arg HasCheckInBeforePara
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
+}
+
+const insertAttendanceAbsent = `-- name: InsertAttendanceAbsent :one
+
+INSERT INTO attendances (
+    personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone,
+    status, marked_absent_by_id, absent_reason, shift_swap_id, created_at, updated_at)
+VALUES (
+    $1, $2, $3, $4, $5, $6, $7, $8,
+    'ABSENT', $9, $10, $11, $12, $12)
+RETURNING id, organization_id, personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone, status, check_in_at, check_in_method, check_in_media_id, check_in_latitude, check_in_longitude, check_in_accuracy_meters, check_in_distance_meters, check_in_within_area, check_in_qr_danru_id, late_minutes, check_out_at, check_out_method, check_out_media_id, check_out_latitude, check_out_longitude, check_out_accuracy_meters, check_out_distance_meters, check_out_within_area, check_out_qr_danru_id, check_out_update_count, leave_request_id, marked_absent_by_id, shift_swap_id, personel_sync_status, personel_synced_at, created_at, updated_at, late_minutes_raw, absent_reason
+`
+
+type InsertAttendanceAbsentParams struct {
+	PersonnelID      int64
+	TeamCode         string
+	ProjectCode      string
+	WorkDate         pgtype.Date
+	ShiftID          int64
+	ShiftStartsAt    pgtype.Timestamptz
+	ShiftEndsAt      pgtype.Timestamptz
+	Timezone         string
+	MarkedAbsentByID pgtype.Int8
+	AbsentReason     pgtype.Text
+	ShiftSwapID      pgtype.Int8
+	Now              pgtype.Timestamptz
+}
+
+// ---------- Phase 07.6: DANRU absence, group present, admin correction ----------
+// The DANRU marking a team member absent (or a group-present entry marked ABSENT), and an admin
+// correction turning a record into ABSENT: one row per shift instance, like a check-in. No
+// ON CONFLICT DO NOTHING here (unlike InsertAttendanceCheckIn): the caller already read
+// GetAttendanceOfInstance and refused on a conflict before calling this, so a unique violation here
+// is a genuine race, left to surface as a 500 and be retried rather than silently returning nothing.
+func (q *Queries) InsertAttendanceAbsent(ctx context.Context, arg InsertAttendanceAbsentParams) (Attendance, error) {
+	row := q.db.QueryRow(ctx, insertAttendanceAbsent,
+		arg.PersonnelID,
+		arg.TeamCode,
+		arg.ProjectCode,
+		arg.WorkDate,
+		arg.ShiftID,
+		arg.ShiftStartsAt,
+		arg.ShiftEndsAt,
+		arg.Timezone,
+		arg.MarkedAbsentByID,
+		arg.AbsentReason,
+		arg.ShiftSwapID,
+		arg.Now,
+	)
+	var i Attendance
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.PersonnelID,
+		&i.TeamCode,
+		&i.ProjectCode,
+		&i.WorkDate,
+		&i.ShiftID,
+		&i.ShiftStartsAt,
+		&i.ShiftEndsAt,
+		&i.Timezone,
+		&i.Status,
+		&i.CheckInAt,
+		&i.CheckInMethod,
+		&i.CheckInMediaID,
+		&i.CheckInLatitude,
+		&i.CheckInLongitude,
+		&i.CheckInAccuracyMeters,
+		&i.CheckInDistanceMeters,
+		&i.CheckInWithinArea,
+		&i.CheckInQrDanruID,
+		&i.LateMinutes,
+		&i.CheckOutAt,
+		&i.CheckOutMethod,
+		&i.CheckOutMediaID,
+		&i.CheckOutLatitude,
+		&i.CheckOutLongitude,
+		&i.CheckOutAccuracyMeters,
+		&i.CheckOutDistanceMeters,
+		&i.CheckOutWithinArea,
+		&i.CheckOutQrDanruID,
+		&i.CheckOutUpdateCount,
+		&i.LeaveRequestID,
+		&i.MarkedAbsentByID,
+		&i.ShiftSwapID,
+		&i.PersonelSyncStatus,
+		&i.PersonelSyncedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.LateMinutesRaw,
+		&i.AbsentReason,
+	)
+	return i, err
 }
 
 const insertAttendanceCheckIn = `-- name: InsertAttendanceCheckIn :one
@@ -406,205 +745,38 @@ func (q *Queries) InsertAttendanceCheckIn(ctx context.Context, arg InsertAttenda
 	return i, err
 }
 
-const insertAttendanceAbsent = `-- name: InsertAttendanceAbsent :one
-INSERT INTO attendances (
-    personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone,
-    status, marked_absent_by_id, absent_reason, created_at, updated_at)
-VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8,
-    'ABSENT', $9, $10, $11, $11)
-RETURNING id, organization_id, personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone, status, check_in_at, check_in_method, check_in_media_id, check_in_latitude, check_in_longitude, check_in_accuracy_meters, check_in_distance_meters, check_in_within_area, check_in_qr_danru_id, late_minutes, check_out_at, check_out_method, check_out_media_id, check_out_latitude, check_out_longitude, check_out_accuracy_meters, check_out_distance_meters, check_out_within_area, check_out_qr_danru_id, check_out_update_count, leave_request_id, marked_absent_by_id, shift_swap_id, personel_sync_status, personel_synced_at, created_at, updated_at, late_minutes_raw, absent_reason
+const insertPersonelOutbox = `-- name: InsertPersonelOutbox :one
+INSERT INTO personel_outbox (kind, aggregate_id, payload, next_attempt_at)
+VALUES ($1, $2, $3, $4)
+RETURNING id, event_id
 `
 
-type InsertAttendanceAbsentParams struct {
-	PersonnelID      int64
-	TeamCode         string
-	ProjectCode      string
-	WorkDate         pgtype.Date
-	ShiftID          int64
-	ShiftStartsAt    pgtype.Timestamptz
-	ShiftEndsAt      pgtype.Timestamptz
-	Timezone         string
-	MarkedAbsentByID pgtype.Int8
-	AbsentReason     pgtype.Text
-	Now              pgtype.Timestamptz
+type InsertPersonelOutboxParams struct {
+	Kind        OutboxKind
+	AggregateID int64
+	Payload     json.RawMessage
+	Now         pgtype.Timestamptz
 }
 
-// The DANRU marking a team member absent (or a group-present entry marked ABSENT), and an admin
-// correction turning a record into ABSENT: one row per shift instance, like a check-in. No
-// ON CONFLICT DO NOTHING here (unlike InsertAttendanceCheckIn): the caller already read
-// GetAttendanceOfInstance and refused on a conflict before calling this, so a unique violation here
-// is a genuine race, left to surface as a 500 and be retried rather than silently returning nothing.
-func (q *Queries) InsertAttendanceAbsent(ctx context.Context, arg InsertAttendanceAbsentParams) (Attendance, error) {
-	row := q.db.QueryRow(ctx, insertAttendanceAbsent,
-		arg.PersonnelID,
-		arg.TeamCode,
-		arg.ProjectCode,
-		arg.WorkDate,
-		arg.ShiftID,
-		arg.ShiftStartsAt,
-		arg.ShiftEndsAt,
-		arg.Timezone,
-		arg.MarkedAbsentByID,
-		arg.AbsentReason,
+type InsertPersonelOutboxRow struct {
+	ID      int64
+	EventID pgtype.UUID
+}
+
+func (q *Queries) InsertPersonelOutbox(ctx context.Context, arg InsertPersonelOutboxParams) (InsertPersonelOutboxRow, error) {
+	row := q.db.QueryRow(ctx, insertPersonelOutbox,
+		arg.Kind,
+		arg.AggregateID,
+		arg.Payload,
 		arg.Now,
 	)
-	var i Attendance
-	err := row.Scan(
-		&i.ID,
-		&i.OrganizationID,
-		&i.PersonnelID,
-		&i.TeamCode,
-		&i.ProjectCode,
-		&i.WorkDate,
-		&i.ShiftID,
-		&i.ShiftStartsAt,
-		&i.ShiftEndsAt,
-		&i.Timezone,
-		&i.Status,
-		&i.CheckInAt,
-		&i.CheckInMethod,
-		&i.CheckInMediaID,
-		&i.CheckInLatitude,
-		&i.CheckInLongitude,
-		&i.CheckInAccuracyMeters,
-		&i.CheckInDistanceMeters,
-		&i.CheckInWithinArea,
-		&i.CheckInQrDanruID,
-		&i.LateMinutes,
-		&i.CheckOutAt,
-		&i.CheckOutMethod,
-		&i.CheckOutMediaID,
-		&i.CheckOutLatitude,
-		&i.CheckOutLongitude,
-		&i.CheckOutAccuracyMeters,
-		&i.CheckOutDistanceMeters,
-		&i.CheckOutWithinArea,
-		&i.CheckOutQrDanruID,
-		&i.CheckOutUpdateCount,
-		&i.LeaveRequestID,
-		&i.MarkedAbsentByID,
-		&i.ShiftSwapID,
-		&i.PersonelSyncStatus,
-		&i.PersonelSyncedAt,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.LateMinutesRaw,
-		&i.AbsentReason,
-	)
+	var i InsertPersonelOutboxRow
+	err := row.Scan(&i.ID, &i.EventID)
 	return i, err
 }
 
-const listTeamAttendanceRows = `-- name: ListTeamAttendanceRows :many
-SELECT a.id, a.personnel_id, p.full_name, a.work_date, COALESCE(sh.name, '') AS shift_name,
-  a.status, a.check_in_at, a.check_in_method, a.check_in_within_area,
-  a.check_out_at, a.check_out_method, a.check_out_within_area
-FROM attendances a
-JOIN personnels p ON p.id = a.personnel_id
-LEFT JOIN shifts sh ON sh.id = a.shift_id
-WHERE a.team_code = ANY($1::text[])
-  AND ($2::text IS NULL OR a.project_code = $2::text)
-  AND ($3::date IS NULL OR a.work_date >= $3::date)
-  AND ($4::date IS NULL OR a.work_date <= $4::date)
-ORDER BY a.work_date DESC, a.id DESC
-LIMIT $6 OFFSET $5
-`
-
-type ListTeamAttendanceRowsParams struct {
-	TeamCodes   []string
-	ProjectCode pgtype.Text
-	FromDate    pgtype.Date
-	ToDate      pgtype.Date
-	PageOffset  int32
-	PageLimit   int32
-}
-
-type ListTeamAttendanceRowsRow struct {
-	ID                int64
-	PersonnelID       int64
-	FullName          string
-	WorkDate          pgtype.Date
-	ShiftName         string
-	Status            AttendanceStatus
-	CheckInAt         pgtype.Timestamptz
-	CheckInMethod     NullAttendanceMethod
-	CheckInWithinArea pgtype.Bool
-	CheckOutAt        pgtype.Timestamptz
-	CheckOutMethod    NullAttendanceMethod
-	CheckOutWithinArea pgtype.Bool
-}
-
-// The regu monitor (GET /attendances, DANRU): per member and day, with the person's name and the
-// shift's, newest first. A deleted shift keeps its record but not its name (LEFT JOIN).
-func (q *Queries) ListTeamAttendanceRows(ctx context.Context, arg ListTeamAttendanceRowsParams) ([]ListTeamAttendanceRowsRow, error) {
-	rows, err := q.db.Query(ctx, listTeamAttendanceRows,
-		arg.TeamCodes,
-		arg.ProjectCode,
-		arg.FromDate,
-		arg.ToDate,
-		arg.PageOffset,
-		arg.PageLimit,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListTeamAttendanceRowsRow{}
-	for rows.Next() {
-		var i ListTeamAttendanceRowsRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.PersonnelID,
-			&i.FullName,
-			&i.WorkDate,
-			&i.ShiftName,
-			&i.Status,
-			&i.CheckInAt,
-			&i.CheckInMethod,
-			&i.CheckInWithinArea,
-			&i.CheckOutAt,
-			&i.CheckOutMethod,
-			&i.CheckOutWithinArea,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const countTeamAttendanceRows = `-- name: CountTeamAttendanceRows :one
-SELECT count(*) FROM attendances a
-WHERE a.team_code = ANY($1::text[])
-  AND ($2::text IS NULL OR a.project_code = $2::text)
-  AND ($3::date IS NULL OR a.work_date >= $3::date)
-  AND ($4::date IS NULL OR a.work_date <= $4::date)
-`
-
-type CountTeamAttendanceRowsParams struct {
-	TeamCodes   []string
-	ProjectCode pgtype.Text
-	FromDate    pgtype.Date
-	ToDate      pgtype.Date
-}
-
-func (q *Queries) CountTeamAttendanceRows(ctx context.Context, arg CountTeamAttendanceRowsParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countTeamAttendanceRows,
-		arg.TeamCodes,
-		arg.ProjectCode,
-		arg.FromDate,
-		arg.ToDate,
-	)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
 const listAttendances = `-- name: ListAttendances :many
-SELECT a.id, a.organization_id, a.personnel_id, a.team_code, a.project_code, a.work_date, a.shift_id, a.shift_starts_at, a.shift_ends_at, a.timezone, a.status, a.check_in_at, a.check_in_method, a.check_in_media_id, a.check_in_latitude, a.check_in_longitude, a.check_in_accuracy_meters, a.check_in_distance_meters, a.check_in_within_area, a.check_in_qr_danru_id, a.late_minutes, a.check_out_at, a.check_out_method, a.check_out_media_id, a.check_out_latitude, a.check_out_longitude, a.check_out_accuracy_meters, a.check_out_distance_meters, a.check_out_within_area, a.check_out_qr_danru_id, a.check_out_update_count, a.leave_request_id, a.marked_absent_by_id, a.shift_swap_id, a.personel_sync_status, a.personel_synced_at, a.created_at, a.updated_at, a.late_minutes_raw, a.absent_reason FROM attendances a
+SELECT id, organization_id, personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone, status, check_in_at, check_in_method, check_in_media_id, check_in_latitude, check_in_longitude, check_in_accuracy_meters, check_in_distance_meters, check_in_within_area, check_in_qr_danru_id, late_minutes, check_out_at, check_out_method, check_out_media_id, check_out_latitude, check_out_longitude, check_out_accuracy_meters, check_out_distance_meters, check_out_within_area, check_out_qr_danru_id, check_out_update_count, leave_request_id, marked_absent_by_id, shift_swap_id, personel_sync_status, personel_synced_at, created_at, updated_at, late_minutes_raw, absent_reason FROM attendances a
 WHERE ($1::text[] IS NULL OR a.team_code = ANY($1::text[]))
   AND ($2::text IS NULL OR a.team_code = $2::text)
   AND ($3::text IS NULL OR a.project_code = $3::text)
@@ -613,10 +785,12 @@ WHERE ($1::text[] IS NULL OR a.team_code = ANY($1::text[]))
         JOIN clients cl ON cl.organization_id = pr.organization_id AND cl.code = pr.client_code
         JOIN branches b ON b.organization_id = cl.organization_id AND b.code = cl.branch_code
         WHERE pr.code = a.project_code AND b.region_code = $4::text))
-  AND ($5::date IS NULL OR a.work_date >= $5::date)
-  AND ($6::date IS NULL OR a.work_date <= $6::date)
+  AND ($5::text IS NULL OR a.status::text = $5::text)
+  AND ($6::text IS NULL OR a.personel_sync_status::text = $6::text)
+  AND ($7::date IS NULL OR a.work_date >= $7::date)
+  AND ($8::date IS NULL OR a.work_date <= $8::date)
 ORDER BY a.work_date DESC, a.id DESC
-LIMIT $8 OFFSET $7
+LIMIT $10 OFFSET $9
 `
 
 type ListAttendancesParams struct {
@@ -624,6 +798,8 @@ type ListAttendancesParams struct {
 	TeamCode    pgtype.Text
 	ProjectCode pgtype.Text
 	RegionCode  pgtype.Text
+	Status      pgtype.Text
+	SyncStatus  pgtype.Text
 	FromDate    pgtype.Date
 	ToDate      pgtype.Date
 	PageOffset  int32
@@ -639,6 +815,8 @@ func (q *Queries) ListAttendances(ctx context.Context, arg ListAttendancesParams
 		arg.TeamCode,
 		arg.ProjectCode,
 		arg.RegionCode,
+		arg.Status,
+		arg.SyncStatus,
 		arg.FromDate,
 		arg.ToDate,
 		arg.PageOffset,
@@ -701,237 +879,6 @@ func (q *Queries) ListAttendances(ctx context.Context, arg ListAttendancesParams
 		return nil, err
 	}
 	return items, nil
-}
-
-const countAttendances = `-- name: CountAttendances :one
-SELECT count(*) FROM attendances a
-WHERE ($1::text[] IS NULL OR a.team_code = ANY($1::text[]))
-  AND ($2::text IS NULL OR a.team_code = $2::text)
-  AND ($3::text IS NULL OR a.project_code = $3::text)
-  AND ($4::text IS NULL OR EXISTS (
-        SELECT 1 FROM projects pr
-        JOIN clients cl ON cl.organization_id = pr.organization_id AND cl.code = pr.client_code
-        JOIN branches b ON b.organization_id = cl.organization_id AND b.code = cl.branch_code
-        WHERE pr.code = a.project_code AND b.region_code = $4::text))
-  AND ($5::date IS NULL OR a.work_date >= $5::date)
-  AND ($6::date IS NULL OR a.work_date <= $6::date)
-`
-
-type CountAttendancesParams struct {
-	TeamCodes   []string
-	TeamCode    pgtype.Text
-	ProjectCode pgtype.Text
-	RegionCode  pgtype.Text
-	FromDate    pgtype.Date
-	ToDate      pgtype.Date
-}
-
-func (q *Queries) CountAttendances(ctx context.Context, arg CountAttendancesParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countAttendances,
-		arg.TeamCodes,
-		arg.TeamCode,
-		arg.ProjectCode,
-		arg.RegionCode,
-		arg.FromDate,
-		arg.ToDate,
-	)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
-const groupSummary = `-- name: GroupSummary :many
-SELECT s.work_date,
-  count(*)::int AS scheduled,
-  count(*) FILTER (WHERE a.status = 'PRESENT')::int AS present,
-  count(*) FILTER (WHERE a.status = 'LEAVE')::int AS leave,
-  count(*) FILTER (WHERE a.status = 'ABSENT')::int AS absent,
-  count(*) FILTER (WHERE a.id IS NULL)::int AS missing,
-  count(*) FILTER (WHERE EXISTS (
-    SELECT 1 FROM shift_swaps sw WHERE sw.replaced_attendance_id = a.id AND sw.cancelled_at IS NULL))::int AS swapped
-FROM schedules s
-JOIN shifts sh ON sh.id = s.shift_id AND NOT sh.is_off
-JOIN team_members tm ON tm.personnel_id = s.personnel_id AND tm.team_code = $1
-  AND s.work_date >= tm.start_date AND (tm.end_date IS NULL OR s.work_date <= tm.end_date)
-LEFT JOIN attendances a ON a.personnel_id = s.personnel_id AND a.team_code = $1
-  AND a.work_date = s.work_date AND a.shift_id = s.shift_id
-WHERE s.work_date BETWEEN $2 AND $3
-GROUP BY s.work_date
-ORDER BY s.work_date
-`
-
-type GroupSummaryParams struct {
-	TeamCode string
-	DateFrom pgtype.Date
-	DateTo   pgtype.Date
-}
-
-type GroupSummaryRow struct {
-	WorkDate  pgtype.Date
-	Scheduled int32
-	Present   int32
-	Leave     int32
-	Absent    int32
-	Missing   int32
-	Swapped   int32
-}
-
-// The regu's per-day counts for GET /attendances/group-summary, one GROUP BY query instead of a
-// loop per day.
-func (q *Queries) GroupSummary(ctx context.Context, arg GroupSummaryParams) ([]GroupSummaryRow, error) {
-	rows, err := q.db.Query(ctx, groupSummary, arg.TeamCode, arg.DateFrom, arg.DateTo)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []GroupSummaryRow{}
-	for rows.Next() {
-		var i GroupSummaryRow
-		if err := rows.Scan(
-			&i.WorkDate,
-			&i.Scheduled,
-			&i.Present,
-			&i.Leave,
-			&i.Absent,
-			&i.Missing,
-			&i.Swapped,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const deleteAttendance = `-- name: DeleteAttendance :exec
-DELETE FROM attendances WHERE id = $1
-`
-
-// The DANRU undoing their own mistaken mangkir (DELETE /attendances/absent/{id}): the row is gone
-// for real, there is no "no record" status to revert it to.
-func (q *Queries) DeleteAttendance(ctx context.Context, id int64) error {
-	_, err := q.db.Exec(ctx, deleteAttendance, id)
-	return err
-}
-
-const correctAttendance = `-- name: CorrectAttendance :one
-UPDATE attendances SET
-    status = $1, marked_absent_by_id = $2, absent_reason = $3,
-    check_in_at = $4, check_in_method = $5, late_minutes = $6::int,
-    check_out_at = $7, check_out_method = $8,
-    personel_sync_status = 'PENDING', updated_at = $9
-WHERE id = $10
-RETURNING id, organization_id, personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone, status, check_in_at, check_in_method, check_in_media_id, check_in_latitude, check_in_longitude, check_in_accuracy_meters, check_in_distance_meters, check_in_within_area, check_in_qr_danru_id, late_minutes, check_out_at, check_out_method, check_out_media_id, check_out_latitude, check_out_longitude, check_out_accuracy_meters, check_out_distance_meters, check_out_within_area, check_out_qr_danru_id, check_out_update_count, leave_request_id, marked_absent_by_id, shift_swap_id, personel_sync_status, personel_synced_at, created_at, updated_at, late_minutes_raw, absent_reason
-`
-
-type CorrectAttendanceParams struct {
-	Status           AttendanceStatus
-	MarkedAbsentByID pgtype.Int8
-	AbsentReason     pgtype.Text
-	CheckInAt        pgtype.Timestamptz
-	CheckInMethod    NullAttendanceMethod
-	LateMinutes      int32
-	CheckOutAt       pgtype.Timestamptz
-	CheckOutMethod   NullAttendanceMethod
-	Now              pgtype.Timestamptz
-	ID               int64
-}
-
-// Updates whichever of check-in, check-out and absence an admin correction (PATCH
-// /admin/attendances/{id}) touches; always stamps the capture method FORCE on the side it edits,
-// and always marks personel_sync_status PENDING so the correction reaches Persist Personel. The
-// caller reads the row with GetAttendanceForUpdate first and passes back every field, changed or
-// not: the Go side, not SQL, decides what each transition's full row looks like.
-func (q *Queries) CorrectAttendance(ctx context.Context, arg CorrectAttendanceParams) (Attendance, error) {
-	row := q.db.QueryRow(ctx, correctAttendance,
-		arg.Status,
-		arg.MarkedAbsentByID,
-		arg.AbsentReason,
-		arg.CheckInAt,
-		arg.CheckInMethod,
-		arg.LateMinutes,
-		arg.CheckOutAt,
-		arg.CheckOutMethod,
-		arg.Now,
-		arg.ID,
-	)
-	var i Attendance
-	err := row.Scan(
-		&i.ID,
-		&i.OrganizationID,
-		&i.PersonnelID,
-		&i.TeamCode,
-		&i.ProjectCode,
-		&i.WorkDate,
-		&i.ShiftID,
-		&i.ShiftStartsAt,
-		&i.ShiftEndsAt,
-		&i.Timezone,
-		&i.Status,
-		&i.CheckInAt,
-		&i.CheckInMethod,
-		&i.CheckInMediaID,
-		&i.CheckInLatitude,
-		&i.CheckInLongitude,
-		&i.CheckInAccuracyMeters,
-		&i.CheckInDistanceMeters,
-		&i.CheckInWithinArea,
-		&i.CheckInQrDanruID,
-		&i.LateMinutes,
-		&i.CheckOutAt,
-		&i.CheckOutMethod,
-		&i.CheckOutMediaID,
-		&i.CheckOutLatitude,
-		&i.CheckOutLongitude,
-		&i.CheckOutAccuracyMeters,
-		&i.CheckOutDistanceMeters,
-		&i.CheckOutWithinArea,
-		&i.CheckOutQrDanruID,
-		&i.CheckOutUpdateCount,
-		&i.LeaveRequestID,
-		&i.MarkedAbsentByID,
-		&i.ShiftSwapID,
-		&i.PersonelSyncStatus,
-		&i.PersonelSyncedAt,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.LateMinutesRaw,
-		&i.AbsentReason,
-	)
-	return i, err
-}
-
-const insertPersonelOutbox = `-- name: InsertPersonelOutbox :one
-INSERT INTO personel_outbox (kind, aggregate_id, payload, next_attempt_at)
-VALUES ($1, $2, $3, $4)
-RETURNING id, event_id
-`
-
-type InsertPersonelOutboxParams struct {
-	Kind        OutboxKind
-	AggregateID int64
-	Payload     json.RawMessage
-	Now         pgtype.Timestamptz
-}
-
-type InsertPersonelOutboxRow struct {
-	ID      int64
-	EventID pgtype.UUID
-}
-
-func (q *Queries) InsertPersonelOutbox(ctx context.Context, arg InsertPersonelOutboxParams) (InsertPersonelOutboxRow, error) {
-	row := q.db.QueryRow(ctx, insertPersonelOutbox,
-		arg.Kind,
-		arg.AggregateID,
-		arg.Payload,
-		arg.Now,
-	)
-	var i InsertPersonelOutboxRow
-	err := row.Scan(&i.ID, &i.EventID)
-	return i, err
 }
 
 const listAttendancesOfPersonnelBetween = `-- name: ListAttendancesOfPersonnelBetween :many
@@ -1011,6 +958,102 @@ func (q *Queries) ListAttendancesOfPersonnelBetween(ctx context.Context, arg Lis
 	return items, nil
 }
 
+const listTeamAttendanceRows = `-- name: ListTeamAttendanceRows :many
+SELECT a.id, a.personnel_id, p.full_name, a.work_date, COALESCE(sh.name, '') AS shift_name,
+  a.status, a.check_in_at, a.check_in_method, a.check_in_within_area,
+  a.check_out_at, a.check_out_method, a.check_out_within_area,
+  EXISTS (SELECT 1 FROM shift_swaps sw WHERE sw.replaced_attendance_id = a.id AND sw.cancelled_at IS NULL) AS swapped
+FROM attendances a
+JOIN personnels p ON p.id = a.personnel_id
+LEFT JOIN shifts sh ON sh.id = a.shift_id
+WHERE (a.team_code = ANY($1::text[]) OR a.personnel_id = $2::bigint)
+  AND ($3::text IS NULL OR a.team_code = $3::text)
+  AND ($4::text IS NULL OR a.project_code = $4::text)
+  AND ($5::text IS NULL OR a.status::text = $5::text)
+  AND ($6::date IS NULL OR a.work_date >= $6::date)
+  AND ($7::date IS NULL OR a.work_date <= $7::date)
+ORDER BY a.work_date DESC, a.id DESC
+LIMIT $9 OFFSET $8
+`
+
+type ListTeamAttendanceRowsParams struct {
+	TeamCodes   []string
+	SelfID      pgtype.Int8
+	TeamCode    pgtype.Text
+	ProjectCode pgtype.Text
+	Status      pgtype.Text
+	FromDate    pgtype.Date
+	ToDate      pgtype.Date
+	PageOffset  int32
+	PageLimit   int32
+}
+
+type ListTeamAttendanceRowsRow struct {
+	ID                 int64
+	PersonnelID        int64
+	FullName           string
+	WorkDate           pgtype.Date
+	ShiftName          string
+	Status             AttendanceStatus
+	CheckInAt          pgtype.Timestamptz
+	CheckInMethod      NullAttendanceMethod
+	CheckInWithinArea  pgtype.Bool
+	CheckOutAt         pgtype.Timestamptz
+	CheckOutMethod     NullAttendanceMethod
+	CheckOutWithinArea pgtype.Bool
+	Swapped            bool
+}
+
+// The regu monitor (GET /attendances, DANRU): per member and day, with the person's name and the
+// shift's, newest first. A deleted shift keeps its record but not its name (LEFT JOIN).
+// Scope: a record of one of team_codes (the regu the caller's group/absence view reaches), or the
+// caller's own (self_id, set when they hold either permission, even as SELF only: a MEMBER sees
+// their own mangkir history and nothing of the regu). "swapped" is a LEAVE/ABSENT record that has an
+// active shift swap.
+func (q *Queries) ListTeamAttendanceRows(ctx context.Context, arg ListTeamAttendanceRowsParams) ([]ListTeamAttendanceRowsRow, error) {
+	rows, err := q.db.Query(ctx, listTeamAttendanceRows,
+		arg.TeamCodes,
+		arg.SelfID,
+		arg.TeamCode,
+		arg.ProjectCode,
+		arg.Status,
+		arg.FromDate,
+		arg.ToDate,
+		arg.PageOffset,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListTeamAttendanceRowsRow{}
+	for rows.Next() {
+		var i ListTeamAttendanceRowsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PersonnelID,
+			&i.FullName,
+			&i.WorkDate,
+			&i.ShiftName,
+			&i.Status,
+			&i.CheckInAt,
+			&i.CheckInMethod,
+			&i.CheckInWithinArea,
+			&i.CheckOutAt,
+			&i.CheckOutMethod,
+			&i.CheckOutWithinArea,
+			&i.Swapped,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setAttendanceCheckInMedia = `-- name: SetAttendanceCheckInMedia :exec
 UPDATE attendances SET check_in_media_id = $1 WHERE id = $2
 `
@@ -1037,7 +1080,7 @@ UPDATE attendances SET
     check_out_update_count = check_out_update_count + $10::int,
     personel_sync_status = 'PENDING', updated_at = $11
 WHERE id = $12
-RETURNING id, organization_id, personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone, status, check_in_at, check_in_method, check_in_media_id, check_in_latitude, check_in_longitude, check_in_accuracy_meters, check_in_distance_meters, check_in_within_area, check_in_qr_danru_id, late_minutes, check_out_at, check_out_method, check_out_media_id, check_out_latitude, check_out_longitude, check_out_accuracy_meters, check_out_distance_meters, check_out_within_area, check_out_qr_danru_id, check_out_update_count, leave_request_id, marked_absent_by_id, shift_swap_id, personel_sync_status, personel_synced_at, created_at, updated_at, late_minutes_raw
+RETURNING id, organization_id, personnel_id, team_code, project_code, work_date, shift_id, shift_starts_at, shift_ends_at, timezone, status, check_in_at, check_in_method, check_in_media_id, check_in_latitude, check_in_longitude, check_in_accuracy_meters, check_in_distance_meters, check_in_within_area, check_in_qr_danru_id, late_minutes, check_out_at, check_out_method, check_out_media_id, check_out_latitude, check_out_longitude, check_out_accuracy_meters, check_out_distance_meters, check_out_within_area, check_out_qr_danru_id, check_out_update_count, leave_request_id, marked_absent_by_id, shift_swap_id, personel_sync_status, personel_synced_at, created_at, updated_at, late_minutes_raw, absent_reason
 `
 
 type SetAttendanceCheckOutParams struct {

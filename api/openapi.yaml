@@ -1180,6 +1180,7 @@ components:
         attendance_radius_meters: { type: integer, minimum: 1, example: 150 }
         strict_attendance_geofence: { type: boolean }
         gps_tracking_enabled: { type: boolean, description: "Aktifkan tracking GPS personil (DL-48)." }
+        allow_group_attendance: { type: boolean, description: "Absen grup oleh DANRU (07.6) diizinkan. Bawaan false." }
         patrol_interval_minutes: { type: integer, nullable: true, minimum: 1, description: "null = tidak dibatasi (DL-48)." }
         emergency_contacts:
           type: array
@@ -1238,6 +1239,7 @@ components:
         attendance_radius_meters: { type: integer, minimum: 1, maximum: 10000 }
         strict_attendance_geofence: { type: boolean }
         gps_tracking_enabled: { type: boolean }
+        allow_group_attendance: { type: boolean, description: "Aktifkan absen grup oleh DANRU (07.6)." }
         patrol_interval_minutes: { type: integer, minimum: 1, maximum: 1440 }
         emergency_contacts:
           type: array
@@ -2236,6 +2238,7 @@ components:
               check_in_at: { type: string, format: date-time, nullable: true }
               check_in_method: { type: string, enum: [QR, SELFIE, GROUP, FORCE], nullable: true }
               check_out_at: { type: string, format: date-time, nullable: true }
+              shift_swap_id: { type: integer, format: int64, nullable: true, description: "Terisi bila ini shift yang diambil alih personil dari orang lain lewat tukar jaga (tukar jaga aktif)." }
     AttendanceSelfie:
       type: object
       required: [id, url, content_type]
@@ -2337,7 +2340,7 @@ components:
         personnel_name: { type: string }
         work_date: { type: string, format: date }
         shift_name: { type: string, description: "Kosong bila shift sudah dihapus." }
-        status: { type: string, enum: [PRESENT, LEAVE, ABSENT] }
+        status: { type: string, enum: [PRESENT, LEAVE, ABSENT, SWAPPED], description: "`SWAPPED`: catatan izin/mangkir yang sudah punya tukar jaga aktif (tidak disimpan; dengan filter `status` yang tampil status tersimpannya)." }
         check_in_at: { type: string, format: date-time, nullable: true }
         check_in_method: { type: string, enum: [QR, SELFIE, GROUP, FORCE], nullable: true }
         check_in_within_area: { type: boolean, nullable: true }
@@ -2349,12 +2352,12 @@ components:
       description: >-
         Mangkir satu personil pada satu regu dan tanggal kerja, ditandai langsung oleh DANRU tanpa
         personil pernah absen datang.
-      required: [personnel_id, team_code, date]
+      required: [personnel_id, team_code, date, reason]
       properties:
         personnel_id: { type: integer, format: int64 }
         team_code: { type: string, example: 1K-IBMI-S1, description: "Regu personil pada tanggal itu; seseorang bisa bertugas di dua regu dalam satu hari." }
         date: { type: string, format: date, description: "Tanggal kerja yang ditandai mangkir; tidak harus hari ini." }
-        reason: { type: string, maxLength: 500 }
+        reason: { type: string, minLength: 1, maxLength: 500, description: "Wajib; kosong atau hanya spasi: 422 `VALIDATION_ERROR`." }
     AttendanceCorrection:
       type: object
       description: >-
@@ -2512,7 +2515,7 @@ components:
       properties:
         id: { type: integer, format: int64 }
         replaced_personnel_id: { type: integer, format: int64 }
-        replaced_attendance_id: { type: integer, format: int64 }
+        replaced_attendance_id: { type: integer, format: int64, nullable: true, description: "Null bila catatan yang diganti sudah dihapus (izin dicabut, mangkir dibatalkan)." }
         replacing_personnel_id: { type: integer, format: int64 }
         team_code: { type: string, example: 1K-IBMI-S1 }
         work_date: { type: string, format: date }
@@ -10009,7 +10012,9 @@ paths:
         Jadwal shift bulan itu digabung dengan catatan absensi yang ada, satu entri per shift per
         regu. Status diambil dari catatan bila ada; tanpa catatan: `MISSING` bila shift sudah
         berakhir, `UPCOMING` bila belum (keduanya dihitung, tidak disimpan). Hari OFF dan hari tanpa
-        shift tidak dimuat. Shift lintas tengah malam ada di tanggal mulainya. Ini tampilan lapangan
+        shift tidak dimuat. Shift lintas tengah malam ada di tanggal mulainya. Shift yang diambil alih
+        lewat tukar jaga aktif ikut dimuat (dengan `shift_swap_id`), juga sebelum pengganti absen
+        datang. Ini tampilan lapangan
         atas bukti yang ditangkap SiAPP; koreksi HR langsung di Personel tidak tercermin di sini.
       parameters:
         - { name: month, in: query, required: true, description: "Bulan, YYYY-MM.", schema: { type: string, pattern: '^\d{4}-(0[1-9]|1[0-2])$', example: "2026-03" } }
@@ -10031,7 +10036,7 @@ paths:
       operationId: getAttendancesReplaced
       tags: [Attendance]
       summary: Tab "Digantikan"
-      description: Shift milik pemanggil yang diambil alih orang lain (tukar jaga aktif saja), terbaru lebih dulu. Tanpa date_from/date_to: seluruh riwayat.
+      description: "Shift milik pemanggil yang diambil alih orang lain (tukar jaga aktif saja), terbaru lebih dulu. Tanpa date_from/date_to: seluruh riwayat."
       parameters: [ { $ref: '#/components/parameters/DateFromParam' }, { $ref: '#/components/parameters/DateToParam' } ]
       responses:
         '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/AttendanceReplacedRow' } } } } ] } } } }
@@ -10041,7 +10046,7 @@ paths:
       operationId: getAttendancesReplacing
       tags: [Attendance]
       summary: Tab "Menggantikan"
-      description: Shift orang lain yang diambil alih pemanggil (tukar jaga aktif saja), terbaru lebih dulu. Tanpa date_from/date_to: seluruh riwayat.
+      description: "Shift orang lain yang diambil alih pemanggil (tukar jaga aktif saja), terbaru lebih dulu. Tanpa date_from/date_to: seluruh riwayat."
       parameters: [ { $ref: '#/components/parameters/DateFromParam' }, { $ref: '#/components/parameters/DateToParam' } ]
       responses:
         '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/AttendanceReplacingRow' } } } } ] } } } }
@@ -10095,7 +10100,9 @@ paths:
         `date`; di luar jangkauan: 403 `PERMISSION_DENIED`. Personil tidak terjadwal pada regu dan
         tanggal itu (hari OFF, tidak dijadwalkan, atau bukan regu personil): 422
         `ATTENDANCE_NO_SHIFT`. Shift itu sudah punya catatan: 409 `ABSENCE_ALREADY_PRESENT` (sudah
-        absen datang) atau 422 `ATTENDANCE_NOT_ALLOWED` (sudah izin/mangkir).
+        absen datang) atau 422 `ATTENDANCE_NOT_ALLOWED` (sudah izin/mangkir). Shift yang diambil
+        alih personil lewat tukar jaga aktif di regu itu juga bisa ditandai mangkir; catatannya
+        membawa `shift_swap_id` tukar jaga itu.
       parameters: [ { $ref: '#/components/parameters/IdempotencyKeyRequiredHeader' } ]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AttendanceAbsentInput' } } } }
       responses:
@@ -10115,11 +10122,14 @@ paths:
         sebuah event `ABSENT_CANCELLED` dikirim ke Personel. Sama izinnya dengan membuat mangkir,
         dinilai dari tanggal kerja dan regu catatan itu, bukan hari ini. Catatan yang bukan mangkir,
         tidak ada, atau di luar jangkauan izin pemanggil: 404 (sama untuk ketiganya, sehingga id
-        tidak bisa diuji coba).
+        tidak bisa diuji coba). Bila mangkir itu sudah ditutup tukar jaga, tukar jaga yang belum
+        dimulai ikut dibatalkan; bila pengganti sudah absen datang: 409 `SWAP_ALREADY_STARTED` dan
+        catatan tetap ada.
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessEnvelope' } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /attendances/group-summary:
     get:
       operationId: getAttendancesGroupSummary
@@ -10168,6 +10178,9 @@ paths:
         `attendance.absence.view` pemanggil, terbaru lebih dulu. Tanpa `team_code`: setiap regu yang
         dijangkau salah satu izin itu; kosong keduanya: 403 `PERMISSION_DENIED`. `team_code` di luar
         jangkauan: 403 `PERMISSION_DENIED` juga, sama dengan regu yang tidak dijangkau sama sekali.
+        Pemegang izin hanya sebagai `SELF` (anggota biasa) hanya melihat catatannya sendiri, mis.
+        riwayat mangkir `?status=ABSENT&month=`. `month` tidak bisa dipakai bersama `date_from`/
+        `date_to` (422).
       security:
         - bearerSession: []
         - oauth2ClientCredentials: [attendance:read]
@@ -10175,6 +10188,8 @@ paths:
       parameters:
         - { name: team_code, in: query, description: "Regu tertentu; selain itu setiap regu yang dijangkau.", schema: { type: string, example: 1K-IBMI-S1 } }
         - { name: project_code, in: query, description: "Proyek tertentu.", schema: { type: string, example: 1K-IBMI-S } }
+        - { name: status, in: query, description: "Status tersimpan; `ABSENT` untuk riwayat mangkir.", schema: { type: string, enum: [PRESENT, LEAVE, ABSENT] } }
+        - { name: month, in: query, description: "Bulan, YYYY-MM.", schema: { type: string, pattern: '^\d{4}-(0[1-9]|1[0-2])$', example: "2026-03" } }
         - $ref: '#/components/parameters/DateFromParam'
         - $ref: '#/components/parameters/DateToParam'
         - $ref: '#/components/parameters/PageParam'
@@ -10212,6 +10227,8 @@ paths:
       parameters:
         - { name: team_code, in: query, schema: { type: string, example: 1K-IBMI-S1 } }
         - { name: project_code, in: query, schema: { type: string, example: 1K-IBMI-S } }
+        - { name: status, in: query, description: "Status tersimpan.", schema: { type: string, enum: [PRESENT, LEAVE, ABSENT] } }
+        - { name: sync_status, in: query, description: "Status kirim ke Personel.", schema: { type: string, enum: [PENDING, SYNCED, FAILED] } }
         - $ref: '#/components/parameters/DateFromParam'
         - $ref: '#/components/parameters/DateToParam'
         - $ref: '#/components/parameters/PageParam'
@@ -10234,12 +10251,15 @@ paths:
         toleransi shift saat ini dan izin yang disetujui, seperti absen datang biasa. Satu event
         `CORRECTED` selalu dikirim ke Personel, apa pun yang berubah. Di luar jangkauan wilayah
         admin, atau tidak ada: 404. `reason` kosong, atau tidak ada satu pun dari `status`/
-        `check_in_at`/`check_out_at`: 422 `VALIDATION_ERROR`.
+        `check_in_at`/`check_out_at`: 422 `VALIDATION_ERROR`. Mengubah catatan bertukar jaga menjadi
+        `PRESENT` membatalkan tukar jaga yang belum dimulai; bila pengganti sudah absen datang: 409
+        `SWAP_ALREADY_STARTED`.
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AttendanceCorrection' } } } }
       responses:
         '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/Attendance' } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
   /admin/attendances/export:
     get:

@@ -28,6 +28,9 @@ import (
 const (
 	StatusMissing  = "MISSING"
 	StatusUpcoming = "UPCOMING"
+	// StatusSwapped is what the DANRU's group view shows for a LEAVE or ABSENT record that has an
+	// active shift swap (07.7): somebody else covers it. Never stored.
+	StatusSwapped = "SWAPPED"
 )
 
 // HistoryShift is one shift of one day of the calendar, in one regu.
@@ -42,6 +45,8 @@ type HistoryShift struct {
 	CheckInAt     *time.Time
 	CheckInMethod *Method
 	CheckOutAt    *time.Time
+	// ShiftSwapID is set when the shift is one the person covers for someone else (07.7).
+	ShiftSwapID *int64
 
 	startsAt time.Time
 }
@@ -83,6 +88,7 @@ func (s *Service) Month(ctx context.Context, p auth.Principal, month string) ([]
 	}
 
 	var rows []db.Attendance
+	var swaps []db.ShiftSwap
 	shiftNames := map[int64]string{}
 	err = database.WithTenant(ctx, s.pool, p.OrganizationID, func(q *db.Queries) error {
 		var err error
@@ -92,9 +98,18 @@ func (s *Service) Month(ctx context.Context, p auth.Principal, month string) ([]
 		if err != nil {
 			return fmt.Errorf("list attendances: %w", err)
 		}
-		ids := make([]int64, 0, len(rows))
+		// 07.7: shifts the person covers for someone else are part of their month.
+		if swaps, err = q.ListActiveSwapsOfReplacer(ctx, db.ListActiveSwapsOfReplacerParams{
+			PersonnelID: p.PersonnelID, DateFrom: dateParam(first), DateTo: dateParam(last),
+		}); err != nil {
+			return fmt.Errorf("list swaps: %w", err)
+		}
+		ids := make([]int64, 0, len(rows)+len(swaps))
 		for _, r := range rows {
 			ids = append(ids, r.ShiftID)
+		}
+		for _, sw := range swaps {
+			ids = append(ids, sw.ShiftID)
 		}
 		if len(ids) == 0 {
 			return nil
@@ -171,6 +186,28 @@ func (s *Service) Month(ctx context.Context, p auth.Principal, month string) ([]
 		byDay[key.WorkDate] = append(byDay[key.WorkDate], entry)
 	}
 
+	// A covered shift whose replacer has not checked in yet has no record: MISSING once it has ended,
+	// UPCOMING until then, like a scheduled one. With a record it is already in the loop above (its
+	// record carries the swap).
+	for _, sw := range swaps {
+		key := shiftKey{TeamCode: sw.TeamCode, WorkDate: dateValue(sw.WorkDate), ShiftID: sw.ShiftID}
+		if _, ok := records[key]; ok {
+			continue
+		}
+		name, err := teamName(sw.TeamCode)
+		if err != nil {
+			return nil, err
+		}
+		id := sw.ID
+		entry := HistoryShift{ShiftName: shiftNames[sw.ShiftID], TeamCode: sw.TeamCode, TeamName: name, ShiftSwapID: &id, startsAt: sw.StartsAt.Time}
+		if now.After(sw.EndsAt.Time) {
+			entry.Status = StatusMissing
+		} else {
+			entry.Status = StatusUpcoming
+		}
+		byDay[key.WorkDate] = append(byDay[key.WorkDate], entry)
+	}
+
 	out := make([]HistoryDay, 0, len(byDay))
 	for day, shifts := range byDay {
 		slices.SortStableFunc(shifts, func(a, b HistoryShift) int {
@@ -189,6 +226,7 @@ func (h *HistoryShift) fill(rec Attendance) {
 	id := rec.ID
 	h.AttendanceID, h.Status = &id, string(rec.Status)
 	h.CheckInAt, h.CheckInMethod, h.CheckOutAt = rec.CheckInAt, rec.CheckInMethod, rec.CheckOutAt
+	h.ShiftSwapID = rec.ShiftSwapID
 }
 
 // Detail is one record with what the detail screen shows around it.

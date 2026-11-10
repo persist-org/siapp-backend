@@ -49,20 +49,27 @@ type GroupEntryResult struct {
 // instead of any shift of the team: the one a group-present entry turns into a record. ok is
 // false when the person is not scheduled for exactly that shift instance of that regu on that
 // date.
-func (s *Service) instanceAt(ctx context.Context, organizationID, personnelID int64, key shiftKey) (organization.ShiftInstance, bool, error) {
+//
+// 07.7: a shift the person covers through an active swap counts as theirs too (swapID is then set and
+// the record carries it).
+func (s *Service) instanceAt(ctx context.Context, q *db.Queries, organizationID, personnelID int64, key shiftKey) (inst organization.ShiftInstance, swapID *int64, ok bool, err error) {
 	instances, err := s.shifts.Instances(ctx, organizationID, personnelID, key.WorkDate, key.WorkDate)
 	if err != nil {
-		return organization.ShiftInstance{}, false, fmt.Errorf("shift instances: %w", err)
+		return organization.ShiftInstance{}, nil, false, fmt.Errorf("shift instances: %w", err)
 	}
 	for _, in := range instances {
 		if in.IsOff || in.ShiftID != key.ShiftID {
 			continue
 		}
 		if slices.Contains(in.TeamCodes, key.TeamCode) {
-			return in, true, nil
+			return in, nil, true, nil
 		}
 	}
-	return organization.ShiftInstance{}, false, nil
+	in, _, id, ok, err := s.coveredInstance(ctx, q, organizationID, personnelID, key.TeamCode, key.WorkDate, key.ShiftID)
+	if err != nil || !ok {
+		return organization.ShiftInstance{}, nil, false, err
+	}
+	return in, &id, true, nil
 }
 
 // GroupPresent is POST /attendances/group: the DANRU checking in their regu's current shift in one
@@ -100,14 +107,14 @@ func (s *Service) GroupPresent(ctx context.Context, p auth.Principal, in GroupIn
 		}
 		for _, personnelID := range in.PersonnelIDs {
 			r := GroupEntryResult{PersonnelID: personnelID}
-			inst, found, ierr := s.instanceAt(ctx, p.OrganizationID, personnelID, key)
+			inst, swapID, found, ierr := s.instanceAt(ctx, q, p.OrganizationID, personnelID, key)
 			switch {
 			case ierr != nil:
 				return ierr // an infra error aborts the whole batch; a business refusal does not
 			case !found:
 				r.Error = ErrNoShift
 			default:
-				row, cerr := s.groupCheckIn(ctx, q, p.PersonnelID, personnelID, in.TeamCode, site.Project.Code, inst, in.Latitude, in.Longitude, m, now)
+				row, cerr := s.groupCheckIn(ctx, q, p.PersonnelID, personnelID, in.TeamCode, site.Project.Code, inst, swapID, in.Latitude, in.Longitude, m, now)
 				if cerr != nil {
 					r.Error = cerr
 				} else {
@@ -130,7 +137,13 @@ func (s *Service) GroupPresent(ctx context.Context, p auth.Principal, in GroupIn
 // muster's call time. Guards are the same as a self check-in (an existing record refuses, the
 // previous working day must be settled) and lateness is computed the same way (an approved permit
 // can still lower it), so GROUP is a capture method like any other, not a shortcut around them.
-func (s *Service) groupCheckIn(ctx context.Context, q *db.Queries, markedByID, personnelID int64, teamCode, projectCode string, inst organization.ShiftInstance, lat, lng *float64, m measurement, now time.Time) (db.Attendance, error) {
+func (s *Service) groupCheckIn(ctx context.Context, q *db.Queries, markedByID, personnelID int64, teamCode, projectCode string, inst organization.ShiftInstance, swapID *int64, lat, lng *float64, m measurement, now time.Time) (db.Attendance, error) {
+	// ⚠ Same window self check-in uses (2h before the shift starts to the late check-out limit after
+	// it ends): a group muster is a check-in at "now", so it cannot be for next week's shift or one
+	// that ended long ago (which would also record a huge lateness).
+	if now.Before(inst.StartsAt.Add(-swapCheckInEarly)) || now.After(inst.EndsAt.Add(organization.CheckOutLate)) {
+		return db.Attendance{}, ErrShiftNotActive
+	}
 	key := shiftKey{TeamCode: teamCode, WorkDate: inst.WorkDate, ShiftID: inst.ShiftID}
 	existing, err := existingRecord(ctx, q, personnelID, key)
 	if err != nil {
@@ -152,7 +165,7 @@ func (s *Service) groupCheckIn(ctx context.Context, q *db.Queries, markedByID, p
 		WorkDate: dateParam(inst.WorkDate), ShiftID: inst.ShiftID,
 		ShiftStartsAt: ts(inst.StartsAt), ShiftEndsAt: ts(inst.EndsAt), Timezone: inst.Location.String(),
 		Now: ts(now), Method: nullMethod(db.AttendanceMethodGROUP), Latitude: lat, Longitude: lng,
-		DistanceMeters: m.distance, WithinArea: m.inArea,
+		DistanceMeters: m.distance, WithinArea: m.inArea, ShiftSwapID: int8Param(swapID),
 		LateMinutes:    int32(min(late, math.MaxInt32)), //nolint:gosec // clamped
 		LateMinutesRaw: int32(min(raw, math.MaxInt32)),  //nolint:gosec // clamped
 	})

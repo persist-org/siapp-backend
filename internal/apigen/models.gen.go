@@ -135,6 +135,27 @@ func (e AttendanceStatus) Valid() bool {
 	}
 }
 
+// Defines values for AttendanceCorrectionStatus.
+const (
+	AttendanceCorrectionStatusABSENT  AttendanceCorrectionStatus = "ABSENT"
+	AttendanceCorrectionStatusLEAVE   AttendanceCorrectionStatus = "LEAVE"
+	AttendanceCorrectionStatusPRESENT AttendanceCorrectionStatus = "PRESENT"
+)
+
+// Valid indicates whether the value is a known member of the AttendanceCorrectionStatus enum.
+func (e AttendanceCorrectionStatus) Valid() bool {
+	switch e {
+	case AttendanceCorrectionStatusABSENT:
+		return true
+	case AttendanceCorrectionStatusLEAVE:
+		return true
+	case AttendanceCorrectionStatusPRESENT:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AttendanceDetailCheckInMethod.
 const (
 	AttendanceDetailCheckInMethodFORCE  AttendanceDetailCheckInMethod = "FORCE"
@@ -1569,30 +1590,6 @@ func (e ScheduleType) Valid() bool {
 	}
 }
 
-// Defines values for ShiftSwapStatus.
-const (
-	ShiftSwapStatusAPPROVED  ShiftSwapStatus = "APPROVED"
-	ShiftSwapStatusCANCELLED ShiftSwapStatus = "CANCELLED"
-	ShiftSwapStatusPENDING   ShiftSwapStatus = "PENDING"
-	ShiftSwapStatusREJECTED  ShiftSwapStatus = "REJECTED"
-)
-
-// Valid indicates whether the value is a known member of the ShiftSwapStatus enum.
-func (e ShiftSwapStatus) Valid() bool {
-	switch e {
-	case ShiftSwapStatusAPPROVED:
-		return true
-	case ShiftSwapStatusCANCELLED:
-		return true
-	case ShiftSwapStatusPENDING:
-		return true
-	case ShiftSwapStatusREJECTED:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for SubscriptionBillingCycle.
 const (
 	SubscriptionBillingCycleAnnual  SubscriptionBillingCycle = "annual"
@@ -1662,6 +1659,78 @@ const (
 func (e SuccessEnvelopeSuccess) Valid() bool {
 	switch e {
 	case SuccessEnvelopeSuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TeamAttendanceRowCheckInMethod.
+const (
+	TeamAttendanceRowCheckInMethodFORCE  TeamAttendanceRowCheckInMethod = "FORCE"
+	TeamAttendanceRowCheckInMethodGROUP  TeamAttendanceRowCheckInMethod = "GROUP"
+	TeamAttendanceRowCheckInMethodQR     TeamAttendanceRowCheckInMethod = "QR"
+	TeamAttendanceRowCheckInMethodSELFIE TeamAttendanceRowCheckInMethod = "SELFIE"
+)
+
+// Valid indicates whether the value is a known member of the TeamAttendanceRowCheckInMethod enum.
+func (e TeamAttendanceRowCheckInMethod) Valid() bool {
+	switch e {
+	case TeamAttendanceRowCheckInMethodFORCE:
+		return true
+	case TeamAttendanceRowCheckInMethodGROUP:
+		return true
+	case TeamAttendanceRowCheckInMethodQR:
+		return true
+	case TeamAttendanceRowCheckInMethodSELFIE:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TeamAttendanceRowCheckOutMethod.
+const (
+	TeamAttendanceRowCheckOutMethodFORCE  TeamAttendanceRowCheckOutMethod = "FORCE"
+	TeamAttendanceRowCheckOutMethodGROUP  TeamAttendanceRowCheckOutMethod = "GROUP"
+	TeamAttendanceRowCheckOutMethodQR     TeamAttendanceRowCheckOutMethod = "QR"
+	TeamAttendanceRowCheckOutMethodSELFIE TeamAttendanceRowCheckOutMethod = "SELFIE"
+)
+
+// Valid indicates whether the value is a known member of the TeamAttendanceRowCheckOutMethod enum.
+func (e TeamAttendanceRowCheckOutMethod) Valid() bool {
+	switch e {
+	case TeamAttendanceRowCheckOutMethodFORCE:
+		return true
+	case TeamAttendanceRowCheckOutMethodGROUP:
+		return true
+	case TeamAttendanceRowCheckOutMethodQR:
+		return true
+	case TeamAttendanceRowCheckOutMethodSELFIE:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TeamAttendanceRowStatus.
+const (
+	TeamAttendanceRowStatusABSENT  TeamAttendanceRowStatus = "ABSENT"
+	TeamAttendanceRowStatusLEAVE   TeamAttendanceRowStatus = "LEAVE"
+	TeamAttendanceRowStatusPRESENT TeamAttendanceRowStatus = "PRESENT"
+	TeamAttendanceRowStatusSWAPPED TeamAttendanceRowStatus = "SWAPPED"
+)
+
+// Valid indicates whether the value is a known member of the TeamAttendanceRowStatus enum.
+func (e TeamAttendanceRowStatus) Valid() bool {
+	switch e {
+	case TeamAttendanceRowStatusABSENT:
+		return true
+	case TeamAttendanceRowStatusLEAVE:
+		return true
+	case TeamAttendanceRowStatusPRESENT:
+		return true
+	case TeamAttendanceRowStatusSWAPPED:
 		return true
 	default:
 		return false
@@ -2094,6 +2163,48 @@ const (
 func (e PatchAdminAssetsById200JSONResponseBodySuccess) Valid() bool {
 	switch e {
 	case PatchAdminAssetsById200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetAdminAttendancesParamsStatus.
+const (
+	GetAdminAttendancesParamsStatusABSENT  GetAdminAttendancesParamsStatus = "ABSENT"
+	GetAdminAttendancesParamsStatusLEAVE   GetAdminAttendancesParamsStatus = "LEAVE"
+	GetAdminAttendancesParamsStatusPRESENT GetAdminAttendancesParamsStatus = "PRESENT"
+)
+
+// Valid indicates whether the value is a known member of the GetAdminAttendancesParamsStatus enum.
+func (e GetAdminAttendancesParamsStatus) Valid() bool {
+	switch e {
+	case GetAdminAttendancesParamsStatusABSENT:
+		return true
+	case GetAdminAttendancesParamsStatusLEAVE:
+		return true
+	case GetAdminAttendancesParamsStatusPRESENT:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetAdminAttendancesParamsSyncStatus.
+const (
+	GetAdminAttendancesParamsSyncStatusFAILED  GetAdminAttendancesParamsSyncStatus = "FAILED"
+	GetAdminAttendancesParamsSyncStatusPENDING GetAdminAttendancesParamsSyncStatus = "PENDING"
+	GetAdminAttendancesParamsSyncStatusSYNCED  GetAdminAttendancesParamsSyncStatus = "SYNCED"
+)
+
+// Valid indicates whether the value is a known member of the GetAdminAttendancesParamsSyncStatus enum.
+func (e GetAdminAttendancesParamsSyncStatus) Valid() bool {
+	switch e {
+	case GetAdminAttendancesParamsSyncStatusFAILED:
+		return true
+	case GetAdminAttendancesParamsSyncStatusPENDING:
+		return true
+	case GetAdminAttendancesParamsSyncStatusSYNCED:
 		return true
 	default:
 		return false
@@ -4158,6 +4269,27 @@ func (e GetAssets200JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
+// Defines values for GetAttendancesParamsStatus.
+const (
+	GetAttendancesParamsStatusABSENT  GetAttendancesParamsStatus = "ABSENT"
+	GetAttendancesParamsStatusLEAVE   GetAttendancesParamsStatus = "LEAVE"
+	GetAttendancesParamsStatusPRESENT GetAttendancesParamsStatus = "PRESENT"
+)
+
+// Valid indicates whether the value is a known member of the GetAttendancesParamsStatus enum.
+func (e GetAttendancesParamsStatus) Valid() bool {
+	switch e {
+	case GetAttendancesParamsStatusABSENT:
+		return true
+	case GetAttendancesParamsStatusLEAVE:
+		return true
+	case GetAttendancesParamsStatusPRESENT:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetAttendances200JSONResponseBodySuccess.
 const (
 	GetAttendances200JSONResponseBodySuccessTrue GetAttendances200JSONResponseBodySuccess = true
@@ -4197,6 +4329,21 @@ const (
 func (e PostAttendancesGroup201JSONResponseBodySuccess) Valid() bool {
 	switch e {
 	case PostAttendancesGroup201JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetAttendancesGroupSummary200JSONResponseBodySuccess.
+const (
+	GetAttendancesGroupSummary200JSONResponseBodySuccessTrue GetAttendancesGroupSummary200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetAttendancesGroupSummary200JSONResponseBodySuccess enum.
+func (e GetAttendancesGroupSummary200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetAttendancesGroupSummary200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
@@ -6207,6 +6354,36 @@ func (e PostShiftSwaps201JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
+// Defines values for GetShiftSwapsCandidates200JSONResponseBodySuccess.
+const (
+	GetShiftSwapsCandidates200JSONResponseBodySuccessTrue GetShiftSwapsCandidates200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetShiftSwapsCandidates200JSONResponseBodySuccess enum.
+func (e GetShiftSwapsCandidates200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetShiftSwapsCandidates200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetShiftSwapsReplaceable200JSONResponseBodySuccess.
+const (
+	GetShiftSwapsReplaceable200JSONResponseBodySuccessTrue GetShiftSwapsReplaceable200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetShiftSwapsReplaceable200JSONResponseBodySuccess enum.
+func (e GetShiftSwapsReplaceable200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetShiftSwapsReplaceable200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetTeams200JSONResponseBodySuccess.
 const (
 	GetTeams200JSONResponseBodySuccessTrue GetTeams200JSONResponseBodySuccess = true
@@ -6661,11 +6838,17 @@ type AttendancePersonelSyncStatus string
 // AttendanceStatus defines model for Attendance.Status.
 type AttendanceStatus string
 
-// AttendanceAbsentInput defines model for AttendanceAbsentInput.
+// AttendanceAbsentInput Mangkir satu personil pada satu regu dan tanggal kerja, ditandai langsung oleh DANRU tanpa personil pernah absen datang.
 type AttendanceAbsentInput struct {
+	// Date Tanggal kerja yang ditandai mangkir; tidak harus hari ini.
 	Date        openapi_types.Date `json:"date"`
 	PersonnelId int64              `json:"personnel_id"`
-	Reason      *string            `json:"reason,omitempty"`
+
+	// Reason Wajib; kosong atau hanya spasi: 422 `VALIDATION_ERROR`.
+	Reason string `json:"reason"`
+
+	// TeamCode Regu personil pada tanggal itu; seseorang bisa bertugas di dua regu dalam satu hari.
+	TeamCode string `json:"team_code"`
 }
 
 // AttendanceCheckOutPatch defines model for AttendanceCheckOutPatch.
@@ -6676,13 +6859,19 @@ type AttendanceCheckOutPatch struct {
 	MediaIds       []int64  `json:"media_ids"`
 }
 
-// AttendanceCorrection defines model for AttendanceCorrection.
+// AttendanceCorrection `reason` selalu wajib. `status` (PRESENT, LEAVE atau ABSENT) mengubah status catatan; `check_in_at`/`check_out_at` hanya berlaku bila status (baru atau yang sudah ada) PRESENT.
 type AttendanceCorrection struct {
-	CheckIn  *time.Time `json:"check_in,omitempty"`
-	CheckOut *time.Time `json:"check_out,omitempty"`
-	IsAbsent *bool      `json:"is_absent,omitempty"`
-	Note     *string    `json:"note,omitempty"`
+	// CheckInAt Wajib bila status menjadi PRESENT dari ABSENT/LEAVE.
+	CheckInAt  *time.Time `json:"check_in_at,omitempty"`
+	CheckOutAt *time.Time `json:"check_out_at,omitempty"`
+
+	// Reason Disimpan di audit log (dan absent_reason bila status ABSENT).
+	Reason string                      `json:"reason"`
+	Status *AttendanceCorrectionStatus `json:"status,omitempty"`
 }
+
+// AttendanceCorrectionStatus defines model for AttendanceCorrection.Status.
+type AttendanceCorrectionStatus string
 
 // AttendanceDetail Satu catatan absensi beserta nama proyek, regu, shift, DANRU, dan selfie.
 type AttendanceDetail struct {
@@ -6746,13 +6935,29 @@ type AttendanceDetailPersonelSyncStatus string
 // AttendanceDetailStatus defines model for AttendanceDetail.Status.
 type AttendanceDetailStatus string
 
-// AttendanceGroupInput defines model for AttendanceGroupInput.
+// AttendanceGroupInput Muster satu regu sekaligus untuk satu shift dengan satu lokasi DANRU: setiap personil yang disebut jadi absen datang metode GROUP. Ditolak 422 `GROUP_ATTENDANCE_DISABLED` selama proyek regu belum mengaktifkan `allow_group_attendance`. Satu personil yang gagal (tidak terjadwal pada shift ini, sudah tercatat) tidak menggagalkan personil lain; lihat `data[].error` pada tiap entri.
 type AttendanceGroupInput struct {
-	Entries []struct {
-		PersonnelId int64  `json:"personnel_id"`
-		Status      string `json:"status"`
-	} `json:"entries"`
-	TeamId int64 `json:"team_id"`
+	// Latitude Lokasi DANRU, dipakai untuk setiap personil.
+	Latitude     float64 `json:"latitude"`
+	Longitude    float64 `json:"longitude"`
+	PersonnelIds []int64 `json:"personnel_ids"`
+
+	// ShiftRef Dari daftar shift regu; harus milik team_code.
+	ShiftRef string `json:"shift_ref"`
+	TeamCode string `json:"team_code"`
+}
+
+// AttendanceGroupResult defines model for AttendanceGroupResult.
+type AttendanceGroupResult struct {
+	// Attendance null bila personil ini gagal (lihat error).
+	Attendance Attendance `json:"attendance"`
+
+	// Error null bila personil ini berhasil.
+	Error struct {
+		Message *string `json:"message,omitempty"`
+		Reason  *string `json:"reason,omitempty"`
+	} `json:"error"`
+	PersonnelId int64 `json:"personnel_id"`
 }
 
 // AttendanceHistoryDay Shift-shift satu tanggal kerja pada kalender absensi.
@@ -6764,9 +6969,12 @@ type AttendanceHistoryDay struct {
 		CheckInMethod *AttendanceHistoryDayShiftsCheckInMethod `json:"check_in_method,omitempty"`
 		CheckOutAt    *time.Time                               `json:"check_out_at,omitempty"`
 		ShiftName     string                                   `json:"shift_name"`
-		Status        AttendanceHistoryDayShiftsStatus         `json:"status"`
-		TeamCode      string                                   `json:"team_code"`
-		TeamName      string                                   `json:"team_name"`
+
+		// ShiftSwapId Terisi bila ini shift yang diambil alih personil dari orang lain lewat tukar jaga (tukar jaga aktif).
+		ShiftSwapId *int64                           `json:"shift_swap_id,omitempty"`
+		Status      AttendanceHistoryDayShiftsStatus `json:"status"`
+		TeamCode    string                           `json:"team_code"`
+		TeamName    string                           `json:"team_name"`
 	} `json:"shifts"`
 	WorkDate openapi_types.Date `json:"work_date"`
 }
@@ -6795,6 +7003,24 @@ type AttendanceQrInput struct {
 
 	// Token Kode yang sedang ditampilkan DANRU (GET /attendances/qr/display).
 	Token string `json:"token"`
+}
+
+// AttendanceReplacedRow Satu baris tab "Digantikan" (GET /attendances/replaced).
+type AttendanceReplacedRow struct {
+	ReplacingCheckInAt     time.Time          `json:"replacing_check_in_at"`
+	ReplacingCheckOutAt    time.Time          `json:"replacing_check_out_at"`
+	ReplacingPersonnelName string             `json:"replacing_personnel_name"`
+	ShiftName              string             `json:"shift_name"`
+	WorkDate               openapi_types.Date `json:"work_date"`
+}
+
+// AttendanceReplacingRow Satu baris tab "Menggantikan" (GET /attendances/replacing).
+type AttendanceReplacingRow struct {
+	CheckInAt             time.Time          `json:"check_in_at"`
+	CheckOutAt            time.Time          `json:"check_out_at"`
+	ReplacedPersonnelName string             `json:"replaced_personnel_name"`
+	ShiftName             string             `json:"shift_name"`
+	WorkDate              openapi_types.Date `json:"work_date"`
 }
 
 // AttendanceSelfie defines model for AttendanceSelfie.
@@ -8662,8 +8888,11 @@ type PositionInputLevel string
 
 // Project defines model for Project.
 type Project struct {
-	Address                *string `json:"address,omitempty"`
-	AttendanceRadiusMeters *int    `json:"attendance_radius_meters,omitempty"`
+	Address *string `json:"address,omitempty"`
+
+	// AllowGroupAttendance Absen grup oleh DANRU (07.6) diizinkan. Bawaan false.
+	AllowGroupAttendance   *bool `json:"allow_group_attendance,omitempty"`
+	AttendanceRadiusMeters *int  `json:"attendance_radius_meters,omitempty"`
 
 	// BusinessLine Bidang usaha proyek (DL-20). security membentuk kode berakhiran S, cleaning berakhiran C; satu klien paling banyak satu proyek per bidang.
 	BusinessLine       *BusinessLine `json:"business_line,omitempty"`
@@ -8780,7 +9009,10 @@ type ProjectTimezone string
 // `emergency_contacts` dikirim = menggantikan seluruh daftar; `[]` mengosongkan; tidak dikirim = tetap.
 // Hasil akhir latitude dan longitude harus lengkap berpasangan (422 bila tidak).
 type ProjectUpdate struct {
-	Address                *string `json:"address,omitempty"`
+	Address *string `json:"address,omitempty"`
+
+	// AllowGroupAttendance Aktifkan absen grup oleh DANRU (07.6).
+	AllowGroupAttendance   *bool   `json:"allow_group_attendance,omitempty"`
 	AttendanceRadiusMeters *int    `json:"attendance_radius_meters,omitempty"`
 	City                   *string `json:"city,omitempty"`
 	CompanyBidangUsaha     *string `json:"company_bidang_usaha,omitempty"`
@@ -9184,31 +9416,41 @@ type ShiftInput struct {
 	ToleranceMinutes *int `json:"tolerance_minutes,omitempty"`
 }
 
-// ShiftSwap defines model for ShiftSwap.
+// ShiftSwap Satu tukar jaga (tukar jaga berlaku seketika, tidak ada persetujuan): DANRU menunjuk pengganti untuk satu catatan izin/mangkir. `cancelled_at` null berarti masih aktif.
 type ShiftSwap struct {
-	ApprovedBy           *int64              `json:"approved_by,omitempty"`
-	CreatedAt            *time.Time          `json:"created_at,omitempty"`
-	Id                   *int64              `json:"id,omitempty"`
-	OrganizationId       *int64              `json:"organization_id,omitempty"`
-	Reason               *string             `json:"reason,omitempty"`
-	ReplacedPersonnelId  *int64              `json:"replaced_personnel_id,omitempty"`
-	ReplacingPersonnelId *int64              `json:"replacing_personnel_id,omitempty"`
-	Status               *ShiftSwapStatus    `json:"status,omitempty"`
-	SwapDate             *openapi_types.Date `json:"swap_date,omitempty"`
-	TeamId               *int64              `json:"team_id,omitempty"`
-	UpdatedAt            *time.Time          `json:"updated_at,omitempty"`
+	CancelledAt *time.Time `json:"cancelled_at,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	CreatedById int64      `json:"created_by_id"`
+	EndsAt      time.Time  `json:"ends_at"`
+	Id          int64      `json:"id"`
+	Note        *string    `json:"note,omitempty"`
+
+	// ReplacedAttendanceId Null bila catatan yang diganti sudah dihapus (izin dicabut, mangkir dibatalkan).
+	ReplacedAttendanceId int64              `json:"replaced_attendance_id"`
+	ReplacedPersonnelId  int64              `json:"replaced_personnel_id"`
+	ReplacingPersonnelId int64              `json:"replacing_personnel_id"`
+	ShiftId              int64              `json:"shift_id"`
+	StartsAt             time.Time          `json:"starts_at"`
+	TeamCode             string             `json:"team_code"`
+	UpdatedAt            time.Time          `json:"updated_at"`
+	WorkDate             openapi_types.Date `json:"work_date"`
 }
 
-// ShiftSwapStatus defines model for ShiftSwap.Status.
-type ShiftSwapStatus string
+// ShiftSwapCandidate defines model for ShiftSwapCandidate.
+type ShiftSwapCandidate struct {
+	Name        string `json:"name"`
+	PersonnelId int64  `json:"personnel_id"`
+}
 
 // ShiftSwapCreate defines model for ShiftSwapCreate.
 type ShiftSwapCreate struct {
-	Reason               *string            `json:"reason,omitempty"`
-	ReplacedPersonnelId  int64              `json:"replaced_personnel_id"`
-	ReplacingPersonnelId int64              `json:"replacing_personnel_id"`
-	SwapDate             openapi_types.Date `json:"swap_date"`
-	TeamId               *int64             `json:"team_id,omitempty"`
+	Note *string `json:"note,omitempty"`
+
+	// ReplacedAttendanceId Dari GET /shift-swaps/replaceable.
+	ReplacedAttendanceId int64 `json:"replaced_attendance_id"`
+
+	// ReplacingPersonnelId Dari GET /shift-swaps/candidates.
+	ReplacingPersonnelId int64 `json:"replacing_personnel_id"`
 }
 
 // ShiftUpdate Semua field opsional; yang tidak dikirim tidak berubah. `is_off` tidak dapat dikirim (422).
@@ -9361,6 +9603,35 @@ type Team struct {
 	// ValidateShift Validasi shift saat absensi (DL-48).
 	ValidateShift *bool `json:"validate_shift,omitempty"`
 }
+
+// TeamAttendanceRow Satu personil, satu hari, dari GET /attendances (monitor regu, DANRU).
+type TeamAttendanceRow struct {
+	AttendanceId       int64                            `json:"attendance_id"`
+	CheckInAt          *time.Time                       `json:"check_in_at,omitempty"`
+	CheckInMethod      *TeamAttendanceRowCheckInMethod  `json:"check_in_method,omitempty"`
+	CheckInWithinArea  *bool                            `json:"check_in_within_area,omitempty"`
+	CheckOutAt         *time.Time                       `json:"check_out_at,omitempty"`
+	CheckOutMethod     *TeamAttendanceRowCheckOutMethod `json:"check_out_method,omitempty"`
+	CheckOutWithinArea *bool                            `json:"check_out_within_area,omitempty"`
+	PersonnelId        int64                            `json:"personnel_id"`
+	PersonnelName      string                           `json:"personnel_name"`
+
+	// ShiftName Kosong bila shift sudah dihapus.
+	ShiftName string `json:"shift_name"`
+
+	// Status `SWAPPED`: catatan izin/mangkir yang sudah punya tukar jaga aktif (tidak disimpan; dengan filter `status` yang tampil status tersimpannya).
+	Status   TeamAttendanceRowStatus `json:"status"`
+	WorkDate openapi_types.Date      `json:"work_date"`
+}
+
+// TeamAttendanceRowCheckInMethod defines model for TeamAttendanceRow.CheckInMethod.
+type TeamAttendanceRowCheckInMethod string
+
+// TeamAttendanceRowCheckOutMethod defines model for TeamAttendanceRow.CheckOutMethod.
+type TeamAttendanceRowCheckOutMethod string
+
+// TeamAttendanceRowStatus `SWAPPED`: catatan izin/mangkir yang sudah punya tukar jaga aktif (tidak disimpan; dengan filter `status` yang tampil status tersimpannya).
+type TeamAttendanceRowStatus string
 
 // TeamDetail Detail regu untuk layar Regu (§3.2.5).
 type TeamDetail struct {
@@ -9979,11 +10250,14 @@ type PatchAdminAssetsById200JSONResponseBodySuccess bool
 
 // GetAdminAttendancesParams defines parameters for GetAdminAttendances.
 type GetAdminAttendancesParams struct {
-	// ProjectId Filter scope proyek.
-	ProjectId *ProjectIdParam `form:"project_id,omitempty" json:"project_id,omitempty"`
+	TeamCode    *string `form:"team_code,omitempty" json:"team_code,omitempty"`
+	ProjectCode *string `form:"project_code,omitempty" json:"project_code,omitempty"`
 
-	// TeamId Filter scope regu.
-	TeamId *TeamIdParam `form:"team_id,omitempty" json:"team_id,omitempty"`
+	// Status Status tersimpan.
+	Status *GetAdminAttendancesParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+
+	// SyncStatus Status kirim ke Personel.
+	SyncStatus *GetAdminAttendancesParamsSyncStatus `form:"sync_status,omitempty" json:"sync_status,omitempty"`
 
 	// DateFrom Awal rentang (YYYY-MM-DD, relatif TZ proyek).
 	DateFrom *DateFromParam `form:"date_from,omitempty" json:"date_from,omitempty"`
@@ -9997,6 +10271,12 @@ type GetAdminAttendancesParams struct {
 	// Limit Item per halaman (maks 100).
 	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
 }
+
+// GetAdminAttendancesParamsStatus defines parameters for GetAdminAttendances.
+type GetAdminAttendancesParamsStatus string
+
+// GetAdminAttendancesParamsSyncStatus defines parameters for GetAdminAttendances.
+type GetAdminAttendancesParamsSyncStatus string
 
 // GetAdminAttendances200JSONResponseBodySuccess defines parameters for GetAdminAttendances.
 type GetAdminAttendances200JSONResponseBodySuccess bool
@@ -11136,11 +11416,17 @@ type GetAssets200JSONResponseBodySuccess bool
 
 // GetAttendancesParams defines parameters for GetAttendances.
 type GetAttendancesParams struct {
-	// TeamId Filter scope regu.
-	TeamId *TeamIdParam `form:"team_id,omitempty" json:"team_id,omitempty"`
+	// TeamCode Regu tertentu; selain itu setiap regu yang dijangkau.
+	TeamCode *string `form:"team_code,omitempty" json:"team_code,omitempty"`
 
-	// ProjectId Filter scope proyek.
-	ProjectId *ProjectIdParam `form:"project_id,omitempty" json:"project_id,omitempty"`
+	// ProjectCode Proyek tertentu.
+	ProjectCode *string `form:"project_code,omitempty" json:"project_code,omitempty"`
+
+	// Status Status tersimpan; `ABSENT` untuk riwayat mangkir.
+	Status *GetAttendancesParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+
+	// Month Bulan, YYYY-MM.
+	Month *string `form:"month,omitempty" json:"month,omitempty"`
 
 	// DateFrom Awal rentang (YYYY-MM-DD, relatif TZ proyek).
 	DateFrom *DateFromParam `form:"date_from,omitempty" json:"date_from,omitempty"`
@@ -11155,15 +11441,18 @@ type GetAttendancesParams struct {
 	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// GetAttendancesParamsStatus defines parameters for GetAttendances.
+type GetAttendancesParamsStatus string
+
 // GetAttendances200JSONResponseBodySuccess defines parameters for GetAttendances.
 type GetAttendances200JSONResponseBodySuccess bool
 
 // PostAttendancesAbsentParams defines parameters for PostAttendancesAbsent.
 type PostAttendancesAbsentParams struct {
-	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
-	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
-	// 409 CONFLICT.
-	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
+	// IdempotencyKey UUID stabil seumur item; tanpa header ini 422 VALIDATION_ERROR. Retry dengan key dan body
+	// yang sama → respons tersimpan dengan header `Idempotent-Replayed: true`; body berbeda +
+	// key sama → 409 CONFLICT.
+	IdempotencyKey IdempotencyKeyRequiredHeader `json:"Idempotency-Key"`
 }
 
 // PostAttendancesAbsent201JSONResponseBodySuccess defines parameters for PostAttendancesAbsent.
@@ -11171,14 +11460,25 @@ type PostAttendancesAbsent201JSONResponseBodySuccess bool
 
 // PostAttendancesGroupParams defines parameters for PostAttendancesGroup.
 type PostAttendancesGroupParams struct {
-	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
-	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
-	// 409 CONFLICT.
-	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
+	// IdempotencyKey UUID stabil seumur item; tanpa header ini 422 VALIDATION_ERROR. Retry dengan key dan body
+	// yang sama → respons tersimpan dengan header `Idempotent-Replayed: true`; body berbeda +
+	// key sama → 409 CONFLICT.
+	IdempotencyKey IdempotencyKeyRequiredHeader `json:"Idempotency-Key"`
 }
 
 // PostAttendancesGroup201JSONResponseBodySuccess defines parameters for PostAttendancesGroup.
 type PostAttendancesGroup201JSONResponseBodySuccess bool
+
+// GetAttendancesGroupSummaryParams defines parameters for GetAttendancesGroupSummary.
+type GetAttendancesGroupSummaryParams struct {
+	TeamCode string `form:"team_code" json:"team_code"`
+
+	// Month Bulan, YYYY-MM.
+	Month string `form:"month" json:"month"`
+}
+
+// GetAttendancesGroupSummary200JSONResponseBodySuccess defines parameters for GetAttendancesGroupSummary.
+type GetAttendancesGroupSummary200JSONResponseBodySuccess bool
 
 // GetAttendancesMeParams defines parameters for GetAttendancesMe.
 type GetAttendancesMeParams struct {
@@ -12422,8 +12722,8 @@ type PostScansByIdDecline200JSONResponseBodySuccess bool
 
 // GetShiftSwapsParams defines parameters for GetShiftSwaps.
 type GetShiftSwapsParams struct {
-	// Status Filter status/enum resource.
-	Status *StatusParam `form:"status,omitempty" json:"status,omitempty"`
+	// Active true: hanya aktif. false: hanya dibatalkan. Kosong: keduanya.
+	Active *bool `form:"active,omitempty" json:"active,omitempty"`
 
 	// DateFrom Awal rentang (YYYY-MM-DD, relatif TZ proyek).
 	DateFrom *DateFromParam `form:"date_from,omitempty" json:"date_from,omitempty"`
@@ -12437,14 +12737,32 @@ type GetShiftSwaps200JSONResponseBodySuccess bool
 
 // PostShiftSwapsParams defines parameters for PostShiftSwaps.
 type PostShiftSwapsParams struct {
-	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
-	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
-	// 409 CONFLICT.
-	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
+	// IdempotencyKey UUID stabil seumur item; tanpa header ini 422 VALIDATION_ERROR. Retry dengan key dan body
+	// yang sama → respons tersimpan dengan header `Idempotent-Replayed: true`; body berbeda +
+	// key sama → 409 CONFLICT.
+	IdempotencyKey IdempotencyKeyRequiredHeader `json:"Idempotency-Key"`
 }
 
 // PostShiftSwaps201JSONResponseBodySuccess defines parameters for PostShiftSwaps.
 type PostShiftSwaps201JSONResponseBodySuccess bool
+
+// GetShiftSwapsCandidatesParams defines parameters for GetShiftSwapsCandidates.
+type GetShiftSwapsCandidatesParams struct {
+	TeamCode string             `form:"team_code" json:"team_code"`
+	WorkDate openapi_types.Date `form:"work_date" json:"work_date"`
+}
+
+// GetShiftSwapsCandidates200JSONResponseBodySuccess defines parameters for GetShiftSwapsCandidates.
+type GetShiftSwapsCandidates200JSONResponseBodySuccess bool
+
+// GetShiftSwapsReplaceableParams defines parameters for GetShiftSwapsReplaceable.
+type GetShiftSwapsReplaceableParams struct {
+	TeamCode string             `form:"team_code" json:"team_code"`
+	WorkDate openapi_types.Date `form:"work_date" json:"work_date"`
+}
+
+// GetShiftSwapsReplaceable200JSONResponseBodySuccess defines parameters for GetShiftSwapsReplaceable.
+type GetShiftSwapsReplaceable200JSONResponseBodySuccess bool
 
 // GetTeamsParams defines parameters for GetTeams.
 type GetTeamsParams struct {

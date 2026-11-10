@@ -2,6 +2,7 @@ package attendance_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -13,11 +14,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/require"
 
 	"siapp/pkg/access"
 	"siapp/pkg/attendance"
+	"siapp/pkg/leave"
 	"siapp/pkg/media"
 	"siapp/pkg/organization"
 	"siapp/pkg/platform/auth"
@@ -57,14 +60,33 @@ func (c *testClock) Set(t time.Time) {
 
 func (c *testClock) Advance(d time.Duration) { c.Set(c.Now().Add(d)) }
 
+// noticeLog records the notices the service sends.
+type noticeLog struct {
+	mu   sync.Mutex
+	list []attendance.Notice
+}
+
+func (l *noticeLog) NotifyAttendance(_ context.Context, n attendance.Notice) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.list = append(l.list, n)
+}
+
+func (l *noticeLog) all() []attendance.Notice {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return append([]attendance.Notice(nil), l.list...)
+}
+
 type env struct {
-	t      *testing.T
-	srv    string
-	client *testkit.Client
-	clock  *testClock
-	userID int64
-	keys   int
-	mu     sync.Mutex
+	notices *noticeLog
+	t       *testing.T
+	srv     string
+	client  *testkit.Client
+	clock   *testClock
+	userID  int64
+	keys    int
+	mu      sync.Mutex
 }
 
 const qrSecret = "http-test-attendance-qr-secret-0123456789"
@@ -78,8 +100,10 @@ func newEnvWithQR(t *testing.T, secret string) *env {
 	pool := testkit.Pool(t)
 	clk := &testClock{now: tuesday}
 	perms := access.NewService(pool, clk)
-	service := attendance.NewService(pool, clk, organization.NewShifts(pool), organization.NewQuery(pool),
-		media.NewService(pool, presigner{}, clk, nil), perms)
+	mediaService := media.NewService(pool, presigner{}, clk, nil)
+	service := attendance.NewService(pool, clk, organization.NewShifts(pool), organization.NewQuery(pool), mediaService, perms)
+	notices := &noticeLog{}
+	service.UseNotifier(notices)
 	if secret != "" {
 		qr, err := attendance.NewQRTokens(secret, clk)
 		require.NoError(t, err)
@@ -87,8 +111,24 @@ func newEnvWithQR(t *testing.T, secret string) *env {
 	}
 	idempotency := idem.New(idem.Config{Pool: pool, Identity: auth.Identity})
 	h := attendance.NewHandler(service, perms, idempotency.Middleware(true))
-	srv := testkit.NewServer(t, testkit.Deps{Mount: h.MountField})
-	return &env{t: t, srv: srv.URL, client: testkit.NewClient(t, srv), clock: clk}
+	// The leave routes and the admin group are served too: a swap's flow starts with a leave a DANRU
+	// approves, and the admin monitor and correction are attendance's.
+	leaveService := leave.NewService(pool, clk)
+	leaveService.UseRegionLookup(organization.NewDirectory(clk))
+	leaveService.UseSchedule(organization.LeaveSchedule{Shifts: organization.NewShifts(pool)})
+	leaveService.UseAttachments(mediaService)
+	leaveService.UsePermissions(perms)
+	leaveHandler := leave.NewHandler(leaveService, perms, idempotency.Middleware(true))
+	srv := testkit.NewServer(t, testkit.Deps{Mount: func(r chi.Router) {
+		h.MountField(r)
+		leaveHandler.MountField(r)
+		r.Route("/api/v1/admin", func(admin chi.Router) {
+			admin.Use(access.RequireAdmin(pool))
+			leaveHandler.MountAdmin(admin)
+			h.MountAdmin(admin)
+		})
+	}})
+	return &env{notices: notices, t: t, srv: srv.URL, client: testkit.NewClient(t, srv), clock: clk}
 }
 
 // ---------- the world ----------

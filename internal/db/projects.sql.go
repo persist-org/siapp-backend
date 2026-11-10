@@ -404,12 +404,13 @@ UPDATE projects SET
     attendance_radius_meters   = COALESCE($11, attendance_radius_meters),
     strict_attendance_geofence = COALESCE($12, strict_attendance_geofence),
     gps_tracking_enabled       = COALESCE($13, gps_tracking_enabled),
-    patrol_interval_minutes    = COALESCE($14, patrol_interval_minutes),
-    emergency_contacts         = COALESCE($15::jsonb, emergency_contacts),
-    active                     = COALESCE($16, active),
-    modify_by                  = $17,
-    updated_at                 = $18
-WHERE code = $19 AND deleted_at IS NULL
+    allow_group_attendance     = COALESCE($14, allow_group_attendance),
+    patrol_interval_minutes    = COALESCE($15, patrol_interval_minutes),
+    emergency_contacts         = COALESCE($16::jsonb, emergency_contacts),
+    active                     = COALESCE($17, active),
+    modify_by                  = $18,
+    updated_at                 = $19
+WHERE code = $20 AND deleted_at IS NULL
 RETURNING organization_id, code, client_code, description, company_code, company_prefix, company_bidang_usaha, business_line, city, address, phone, email, timezone, latitude, longitude, attendance_radius_meters, strict_attendance_geofence, gps_tracking_enabled, patrol_interval_minutes, emergency_contacts, next_team_number, active, created_by, modify_by, created_at, updated_at, deleted_at, allow_group_attendance
 `
 
@@ -427,6 +428,7 @@ type UpdateProjectParams struct {
 	AttendanceRadiusMeters   pgtype.Int4
 	StrictAttendanceGeofence pgtype.Bool
 	GpsTrackingEnabled       pgtype.Bool
+	AllowGroupAttendance     pgtype.Bool
 	PatrolIntervalMinutes    pgtype.Int4
 	EmergencyContacts        json.RawMessage
 	Active                   pgtype.Bool
@@ -453,6 +455,7 @@ func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) (P
 		arg.AttendanceRadiusMeters,
 		arg.StrictAttendanceGeofence,
 		arg.GpsTrackingEnabled,
+		arg.AllowGroupAttendance,
 		arg.PatrolIntervalMinutes,
 		arg.EmergencyContacts,
 		arg.Active,

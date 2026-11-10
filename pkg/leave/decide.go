@@ -194,6 +194,11 @@ func (s *Service) decide(ctx context.Context, p auth.Principal, id int64, d deci
 				}
 			}
 			if wasApproved {
+				// A guard back from a revoked leave no longer needs the replacer a DANRU assigned:
+				// cancel the unstarted swaps before their records go.
+				if err := q.CancelUnstartedSwapsOfLeaveRequest(ctx, db.CancelUnstartedSwapsOfLeaveRequestParams{LeaveRequestID: pgInt8(id), Now: ts(now)}); err != nil {
+					return fmt.Errorf("cancel swaps: %w", err)
+				}
 				if _, err := q.DeleteLeaveAttendancesOfRequest(ctx, pgInt8(id)); err != nil {
 					return fmt.Errorf("delete leave attendances: %w", err)
 				}

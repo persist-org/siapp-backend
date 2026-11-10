@@ -11,165 +11,17 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const listReplaceableAttendances = `-- name: ListReplaceableAttendances :many
-SELECT a.id, a.organization_id, a.personnel_id, a.team_code, a.project_code, a.work_date, a.shift_id, a.shift_starts_at, a.shift_ends_at, a.timezone, a.status, a.check_in_at, a.check_in_method, a.check_in_media_id, a.check_in_latitude, a.check_in_longitude, a.check_in_accuracy_meters, a.check_in_distance_meters, a.check_in_within_area, a.check_in_qr_danru_id, a.late_minutes, a.check_out_at, a.check_out_method, a.check_out_media_id, a.check_out_latitude, a.check_out_longitude, a.check_out_accuracy_meters, a.check_out_distance_meters, a.check_out_within_area, a.check_out_qr_danru_id, a.check_out_update_count, a.leave_request_id, a.marked_absent_by_id, a.shift_swap_id, a.personel_sync_status, a.personel_synced_at, a.created_at, a.updated_at, a.late_minutes_raw, a.absent_reason FROM attendances a
-WHERE a.team_code = $1 AND a.work_date = $2 AND a.status IN ('LEAVE', 'ABSENT')
-  AND NOT EXISTS (
-    SELECT 1 FROM shift_swaps sw WHERE sw.replaced_attendance_id = a.id AND sw.cancelled_at IS NULL)
-ORDER BY a.id
+const cancelShiftSwap = `-- name: CancelShiftSwap :one
+UPDATE shift_swaps SET cancelled_at = $1, updated_at = $1 WHERE id = $2 RETURNING id, organization_id, replaced_personnel_id, replaced_attendance_id, replacing_personnel_id, team_code, work_date, shift_id, starts_at, ends_at, note, created_by_id, cancelled_at, created_at, updated_at
 `
 
-type ListReplaceableAttendancesParams struct {
-	TeamCode string
-	WorkDate pgtype.Date
+type CancelShiftSwapParams struct {
+	Now pgtype.Timestamptz
+	ID  int64
 }
 
-// LEAVE/ABSENT records of a regu and date that have no active swap: GET /shift-swaps/replaceable.
-func (q *Queries) ListReplaceableAttendances(ctx context.Context, arg ListReplaceableAttendancesParams) ([]Attendance, error) {
-	rows, err := q.db.Query(ctx, listReplaceableAttendances, arg.TeamCode, arg.WorkDate)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Attendance{}
-	for rows.Next() {
-		var i Attendance
-		if err := rows.Scan(
-			&i.ID,
-			&i.OrganizationID,
-			&i.PersonnelID,
-			&i.TeamCode,
-			&i.ProjectCode,
-			&i.WorkDate,
-			&i.ShiftID,
-			&i.ShiftStartsAt,
-			&i.ShiftEndsAt,
-			&i.Timezone,
-			&i.Status,
-			&i.CheckInAt,
-			&i.CheckInMethod,
-			&i.CheckInMediaID,
-			&i.CheckInLatitude,
-			&i.CheckInLongitude,
-			&i.CheckInAccuracyMeters,
-			&i.CheckInDistanceMeters,
-			&i.CheckInWithinArea,
-			&i.CheckInQrDanruID,
-			&i.LateMinutes,
-			&i.CheckOutAt,
-			&i.CheckOutMethod,
-			&i.CheckOutMediaID,
-			&i.CheckOutLatitude,
-			&i.CheckOutLongitude,
-			&i.CheckOutAccuracyMeters,
-			&i.CheckOutDistanceMeters,
-			&i.CheckOutWithinArea,
-			&i.CheckOutQrDanruID,
-			&i.CheckOutUpdateCount,
-			&i.LeaveRequestID,
-			&i.MarkedAbsentByID,
-			&i.ShiftSwapID,
-			&i.PersonelSyncStatus,
-			&i.PersonelSyncedAt,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.LateMinutesRaw,
-			&i.AbsentReason,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listSwapCandidates = `-- name: ListSwapCandidates :many
-SELECT p.id AS personnel_id, p.full_name
-FROM team_members tm
-JOIN personnels p ON p.id = tm.personnel_id
-WHERE tm.team_code = $1
-  AND $2 BETWEEN tm.start_date AND COALESCE(tm.end_date, 'infinity'::date)
-  AND NOT EXISTS (
-    SELECT 1 FROM attendances a
-    WHERE a.personnel_id = tm.personnel_id AND a.work_date = $2 AND a.status IN ('LEAVE', 'ABSENT')
-  )
-ORDER BY p.full_name
-`
-
-type ListSwapCandidatesParams struct {
-	TeamCode string
-	WorkDate pgtype.Date
-}
-
-type ListSwapCandidatesRow struct {
-	PersonnelID int64
-	FullName    string
-}
-
-// Members of a regu on a date who are not on leave or absent that day: GET /shift-swaps/candidates.
-// A person already on an attendance record of PRESENT (checked in elsewhere, including as another
-// swap's replacer) is still a candidate: the overlap check in Create is what actually refuses them.
-func (q *Queries) ListSwapCandidates(ctx context.Context, arg ListSwapCandidatesParams) ([]ListSwapCandidatesRow, error) {
-	rows, err := q.db.Query(ctx, listSwapCandidates, arg.TeamCode, arg.WorkDate)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListSwapCandidatesRow{}
-	for rows.Next() {
-		var i ListSwapCandidatesRow
-		if err := rows.Scan(&i.PersonnelID, &i.FullName); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const insertShiftSwap = `-- name: InsertShiftSwap :one
-INSERT INTO shift_swaps (
-    replaced_personnel_id, replaced_attendance_id, replacing_personnel_id,
-    team_code, work_date, shift_id, starts_at, ends_at, note, created_by_id, created_at, updated_at)
-VALUES (
-    $1, $2, $3,
-    $4, $5, $6, $7, $8, $9, $10, $11, $11)
-RETURNING id, organization_id, replaced_personnel_id, replaced_attendance_id, replacing_personnel_id, team_code, work_date, shift_id, starts_at, ends_at, note, created_by_id, cancelled_at, created_at, updated_at
-`
-
-type InsertShiftSwapParams struct {
-	ReplacedPersonnelID  int64
-	ReplacedAttendanceID int64
-	ReplacingPersonnelID int64
-	TeamCode             string
-	WorkDate             pgtype.Date
-	ShiftID              int64
-	StartsAt             pgtype.Timestamptz
-	EndsAt               pgtype.Timestamptz
-	Note                 pgtype.Text
-	CreatedByID          int64
-	Now                  pgtype.Timestamptz
-}
-
-func (q *Queries) InsertShiftSwap(ctx context.Context, arg InsertShiftSwapParams) (ShiftSwap, error) {
-	row := q.db.QueryRow(ctx, insertShiftSwap,
-		arg.ReplacedPersonnelID,
-		arg.ReplacedAttendanceID,
-		arg.ReplacingPersonnelID,
-		arg.TeamCode,
-		arg.WorkDate,
-		arg.ShiftID,
-		arg.StartsAt,
-		arg.EndsAt,
-		arg.Note,
-		arg.CreatedByID,
-		arg.Now,
-	)
+func (q *Queries) CancelShiftSwap(ctx context.Context, arg CancelShiftSwapParams) (ShiftSwap, error) {
+	row := q.db.QueryRow(ctx, cancelShiftSwap, arg.Now, arg.ID)
 	var i ShiftSwap
 	err := row.Scan(
 		&i.ID,
@@ -189,6 +41,47 @@ func (q *Queries) InsertShiftSwap(ctx context.Context, arg InsertShiftSwapParams
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const cancelUnstartedSwapsOfAttendance = `-- name: CancelUnstartedSwapsOfAttendance :exec
+UPDATE shift_swaps sw SET cancelled_at = $1, updated_at = $1
+WHERE sw.replaced_attendance_id = $2 AND sw.cancelled_at IS NULL
+  AND NOT EXISTS (SELECT 1 FROM attendances r WHERE r.shift_swap_id = sw.id AND r.check_in_at IS NOT NULL)
+`
+
+type CancelUnstartedSwapsOfAttendanceParams struct {
+	Now          pgtype.Timestamptz
+	AttendanceID pgtype.Int8
+}
+
+// Cancels the active swaps of one record whose replacer has not checked in yet. Used before the
+// record is deleted or corrected back to PRESENT: a swap of a guard who is (again) at work covers
+// nothing. A swap whose replacer already started stays active; HasActiveSwapOfAttendance tells the
+// caller so it can refuse instead.
+func (q *Queries) CancelUnstartedSwapsOfAttendance(ctx context.Context, arg CancelUnstartedSwapsOfAttendanceParams) error {
+	_, err := q.db.Exec(ctx, cancelUnstartedSwapsOfAttendance, arg.Now, arg.AttendanceID)
+	return err
+}
+
+const cancelUnstartedSwapsOfLeaveRequest = `-- name: CancelUnstartedSwapsOfLeaveRequest :exec
+UPDATE shift_swaps sw SET cancelled_at = $1, updated_at = $1
+WHERE sw.cancelled_at IS NULL
+  AND sw.replaced_attendance_id IN (
+    SELECT a.id FROM attendances a
+    WHERE a.leave_request_id = $2 AND a.status = 'LEAVE' AND a.check_in_at IS NULL)
+  AND NOT EXISTS (SELECT 1 FROM attendances r WHERE r.shift_swap_id = sw.id AND r.check_in_at IS NOT NULL)
+`
+
+type CancelUnstartedSwapsOfLeaveRequestParams struct {
+	Now            pgtype.Timestamptz
+	LeaveRequestID pgtype.Int8
+}
+
+// Same as CancelUnstartedSwapsOfAttendance for every LEAVE row of a leave request about to be
+// revoked (pkg/leave runs it just before deleting those rows).
+func (q *Queries) CancelUnstartedSwapsOfLeaveRequest(ctx context.Context, arg CancelUnstartedSwapsOfLeaveRequestParams) error {
+	_, err := q.db.Exec(ctx, cancelUnstartedSwapsOfLeaveRequest, arg.Now, arg.LeaveRequestID)
+	return err
 }
 
 const getShiftSwap = `-- name: GetShiftSwap :one
@@ -245,18 +138,56 @@ func (q *Queries) GetShiftSwapForUpdate(ctx context.Context, id int64) (ShiftSwa
 	return i, err
 }
 
-const cancelShiftSwap = `-- name: CancelShiftSwap :one
-UPDATE shift_swaps SET cancelled_at = $1, updated_at = $1 WHERE id = $2
+const hasActiveSwapOfAttendance = `-- name: HasActiveSwapOfAttendance :one
+SELECT EXISTS (
+  SELECT 1 FROM shift_swaps WHERE replaced_attendance_id = $1 AND cancelled_at IS NULL)
+`
+
+func (q *Queries) HasActiveSwapOfAttendance(ctx context.Context, attendanceID pgtype.Int8) (bool, error) {
+	row := q.db.QueryRow(ctx, hasActiveSwapOfAttendance, attendanceID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const insertShiftSwap = `-- name: InsertShiftSwap :one
+INSERT INTO shift_swaps (
+    replaced_personnel_id, replaced_attendance_id, replacing_personnel_id,
+    team_code, work_date, shift_id, starts_at, ends_at, note, created_by_id, created_at, updated_at)
+VALUES (
+    $1, $2, $3,
+    $4, $5, $6, $7, $8, $9, $10, $11, $11)
 RETURNING id, organization_id, replaced_personnel_id, replaced_attendance_id, replacing_personnel_id, team_code, work_date, shift_id, starts_at, ends_at, note, created_by_id, cancelled_at, created_at, updated_at
 `
 
-type CancelShiftSwapParams struct {
-	Now pgtype.Timestamptz
-	ID  int64
+type InsertShiftSwapParams struct {
+	ReplacedPersonnelID  int64
+	ReplacedAttendanceID pgtype.Int8
+	ReplacingPersonnelID int64
+	TeamCode             string
+	WorkDate             pgtype.Date
+	ShiftID              int64
+	StartsAt             pgtype.Timestamptz
+	EndsAt               pgtype.Timestamptz
+	Note                 pgtype.Text
+	CreatedByID          int64
+	Now                  pgtype.Timestamptz
 }
 
-func (q *Queries) CancelShiftSwap(ctx context.Context, arg CancelShiftSwapParams) (ShiftSwap, error) {
-	row := q.db.QueryRow(ctx, cancelShiftSwap, arg.Now, arg.ID)
+func (q *Queries) InsertShiftSwap(ctx context.Context, arg InsertShiftSwapParams) (ShiftSwap, error) {
+	row := q.db.QueryRow(ctx, insertShiftSwap,
+		arg.ReplacedPersonnelID,
+		arg.ReplacedAttendanceID,
+		arg.ReplacingPersonnelID,
+		arg.TeamCode,
+		arg.WorkDate,
+		arg.ShiftID,
+		arg.StartsAt,
+		arg.EndsAt,
+		arg.Note,
+		arg.CreatedByID,
+		arg.Now,
+	)
 	var i ShiftSwap
 	err := row.Scan(
 		&i.ID,
@@ -276,64 +207,6 @@ func (q *Queries) CancelShiftSwap(ctx context.Context, arg CancelShiftSwapParams
 		&i.UpdatedAt,
 	)
 	return i, err
-}
-
-const listShiftSwaps = `-- name: ListShiftSwaps :many
-SELECT id, organization_id, replaced_personnel_id, replaced_attendance_id, replacing_personnel_id, team_code, work_date, shift_id, starts_at, ends_at, note, created_by_id, cancelled_at, created_at, updated_at FROM shift_swaps
-WHERE team_code = ANY($1::text[])
-  AND ($2::boolean IS NULL OR (cancelled_at IS NULL) = $2::boolean)
-  AND ($3::date IS NULL OR work_date >= $3::date)
-  AND ($4::date IS NULL OR work_date <= $4::date)
-ORDER BY work_date DESC, id DESC
-`
-
-type ListShiftSwapsParams struct {
-	TeamCodes []string
-	Active    pgtype.Bool
-	FromDate  pgtype.Date
-	ToDate    pgtype.Date
-}
-
-// The DANRU's list: active or cancelled swaps of the teams their attendance.swap.create reaches.
-func (q *Queries) ListShiftSwaps(ctx context.Context, arg ListShiftSwapsParams) ([]ShiftSwap, error) {
-	rows, err := q.db.Query(ctx, listShiftSwaps,
-		arg.TeamCodes,
-		arg.Active,
-		arg.FromDate,
-		arg.ToDate,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ShiftSwap{}
-	for rows.Next() {
-		var i ShiftSwap
-		if err := rows.Scan(
-			&i.ID,
-			&i.OrganizationID,
-			&i.ReplacedPersonnelID,
-			&i.ReplacedAttendanceID,
-			&i.ReplacingPersonnelID,
-			&i.TeamCode,
-			&i.WorkDate,
-			&i.ShiftID,
-			&i.StartsAt,
-			&i.EndsAt,
-			&i.Note,
-			&i.CreatedByID,
-			&i.CancelledAt,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const listActiveSwapsOfReplacer = `-- name: ListActiveSwapsOfReplacer :many
@@ -377,6 +250,83 @@ func (q *Queries) ListActiveSwapsOfReplacer(ctx context.Context, arg ListActiveS
 			&i.CancelledAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listReplaceableAttendances = `-- name: ListReplaceableAttendances :many
+
+SELECT a.id, a.organization_id, a.personnel_id, a.team_code, a.project_code, a.work_date, a.shift_id, a.shift_starts_at, a.shift_ends_at, a.timezone, a.status, a.check_in_at, a.check_in_method, a.check_in_media_id, a.check_in_latitude, a.check_in_longitude, a.check_in_accuracy_meters, a.check_in_distance_meters, a.check_in_within_area, a.check_in_qr_danru_id, a.late_minutes, a.check_out_at, a.check_out_method, a.check_out_media_id, a.check_out_latitude, a.check_out_longitude, a.check_out_accuracy_meters, a.check_out_distance_meters, a.check_out_within_area, a.check_out_qr_danru_id, a.check_out_update_count, a.leave_request_id, a.marked_absent_by_id, a.shift_swap_id, a.personel_sync_status, a.personel_synced_at, a.created_at, a.updated_at, a.late_minutes_raw, a.absent_reason FROM attendances a
+WHERE a.team_code = $1 AND a.work_date = $2 AND a.status IN ('LEAVE', 'ABSENT')
+  AND NOT EXISTS (
+    SELECT 1 FROM shift_swaps sw WHERE sw.replaced_attendance_id = a.id AND sw.cancelled_at IS NULL)
+ORDER BY a.id
+`
+
+type ListReplaceableAttendancesParams struct {
+	TeamCode string
+	WorkDate pgtype.Date
+}
+
+// Shift swap (tukar jaga, module 07.7). Everything runs inside database.WithTenant.
+// LEAVE/ABSENT records of a regu and date that have no active swap: GET /shift-swaps/replaceable.
+func (q *Queries) ListReplaceableAttendances(ctx context.Context, arg ListReplaceableAttendancesParams) ([]Attendance, error) {
+	rows, err := q.db.Query(ctx, listReplaceableAttendances, arg.TeamCode, arg.WorkDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Attendance{}
+	for rows.Next() {
+		var i Attendance
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrganizationID,
+			&i.PersonnelID,
+			&i.TeamCode,
+			&i.ProjectCode,
+			&i.WorkDate,
+			&i.ShiftID,
+			&i.ShiftStartsAt,
+			&i.ShiftEndsAt,
+			&i.Timezone,
+			&i.Status,
+			&i.CheckInAt,
+			&i.CheckInMethod,
+			&i.CheckInMediaID,
+			&i.CheckInLatitude,
+			&i.CheckInLongitude,
+			&i.CheckInAccuracyMeters,
+			&i.CheckInDistanceMeters,
+			&i.CheckInWithinArea,
+			&i.CheckInQrDanruID,
+			&i.LateMinutes,
+			&i.CheckOutAt,
+			&i.CheckOutMethod,
+			&i.CheckOutMediaID,
+			&i.CheckOutLatitude,
+			&i.CheckOutLongitude,
+			&i.CheckOutAccuracyMeters,
+			&i.CheckOutDistanceMeters,
+			&i.CheckOutWithinArea,
+			&i.CheckOutQrDanruID,
+			&i.CheckOutUpdateCount,
+			&i.LeaveRequestID,
+			&i.MarkedAbsentByID,
+			&i.ShiftSwapID,
+			&i.PersonelSyncStatus,
+			&i.PersonelSyncedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.LateMinutesRaw,
+			&i.AbsentReason,
 		); err != nil {
 			return nil, err
 		}
@@ -492,6 +442,109 @@ func (q *Queries) ListReplacingSwaps(ctx context.Context, arg ListReplacingSwaps
 			&i.CheckInAt,
 			&i.CheckOutAt,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listShiftSwaps = `-- name: ListShiftSwaps :many
+SELECT id, organization_id, replaced_personnel_id, replaced_attendance_id, replacing_personnel_id, team_code, work_date, shift_id, starts_at, ends_at, note, created_by_id, cancelled_at, created_at, updated_at FROM shift_swaps
+WHERE team_code = ANY($1::text[])
+  AND ($2::boolean IS NULL OR (cancelled_at IS NULL) = $2::boolean)
+  AND ($3::date IS NULL OR work_date >= $3::date)
+  AND ($4::date IS NULL OR work_date <= $4::date)
+ORDER BY work_date DESC, id DESC
+`
+
+type ListShiftSwapsParams struct {
+	TeamCodes []string
+	Active    pgtype.Bool
+	FromDate  pgtype.Date
+	ToDate    pgtype.Date
+}
+
+// The DANRU's list: active or cancelled swaps of the teams their attendance.swap.create reaches.
+func (q *Queries) ListShiftSwaps(ctx context.Context, arg ListShiftSwapsParams) ([]ShiftSwap, error) {
+	rows, err := q.db.Query(ctx, listShiftSwaps,
+		arg.TeamCodes,
+		arg.Active,
+		arg.FromDate,
+		arg.ToDate,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ShiftSwap{}
+	for rows.Next() {
+		var i ShiftSwap
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrganizationID,
+			&i.ReplacedPersonnelID,
+			&i.ReplacedAttendanceID,
+			&i.ReplacingPersonnelID,
+			&i.TeamCode,
+			&i.WorkDate,
+			&i.ShiftID,
+			&i.StartsAt,
+			&i.EndsAt,
+			&i.Note,
+			&i.CreatedByID,
+			&i.CancelledAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSwapCandidates = `-- name: ListSwapCandidates :many
+SELECT p.id AS personnel_id, p.full_name
+FROM team_members tm
+JOIN personnels p ON p.id = tm.personnel_id
+WHERE tm.team_code = $1
+  AND $2 BETWEEN tm.start_date AND COALESCE(tm.end_date, 'infinity'::date)
+  AND NOT EXISTS (
+    SELECT 1 FROM attendances a
+    WHERE a.personnel_id = tm.personnel_id AND a.work_date = $2 AND a.status IN ('LEAVE', 'ABSENT'))
+ORDER BY p.full_name
+`
+
+type ListSwapCandidatesParams struct {
+	TeamCode string
+	WorkDate pgtype.Date
+}
+
+type ListSwapCandidatesRow struct {
+	PersonnelID int64
+	FullName    string
+}
+
+// Members of a regu on a date who are not on leave or absent that day: GET /shift-swaps/candidates.
+// A person already on an attendance record of PRESENT (checked in elsewhere, including as another
+// swap's replacer) is still a candidate: the overlap check in Create is what actually refuses them.
+func (q *Queries) ListSwapCandidates(ctx context.Context, arg ListSwapCandidatesParams) ([]ListSwapCandidatesRow, error) {
+	rows, err := q.db.Query(ctx, listSwapCandidates, arg.TeamCode, arg.WorkDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSwapCandidatesRow{}
+	for rows.Next() {
+		var i ListSwapCandidatesRow
+		if err := rows.Scan(&i.PersonnelID, &i.FullName); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

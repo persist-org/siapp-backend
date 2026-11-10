@@ -40,6 +40,29 @@ SELECT * FROM shift_swaps WHERE id = @id FOR UPDATE;
 -- name: CancelShiftSwap :one
 UPDATE shift_swaps SET cancelled_at = @now, updated_at = @now WHERE id = @id RETURNING *;
 
+-- Cancels the active swaps of one record whose replacer has not checked in yet. Used before the
+-- record is deleted or corrected back to PRESENT: a swap of a guard who is (again) at work covers
+-- nothing. A swap whose replacer already started stays active; HasActiveSwapOfAttendance tells the
+-- caller so it can refuse instead.
+-- name: CancelUnstartedSwapsOfAttendance :exec
+UPDATE shift_swaps sw SET cancelled_at = @now, updated_at = @now
+WHERE sw.replaced_attendance_id = @attendance_id AND sw.cancelled_at IS NULL
+  AND NOT EXISTS (SELECT 1 FROM attendances r WHERE r.shift_swap_id = sw.id AND r.check_in_at IS NOT NULL);
+
+-- name: HasActiveSwapOfAttendance :one
+SELECT EXISTS (
+  SELECT 1 FROM shift_swaps WHERE replaced_attendance_id = @attendance_id AND cancelled_at IS NULL);
+
+-- Same as CancelUnstartedSwapsOfAttendance for every LEAVE row of a leave request about to be
+-- revoked (pkg/leave runs it just before deleting those rows).
+-- name: CancelUnstartedSwapsOfLeaveRequest :exec
+UPDATE shift_swaps sw SET cancelled_at = @now, updated_at = @now
+WHERE sw.cancelled_at IS NULL
+  AND sw.replaced_attendance_id IN (
+    SELECT a.id FROM attendances a
+    WHERE a.leave_request_id = @leave_request_id AND a.status = 'LEAVE' AND a.check_in_at IS NULL)
+  AND NOT EXISTS (SELECT 1 FROM attendances r WHERE r.shift_swap_id = sw.id AND r.check_in_at IS NOT NULL);
+
 -- The DANRU's list: active or cancelled swaps of the teams their attendance.swap.create reaches.
 -- name: ListShiftSwaps :many
 SELECT * FROM shift_swaps

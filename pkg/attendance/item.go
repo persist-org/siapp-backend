@@ -48,6 +48,8 @@ type Attendance struct {
 
 	// LeaveRequestID is the request that made a LEAVE record, nil for any other.
 	LeaveRequestID *int64
+	// ShiftSwapID is set when the record is a shift covered for someone else (07.7).
+	ShiftSwapID *int64
 
 	PersonelSyncStatus db.PersonelSyncStatus
 	CreatedAt          time.Time
@@ -64,7 +66,7 @@ func toAttendance(r db.Attendance) Attendance {
 		LateMinutes: int(r.LateMinutes),
 		CheckOutAt:  timePtr(r.CheckOutAt), CheckOutMethod: methodPtr(r.CheckOutMethod),
 		CheckOutDistance: intPtr(r.CheckOutDistanceMeters), CheckOutInArea: boolPtr(r.CheckOutWithinArea),
-		CheckOutUpdateCount: int(r.CheckOutUpdateCount), LeaveRequestID: int8Ptr(r.LeaveRequestID),
+		CheckOutUpdateCount: int(r.CheckOutUpdateCount), LeaveRequestID: int8Ptr(r.LeaveRequestID), ShiftSwapID: int8Ptr(r.ShiftSwapID),
 		PersonelSyncStatus: r.PersonelSyncStatus, CreatedAt: r.CreatedAt.Time, UpdatedAt: r.UpdatedAt.Time,
 	}
 	return a
