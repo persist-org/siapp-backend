@@ -3,6 +3,7 @@ package realtime
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -14,6 +15,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/go-chi/chi/v5"
 
+	"siapp/pkg/platform/apperr"
 	"siapp/pkg/platform/auth"
 	"siapp/pkg/platform/clock"
 	"siapp/pkg/platform/httpx"
@@ -29,6 +31,13 @@ const (
 	CloseIdle         websocket.StatusCode = 4408
 )
 
+// Codes of an error frame that is not a bad frame (4400): the client's request was understood and
+// refused, or the server failed. They mirror the close codes' numbering.
+const (
+	ErrorForbidden = 4403
+	ErrorInternal  = 4500
+)
+
 const (
 	defaultPingInterval = 20 * time.Second
 	defaultIdleTimeout  = 60 * time.Second
@@ -36,6 +45,7 @@ const (
 	readLimit           = 4 << 10
 	maxRoomsPerFrame    = 32
 	maxRoomsPerConn     = 64
+	locationTimeout     = 5 * time.Second
 )
 
 // Denial reasons in subscribe.ack.
@@ -79,12 +89,22 @@ type Handler struct {
 	logger      *slog.Logger
 	cfg         Config
 	presence    Toucher
+	location    LocationIngester
 }
 
 // Toucher records that a person was seen (presence.Service).
 type Toucher interface {
 	Touch(ctx context.Context, orgID, personnelID int64) error
 }
+
+// LocationIngester stores the GPS point of a location.update frame (location.Service). data is
+// the frame's data, undecoded. It returns an *apperr.Error for what the client did wrong.
+type LocationIngester interface {
+	IngestFrame(ctx context.Context, p auth.Principal, data json.RawMessage) error
+}
+
+// UseLocation lets clients send location.update frames. Without it the frame is an unknown type.
+func (h *Handler) UseLocation(l LocationIngester) { h.location = l }
 
 // UsePresence makes every frame a client sends count as the person being seen. Without it
 // (tests of the socket alone) frames leave presence alone.
@@ -197,11 +217,19 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 
 	s.reply("hello", "", map[string]any{
 		"server_time":  h.clock.Now().UTC(),
-		"capabilities": []string{"subscribe", "notification.created"},
+		"capabilities": h.capabilities(),
 	})
 	go s.writeLoop()
 	go s.keepAlive(expiresAt)
 	s.readLoop()
+}
+
+func (h *Handler) capabilities() []string {
+	out := []string{"subscribe", "notification.created"}
+	if h.location != nil {
+		out = append(out, "location.update", "location.broadcast")
+	}
+	return out
 }
 
 // session is one accepted connection.
@@ -386,10 +414,45 @@ func (s *session) readLoop() {
 			}
 		case "ping":
 			s.reply("pong", "", map[string]any{})
+		case "location.update":
+			if s.h.location == nil {
+				s.reply("error", "", map[string]any{"code": CloseBadFrame, "message": "unknown frame type"})
+				continue
+			}
+			s.locationUpdate(f.Data)
 		default:
 			s.reply("error", "", map[string]any{"code": CloseBadFrame, "message": "unknown frame type"})
 		}
 	}
+}
+
+// locationUpdate stores the point of a location.update frame. A refusal comes back as an error
+// frame carrying the reason (TRACKING_DISABLED, a validation failure), never as a close: the
+// phone keeps its socket, and its other rooms, when one point is refused.
+func (s *session) locationUpdate(data json.RawMessage) {
+	ctx, cancel := context.WithTimeout(s.ctx, locationTimeout)
+	defer cancel()
+	err := s.h.location.IngestFrame(ctx, s.principal, data)
+	if err == nil {
+		return
+	}
+	appErr, ok := errors.AsType[*apperr.Error](err)
+	if !ok {
+		if s.ctx.Err() == nil {
+			s.h.logger.Error("realtime: location.update", slog.Any("error", err))
+		}
+		s.reply("error", "", map[string]any{"code": ErrorInternal, "message": "location unavailable"})
+		return
+	}
+	code := CloseBadFrame
+	if appErr.Status == http.StatusForbidden {
+		code = ErrorForbidden
+	}
+	data2 := map[string]any{"code": int(code), "message": appErr.Message}
+	if appErr.Reason != "" {
+		data2["reason"] = appErr.Reason
+	}
+	s.reply("error", "", data2)
 }
 
 // touch counts a frame as the person being seen. Bounded and never fatal, like the HTTP

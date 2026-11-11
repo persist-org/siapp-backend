@@ -28,6 +28,7 @@ import (
 	"siapp/pkg/platform/httpx"
 	"siapp/pkg/platform/personel/personeltest"
 	"siapp/pkg/platform/testkit"
+	"siapp/pkg/realtime"
 )
 
 const webhookSecret = "test-webhook-secret-test-webhook-secret"
@@ -56,6 +57,7 @@ type flow struct {
 	session   int64
 	adminTok  string
 	personTok string
+	hub       *realtime.Hub
 }
 
 func newFlow(t *testing.T) *flow {
@@ -67,8 +69,13 @@ func newFlow(t *testing.T) *flow {
 	}, clock.System{})
 	require.NoError(t, err)
 	f := &flow{t: t, fake: fake, tokens: testkit.Tokens(t), org: personeltest.OrgSatu, rdb: testkit.Redis(t), prefix: testkit.RandomPrefix(t)}
+	// The hub is fed by the Redis subscriber like main's, so a frame published by one request
+	// reaches a socket the test holds open.
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	f.hub = realtime.NewHub(logger)
+	require.NoError(t, realtime.Run(t.Context(), f.rdb, f.prefix, f.hub, logger))
 	router := newRouter(deps{
-		Logger: slog.New(slog.NewJSONHandler(io.Discard, nil)), Pool: testkit.Pool(t), Redis: f.rdb,
+		Logger: logger, Hub: f.hub, Pool: testkit.Pool(t), Redis: f.rdb,
 		RedisPrefix: f.prefix, Personel: client, Tokens: f.tokens, Clock: clock.System{},
 		ClientIP: httpx.ClientIPFunc(""), MediaStorage: storage, PersonelWebhookSecret: webhookSecret,
 	})

@@ -1455,6 +1455,24 @@ func (e PersonnelInputGender) Valid() bool {
 	}
 }
 
+// Defines values for PersonnelPositionRole.
+const (
+	PersonnelPositionRoleDANRU  PersonnelPositionRole = "DANRU"
+	PersonnelPositionRoleMEMBER PersonnelPositionRole = "MEMBER"
+)
+
+// Valid indicates whether the value is a known member of the PersonnelPositionRole enum.
+func (e PersonnelPositionRole) Valid() bool {
+	switch e {
+	case PersonnelPositionRoleDANRU:
+		return true
+	case PersonnelPositionRoleMEMBER:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PersonnelReviewReviewerType.
 const (
 	PersonnelReviewReviewerTypePersonnel PersonnelReviewReviewerType = "personnel"
@@ -3084,6 +3102,21 @@ const (
 func (e GetAdminPersonnelReviews200JSONResponseBodySuccess) Valid() bool {
 	switch e {
 	case GetAdminPersonnelReviews200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetAdminPersonnelTracking200JSONResponseBodySuccess.
+const (
+	GetAdminPersonnelTracking200JSONResponseBodySuccessTrue GetAdminPersonnelTracking200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetAdminPersonnelTracking200JSONResponseBodySuccess enum.
+func (e GetAdminPersonnelTracking200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetAdminPersonnelTracking200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
@@ -5139,6 +5172,21 @@ func (e PostIntegrationsPersonelEvents200JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
+// Defines values for PostLocationLogs200JSONResponseBodySuccess.
+const (
+	PostLocationLogs200JSONResponseBodySuccessTrue PostLocationLogs200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostLocationLogs200JSONResponseBodySuccess enum.
+func (e PostLocationLogs200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostLocationLogs200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetMasterReviewsParamsType.
 const (
 	GetMasterReviewsParamsTypePELANGGARAN GetMasterReviewsParamsType = "PELANGGARAN"
@@ -5721,6 +5769,21 @@ const (
 func (e GetPersonnelsById200JSONResponseBodySuccess) Valid() bool {
 	switch e {
 	case GetPersonnelsById200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetPersonnelsByIdPosition200JSONResponseBodySuccess.
+const (
+	GetPersonnelsByIdPosition200JSONResponseBodySuccessTrue GetPersonnelsByIdPosition200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetPersonnelsByIdPosition200JSONResponseBodySuccess enum.
+func (e GetPersonnelsByIdPosition200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetPersonnelsByIdPosition200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
@@ -6414,6 +6477,21 @@ func (e GetTeamsMe200JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
+// Defines values for GetTeamsByCodeMap200JSONResponseBodySuccess.
+const (
+	GetTeamsByCodeMap200JSONResponseBodySuccessTrue GetTeamsByCodeMap200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetTeamsByCodeMap200JSONResponseBodySuccess enum.
+func (e GetTeamsByCodeMap200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetTeamsByCodeMap200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetTeamsByCodeMembers200JSONResponseBodySuccess.
 const (
 	GetTeamsByCodeMembers200JSONResponseBodySuccessTrue GetTeamsByCodeMembers200JSONResponseBodySuccess = true
@@ -6423,21 +6501,6 @@ const (
 func (e GetTeamsByCodeMembers200JSONResponseBodySuccess) Valid() bool {
 	switch e {
 	case GetTeamsByCodeMembers200JSONResponseBodySuccessTrue:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for GetTeamsByIdMap200JSONResponseBodySuccess.
-const (
-	GetTeamsByIdMap200JSONResponseBodySuccessTrue GetTeamsByIdMap200JSONResponseBodySuccess = true
-)
-
-// Valid indicates whether the value is a known member of the GetTeamsByIdMap200JSONResponseBodySuccess enum.
-func (e GetTeamsByIdMap200JSONResponseBodySuccess) Valid() bool {
-	switch e {
-	case GetTeamsByIdMap200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
@@ -7930,6 +7993,21 @@ type ListEnvelope struct {
 // ListEnvelopeSuccess defines model for ListEnvelope.Success.
 type ListEnvelopeSuccess bool
 
+// LocationBatchInput defines model for LocationBatchInput.
+type LocationBatchInput struct {
+	// Points Paling banyak 100 titik; lebih dari itu LOCATION_BATCH_TOO_LARGE.
+	Points []LocationPoint `json:"points"`
+}
+
+// LocationBatchResult defines model for LocationBatchResult.
+type LocationBatchResult struct {
+	// Accepted Titik yang lolos pemeriksaan, baru tersimpan maupun sudah ada (kirim ulang aman).
+	Accepted int `json:"accepted"`
+
+	// Rejected Titik yang dibuang: terlalu lama, terlalu jauh ke depan, atau di luar jangkauan.
+	Rejected int `json:"rejected"`
+}
+
 // LocationLog defines model for LocationLog.
 type LocationLog struct {
 	Accuracy       *float64   `json:"accuracy,omitempty"`
@@ -7939,6 +8017,17 @@ type LocationLog struct {
 	LoggedAt       *time.Time `json:"logged_at,omitempty"`
 	OrganizationId *int64     `json:"organization_id,omitempty"`
 	PersonnelId    *int64     `json:"personnel_id,omitempty"`
+}
+
+// LocationPoint Satu titik GPS hasil rekam perangkat (Fase 08.2).
+type LocationPoint struct {
+	AccuracyMeters float64 `json:"accuracy_meters"`
+	BatteryPct     *int    `json:"battery_pct,omitempty"`
+	Latitude       float64 `json:"latitude"`
+
+	// LoggedAt Waktu perangkat merekam titik. Ditolak bila lebih dari 24 jam lalu atau lebih dari 5 menit ke depan.
+	LoggedAt  time.Time `json:"logged_at"`
+	Longitude float64   `json:"longitude"`
 }
 
 // LoginRequest defines model for LoginRequest.
@@ -8840,6 +8929,28 @@ type PersonnelMembership struct {
 	TeamCode *string   `json:"team_code,omitempty"`
 	TeamName *string   `json:"team_name,omitempty"`
 }
+
+// PersonnelPosition Posisi terakhir seorang anggota regu. Pada daftar peta hanya anggota online yang muncul, jadi koordinat selalu terisi; pada `GET /personnels/{id}/position` anggota yang offline dikembalikan dengan `online: false` dan koordinat null.
+type PersonnelPosition struct {
+	AccuracyMeters *float64   `json:"accuracy_meters,omitempty"`
+	FullName       string     `json:"full_name"`
+	LastSeenAt     *time.Time `json:"last_seen_at,omitempty"`
+	Latitude       *float64   `json:"latitude,omitempty"`
+
+	// LoggedAt Waktu titik terakhir direkam perangkat.
+	LoggedAt     *time.Time            `json:"logged_at,omitempty"`
+	Longitude    *float64              `json:"longitude,omitempty"`
+	Online       bool                  `json:"online"`
+	PersonnelId  int64                 `json:"personnel_id"`
+	PhotoUrl     *string               `json:"photo_url,omitempty"`
+	PositionName *string               `json:"position_name,omitempty"`
+	ProjectCode  string                `json:"project_code"`
+	Role         PersonnelPositionRole `json:"role"`
+	TeamCode     string                `json:"team_code"`
+}
+
+// PersonnelPositionRole defines model for PersonnelPosition.Role.
+type PersonnelPositionRole string
 
 // PersonnelReview Penilaian Personil (WEB `/personnel_review`; mobile `my_review`/`send_review`) — DL-59. Nominal reward/punishment sebagai string desimal (DL-38, nullable). `period` = bulan/tanggal (DATE-ONLY, relatif TZ proyek DL-03). Integrasi uang (payroll/koperasi) belum ditentukan.
 type PersonnelReview struct {
@@ -10797,6 +10908,15 @@ type GetAdminPersonnelReviewsParamsType string
 // GetAdminPersonnelReviews200JSONResponseBodySuccess defines parameters for GetAdminPersonnelReviews.
 type GetAdminPersonnelReviews200JSONResponseBodySuccess bool
 
+// GetAdminPersonnelTrackingParams defines parameters for GetAdminPersonnelTracking.
+type GetAdminPersonnelTrackingParams struct {
+	ProjectCode string  `form:"project_code" json:"project_code"`
+	TeamCode    *string `form:"team_code,omitempty" json:"team_code,omitempty"`
+}
+
+// GetAdminPersonnelTracking200JSONResponseBodySuccess defines parameters for GetAdminPersonnelTracking.
+type GetAdminPersonnelTracking200JSONResponseBodySuccess bool
+
 // GetAdminPersonnelByPersonnelIdLeaveLedgerParams defines parameters for GetAdminPersonnelByPersonnelIdLeaveLedger.
 type GetAdminPersonnelByPersonnelIdLeaveLedgerParams struct {
 	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
@@ -12042,6 +12162,9 @@ type PostInstructionsByIdAck200JSONResponseBodySuccess bool
 // PostIntegrationsPersonelEvents200JSONResponseBodySuccess defines parameters for PostIntegrationsPersonelEvents.
 type PostIntegrationsPersonelEvents200JSONResponseBodySuccess bool
 
+// PostLocationLogs200JSONResponseBodySuccess defines parameters for PostLocationLogs.
+type PostLocationLogs200JSONResponseBodySuccess bool
+
 // GetMasterReviewsParams defines parameters for GetMasterReviews.
 type GetMasterReviewsParams struct {
 	// Type Filter tipe penilaian (Pelanggaran/Penghargaan) — legacy get_master_review_by_type.
@@ -12404,19 +12527,11 @@ type GetPersonnelReviewsById200JSONResponseBodySuccess bool
 
 // GetPersonnelTrackingParams defines parameters for GetPersonnelTracking.
 type GetPersonnelTrackingParams struct {
-	PersonnelId *int64 `form:"personnel_id,omitempty" json:"personnel_id,omitempty"`
+	// ProjectCode Harus proyek yang dijangkau izin (PROJECT).
+	ProjectCode *string `form:"project_code,omitempty" json:"project_code,omitempty"`
 
-	// TeamId Filter scope regu.
-	TeamId *TeamIdParam `form:"team_id,omitempty" json:"team_id,omitempty"`
-
-	// DateFrom Awal rentang (YYYY-MM-DD, relatif TZ proyek).
-	DateFrom *DateFromParam `form:"date_from,omitempty" json:"date_from,omitempty"`
-
-	// DateTo Akhir rentang (YYYY-MM-DD, relatif TZ proyek).
-	DateTo *DateToParam `form:"date_to,omitempty" json:"date_to,omitempty"`
-
-	// Since Delta-sync watermark (updated_at). Tanpa since → full pull (DL-34).
-	Since *SinceParam `form:"since,omitempty" json:"since,omitempty"`
+	// TeamCode Harus regu yang dijangkau izin.
+	TeamCode *string `form:"team_code,omitempty" json:"team_code,omitempty"`
 }
 
 // GetPersonnelTracking200JSONResponseBodySuccess defines parameters for GetPersonnelTracking.
@@ -12424,6 +12539,9 @@ type GetPersonnelTracking200JSONResponseBodySuccess bool
 
 // GetPersonnelsById200JSONResponseBodySuccess defines parameters for GetPersonnelsById.
 type GetPersonnelsById200JSONResponseBodySuccess bool
+
+// GetPersonnelsByIdPosition200JSONResponseBodySuccess defines parameters for GetPersonnelsByIdPosition.
+type GetPersonnelsByIdPosition200JSONResponseBodySuccess bool
 
 // GetPlatformHeadcountBreakdownParams defines parameters for GetPlatformHeadcountBreakdown.
 type GetPlatformHeadcountBreakdownParams struct {
@@ -12844,11 +12962,11 @@ type GetTeams200JSONResponseBodySuccess bool
 // GetTeamsMe200JSONResponseBodySuccess defines parameters for GetTeamsMe.
 type GetTeamsMe200JSONResponseBodySuccess bool
 
+// GetTeamsByCodeMap200JSONResponseBodySuccess defines parameters for GetTeamsByCodeMap.
+type GetTeamsByCodeMap200JSONResponseBodySuccess bool
+
 // GetTeamsByCodeMembers200JSONResponseBodySuccess defines parameters for GetTeamsByCodeMembers.
 type GetTeamsByCodeMembers200JSONResponseBodySuccess bool
-
-// GetTeamsByIdMap200JSONResponseBodySuccess defines parameters for GetTeamsByIdMap.
-type GetTeamsByIdMap200JSONResponseBodySuccess bool
 
 // PostWsTicket200JSONResponseBodySuccess defines parameters for PostWsTicket.
 type PostWsTicket200JSONResponseBodySuccess bool
@@ -13211,6 +13329,9 @@ type PostInstructionsByIdAckJSONRequestBody = InstructionFeedback
 
 // PostIntegrationsPersonelEventsJSONRequestBody defines body for PostIntegrationsPersonelEvents for application/json ContentType.
 type PostIntegrationsPersonelEventsJSONRequestBody = PersonelEvent
+
+// PostLocationLogsJSONRequestBody defines body for PostLocationLogs for application/json ContentType.
+type PostLocationLogsJSONRequestBody = LocationBatchInput
 
 // PostMediaJSONRequestBody defines body for PostMedia for application/json ContentType.
 type PostMediaJSONRequestBody = MediaCreate

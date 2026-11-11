@@ -1422,6 +1422,18 @@ type Letterhead struct {
 	UpdatedAt      pgtype.Timestamptz
 }
 
+type LocationLog struct {
+	ID             int64
+	OrganizationID int64
+	PersonnelID    int64
+	LoggedAt       pgtype.Timestamptz
+	Latitude       float64
+	Longitude      float64
+	AccuracyMeters float64
+	BatteryPct     pgtype.Int2
+	CreatedAt      pgtype.Timestamptz
+}
+
 type Medium struct {
 	ID                 int64
 	OrganizationID     int64
@@ -1514,6 +1526,15 @@ type Personnel struct {
 	CompanyID      pgtype.Int8
 	CompanyName    pgtype.Text
 	PositionName   pgtype.Text
+}
+
+type PersonnelLastLocation struct {
+	OrganizationID int64
+	PersonnelID    int64
+	LoggedAt       pgtype.Timestamptz
+	Latitude       float64
+	Longitude      float64
+	AccuracyMeters float64
 }
 
 type PersonnelShiftAssignment struct {

@@ -153,6 +153,12 @@ func (s *Service) scheduled(ctx context.Context, organizationID, personnelID int
 	return out, nil
 }
 
+// Scheduled returns the shifts the person can check into at now, without the records already
+// captured: Checkable minus its database read. Location tracking (08.2) asks it who is on shift.
+func (s *Service) Scheduled(ctx context.Context, organizationID, personnelID int64, now time.Time) ([]CheckableShift, error) {
+	return s.scheduled(ctx, organizationID, personnelID, now)
+}
+
 // find returns the checkable shift a shift_ref names (without its Record), or
 // ErrShiftNotActive. Matching the ref against the checkable shifts is what makes it safe: see
 // shiftKey.ref.

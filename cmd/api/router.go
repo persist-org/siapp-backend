@@ -12,6 +12,7 @@ import (
 	"siapp/pkg/attendance"
 	"siapp/pkg/identity"
 	"siapp/pkg/leave"
+	"siapp/pkg/location"
 	"siapp/pkg/masterdata"
 	"siapp/pkg/media"
 	"siapp/pkg/notifications"
@@ -161,6 +162,13 @@ func newRouter(d deps) *chi.Mux {
 	leaveHandler := leave.NewHandler(leaveService, accessService, idempotency.Middleware(true))
 	leaveHandler.MountField(router)
 
+	// GPS tracking (08.2): devices send points while on shift, the DANRU and the web monitor read
+	// the maps. "On shift" is the attendance module's notion, so a swapped-in guard is tracked too.
+	locationService := location.NewService(d.Pool, d.Redis, d.RedisPrefix, d.Clock,
+		location.AttendanceShifts{Service: attendanceService}, presenceService, publisher, d.Logger)
+	locationHandler := location.NewHandler(locationService)
+	locationHandler.MountField(router, accessService)
+
 	// The WebSocket (05.3). The hub is shared with the Redis subscriber main starts, which feeds
 	// it the events other instances publish.
 	hub := d.Hub
@@ -171,6 +179,7 @@ func newRouter(d deps) *chi.Mux {
 		realtime.NewAuthorizer(d.Pool, accessService, d.Clock), d.Clock, d.Logger,
 		realtime.Config{OriginPatterns: realtime.OriginPatternsOf(d.CORSOrigins)})
 	realtimeHandler.UsePresence(presenceService)
+	realtimeHandler.UseLocation(locationService) // location.update frames (08.2)
 	realtimeHandler.Mount(router)
 
 	// ⚠ The admin group: access.RequireAdmin is mounted ONCE here, so every route a module
@@ -183,6 +192,7 @@ func newRouter(d deps) *chi.Mux {
 		masterdataHandler.MountAdmin(admin)
 		leaveHandler.MountAdmin(admin)
 		attendanceHandler.MountAdmin(admin)
+		locationHandler.MountAdmin(admin)
 	})
 
 	return router
