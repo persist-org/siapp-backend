@@ -1472,8 +1472,8 @@ components:
       description: 'Satu nomor darurat proyek (Phase 06.2). `stakeholder_type_id` menunjuk ke tipe stakeholder organisasi
         (`/admin/stakeholder-types`): tidak ditemukan atau sudah dihapus → 422 STAKEHOLDER_TYPE_NOT_FOUND. `phone` disimpan
         sebagai E.164 (`+62812…`); nomor lokal (`0812…`, `62812…`) dan spasi/strip diterima dan dinormalkan, nomor darurat
-        nasional (110, 112, 113, 115, 118, 119, 123, 129) disimpan apa adanya. Nomor yang tidak dikenali → 422. Maksimum
-        20 kontak per proyek; tipe + nomor yang sama dua kali ditolak.'
+        nasional (110, 112, 113, 115, 118, 119, 123, 129) disimpan apa adanya. Nomor yang tidak dikenali → 422. Maksimum 20
+        kontak per proyek; tipe + nomor yang sama dua kali ditolak.'
       properties:
         stakeholder_type_id:
           type: integer
@@ -2704,8 +2704,8 @@ components:
     StakeholderTypeCreate:
       type: object
       description: Nama unik di organisasi (tanpa membedakan huruf besar/kecil, termasuk tipe nonaktif) → 409 STAKEHOLDER_TYPE_NAME_TAKEN.
-        Kode yang sudah dipakai (juga oleh tipe terhapus) → 409 STAKEHOLDER_TYPE_CODE_TAKEN; kode yang dibuat dari nama
-        diberi akhiran _2, _3 bila terpakai.
+        Kode yang sudah dipakai (juga oleh tipe terhapus) → 409 STAKEHOLDER_TYPE_CODE_TAKEN; kode yang dibuat dari nama diberi
+        akhiran _2, _3 bila terpakai.
       required:
       - name
       properties:
@@ -2718,8 +2718,8 @@ components:
         default_phone:
           type: string
           maxLength: 50
-          description: E.164 (+62812…), nomor lokal (0812…) atau nomor darurat nasional (110, 113, …); kosong = tanpa
-            nomor cadangan.
+          description: E.164 (+62812…), nomor lokal (0812…) atau nomor darurat nasional (110, 113, …); kosong = tanpa nomor
+            cadangan.
         sort_order:
           type: integer
           minimum: 0
@@ -15354,8 +15354,8 @@ paths:
       tags:
       - Masters
       summary: Buku telepon darurat proyek
-      description: 'Hanya untuk anggota proyek hari ini (menurut zona waktu proyek); yang lain → 403 NOT_PROJECT_MEMBER,
-        proyek yang tidak ada atau milik organisasi lain → 404. Isinya kontak proyek ditambah nomor cadangan tiap tipe stakeholder
+      description: 'Hanya untuk anggota proyek hari ini (menurut zona waktu proyek); yang lain → 403 NOT_PROJECT_MEMBER, proyek
+        yang tidak ada atau milik organisasi lain → 404. Isinya kontak proyek ditambah nomor cadangan tiap tipe stakeholder
         aktif yang proyeknya belum punya kontak (`is_default: true`), diurutkan menurut urutan tipe.'
       responses:
         '200':
