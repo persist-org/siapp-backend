@@ -29,6 +29,9 @@ func configure(t *testing.T) {
 	t.Setenv("MIGRATE_DSN", testkit.OwnerURL(t))
 	t.Setenv("REDIS_URL", "redis://localhost:6379/0")
 	t.Setenv("JWT_SECRET", testkit.JWTSecret)
+	// Set here, not left to .env: the test must pass on a machine with no .env (CI).
+	t.Setenv("STORAGE_DRIVER", "local")
+	t.Setenv("STORAGE_LOCAL_SIGNING_KEY", "seed-test-signing-key-seed-test-signing-key")
 	t.Setenv("PERSONEL_BASE_URL", baseURL)
 	t.Setenv("PERSONEL_INTEGRATION_KEY", fake.Key)
 	// The group is the fixtures' first company only, so the second company's people are
