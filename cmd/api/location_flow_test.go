@@ -361,6 +361,7 @@ func TestLocationReachesTheDanrusSocket(t *testing.T) {
 		// Off shift (tracking switched off for the project) the frame is refused with a reason,
 		// and the socket stays open.
 		f.exec("UPDATE projects SET gps_tracking_enabled = false WHERE code = '1K-IBMI-S'")
+		time.Sleep(1100 * time.Millisecond) // past the one-frame-per-second limit
 		member.send("location.update", map[string]any{"latitude": -6.3, "longitude": 106.9, "accuracy_meters": 8})
 		refused := member.until("error", 5*time.Second)
 		require.NotNil(t, refused)
@@ -369,5 +370,41 @@ func TestLocationReachesTheDanrusSocket(t *testing.T) {
 		require.EqualValues(t, realtime.ErrorForbidden, data["code"])
 		member.send("ping", map[string]any{})
 		require.NotNil(t, member.until("pong", 5*time.Second), "the socket survived the refusal")
+	})
+}
+
+func TestLocationFramesAreRateLimitedAndEndWithTheSession(t *testing.T) {
+	f := newFlow(t)
+	_, danruTok := f.danru()
+	f.onShift(f.person)
+	member := f.dial(f.personTok)
+
+	t.Run("a second location.update within a second is refused, the socket stays", func(t *testing.T) {
+		frame := map[string]any{"latitude": -6.25, "longitude": 106.85, "accuracy_meters": 8}
+		member.send("location.update", frame)
+		member.send("location.update", frame)
+		refused := member.until("error", 5*time.Second)
+		require.NotNil(t, refused)
+		require.EqualValues(t, realtime.ErrorTooFast, refused["data"].(map[string]any)["code"])
+		member.send("ping", map[string]any{})
+		require.NotNil(t, member.until("pong", 5*time.Second))
+	})
+
+	t.Run("after logout the open socket neither counts as online nor stores positions", func(t *testing.T) {
+		code, raw := f.do(http.MethodPost, "/api/v1/auth/logout", f.personTok, nil, nil)
+		require.Less(t, code, 300, string(raw))
+		time.Sleep(1100 * time.Millisecond) // past the rate limit, so only the session can refuse
+		var before int
+		f.query([]any{&before}, "SELECT count(*) FROM location_logs WHERE personnel_id = $1", f.person)
+
+		member.send("location.update", map[string]any{"latitude": -6.3, "longitude": 106.9, "accuracy_meters": 8})
+		member.send("ping", map[string]any{})
+		require.Nil(t, member.until("pong", 2*time.Second), "the socket is closed, not answering")
+
+		online, _ := f.member(danruTok, "1K-IBMI-S1", f.person)
+		require.False(t, online, "a frame of an ended session is not a sign of life")
+		var after int
+		f.query([]any{&after}, "SELECT count(*) FROM location_logs WHERE personnel_id = $1", f.person)
+		require.Equal(t, before, after)
 	})
 }

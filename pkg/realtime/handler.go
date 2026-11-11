@@ -35,6 +35,7 @@ const (
 // refused, or the server failed. They mirror the close codes' numbering.
 const (
 	ErrorForbidden = 4403
+	ErrorTooFast   = 4429
 	ErrorInternal  = 4500
 )
 
@@ -46,6 +47,7 @@ const (
 	maxRoomsPerFrame    = 32
 	maxRoomsPerConn     = 64
 	locationTimeout     = 5 * time.Second
+	minLocationInterval = time.Second
 )
 
 // Denial reasons in subscribe.ack.
@@ -242,7 +244,9 @@ type session struct {
 	cancel     context.CancelFunc
 	lastPong   atomic.Int64
 	rechecking atomic.Bool
-	closeOnce  sync.Once
+	// lastLocation is when the last location.update was handled; only the read loop touches it.
+	lastLocation time.Time
+	closeOnce    sync.Once
 }
 
 // closeWith ends the connection with a close code, once. It does not wait for the peer.
@@ -396,7 +400,9 @@ func (s *session) readLoop() {
 		// or a proxy in between that does not pass control frames through but sends its own
 		// {"type":"ping"} must not be closed for it.
 		s.lastPong.Store(time.Now().UnixNano())
-		s.touch()
+		if !s.touch() {
+			continue
+		}
 		var f frame
 		if json.Unmarshal(raw, &f) != nil || f.Type == "" {
 			s.reply("error", "", map[string]any{"code": CloseBadFrame, "message": "frame is not valid JSON with a type"})
@@ -430,6 +436,14 @@ func (s *session) readLoop() {
 // frame carrying the reason (TRACKING_DISABLED, a validation failure), never as a close: the
 // phone keeps its socket, and its other rooms, when one point is refused.
 func (s *session) locationUpdate(data json.RawMessage) {
+	// A phone sends a position every few seconds; more than one a second is a bug or abuse, and
+	// each frame costs several queries. The extra ones are refused, not queued.
+	now := time.Now()
+	if now.Sub(s.lastLocation) < minLocationInterval {
+		s.reply("error", "", map[string]any{"code": ErrorTooFast, "message": "location.update too frequent"})
+		return
+	}
+	s.lastLocation = now
 	ctx, cancel := context.WithTimeout(s.ctx, locationTimeout)
 	defer cancel()
 	err := s.h.location.IngestFrame(ctx, s.principal, data)
@@ -455,17 +469,27 @@ func (s *session) locationUpdate(data json.RawMessage) {
 	s.reply("error", "", data2)
 }
 
-// touch counts a frame as the person being seen. Bounded and never fatal, like the HTTP
-// middleware: a slow Redis must not stall the read loop.
-func (s *session) touch() {
+// touch counts a frame as the person being seen, and reports whether the frame may be acted on.
+// Bounded and never fatal, like the HTTP middleware: a slow Redis must not stall the read loop.
+//
+// ⚠ A frame of a session that has been ended (logout, a device reset) is not a sign of life: the
+// socket is only closed on the next keep-alive tick, and until then a phone that just logged out
+// would show as online again and could still send positions. The session is looked up on every
+// frame (one Redis read), and a revoked one is closed with 4401.
+func (s *session) touch() bool {
+	if s.h.revocations.IsRevoked(s.ctx, s.principal.SessionID) {
+		s.closeWith(CloseUnauthorized, "session ended")
+		return false
+	}
 	if s.h.presence == nil {
-		return
+		return true
 	}
 	ctx, cancel := context.WithTimeout(s.ctx, 50*time.Millisecond)
 	defer cancel()
 	if err := s.h.presence.Touch(ctx, s.principal.OrganizationID, s.principal.PersonnelID); err != nil && s.ctx.Err() == nil {
 		s.h.logger.Warn("realtime: presence touch failed", slog.Any("error", err))
 	}
+	return true
 }
 
 func (s *session) subscribe(raw json.RawMessage) {

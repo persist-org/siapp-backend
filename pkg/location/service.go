@@ -207,32 +207,30 @@ func (s *Service) broadcast(ctx context.Context, p auth.Principal, sites []Site,
 	if !first {
 		return
 	}
+	// Each room gets only the codes it is about: a person on shifts in two regu must not tell one
+	// regu's DANRU the code of the other.
+	teamsByRoom := map[string][]string{}
 	var rooms []string
-	for _, site := range sites {
-		for _, room := range []string{realtime.TeamRoom(site.TeamCode, realtime.ChannelTracking), realtime.ProjectRoom(site.ProjectCode, realtime.ChannelTracking)} {
-			if !slices.Contains(rooms, room) {
-				rooms = append(rooms, room)
-			}
+	add := func(room, team string) {
+		if _, seen := teamsByRoom[room]; !seen {
+			rooms = append(rooms, room)
+		}
+		if !slices.Contains(teamsByRoom[room], team) {
+			teamsByRoom[room] = append(teamsByRoom[room], team)
 		}
 	}
-	data := map[string]any{
-		"personnel_id": p.PersonnelID, "logged_at": pt.LoggedAt.UTC(),
-		"latitude": pt.Latitude, "longitude": pt.Longitude, "accuracy_meters": pt.AccuracyMeters,
-		"team_codes": teamCodesOf(sites),
+	for _, site := range sites {
+		add(realtime.TeamRoom(site.TeamCode, realtime.ChannelTracking), site.TeamCode)
+		add(realtime.ProjectRoom(site.ProjectCode, realtime.ChannelTracking), site.TeamCode)
 	}
 	for _, room := range rooms {
+		data := map[string]any{
+			"personnel_id": p.PersonnelID, "logged_at": pt.LoggedAt.UTC(),
+			"latitude": pt.Latitude, "longitude": pt.Longitude, "accuracy_meters": pt.AccuracyMeters,
+			"team_codes": teamsByRoom[room],
+		}
 		if err := s.publisher.Publish(ctx, p.OrganizationID, room, frameType, data); err != nil {
 			s.logger.WarnContext(ctx, "location: broadcast failed", slog.String("room", room), slog.String("error", err.Error()))
 		}
 	}
-}
-
-func teamCodesOf(sites []Site) []string {
-	var out []string
-	for _, s := range sites {
-		if !slices.Contains(out, s.TeamCode) {
-			out = append(out, s.TeamCode)
-		}
-	}
-	return out
 }

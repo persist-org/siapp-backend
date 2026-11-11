@@ -107,9 +107,11 @@ GRANT EXECUTE ON FUNCTION ensure_location_partition(date) TO siapp_app;
 REVOKE ALL ON FUNCTION drop_location_partitions(timestamptz) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION drop_location_partitions(timestamptz) TO siapp_app;
 
--- The current month and the next three; the monthly task keeps the window moving.
+-- The previous month, the current one and the next three; the monthly task keeps the window
+-- moving. The previous month is there because a point may be up to 24 h old: on the 1st of a
+-- month, a phone's late batch still holds points from the month before.
 SELECT ensure_location_partition((date_trunc('month', now() AT TIME ZONE 'UTC') + make_interval(months => m))::date)
-FROM generate_series(0, 3) AS m;
+FROM generate_series(-1, 3) AS m;
 
 -- personnel_last_locations: where each person was last seen
 -- ===========================================================

@@ -92,6 +92,17 @@ services:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
 
+  # Dev Swagger page: only the operations the API serves (api/openapi.dev.yaml, made by
+  # scripts/make-dev-spec.py). Behind the dev nginx: / -> 18081, /api/ -> the API.
+  swagger:
+    image: swaggerapi/swagger-ui:v5.17.14     # if the tag is not found, use :latest
+    restart: unless-stopped
+    environment:
+      SWAGGER_JSON: /spec/openapi.yaml
+      PERSIST_AUTHORIZATION: "true"
+    volumes: ["./api/openapi.dev.yaml:/spec/openapi.yaml:ro"]
+    ports: ["127.0.0.1:18081:8080"]
+
   # CCTV stream gateway (Phase 13.2, after the camera vendor is confirmed).
   mediamtx:
     profiles: [cctv]

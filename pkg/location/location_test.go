@@ -29,7 +29,7 @@ func TestMonthlyPartitionsAreCreatedAhead(t *testing.T) {
 	require.NoError(t, m.EnsurePartitions(t.Context()), "idempotent")
 
 	first := time.Now().UTC()
-	for i := 0; i <= 3; i++ {
+	for i := -1; i <= 3; i++ {
 		month := time.Date(first.Year(), first.Month()+time.Month(i), 1, 0, 0, 0, 0, time.UTC)
 		require.True(t, partitionExists(t, "location_logs_"+month.Format("2006_01")), month.Format("2006-01"))
 	}

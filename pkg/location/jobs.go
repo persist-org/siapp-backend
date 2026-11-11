@@ -26,7 +26,8 @@ const (
 	// proposes 90; change this constant when that decision is adopted.
 	locationRetention = 30 * 24 * time.Hour
 	// partitionsAhead is how many months beyond the current one stay ready. The migration creates
-	// the current month and the next three; the monthly task keeps the window moving.
+	// the previous month, the current one and the next three; the monthly task keeps the window
+	// moving. The previous month is kept because points may be up to 24 h old (see Ingest).
 	partitionsAhead = 3
 	jobTimeout      = 5 * time.Minute
 )
@@ -50,14 +51,14 @@ func NewMaintenance(pool *pgxpool.Pool, c clock.Clock) *Maintenance {
 	return &Maintenance{pool: pool, clock: c}
 }
 
-// EnsurePartitions makes sure the partitions of the current month and the next partitionsAhead
-// exist. It is idempotent. It runs through a SECURITY DEFINER function because the app role cannot
+// EnsurePartitions makes sure the partitions of the previous month, the current one and the next
+// partitionsAhead exist. It is idempotent. It runs through a SECURITY DEFINER function because the app role cannot
 // create tables itself.
 func (m *Maintenance) EnsurePartitions(ctx context.Context) error {
 	now := m.clock.Now().UTC()
 	first := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
 	q := db.New(m.pool)
-	for i := 0; i <= partitionsAhead; i++ {
+	for i := -1; i <= partitionsAhead; i++ {
 		month := first.AddDate(0, i, 0)
 		if err := q.EnsureLocationPartition(ctx, pgtype.Date{Time: month, Valid: true}); err != nil {
 			return fmt.Errorf("location: ensure partition %s: %w", month.Format("2006-01"), err)
