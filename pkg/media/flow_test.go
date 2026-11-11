@@ -335,7 +335,7 @@ func testReissueNearOrphanAge(t *testing.T, d driver) {
 	f.clock.Advance(90 * time.Minute)
 	_, err := f.cleaner().Cleanup(t.Context())
 	require.NoError(t, err)
-	status, out =f.reissue(token, reg.Data.ID)
+	status, out = f.reissue(token, reg.Data.ID)
 	require.Equal(t, http.StatusNotFound, status)
 	require.Equal(t, "MEDIA_NOT_FOUND", out.reason())
 }
