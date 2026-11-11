@@ -110,17 +110,17 @@ jobs:
     steps:
       - name: Check the deploy settings exist
         env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_HOST: ${{ vars.SSH_HOST }}
+          SSH_USER: ${{ vars.SSH_USER }}
           SSH_KEY: ${{ secrets.SSH_KEY }}
           SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
           API_URL: ${{ vars.API_URL }}
         run: |
           missing=""
-          [ -n "$SSH_HOST" ] || missing="$missing SSH_HOST"
-          [ -n "$SSH_USER" ] || missing="$missing SSH_USER"
-          [ -n "$SSH_KEY" ] || missing="$missing SSH_KEY"
-          [ -n "$SSH_KNOWN_HOSTS" ] || missing="$missing SSH_KNOWN_HOSTS"
+          [ -n "$SSH_HOST" ] || missing="$missing SSH_HOST(variable)"
+          [ -n "$SSH_USER" ] || missing="$missing SSH_USER(variable)"
+          [ -n "$SSH_KEY" ] || missing="$missing SSH_KEY(secret)"
+          [ -n "$SSH_KNOWN_HOSTS" ] || missing="$missing SSH_KNOWN_HOSTS(secret)"
           [ -n "$API_URL" ] || missing="$missing API_URL(variable)"
           if [ -n "$missing" ]; then
             echo "::error::Empty or missing in the 'development' environment (or repository):$missing"
@@ -129,9 +129,9 @@ jobs:
 
       - name: Deploy over SSH
         env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-          SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_HOST: ${{ vars.SSH_HOST }}
+          SSH_USER: ${{ vars.SSH_USER }}
+          SSH_PORT: ${{ vars.SSH_PORT }}
           SSH_KEY: ${{ secrets.SSH_KEY }}
           SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
         run: |
