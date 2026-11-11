@@ -21,10 +21,18 @@ import (
 // Handler is the HTTP side of location: decode, call the service, respond.
 type Handler struct {
 	service *Service
+	limiter *httpx.RateLimiter
 }
 
-// NewHandler returns the handler.
-func NewHandler(service *Service) *Handler { return &Handler{service: service} }
+// uploadLimit is how many uploads one person may make per minute. A phone sends a batch every few
+// seconds at most; the limit leaves room for a queue of offline batches being flushed.
+var uploadLimit = httpx.PerPeriod(30, time.Minute)
+
+// NewHandler returns the handler. limiter keeps the upload route from being hammered; nil turns
+// the limit off (tests of other things).
+func NewHandler(service *Service, limiter *httpx.RateLimiter) *Handler {
+	return &Handler{service: service, limiter: limiter}
+}
 
 // MountField adds the routes of the field app. The upload needs a signed-in person only: whether
 // they are on a shift that tracks is the usecase's decision. The three map routes need
@@ -67,6 +75,14 @@ func (h *Handler) upload(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		httpx.Error(w, r, apperr.ErrUnauthenticated)
 		return
+	}
+	// Per person, not per address: phones of one site share a NAT address.
+	if h.limiter != nil {
+		key := strconv.FormatInt(p.OrganizationID, 10) + ":" + strconv.FormatInt(p.PersonnelID, 10)
+		if allowed, retryAfter := h.limiter.Allow(r.Context(), "location-upload", key, uploadLimit); !allowed {
+			httpx.TooManyRequests(w, r, retryAfter)
+			return
+		}
 	}
 	var in batchJSON
 	if err := httpx.Decode(r, &in); err != nil {
@@ -244,7 +260,7 @@ func (s *Service) IngestFrame(ctx context.Context, p auth.Principal, data json.R
 	}
 	if res.Rejected > 0 {
 		// A batch reports this in its result; a single live frame has no result, so say it.
-		return apperr.ErrValidation.WithFields(apperr.FieldError{Field: "logged_at", Code: "out_of_window", Message: "Titik terlalu lama atau terlalu jauh ke depan."})
+		return apperr.ErrValidation.WithFields(apperr.FieldError{Field: "logged_at", Code: "out_of_window", Message: "Titik terlalu lama, terlalu jauh ke depan, atau direkam di luar jam dinas."})
 	}
 	return nil
 }

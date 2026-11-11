@@ -86,24 +86,21 @@ func (s *Service) broadcastKey(orgID, personnelID int64) string {
 
 // Ingest stores the points of one person. REST and the WebSocket both come through here.
 //
-// ⚠ The privacy contract. A position is only stored while the person is on a shift at a project
-// whose gps_tracking_enabled is on (DL-48): off duty, or at a project that has tracking off,
-// nothing is recorded and the answer is TRACKING_DISABLED, so even a phone that keeps sending
-// leaves no trail. "On shift" is the same notion as for a check-in (attendance.Scheduled).
+// ⚠ The privacy contract. A position is only stored if it was RECORDED while the person worked a
+// shift at a project whose gps_tracking_enabled is on (DL-48). Each point is judged against the
+// shift windows that contain its own logged_at, not against the moment it is uploaded:
+//   - a point recorded off duty, or at a project with tracking off, is dropped even when the phone
+//     sends it during a later shift, so no trail of someone's free time is kept;
+//   - a batch recorded during a shift and uploaded after it ended is still accepted, which is what
+//     the 24 h window for old points is for.
+//
+// The batch is refused with TRACKING_DISABLED only when no point falls in any tracked window.
+// Otherwise the points that do are stored and the others count as rejected.
 func (s *Service) Ingest(ctx context.Context, p auth.Principal, points []Point) (Result, error) {
 	if len(points) > MaxBatch {
 		return Result{}, ErrBatchTooLarge
 	}
 	now := s.clock.Now()
-	sites, err := s.shifts.OnShift(ctx, p.OrganizationID, p.PersonnelID, now)
-	if err != nil {
-		return Result{}, fmt.Errorf("location: current shifts: %w", err)
-	}
-	sites = slices.DeleteFunc(slices.Clone(sites), func(site Site) bool { return !site.TrackingEnabled })
-	if len(sites) == 0 {
-		return Result{}, ErrTrackingDisabled
-	}
-
 	valid := make([]Point, 0, len(points))
 	for _, pt := range points {
 		if pt.acceptable(now) {
@@ -111,18 +108,47 @@ func (s *Service) Ingest(ctx context.Context, p auth.Principal, points []Point) 
 			valid = append(valid, pt)
 		}
 	}
-	res := Result{Accepted: len(valid), Rejected: len(points) - len(valid)}
+	res := Result{Rejected: len(points) - len(valid)}
 	if len(valid) == 0 {
 		return res, nil
 	}
-	newest := valid[0]
+	from, to := valid[0].LoggedAt, valid[0].LoggedAt
 	for _, pt := range valid[1:] {
+		if pt.LoggedAt.Before(from) {
+			from = pt.LoggedAt
+		}
+		if pt.LoggedAt.After(to) {
+			to = pt.LoggedAt
+		}
+	}
+	windows, err := s.shifts.Windows(ctx, p.OrganizationID, p.PersonnelID, from, to)
+	if err != nil {
+		return Result{}, fmt.Errorf("location: shift windows: %w", err)
+	}
+	windows = slices.DeleteFunc(slices.Clone(windows), func(w Window) bool { return !w.TrackingEnabled })
+	if len(windows) == 0 {
+		return Result{}, ErrTrackingDisabled
+	}
+
+	inShift := make([]Point, 0, len(valid))
+	for _, pt := range valid {
+		if slices.ContainsFunc(windows, func(w Window) bool { return w.contains(pt.LoggedAt) }) {
+			inShift = append(inShift, pt)
+		}
+	}
+	res.Rejected += len(valid) - len(inShift)
+	res.Accepted = len(inShift)
+	if len(inShift) == 0 {
+		return res, nil
+	}
+	newest := inShift[0]
+	for _, pt := range inShift[1:] {
 		if pt.LoggedAt.After(newest.LoggedAt) {
 			newest = pt
 		}
 	}
 
-	raw, err := encodePoints(valid)
+	raw, err := encodePoints(inShift)
 	if err != nil {
 		return Result{}, err
 	}
@@ -152,8 +178,18 @@ func (s *Service) Ingest(ctx context.Context, p auth.Principal, points []Point) 
 	if err := s.presence.Touch(ctx, p.OrganizationID, p.PersonnelID); err != nil {
 		s.logger.WarnContext(ctx, "location: presence touch failed", slog.String("error", err.Error()))
 	}
+	// Only a point recorded in a shift that is running now is live: the maps are for who is on
+	// duty, and a late batch is history, not a position to push.
 	if moved {
-		s.broadcast(ctx, p, sites, newest)
+		var live []Window
+		for _, w := range windows {
+			if w.contains(newest.LoggedAt) && w.contains(now) {
+				live = append(live, w)
+			}
+		}
+		if len(live) > 0 {
+			s.broadcast(ctx, p, live, newest)
+		}
 	}
 	return res, nil
 }
@@ -198,7 +234,7 @@ func encodePoints(points []Point) ([]byte, error) {
 //
 // The frame names ids and codes only (the realtime doc: no name goes through a socket); the map
 // already holds each person's card from REST.
-func (s *Service) broadcast(ctx context.Context, p auth.Principal, sites []Site, pt Point) {
+func (s *Service) broadcast(ctx context.Context, p auth.Principal, windows []Window, pt Point) {
 	first, err := s.rdb.SetNX(ctx, s.broadcastKey(p.OrganizationID, p.PersonnelID), 1, broadcastEvery).Result()
 	if err != nil {
 		s.logger.WarnContext(ctx, "location: broadcast debounce failed", slog.String("error", err.Error()))
@@ -219,9 +255,9 @@ func (s *Service) broadcast(ctx context.Context, p auth.Principal, sites []Site,
 			teamsByRoom[room] = append(teamsByRoom[room], team)
 		}
 	}
-	for _, site := range sites {
-		add(realtime.TeamRoom(site.TeamCode, realtime.ChannelTracking), site.TeamCode)
-		add(realtime.ProjectRoom(site.ProjectCode, realtime.ChannelTracking), site.TeamCode)
+	for _, w := range windows {
+		add(realtime.TeamRoom(w.TeamCode, realtime.ChannelTracking), w.TeamCode)
+		add(realtime.ProjectRoom(w.ProjectCode, realtime.ChannelTracking), w.TeamCode)
 	}
 	for _, room := range rooms {
 		data := map[string]any{

@@ -7,32 +7,37 @@ import (
 	"siapp/pkg/attendance"
 )
 
-// Site is a regu the person is on shift in right now, with whether its project tracks GPS.
-type Site struct {
+// Window is a stretch of time the person works in a regu, with whether its project tracks GPS.
+type Window struct {
 	TeamCode        string
 	ProjectCode     string
 	TrackingEnabled bool
+	StartsAt        time.Time
+	EndsAt          time.Time
 }
 
-// Shifts says where a person is on shift.
+// contains reports whether t falls inside the window, both ends included.
+func (w Window) contains(t time.Time) bool { return !t.Before(w.StartsAt) && !t.After(w.EndsAt) }
+
+// Shifts says when a person works.
 type Shifts interface {
-	OnShift(ctx context.Context, orgID, personnelID int64, now time.Time) ([]Site, error)
+	// Windows returns the person's shifts that overlap [from, to].
+	Windows(ctx context.Context, orgID, personnelID int64, from, to time.Time) ([]Window, error)
 }
 
-// AttendanceShifts answers from the attendance module's shifts, so "on shift" means the same
-// here as for a check-in: the shift window plus its tolerance before and after, and a swapped-in
-// shift counts.
+// AttendanceShifts answers from the attendance module's shifts: the person's own regu's and the
+// ones covered through a swap.
 type AttendanceShifts struct{ Service *attendance.Service }
 
-// OnShift implements Shifts.
-func (a AttendanceShifts) OnShift(ctx context.Context, orgID, personnelID int64, now time.Time) ([]Site, error) {
-	shifts, err := a.Service.Scheduled(ctx, orgID, personnelID, now)
+// Windows implements Shifts.
+func (a AttendanceShifts) Windows(ctx context.Context, orgID, personnelID int64, from, to time.Time) ([]Window, error) {
+	shifts, err := a.Service.ShiftWindows(ctx, orgID, personnelID, from, to)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]Site, 0, len(shifts))
+	out := make([]Window, 0, len(shifts))
 	for _, s := range shifts {
-		out = append(out, Site{TeamCode: s.Team.Code, ProjectCode: s.Project.Code, TrackingEnabled: s.Project.GPSTrackingEnabled})
+		out = append(out, Window{TeamCode: s.TeamCode, ProjectCode: s.ProjectCode, TrackingEnabled: s.Tracking, StartsAt: s.StartsAt, EndsAt: s.EndsAt})
 	}
 	return out, nil
 }

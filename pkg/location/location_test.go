@@ -71,3 +71,15 @@ func TestRetentionDropsOldPartitionsAndKeepsRecentOnes(t *testing.T) {
 	require.NoError(t, err)
 	require.Zero(t, dropped, "nothing else is due")
 }
+
+func TestRetentionRefusesACutoffThatIsTooRecent(t *testing.T) {
+	pool := testkit.Pool(t)
+	// The function may be called by the app role, so it must not wipe recent months on its own
+	// say-so: the worker passes now() - 30 days, nothing nearer than 28 is honoured.
+	for _, cutoff := range []string{"now()", "now() - interval '27 days'"} {
+		_, err := pool.Exec(t.Context(), "SELECT drop_location_partitions("+cutoff+")")
+		require.Error(t, err, cutoff)
+		require.Contains(t, err.Error(), "too recent", cutoff)
+	}
+	require.True(t, partitionExists(t, "location_logs_"+time.Now().UTC().Format("2006_01")), "the running month is untouched")
+}

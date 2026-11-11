@@ -74,7 +74,7 @@ $$;
 
 -- Drops every monthly partition whose range ends at or before cutoff, and returns how many.
 -- Only partitions of location_logs named location_logs_YYYY_MM are considered, so nothing else
--- can be dropped through it. SECURITY DEFINER for the same reason as above.
+-- can be dropped through it, and a cutoff less than 28 days old is refused. SECURITY DEFINER for the same reason as above.
 -- +goose StatementBegin
 CREATE FUNCTION drop_location_partitions(cutoff timestamptz) RETURNS integer
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
@@ -83,6 +83,11 @@ DECLARE
     dropped integer := 0;
     month   date;
 BEGIN
+    -- The one caller passes now() - 30 days. A cutoff nearer than 28 days would drop months that
+    -- still hold history (or the running month), so a compromised app role cannot wipe the table.
+    IF cutoff > now() - interval '28 days' THEN
+        RAISE EXCEPTION 'location retention cutoff % is too recent', cutoff;
+    END IF;
     FOR part IN
         SELECT c.relname AS name
         FROM pg_inherits i

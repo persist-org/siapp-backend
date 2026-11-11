@@ -166,7 +166,7 @@ func newRouter(d deps) *chi.Mux {
 	// the maps. "On shift" is the attendance module's notion, so a swapped-in guard is tracked too.
 	locationService := location.NewService(d.Pool, d.Redis, d.RedisPrefix, d.Clock,
 		location.AttendanceShifts{Service: attendanceService}, presenceService, publisher, d.Logger)
-	locationHandler := location.NewHandler(locationService)
+	locationHandler := location.NewHandler(locationService, httpx.NewRateLimiter(d.Redis, d.RedisPrefix, d.Logger))
 	locationHandler.MountField(router, accessService)
 
 	// The WebSocket (05.3). The hub is shared with the Redis subscriber main starts, which feeds

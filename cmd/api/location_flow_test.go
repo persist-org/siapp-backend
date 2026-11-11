@@ -16,18 +16,25 @@ import (
 	"siapp/pkg/realtime"
 )
 
-// onShift schedules the person on a shift whose window contains now (in the project's timezone,
-// Asia/Jakarta), so the tracking rules see them at work.
-func (f *flow) onShift(personnelID int64) {
+// scheduleShift gives the person a shift from startsAt to endsAt (to the minute), worked in the
+// project's timezone, Asia/Jakarta. A shift that crosses midnight is an overnight one that starts
+// on the date of startsAt.
+func (f *flow) scheduleShift(personnelID int64, startsAt, endsAt time.Time) {
 	f.t.Helper()
 	loc, err := time.LoadLocation("Asia/Jakarta")
 	require.NoError(f.t, err)
-	now := time.Now().In(loc)
-	minute := now.Hour()*60 + now.Minute()
+	start, end := startsAt.In(loc), endsAt.In(loc)
 	var shiftID int64
 	f.query([]any{&shiftID}, "INSERT INTO shifts (name, start_minute, end_minute) VALUES ($1, $2, $3) RETURNING id",
-		fmt.Sprintf("Jaga %d", personnelID), max(0, minute-30), min(1439, minute+30))
-	f.exec("INSERT INTO schedules (personnel_id, work_date, shift_id) VALUES ($1, $2, $3)", personnelID, now.Format(time.DateOnly), shiftID)
+		fmt.Sprintf("Jaga %d %d", personnelID, startsAt.Unix()), start.Hour()*60+start.Minute(), end.Hour()*60+end.Minute())
+	f.exec("INSERT INTO schedules (personnel_id, work_date, shift_id) VALUES ($1, $2, $3)", personnelID, start.Format(time.DateOnly), shiftID)
+}
+
+// onShift schedules the person on a shift that is running now: from 30 minutes ago to 30 minutes
+// ahead.
+func (f *flow) onShift(personnelID int64) {
+	f.t.Helper()
+	f.scheduleShift(personnelID, time.Now().Add(-30*time.Minute), time.Now().Add(30*time.Minute))
 }
 
 // danru adds a DANRU of 1K-IBMI-S1 and returns their id and token.
@@ -407,4 +414,67 @@ func TestLocationFramesAreRateLimitedAndEndWithTheSession(t *testing.T) {
 		f.query([]any{&after}, "SELECT count(*) FROM location_logs WHERE personnel_id = $1", f.person)
 		require.Equal(t, before, after)
 	})
+}
+
+func TestLocationPointsAreJudgedByWhenTheyWereRecorded(t *testing.T) {
+	now := time.Now()
+
+	t.Run("a point recorded off duty is dropped even when sent during a shift", func(t *testing.T) {
+		f := newFlow(t)
+		f.onShift(f.person)
+		code, res, _ := f.upload(f.personTok, batch(
+			pointIn{now.Add(-3 * time.Hour), -6.9, 106.9}, // before the shift started
+			pointIn{now.Add(-time.Minute), -6.2, 106.8},
+		))
+		require.Equal(t, http.StatusOK, code)
+		require.Equal(t, uploadResult{Accepted: 1, Rejected: 1}, res)
+		var rows int
+		f.query([]any{&rows}, "SELECT count(*) FROM location_logs WHERE personnel_id = $1", f.person)
+		require.Equal(t, 1, rows, "no trail of the off-duty hours")
+	})
+
+	t.Run("a batch recorded during a shift is accepted after the shift ended, and not broadcast", func(t *testing.T) {
+		f := newFlow(t)
+		_, danruTok := f.danru()
+		// The shift ran from three hours ago to one hour ago: nobody is on shift now.
+		f.scheduleShift(f.person, now.Add(-3*time.Hour), now.Add(-time.Hour))
+		danru := f.dial(danruTok)
+		joined, _ := danru.subscribe("team.1K-IBMI-S1.tracking")
+		require.Len(t, joined, 1)
+
+		inside := now.Add(-2 * time.Hour)
+		code, res, _ := f.upload(f.personTok, batch(
+			pointIn{now.Add(-4 * time.Hour), -6.9, 106.9},  // before the shift
+			pointIn{inside, -6.2, 106.8},                   // during it
+			pointIn{now.Add(-30 * time.Minute), -6.8, 106}, // after it
+		))
+		require.Equal(t, http.StatusOK, code)
+		require.Equal(t, uploadResult{Accepted: 1, Rejected: 2}, res)
+		var at time.Time
+		f.query([]any{&at}, "SELECT logged_at FROM personnel_last_locations WHERE personnel_id = $1", f.person)
+		require.WithinDuration(t, inside, at, time.Second)
+		require.Nil(t, danru.until("location.broadcast", 1500*time.Millisecond), "a late batch is history, not a live position")
+
+		// Only a point outside every shift: nothing to track at all.
+		code, _, reason := f.upload(f.personTok, batch(pointIn{now.Add(-30 * time.Minute), -6.8, 106}))
+		require.Equal(t, http.StatusForbidden, code)
+		require.Equal(t, "TRACKING_DISABLED", reason)
+	})
+}
+
+func TestLocationUploadIsRateLimitedPerPerson(t *testing.T) {
+	f := newFlow(t)
+	f.onShift(f.person)
+	body := batch(pointIn{time.Now().Add(-time.Minute), -6.2, 106.8})
+	var last int
+	for range 32 {
+		last, _, _ = f.upload(f.personTok, body)
+	}
+	require.Equal(t, http.StatusTooManyRequests, last)
+	// Another person is not affected by it.
+	other := f.addPerson(900180, "ANGGOTA003", "Anggota Tiga")
+	f.exec("INSERT INTO team_members (team_code, personnel_id, role, start_date) VALUES ('1K-IBMI-S1', $1, 'MEMBER', current_date - 30)", other)
+	f.onShift(other)
+	code, _, _ := f.upload(f.token(other, 5020), body)
+	require.Equal(t, http.StatusOK, code)
 }

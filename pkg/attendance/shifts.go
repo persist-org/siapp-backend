@@ -11,6 +11,7 @@ import (
 	"siapp/internal/db"
 	"siapp/pkg/organization"
 	"siapp/pkg/platform/database"
+	"siapp/pkg/platform/timeutil"
 )
 
 // CheckableShift is a shift the person can check into or out of right now, in one regu.
@@ -153,10 +154,89 @@ func (s *Service) scheduled(ctx context.Context, organizationID, personnelID int
 	return out, nil
 }
 
-// Scheduled returns the shifts the person can check into at now, without the records already
-// captured: Checkable minus its database read. Location tracking (08.2) asks it who is on shift.
-func (s *Service) Scheduled(ctx context.Context, organizationID, personnelID int64, now time.Time) ([]CheckableShift, error) {
-	return s.scheduled(ctx, organizationID, personnelID, now)
+// ShiftWindow is a stretch of time the person works in a regu: the shift itself, from StartsAt to
+// EndsAt, without the check-in tolerance. Tracking is the project's gps_tracking_enabled.
+type ShiftWindow struct {
+	TeamCode    string
+	ProjectCode string
+	Tracking    bool
+	StartsAt    time.Time
+	EndsAt      time.Time
+}
+
+// ShiftWindows returns the shifts (their own regu's and the ones covered through a swap) that
+// overlap [from, to], OFF days left out. It asks "when was this person working" for a time that
+// may be in the past: location tracking judges each recorded point against it.
+//
+// A day whose schedule is ambiguous (the person serves in projects of two timezones) yields no
+// window: a shift whose instants cannot be told is not one to track in, so it fails closed.
+func (s *Service) ShiftWindows(ctx context.Context, organizationID, personnelID int64, from, to time.Time) ([]ShiftWindow, error) {
+	first := timeutil.BusinessDate(from, time.UTC).AddDays(-2)
+	last := timeutil.BusinessDate(to, time.UTC).AddDays(1)
+	instances, err := s.shifts.Instances(ctx, organizationID, personnelID, first, last)
+	if errors.Is(err, organization.ErrScheduleTimezoneAmbiguous) {
+		instances, err = nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("shift instances: %w", err)
+	}
+
+	sites := map[string]organization.TeamWithProject{}
+	site := func(teamCode string) (organization.TeamWithProject, bool, error) {
+		if v, ok := sites[teamCode]; ok {
+			return v, true, nil
+		}
+		v, err := s.sites.TeamWithProject(ctx, organizationID, teamCode)
+		if errors.Is(err, organization.ErrTeamNotFound) {
+			return v, false, nil // a regu deleted since: its memberships have ended
+		}
+		if err != nil {
+			return v, false, fmt.Errorf("team %s: %w", teamCode, err)
+		}
+		sites[teamCode] = v
+		return v, true, nil
+	}
+
+	var out []ShiftWindow
+	add := func(teamCode string, start, end time.Time) error {
+		if end.Before(from) || start.After(to) {
+			return nil
+		}
+		v, ok, err := site(teamCode)
+		if err != nil || !ok {
+			return err
+		}
+		out = append(out, ShiftWindow{TeamCode: teamCode, ProjectCode: v.Project.Code, Tracking: v.Project.GPSTrackingEnabled, StartsAt: start, EndsAt: end})
+		return nil
+	}
+	for _, inst := range instances {
+		if inst.IsOff {
+			continue
+		}
+		for _, teamCode := range inst.TeamCodes {
+			if err := add(teamCode, inst.StartsAt, inst.EndsAt); err != nil {
+				return nil, err
+			}
+		}
+	}
+	err = database.WithTenant(ctx, s.pool, organizationID, func(q *db.Queries) error {
+		rows, err := q.ListActiveSwapsOfReplacer(ctx, db.ListActiveSwapsOfReplacerParams{
+			PersonnelID: personnelID, DateFrom: dateParam(first), DateTo: dateParam(last),
+		})
+		if err != nil {
+			return fmt.Errorf("active swaps: %w", err)
+		}
+		for _, sw := range rows {
+			if err := add(sw.TeamCode, sw.StartsAt.Time, sw.EndsAt.Time); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // find returns the checkable shift a shift_ref names (without its Record), or
