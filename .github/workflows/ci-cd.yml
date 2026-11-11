@@ -97,3 +97,49 @@ jobs:
 
       - name: Docker image builds
         run: docker build -t siapp:ci .
+
+  deploy:
+    needs: verify
+    if: github.event_name == 'push' && github.ref == 'refs/heads/development'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: development
+    concurrency:
+      group: deploy-development
+      cancel-in-progress: false
+    steps:
+      - name: Check the deploy settings exist
+        env:
+          SSH_HOST: ${{ vars.SSH_HOST }}
+          SSH_USER: ${{ vars.SSH_USER }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+          API_URL: ${{ vars.API_URL }}
+        run: |
+          missing=""
+          [ -n "$SSH_HOST" ] || missing="$missing SSH_HOST(variable)"
+          [ -n "$SSH_USER" ] || missing="$missing SSH_USER(variable)"
+          [ -n "$SSH_KEY" ] || missing="$missing SSH_KEY(secret)"
+          [ -n "$SSH_KNOWN_HOSTS" ] || missing="$missing SSH_KNOWN_HOSTS(secret)"
+          [ -n "$API_URL" ] || missing="$missing API_URL(variable)"
+          if [ -n "$missing" ]; then
+            echo "::error::Empty or missing in the 'development' environment (or repository):$missing"
+            exit 1
+          fi
+
+      - name: Deploy over SSH
+        env:
+          SSH_HOST: ${{ vars.SSH_HOST }}
+          SSH_USER: ${{ vars.SSH_USER }}
+          SSH_PORT: ${{ vars.SSH_PORT }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          ssh -i ~/.ssh/deploy_key -p "${SSH_PORT:-22}" -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            "$SSH_USER@$SSH_HOST" "$GITHUB_SHA"
+
+      - name: Smoke test
+        run: curl -fsS --retry 5 --retry-delay 3 "${{ vars.API_URL }}/api/v1/health"
