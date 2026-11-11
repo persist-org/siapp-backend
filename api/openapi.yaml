@@ -11751,8 +11751,14 @@ paths:
       summary: Kirim titik GPS (batch, termasuk yang direkam saat offline)
       description: |
         Hanya diterima saat pemanggil sedang bertugas (jendela shift seperti absen) di proyek yang
-        mengaktifkan `gps_tracking_enabled`; selain itu 403 `TRACKING_DISABLED` dan tidak ada yang
-        disimpan. Titik yang sama (waktu sama) dua kali hanya tersimpan sekali.
+        mengaktifkan `gps_tracking_enabled`. Tiap titik dinilai dari `logged_at`-nya sendiri: titik di
+        luar jendela shift berpelacakan dihitung `rejected`, bukan disimpan.
+
+        403 `TRACKING_DISABLED` hanya bila TIDAK ADA jendela shift berpelacakan yang bersinggungan
+        dengan rentang waktu batch (klien berhenti mengirim sampai shift berikutnya). Bila ada
+        jendela tetapi tidak satu pun titik jatuh di dalamnya (mis. satu titik sebelum shift dan satu
+        sesudahnya), responsnya 200 dengan `accepted: 0`; itu bukan sinyal untuk berhenti.
+        Titik yang sama (waktu sama) dua kali hanya tersimpan sekali.
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/LocationBatchInput' } } } }
       responses:
         '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/LocationBatchResult' } } } ] } } } }

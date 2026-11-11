@@ -173,10 +173,8 @@ type ShiftWindow struct {
 func (s *Service) ShiftWindows(ctx context.Context, organizationID, personnelID int64, from, to time.Time) ([]ShiftWindow, error) {
 	first := timeutil.BusinessDate(from, time.UTC).AddDays(-2)
 	last := timeutil.BusinessDate(to, time.UTC).AddDays(1)
-	instances, err := s.shifts.Instances(ctx, organizationID, personnelID, first, last)
-	if errors.Is(err, organization.ErrScheduleTimezoneAmbiguous) {
-		instances, err = nil, nil
-	}
+	// A day with two timezones has no window, the other days keep theirs.
+	instances, err := s.shifts.Available(ctx, organizationID, personnelID, first, last)
 	if err != nil {
 		return nil, fmt.Errorf("shift instances: %w", err)
 	}

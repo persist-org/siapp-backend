@@ -94,8 +94,9 @@ func (s *Service) broadcastKey(orgID, personnelID int64) string {
 //   - a batch recorded during a shift and uploaded after it ended is still accepted, which is what
 //     the 24 h window for old points is for.
 //
-// The batch is refused with TRACKING_DISABLED only when no point falls in any tracked window.
-// Otherwise the points that do are stored and the others count as rejected.
+// The batch is refused with TRACKING_DISABLED only when no tracked window overlaps the batch's
+// time range at all (the client may stop sending). When one does, the points inside it are stored
+// and the others count as rejected, so a batch can come back 200 with accepted 0.
 func (s *Service) Ingest(ctx context.Context, p auth.Principal, points []Point) (Result, error) {
 	if len(points) > MaxBatch {
 		return Result{}, ErrBatchTooLarge

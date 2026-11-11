@@ -49,6 +49,9 @@ type ShiftInstance struct {
 type Shifts interface {
 	// Instances returns the person's shifts with a work date in [from, to], OFF days included.
 	Instances(ctx context.Context, organizationID, personnelID int64, from, to timeutil.Date) ([]ShiftInstance, error)
+	// Available is Instances that leaves out the working shifts of an ambiguous day (two
+	// timezones) instead of failing the whole range, the way Current does.
+	Available(ctx context.Context, organizationID, personnelID int64, from, to timeutil.Date) ([]ShiftInstance, error)
 	// Current returns the working shifts whose check-in/check-out window contains at.
 	Current(ctx context.Context, organizationID, personnelID int64, at time.Time) ([]ShiftInstance, error)
 }
@@ -80,6 +83,13 @@ func (s *LocalShifts) Instances(ctx context.Context, organizationID, personnelID
 		return nil, ambiguous
 	}
 	return out, nil
+}
+
+// Available is Instances without the all-or-nothing: a day whose timezone is ambiguous loses its
+// working shifts, every other day keeps them.
+func (s *LocalShifts) Available(ctx context.Context, organizationID, personnelID int64, from, to timeutil.Date) ([]ShiftInstance, error) {
+	out, _, err := s.resolve(ctx, organizationID, personnelID, from, to)
+	return out, err
 }
 
 // resolve is Instances that leaves out the working shifts of ambiguous days instead of failing,
