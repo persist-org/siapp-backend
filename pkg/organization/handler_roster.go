@@ -133,6 +133,7 @@ func teamDetailToAPI(v TeamView) apigen.TeamDetail {
 		role := apigen.TeamRole(m.Role)
 		member := apigen.TeamRosterMember{
 			PersonnelId: &m.PersonnelID, FullName: &m.FullName, Role: &role, PositionName: m.PositionName, PhotoUrl: m.PhotoURL,
+			Online: &m.Online, LastSeenAt: m.LastSeenAt,
 		}
 		if m.TodayShift != nil {
 			start, end, overnight := formatClock(m.TodayShift.StartMinute), formatClock(m.TodayShift.EndMinute), m.TodayShift.Overnight()

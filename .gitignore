@@ -14,3 +14,7 @@ coverage.out
 
 # Photos uploaded to the local storage driver (STORAGE_DRIVER=local on a laptop)
 data/
+
+# local deployment notes
+CICD.md
+DEPLOY.md

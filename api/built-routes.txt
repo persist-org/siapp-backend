@@ -38,6 +38,7 @@ GET /api/v1/admin/permission-categories
 GET /api/v1/admin/permission-categories/{code}
 GET /api/v1/admin/permissions
 GET /api/v1/admin/permissions/{id}
+GET /api/v1/admin/personnel-tracking
 GET /api/v1/admin/personnel/{personnel_id}/leave-ledger
 GET /api/v1/admin/personnel/{personnel_id}/shift-assignment
 GET /api/v1/admin/projects
@@ -81,7 +82,9 @@ GET /api/v1/permissions/approver
 GET /api/v1/permissions/me
 GET /api/v1/permissions/quota
 GET /api/v1/permissions/{id}
+GET /api/v1/personnel-tracking
 GET /api/v1/personnels/{id}
+GET /api/v1/personnels/{id}/position
 GET /api/v1/projects/{code}/emergency-contacts
 GET /api/v1/report-categories
 GET /api/v1/shift-swaps
@@ -89,6 +92,7 @@ GET /api/v1/shift-swaps/candidates
 GET /api/v1/shift-swaps/replaceable
 GET /api/v1/teams
 GET /api/v1/teams/me
+GET /api/v1/teams/{code}/map
 GET /api/v1/teams/{code}/members
 GET /api/v1/ws
 PATCH /api/v1/admin/app-links/{id}
@@ -140,6 +144,7 @@ POST /api/v1/auth/login
 POST /api/v1/auth/logout
 POST /api/v1/auth/refresh
 POST /api/v1/integrations/personel/events
+POST /api/v1/location-logs
 POST /api/v1/media
 POST /api/v1/media/{id}/complete
 POST /api/v1/media/{id}/upload-url

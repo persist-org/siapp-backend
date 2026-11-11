@@ -666,6 +666,14 @@ func TestTwoTimezonesOnOneDayAreRefused(t *testing.T) {
 	shifts := organization.NewShifts(testkit.Pool(t))
 	_, err := shifts.Instances(t.Context(), org, cici, dateOf("2026-04-01"), dateOf("2026-04-03"))
 	require.ErrorIs(t, err, organization.ErrScheduleTimezoneAmbiguous)
+
+	// Available drops only the ambiguous days: the days before 04-01 keep their shifts.
+	got, err := shifts.Available(t.Context(), org, cici, dateOf("2026-03-30"), dateOf("2026-04-03"))
+	require.NoError(t, err)
+	require.NotEmpty(t, got, "the unambiguous days survive")
+	for _, in := range got {
+		require.True(t, in.IsOff || in.StartsAt.Before(time.Date(2026, 3, 31, 17, 0, 0, 0, time.UTC)), "no instance on an ambiguous day: %s", in.StartsAt)
+	}
 }
 
 func TestScheduleEdgeCases(t *testing.T) {

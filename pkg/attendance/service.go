@@ -31,6 +31,7 @@ type (
 	shiftSource interface {
 		Current(ctx context.Context, organizationID, personnelID int64, at time.Time) ([]organization.ShiftInstance, error)
 		Instances(ctx context.Context, organizationID, personnelID int64, from, to timeutil.Date) ([]organization.ShiftInstance, error)
+		Available(ctx context.Context, organizationID, personnelID int64, from, to timeutil.Date) ([]organization.ShiftInstance, error)
 	}
 	// siteSource is organization.Query: a regu with its proyek, a proyek by code inside the
 	// caller's transaction, and (07.7) the regu a person serves in on a date.

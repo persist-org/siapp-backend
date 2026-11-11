@@ -15,6 +15,7 @@ import (
 	"siapp/pkg/platform/clock"
 	"siapp/pkg/platform/database"
 	"siapp/pkg/platform/timeutil"
+	"siapp/pkg/presence"
 )
 
 // Person is the short card of someone on the Regu screens: a DANRU, a relationship officer.
@@ -32,6 +33,14 @@ type RosterMember struct {
 	Role         string
 	PositionName *string
 	TodayShift   *Shift
+	// Online and LastSeenAt come from presence (08.1); zero when it is not wired.
+	Online     bool
+	LastSeenAt *time.Time
+}
+
+// PresenceLookup answers who is online (presence.Service).
+type PresenceLookup interface {
+	ManyIn(ctx context.Context, q *db.Queries, orgID int64, ids []int64) (map[int64]presence.Status, error)
 }
 
 // TeamShiftToday is a working shift some members of a regu are scheduled on today.
@@ -79,9 +88,13 @@ type PersonnelCard struct {
 // today in its own timezone. A DANRU sees their project because they are its regu's DANRU,
 // and a MEMBER the project of their own regu: there is no separate project assignment.
 type Roster struct {
-	pool  *pgxpool.Pool
-	clock clock.Clock
+	pool     *pgxpool.Pool
+	clock    clock.Clock
+	presence PresenceLookup
 }
+
+// UsePresence adds online and last_seen_at to the members of a team detail.
+func (r *Roster) UsePresence(p PresenceLookup) { r.presence = p }
 
 // NewRoster returns the Roster usecase.
 func NewRoster(pool *pgxpool.Pool, c clock.Clock) *Roster { return &Roster{pool: pool, clock: c} }
@@ -102,7 +115,7 @@ func (r *Roster) MyTeams(ctx context.Context, actor auth.Principal) ([]TeamView,
 		if len(codes) == 0 {
 			return nil
 		}
-		out, err = r.teams(ctx, q, now, mine, nil, codes, true)
+		out, err = r.teams(ctx, q, actor.OrganizationID, now, mine, nil, codes, true)
 		return err
 	})
 	return out, err
@@ -129,7 +142,7 @@ func (r *Roster) Teams(ctx context.Context, actor auth.Principal, projectCode st
 		if len(projects) == 0 {
 			return nil
 		}
-		out, err = r.teams(ctx, q, now, mine, projects, nil, false)
+		out, err = r.teams(ctx, q, actor.OrganizationID, now, mine, projects, nil, false)
 		return err
 	})
 	return out, err
@@ -148,7 +161,7 @@ func (r *Roster) TeamDetail(ctx context.Context, actor auth.Principal, teamCode 
 		if err != nil {
 			return err
 		}
-		views, err := r.teams(ctx, q, now, mine, nil, []string{teamCode}, true)
+		views, err := r.teams(ctx, q, actor.OrganizationID, now, mine, nil, []string{teamCode}, true)
 		if err != nil {
 			return err
 		}
@@ -225,7 +238,7 @@ func (r *Roster) membershipsOf(ctx context.Context, q *db.Queries, personnelID i
 
 // teams reads the regu of some projects, or some regu by code (exactly one of the two is
 // non-nil), with who serves in them today. detail also fills the members and today's shifts.
-func (r *Roster) teams(ctx context.Context, q *db.Queries, now time.Time, mine []Membership, projects, codes []string, detail bool) ([]TeamView, error) {
+func (r *Roster) teams(ctx context.Context, q *db.Queries, orgID int64, now time.Time, mine []Membership, projects, codes []string, detail bool) ([]TeamView, error) {
 	rows, err := q.ListDirectoryTeams(ctx, db.ListDirectoryTeamsParams{ProjectCodes: projects, TeamCodes: codes})
 	if err != nil {
 		return nil, fmt.Errorf("list teams: %w", err)
@@ -244,6 +257,18 @@ func (r *Roster) teams(ctx context.Context, q *db.Queries, now time.Time, mine [
 	byTeam := map[string][]db.ListDirectoryMembersTodayRow{}
 	for _, m := range members {
 		byTeam[m.TeamCode] = append(byTeam[m.TeamCode], m)
+	}
+
+	// Presence is only read for the detail, which lists the members.
+	var seen map[int64]presence.Status
+	if detail && r.presence != nil {
+		ids := make([]int64, 0, len(members))
+		for _, m := range members {
+			ids = append(ids, m.PersonnelID)
+		}
+		if seen, err = r.presence.ManyIn(ctx, q, orgID, ids); err != nil {
+			return nil, fmt.Errorf("presence of members: %w", err)
+		}
 	}
 
 	out := make([]TeamView, 0, len(rows))
@@ -269,6 +294,9 @@ func (r *Roster) teams(ctx context.Context, q *db.Queries, now time.Time, mine [
 			member := RosterMember{
 				Person: Person{PersonnelID: m.PersonnelID, FullName: m.FullName, Phone: textValue(m.Phone), PhotoURL: textValue(m.PhotoUrl)},
 				Role:   string(m.Role), PositionName: textValue(m.PositionName),
+			}
+			if st, ok := seen[m.PersonnelID]; ok {
+				member.Online, member.LastSeenAt = st.Online, st.LastSeenAt
 			}
 			if m.ShiftID.Valid {
 				member.TodayShift = &Shift{ID: m.ShiftID.Int64, Name: m.ShiftName.String, StartMinute: int(m.StartMinute.Int16), EndMinute: int(m.EndMinute.Int16), IsOff: m.IsOff.Bool}

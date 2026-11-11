@@ -3,6 +3,7 @@ package realtime
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -14,6 +15,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/go-chi/chi/v5"
 
+	"siapp/pkg/platform/apperr"
 	"siapp/pkg/platform/auth"
 	"siapp/pkg/platform/clock"
 	"siapp/pkg/platform/httpx"
@@ -29,6 +31,14 @@ const (
 	CloseIdle         websocket.StatusCode = 4408
 )
 
+// Codes of an error frame that is not a bad frame (4400): the client's request was understood and
+// refused, or the server failed. They mirror the close codes' numbering.
+const (
+	ErrorForbidden = 4403
+	ErrorTooFast   = 4429
+	ErrorInternal  = 4500
+)
+
 const (
 	defaultPingInterval = 20 * time.Second
 	defaultIdleTimeout  = 60 * time.Second
@@ -36,6 +46,8 @@ const (
 	readLimit           = 4 << 10
 	maxRoomsPerFrame    = 32
 	maxRoomsPerConn     = 64
+	locationTimeout     = 5 * time.Second
+	minLocationInterval = time.Second
 )
 
 // Denial reasons in subscribe.ack.
@@ -78,7 +90,27 @@ type Handler struct {
 	clock       clock.Clock
 	logger      *slog.Logger
 	cfg         Config
+	presence    Toucher
+	location    LocationIngester
 }
+
+// Toucher records that a person was seen (presence.Service).
+type Toucher interface {
+	Touch(ctx context.Context, orgID, personnelID int64) error
+}
+
+// LocationIngester stores the GPS point of a location.update frame (location.Service). data is
+// the frame's data, undecoded. It returns an *apperr.Error for what the client did wrong.
+type LocationIngester interface {
+	IngestFrame(ctx context.Context, p auth.Principal, data json.RawMessage) error
+}
+
+// UseLocation lets clients send location.update frames. Without it the frame is an unknown type.
+func (h *Handler) UseLocation(l LocationIngester) { h.location = l }
+
+// UsePresence makes every frame a client sends count as the person being seen. Without it
+// (tests of the socket alone) frames leave presence alone.
+func (h *Handler) UsePresence(t Toucher) { h.presence = t }
 
 // NewHandler returns the handler.
 func NewHandler(tokens *auth.Tokens, revocations *auth.Revocations, tickets *Tickets, hub *Hub, authorizer *Authorizer,
@@ -187,11 +219,19 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 
 	s.reply("hello", "", map[string]any{
 		"server_time":  h.clock.Now().UTC(),
-		"capabilities": []string{"subscribe", "notification.created"},
+		"capabilities": h.capabilities(),
 	})
 	go s.writeLoop()
 	go s.keepAlive(expiresAt)
 	s.readLoop()
+}
+
+func (h *Handler) capabilities() []string {
+	out := []string{"subscribe", "notification.created"}
+	if h.location != nil {
+		out = append(out, "location.update", "location.broadcast")
+	}
+	return out
 }
 
 // session is one accepted connection.
@@ -204,7 +244,9 @@ type session struct {
 	cancel     context.CancelFunc
 	lastPong   atomic.Int64
 	rechecking atomic.Bool
-	closeOnce  sync.Once
+	// lastLocation is when the last location.update was handled; only the read loop touches it.
+	lastLocation time.Time
+	closeOnce    sync.Once
 }
 
 // closeWith ends the connection with a close code, once. It does not wait for the peer.
@@ -358,6 +400,9 @@ func (s *session) readLoop() {
 		// or a proxy in between that does not pass control frames through but sends its own
 		// {"type":"ping"} must not be closed for it.
 		s.lastPong.Store(time.Now().UnixNano())
+		if !s.touch() {
+			continue
+		}
 		var f frame
 		if json.Unmarshal(raw, &f) != nil || f.Type == "" {
 			s.reply("error", "", map[string]any{"code": CloseBadFrame, "message": "frame is not valid JSON with a type"})
@@ -375,10 +420,76 @@ func (s *session) readLoop() {
 			}
 		case "ping":
 			s.reply("pong", "", map[string]any{})
+		case "location.update":
+			if s.h.location == nil {
+				s.reply("error", "", map[string]any{"code": CloseBadFrame, "message": "unknown frame type"})
+				continue
+			}
+			s.locationUpdate(f.Data)
 		default:
 			s.reply("error", "", map[string]any{"code": CloseBadFrame, "message": "unknown frame type"})
 		}
 	}
+}
+
+// locationUpdate stores the point of a location.update frame. A refusal comes back as an error
+// frame carrying the reason (TRACKING_DISABLED, a validation failure), never as a close: the
+// phone keeps its socket, and its other rooms, when one point is refused.
+func (s *session) locationUpdate(data json.RawMessage) {
+	// A phone sends a position every few seconds; more than one a second is a bug or abuse, and
+	// each frame costs several queries. The extra ones are refused, not queued.
+	now := time.Now()
+	if now.Sub(s.lastLocation) < minLocationInterval {
+		s.reply("error", "", map[string]any{"code": ErrorTooFast, "message": "location.update too frequent"})
+		return
+	}
+	s.lastLocation = now
+	ctx, cancel := context.WithTimeout(s.ctx, locationTimeout)
+	defer cancel()
+	err := s.h.location.IngestFrame(ctx, s.principal, data)
+	if err == nil {
+		return
+	}
+	appErr, ok := errors.AsType[*apperr.Error](err)
+	if !ok {
+		if s.ctx.Err() == nil {
+			s.h.logger.Error("realtime: location.update", slog.Any("error", err))
+		}
+		s.reply("error", "", map[string]any{"code": ErrorInternal, "message": "location unavailable"})
+		return
+	}
+	code := CloseBadFrame
+	if appErr.Status == http.StatusForbidden {
+		code = ErrorForbidden
+	}
+	data2 := map[string]any{"code": int(code), "message": appErr.Message}
+	if appErr.Reason != "" {
+		data2["reason"] = appErr.Reason
+	}
+	s.reply("error", "", data2)
+}
+
+// touch counts a frame as the person being seen, and reports whether the frame may be acted on.
+// Bounded and never fatal, like the HTTP middleware: a slow Redis must not stall the read loop.
+//
+// ⚠ A frame of a session that has been ended (logout, a device reset) is not a sign of life: the
+// socket is only closed on the next keep-alive tick, and until then a phone that just logged out
+// would show as online again and could still send positions. The session is looked up on every
+// frame (one Redis read), and a revoked one is closed with 4401.
+func (s *session) touch() bool {
+	if s.h.revocations.IsRevoked(s.ctx, s.principal.SessionID) {
+		s.closeWith(CloseUnauthorized, "session ended")
+		return false
+	}
+	if s.h.presence == nil {
+		return true
+	}
+	ctx, cancel := context.WithTimeout(s.ctx, 50*time.Millisecond)
+	defer cancel()
+	if err := s.h.presence.Touch(ctx, s.principal.OrganizationID, s.principal.PersonnelID); err != nil && s.ctx.Err() == nil {
+		s.h.logger.Warn("realtime: presence touch failed", slog.Any("error", err))
+	}
+	return true
 }
 
 func (s *session) subscribe(raw json.RawMessage) {

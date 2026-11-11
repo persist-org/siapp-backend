@@ -41,8 +41,18 @@ type Usecase struct {
 	logger      *slog.Logger
 	regions     RegionLookup
 	memberships MembershipLookup
+	presence    Offliner
 	repo        repo
 }
+
+// Offliner makes a person offline at once (presence.Service).
+type Offliner interface {
+	MarkOffline(ctx context.Context, orgID, personnelID int64) error
+}
+
+// UsePresence makes a logout turn the person offline immediately, instead of after the five
+// minutes presence would otherwise take to lapse.
+func (u *Usecase) UsePresence(o Offliner) { u.presence = o }
 
 // NewUsecase returns the identity Usecase.
 func NewUsecase(pool *pgxpool.Pool, p personelClient, tokens *auth.Tokens, revocations *auth.Revocations, c clock.Clock, logger *slog.Logger) *Usecase {
