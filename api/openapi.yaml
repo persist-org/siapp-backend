@@ -1629,6 +1629,8 @@ components:
         role: { $ref: '#/components/schemas/TeamRole' }
         position_name: { type: string, nullable: true, description: "Jabatan dari Personalia (salinan, hanya untuk tampilan)." }
         photo_url: { type: string, nullable: true }
+        online: { type: boolean, description: "true bila terlihat dalam 5 menit terakhir (permintaan, pesan WebSocket, atau lokasi). Logout membuatnya offline seketika." }
+        last_seen_at: { type: string, format: date-time, nullable: true, description: "Terakhir terlihat (\"Terakhir online\"); null bila belum pernah." }
         today_shift:
           allOf: [ { $ref: '#/components/schemas/ScheduleShift' } ]
           nullable: true

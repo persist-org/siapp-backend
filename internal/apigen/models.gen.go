@@ -9800,7 +9800,13 @@ type TeamRole string
 
 // TeamRosterMember Anggota regu hari ini. Personil yang sudah tidak aktif di Personalia tidak tercantum dan tidak dihitung.
 type TeamRosterMember struct {
-	FullName    *string `json:"full_name,omitempty"`
+	FullName *string `json:"full_name,omitempty"`
+
+	// LastSeenAt Terakhir terlihat ("Terakhir online"); null bila belum pernah.
+	LastSeenAt *time.Time `json:"last_seen_at,omitempty"`
+
+	// Online true bila terlihat dalam 5 menit terakhir (permintaan, pesan WebSocket, atau lokasi). Logout membuatnya offline seketika.
+	Online      *bool   `json:"online,omitempty"`
 	PersonnelId *int64  `json:"personnel_id,omitempty"`
 	PhotoUrl    *string `json:"photo_url,omitempty"`
 

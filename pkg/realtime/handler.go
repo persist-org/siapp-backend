@@ -78,7 +78,17 @@ type Handler struct {
 	clock       clock.Clock
 	logger      *slog.Logger
 	cfg         Config
+	presence    Toucher
 }
+
+// Toucher records that a person was seen (presence.Service).
+type Toucher interface {
+	Touch(ctx context.Context, orgID, personnelID int64) error
+}
+
+// UsePresence makes every frame a client sends count as the person being seen. Without it
+// (tests of the socket alone) frames leave presence alone.
+func (h *Handler) UsePresence(t Toucher) { h.presence = t }
 
 // NewHandler returns the handler.
 func NewHandler(tokens *auth.Tokens, revocations *auth.Revocations, tickets *Tickets, hub *Hub, authorizer *Authorizer,
@@ -358,6 +368,7 @@ func (s *session) readLoop() {
 		// or a proxy in between that does not pass control frames through but sends its own
 		// {"type":"ping"} must not be closed for it.
 		s.lastPong.Store(time.Now().UnixNano())
+		s.touch()
 		var f frame
 		if json.Unmarshal(raw, &f) != nil || f.Type == "" {
 			s.reply("error", "", map[string]any{"code": CloseBadFrame, "message": "frame is not valid JSON with a type"})
@@ -378,6 +389,19 @@ func (s *session) readLoop() {
 		default:
 			s.reply("error", "", map[string]any{"code": CloseBadFrame, "message": "unknown frame type"})
 		}
+	}
+}
+
+// touch counts a frame as the person being seen. Bounded and never fatal, like the HTTP
+// middleware: a slow Redis must not stall the read loop.
+func (s *session) touch() {
+	if s.h.presence == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(s.ctx, 50*time.Millisecond)
+	defer cancel()
+	if err := s.h.presence.Touch(ctx, s.principal.OrganizationID, s.principal.PersonnelID); err != nil && s.ctx.Err() == nil {
+		s.h.logger.Warn("realtime: presence touch failed", slog.Any("error", err))
 	}
 }
 

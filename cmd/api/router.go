@@ -21,6 +21,7 @@ import (
 	"siapp/pkg/platform/httpx"
 	"siapp/pkg/platform/idem"
 	"siapp/pkg/platform/personel"
+	"siapp/pkg/presence"
 	"siapp/pkg/realtime"
 )
 
@@ -61,11 +62,15 @@ const adminPrefix = "/api/v1/admin"
 // auth.PublicRoutes, an admin route goes in the admin group below.
 func newRouter(d deps) *chi.Mux {
 	revocations := auth.NewRevocations(d.Redis, d.RedisPrefix, d.Logger)
+	// Presence (08.1): every authenticated request counts as the caller being seen, so the
+	// middleware sits right behind the token check, in the same slot.
+	presenceService := presence.New(d.Redis, d.RedisPrefix, d.Pool, d.Clock, d.Logger)
+	requireAuth, touch := auth.Require(d.Tokens, revocations), presence.Middleware(presenceService, d.Logger)
 	router := httpx.NewRouter(httpx.RouterConfig{
 		Logger:       d.Logger,
 		CORSOrigins:  d.CORSOrigins,
 		DB:           d.Pool,
-		Authenticate: auth.Require(d.Tokens, revocations),
+		Authenticate: func(next http.Handler) http.Handler { return requireAuth(touch(next)) },
 	})
 
 	failures := httpx.NewFailureLimiter(d.Redis, d.RedisPrefix, d.Logger)
@@ -77,11 +82,13 @@ func newRouter(d deps) *chi.Mux {
 	directory := organization.NewDirectory(d.Clock)
 	identityUsecase.UseRegionLookup(directory)
 	identityUsecase.UseMembershipLookup(directory)
+	identityUsecase.UsePresence(presenceService)
 	identityHandler := identity.NewHandler(identityUsecase, d.ClientIP, failures, idempotency.Middleware(false))
 	identityHandler.Mount(router)
 
 	accessHandler := access.NewHandler(access.NewWebRoles(d.Pool, d.Clock), access.NewFieldPermissions(d.Pool, d.Clock))
 	organizationUsecases := organization.NewUsecases(d.Pool, d.Clock, identity.NewPeople(d.Pool, d.Personel, d.Clock))
+	organizationUsecases.Roster.UsePresence(presenceService)
 	organizationHandler := organization.NewHandler(organizationUsecases)
 	// The Regu screens: any signed-in person, scoped by the regu they serve in.
 	organizationHandler.MountField(router)
@@ -160,9 +167,11 @@ func newRouter(d deps) *chi.Mux {
 	if hub == nil {
 		hub = realtime.NewHub(d.Logger)
 	}
-	realtime.NewHandler(d.Tokens, revocations, realtime.NewTickets(d.Redis, d.RedisPrefix), hub,
+	realtimeHandler := realtime.NewHandler(d.Tokens, revocations, realtime.NewTickets(d.Redis, d.RedisPrefix), hub,
 		realtime.NewAuthorizer(d.Pool, accessService, d.Clock), d.Clock, d.Logger,
-		realtime.Config{OriginPatterns: realtime.OriginPatternsOf(d.CORSOrigins)}).Mount(router)
+		realtime.Config{OriginPatterns: realtime.OriginPatternsOf(d.CORSOrigins)})
+	realtimeHandler.UsePresence(presenceService)
+	realtimeHandler.Mount(router)
 
 	// ⚠ The admin group: access.RequireAdmin is mounted ONCE here, so every route a module
 	// adds under /api/v1/admin is protected without anyone having to remember it.

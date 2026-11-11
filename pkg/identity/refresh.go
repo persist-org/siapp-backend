@@ -354,5 +354,12 @@ func (u *Usecase) Logout(ctx context.Context, p auth.Principal) error {
 	// own session is always listed, even when the chain was not found, so the token that made
 	// this request is cut off.
 	u.revocations.Revoke(ctx, append(cutOff, p.SessionID)...)
+	if u.presence != nil {
+		// The logout is already done; a Redis hiccup here only leaves the person online for
+		// the rest of the window.
+		if err := u.presence.MarkOffline(ctx, p.OrganizationID, p.PersonnelID); err != nil {
+			u.logger.WarnContext(ctx, "logout: could not mark the person offline", slog.String("error", err.Error()))
+		}
+	}
 	return nil
 }
