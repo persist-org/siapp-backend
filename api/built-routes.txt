@@ -80,6 +80,7 @@ GET /api/v1/notifications
 GET /api/v1/notifications/count
 GET /api/v1/notifications/{id}
 GET /api/v1/panic-types
+GET /api/v1/patrol/pending-approvals
 GET /api/v1/permission-categories
 GET /api/v1/permissions
 GET /api/v1/permissions/approver
@@ -91,6 +92,7 @@ GET /api/v1/personnels/{id}
 GET /api/v1/personnels/{id}/position
 GET /api/v1/projects/{code}/emergency-contacts
 GET /api/v1/report-categories
+GET /api/v1/scans/{id}
 GET /api/v1/shift-swaps
 GET /api/v1/shift-swaps/candidates
 GET /api/v1/shift-swaps/replaceable
@@ -100,8 +102,11 @@ GET /api/v1/teams/{code}/map
 GET /api/v1/teams/{code}/members
 GET /api/v1/ws
 GET /api/v1/zones
+GET /api/v1/zones/progress
 GET /api/v1/zones/{id}
 GET /api/v1/zones/{id}/live
+GET /api/v1/zones/{id}/scanners
+GET /api/v1/zones/{id}/scans
 GET /api/v1/zones/{id}/tracking
 PATCH /api/v1/admin/app-links/{id}
 PATCH /api/v1/admin/attendances/{id}
@@ -166,6 +171,9 @@ POST /api/v1/permissions
 POST /api/v1/permissions/{id}/approve
 POST /api/v1/permissions/{id}/cancel
 POST /api/v1/permissions/{id}/decline
+POST /api/v1/scans/approve
+POST /api/v1/scans/{id}/approve
+POST /api/v1/scans/{id}/decline
 POST /api/v1/shift-swaps
 POST /api/v1/ws/ticket
 POST /api/v1/zones/{id}/check-in

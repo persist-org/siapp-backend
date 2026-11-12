@@ -28,9 +28,11 @@ func (in ScanInput) Offline() idem.OfflineCreate {
 	return idem.OfflineCreate{LocalID: in.LocalID, OccurredAt: in.OccurredAt}
 }
 
-// Attacher claims uploaded photos for a record (media.Service).
+// Attacher claims uploaded photos for a record, and shows them when the record is read
+// (media.Service).
 type Attacher interface {
 	Attach(ctx context.Context, q *db.Queries, in media.AttachInput) error
+	Views(ctx context.Context, q *db.Queries, entityType string, entityID int64, ids []int64) ([]media.View, error)
 }
 
 // NoticeKind says what a Notice is about.
@@ -42,6 +44,9 @@ const (
 	NoticeSubmitted NoticeKind = iota
 	// NoticeOfflineSent tells the author that a scan they made offline has been delivered.
 	NoticeOfflineSent
+	// NoticeDecided tells an author that their scans were approved or declined. One notice per
+	// author per request, however many of their scans the request decided.
+	NoticeDecided
 )
 
 // Notice is something to tell people about. cmd/api turns it into a notification.
@@ -56,6 +61,12 @@ type Notice struct {
 	Date         timeutil.Date
 	ScanID       int64
 	ZoneID       int64
+
+	// For NoticeDecided: the outcome, what the decider wrote, and every scan it covers (ScanID is the
+	// first; with more than one, the notice points at no single scan).
+	Declined     bool
+	DecisionNote string
+	ScanIDs      []int64
 }
 
 // Notifier sends notices. cmd/api adapts notifications.Service to it.
@@ -106,6 +117,26 @@ type Scan struct {
 	PatrolID         *int64
 	SubmittedOffline bool
 	CreatedAt        time.Time
+
+	// The decision (Phase 10.3): empty while the scan is SUBMITTED.
+	DecidedByID  *int64
+	DecidedAt    *time.Time
+	DecisionNote *string
+
+	// Filled when a scan is read, not when it is stored: the author's name and the photos as
+	// signed URLs (Service.present). Photos are the general ones; each answer carries its own.
+	PersonnelName string
+	Photos        []Photo
+}
+
+// Photo is a photo of a scan as a reader sees it: a signed URL that expires in about an hour, so it
+// is never stored, and a reader loads the scan again for a fresh one.
+type Photo struct {
+	ID            int64
+	URL           string
+	ContentType   string
+	CapturedAt    *time.Time
+	CaptureSource string
 }
 
 // ScanResult is what Scan returns. Replayed is true when the scan had been stored already: the
@@ -130,6 +161,13 @@ func scanOf(r db.PatrolScan) (Scan, error) {
 	if r.PatrolID.Valid {
 		out.PatrolID = &r.PatrolID.Int64
 	}
+	if r.DecidedByID.Valid {
+		out.DecidedByID = &r.DecidedByID.Int64
+	}
+	if r.DecidedAt.Valid {
+		out.DecidedAt = &r.DecidedAt.Time
+	}
+	out.DecisionNote = textPtr(r.DecisionNote)
 	if err := json.Unmarshal(r.Answers, &out.Answers); err != nil {
 		return Scan{}, fmt.Errorf("scan %d: decode answers: %w", r.ID, err)
 	}

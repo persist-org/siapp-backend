@@ -40,6 +40,9 @@ type AnswerEntry struct {
 	Value    any     `json:"value"`
 	Note     *string `json:"note"`
 	MediaIDs []int64 `json:"media_ids"`
+
+	// Photos are the answer's photos as signed URLs, filled when a scan is read. Never stored.
+	Photos []Photo `json:"-"`
 }
 
 // checkAnswers judges the answers of a scan against the zone's checklist as it was when the guard

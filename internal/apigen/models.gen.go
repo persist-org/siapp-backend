@@ -338,19 +338,19 @@ func (e BusinessLine) Valid() bool {
 
 // Defines values for CaptureSource.
 const (
-	CAMERA  CaptureSource = "CAMERA"
-	GALLERY CaptureSource = "GALLERY"
-	UNKNOWN CaptureSource = "UNKNOWN"
+	CaptureSourceCAMERA  CaptureSource = "CAMERA"
+	CaptureSourceGALLERY CaptureSource = "GALLERY"
+	CaptureSourceUNKNOWN CaptureSource = "UNKNOWN"
 )
 
 // Valid indicates whether the value is a known member of the CaptureSource enum.
 func (e CaptureSource) Valid() bool {
 	switch e {
-	case CAMERA:
+	case CaptureSourceCAMERA:
 		return true
-	case GALLERY:
+	case CaptureSourceGALLERY:
 		return true
-	case UNKNOWN:
+	case CaptureSourceUNKNOWN:
 		return true
 	default:
 		return false
@@ -1590,6 +1590,27 @@ func (e PatrolScanAnswerPhotoMode) Valid() bool {
 	}
 }
 
+// Defines values for PatrolScanPhotoCaptureSource.
+const (
+	PatrolScanPhotoCaptureSourceCAMERA  PatrolScanPhotoCaptureSource = "CAMERA"
+	PatrolScanPhotoCaptureSourceGALLERY PatrolScanPhotoCaptureSource = "GALLERY"
+	PatrolScanPhotoCaptureSourceUNKNOWN PatrolScanPhotoCaptureSource = "UNKNOWN"
+)
+
+// Valid indicates whether the value is a known member of the PatrolScanPhotoCaptureSource enum.
+func (e PatrolScanPhotoCaptureSource) Valid() bool {
+	switch e {
+	case PatrolScanPhotoCaptureSourceCAMERA:
+		return true
+	case PatrolScanPhotoCaptureSourceGALLERY:
+		return true
+	case PatrolScanPhotoCaptureSourceUNKNOWN:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PatrolZoneType.
 const (
 	PatrolZoneTypeGUARD  PatrolZoneType = "GUARD"
@@ -2292,6 +2313,24 @@ func (e Weekday) Valid() bool {
 	case Tuesday:
 		return true
 	case Wednesday:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ZoneProgressItemZoneType.
+const (
+	ZoneProgressItemZoneTypeGUARD  ZoneProgressItemZoneType = "GUARD"
+	ZoneProgressItemZoneTypePATROL ZoneProgressItemZoneType = "PATROL"
+)
+
+// Valid indicates whether the value is a known member of the ZoneProgressItemZoneType enum.
+func (e ZoneProgressItemZoneType) Valid() bool {
+	switch e {
+	case ZoneProgressItemZoneTypeGUARD:
+		return true
+	case ZoneProgressItemZoneTypePATROL:
 		return true
 	default:
 		return false
@@ -6699,6 +6738,21 @@ func (e GetReportsById200JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
+// Defines values for PostScansApprove200JSONResponseBodySuccess.
+const (
+	PostScansApprove200JSONResponseBodySuccessTrue PostScansApprove200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostScansApprove200JSONResponseBodySuccess enum.
+func (e PostScansApprove200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostScansApprove200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetScansById200JSONResponseBodySuccess.
 const (
 	GetScansById200JSONResponseBodySuccessTrue GetScansById200JSONResponseBodySuccess = true
@@ -6912,6 +6966,39 @@ func (e GetZones200JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
+// Defines values for GetZonesProgressParamsType.
+const (
+	GetZonesProgressParamsTypeGUARD  GetZonesProgressParamsType = "GUARD"
+	GetZonesProgressParamsTypePATROL GetZonesProgressParamsType = "PATROL"
+)
+
+// Valid indicates whether the value is a known member of the GetZonesProgressParamsType enum.
+func (e GetZonesProgressParamsType) Valid() bool {
+	switch e {
+	case GetZonesProgressParamsTypeGUARD:
+		return true
+	case GetZonesProgressParamsTypePATROL:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetZonesProgress200JSONResponseBodySuccess.
+const (
+	GetZonesProgress200JSONResponseBodySuccessTrue GetZonesProgress200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetZonesProgress200JSONResponseBodySuccess enum.
+func (e GetZonesProgress200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetZonesProgress200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetZonesById200JSONResponseBodySuccess.
 const (
 	GetZonesById200JSONResponseBodySuccessTrue GetZonesById200JSONResponseBodySuccess = true
@@ -6996,6 +7083,42 @@ const (
 func (e PostZonesByIdScan201JSONResponseBodySuccess) Valid() bool {
 	switch e {
 	case PostZonesByIdScan201JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetZonesByIdScanners200JSONResponseBodySuccess.
+const (
+	GetZonesByIdScanners200JSONResponseBodySuccessTrue GetZonesByIdScanners200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetZonesByIdScanners200JSONResponseBodySuccess enum.
+func (e GetZonesByIdScanners200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetZonesByIdScanners200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetZonesByIdScansParamsStatus.
+const (
+	GetZonesByIdScansParamsStatusAPPROVED  GetZonesByIdScansParamsStatus = "APPROVED"
+	GetZonesByIdScansParamsStatusDECLINED  GetZonesByIdScansParamsStatus = "DECLINED"
+	GetZonesByIdScansParamsStatusSUBMITTED GetZonesByIdScansParamsStatus = "SUBMITTED"
+)
+
+// Valid indicates whether the value is a known member of the GetZonesByIdScansParamsStatus enum.
+func (e GetZonesByIdScansParamsStatus) Valid() bool {
+	switch e {
+	case GetZonesByIdScansParamsStatusAPPROVED:
+		return true
+	case GetZonesByIdScansParamsStatusDECLINED:
+		return true
+	case GetZonesByIdScansParamsStatusSUBMITTED:
 		return true
 	default:
 		return false
@@ -7610,6 +7733,20 @@ type BranchUpdate struct {
 	ManagerName *string `json:"manager_name,omitempty"`
 	Phone       *string `json:"phone,omitempty"`
 	ZipCode     *string `json:"zip_code,omitempty"`
+}
+
+// BulkApproveInput defines model for BulkApproveInput.
+type BulkApproveInput struct {
+	// Ids Id yang sama dihitung sekali.
+	Ids []int64 `json:"ids"`
+}
+
+// BulkApproveResult defines model for BulkApproveResult.
+type BulkApproveResult struct {
+	Approved []PatrolScan `json:"approved"`
+
+	// Skipped Scan yang sudah diputuskan lebih dulu; dilewati, tidak diubah.
+	Skipped []int64 `json:"skipped"`
 }
 
 // BusinessLine Bidang usaha proyek (DL-20). security membentuk kode berakhiran S, cleaning berakhiran C; satu klien paling banyak satu proyek per bidang.
@@ -9051,6 +9188,11 @@ type PatrolScan struct {
 	AccuracyMeters float64            `json:"accuracy_meters"`
 	Answers        []PatrolScanAnswer `json:"answers"`
 	CreatedAt      time.Time          `json:"created_at"`
+	DecidedAt      *time.Time         `json:"decided_at,omitempty"`
+	DecidedById    *int64             `json:"decided_by_id,omitempty"`
+
+	// DecisionNote Catatan DANRU, wajib saat ditolak.
+	DecisionNote *string `json:"decision_note,omitempty"`
 
 	// DistanceMeters Jarak dari pusat zona; null bila zona tanpa geofence.
 	DistanceMeters *int               `json:"distance_meters,omitempty"`
@@ -9058,12 +9200,18 @@ type PatrolScan struct {
 	Latitude       float64            `json:"latitude"`
 	LocalId        openapi_types.UUID `json:"local_id"`
 	Longitude      float64            `json:"longitude"`
-	Notes          *string            `json:"notes,omitempty"`
-	OccurredAt     time.Time          `json:"occurred_at"`
+
+	// Media Foto umum scan (bukan foto jawaban) sebagai URL bertanda tangan. Ada saat scan dibaca.
+	Media      *[]PatrolScanPhoto `json:"media,omitempty"`
+	Notes      *string            `json:"notes,omitempty"`
+	OccurredAt time.Time          `json:"occurred_at"`
 
 	// PatrolId Patroli yang sedang berjalan saat scan (Phase 10.4); diisi server.
-	PatrolId         *int64           `json:"patrol_id,omitempty"`
-	PersonnelId      int64            `json:"personnel_id"`
+	PatrolId    *int64 `json:"patrol_id,omitempty"`
+	PersonnelId int64  `json:"personnel_id"`
+
+	// PersonnelName Nama pemindai. Ada saat scan dibaca (daftar dan detail).
+	PersonnelName    *string          `json:"personnel_name,omitempty"`
 	ProjectCode      string           `json:"project_code"`
 	ReceivedAt       time.Time        `json:"received_at"`
 	Status           PatrolScanStatus `json:"status"`
@@ -9090,13 +9238,16 @@ type PatrolScanAnswer struct {
 	AttachWhen PatrolScanAnswerAttachWhen `json:"attach_when"`
 	ItemId     int64                      `json:"item_id"`
 	Label      string                     `json:"label"`
-	MediaIds   []int64                    `json:"media_ids"`
-	Note       *string                    `json:"note,omitempty"`
-	NoteMode   PatrolScanAnswerNoteMode   `json:"note_mode"`
-	Options    *[]PatrolChecklistOption   `json:"options,omitempty"`
-	PhotoMax   int                        `json:"photo_max"`
-	PhotoMode  PatrolScanAnswerPhotoMode  `json:"photo_mode"`
-	Required   bool                       `json:"required"`
+
+	// Media Foto jawaban ini sebagai URL bertanda tangan. Hanya ada saat scan dibaca (daftar dan detail).
+	Media     *[]PatrolScanPhoto        `json:"media,omitempty"`
+	MediaIds  []int64                   `json:"media_ids"`
+	Note      *string                   `json:"note,omitempty"`
+	NoteMode  PatrolScanAnswerNoteMode  `json:"note_mode"`
+	Options   *[]PatrolChecklistOption  `json:"options,omitempty"`
+	PhotoMax  int                       `json:"photo_max"`
+	PhotoMode PatrolScanAnswerPhotoMode `json:"photo_mode"`
+	Required  bool                      `json:"required"`
 
 	// Value Boolean, teks, angka atau nilai opsi menurut `answer_type`; null bila pertanyaan opsional tidak dijawab.
 	Value interface{} `json:"value,omitempty"`
@@ -9146,6 +9297,18 @@ type PatrolScanCreate struct {
 	Subject          string    `json:"subject"`
 	SubmittedOffline *bool     `json:"submitted_offline,omitempty"`
 }
+
+// PatrolScanPhoto Foto sebuah scan. URL-nya bertanda tangan dan berumur sekitar satu jam; jangan disimpan, muat ulang scan untuk URL baru.
+type PatrolScanPhoto struct {
+	CaptureSource *PatrolScanPhotoCaptureSource `json:"capture_source,omitempty"`
+	CapturedAt    *time.Time                    `json:"captured_at,omitempty"`
+	ContentType   string                        `json:"content_type"`
+	Id            int64                         `json:"id"`
+	Url           string                        `json:"url"`
+}
+
+// PatrolScanPhotoCaptureSource defines model for PatrolScanPhoto.CaptureSource.
+type PatrolScanPhotoCaptureSource string
 
 // PatrolZone Zona patroli (`PATROL`) atau pos jaga (`GUARD`) beserta checklist aktifnya (Phase 10.1).
 // Proyek dan regu dikenali dengan kode (D19), bukan id. Rahasia QR TIDAK pernah ada di sini:
@@ -10735,6 +10898,43 @@ type ZoneCheckInInput struct {
 	Latitude       float64 `json:"latitude"`
 	Longitude      float64 `json:"longitude"`
 	QrPayload      string  `json:"qr_payload"`
+}
+
+// ZoneProgressItem Tiga lingkaran satu zona pada satu tanggal kerja (Gambar 10).
+type ZoneProgressItem struct {
+	// Approved Lingkaran hijau: disetujui.
+	Approved int `json:"approved"`
+
+	// Declined Ditolak.
+	Declined int `json:"declined"`
+
+	// Required Lingkaran merah: jumlah scan yang dibutuhkan (`min_visit`).
+	Required int `json:"required"`
+
+	// Submitted Lingkaran biru: sudah di-scan, belum diputuskan.
+	Submitted int `json:"submitted"`
+	Zone      struct {
+		Alias       *string                  `json:"alias,omitempty"`
+		Id          int64                    `json:"id"`
+		MinVisit    int                      `json:"min_visit"`
+		Name        string                   `json:"name"`
+		ProjectCode string                   `json:"project_code"`
+		TeamCode    *string                  `json:"team_code,omitempty"`
+		Type        ZoneProgressItemZoneType `json:"type"`
+	} `json:"zone"`
+}
+
+// ZoneProgressItemZoneType defines model for ZoneProgressItem.Zone.Type.
+type ZoneProgressItemZoneType string
+
+// ZoneScanner defines model for ZoneScanner.
+type ZoneScanner struct {
+	ApprovedCount int    `json:"approved_count"`
+	FullName      string `json:"full_name"`
+	PersonnelId   int64  `json:"personnel_id"`
+
+	// SubmittedCount Angka di samping nama (§3.2.6.2): scan yang belum diputuskan.
+	SubmittedCount int `json:"submitted_count"`
 }
 
 // BranchCodePath defines model for BranchCodePath.
@@ -12964,8 +13164,13 @@ type PostPanicsByIdFinish200JSONResponseBodySuccess bool
 
 // GetPatrolPendingApprovalsParams defines parameters for GetPatrolPendingApprovals.
 type GetPatrolPendingApprovalsParams struct {
-	// TeamId Filter scope regu.
-	TeamId *TeamIdParam `form:"team_id,omitempty" json:"team_id,omitempty"`
+	TeamCode *string `form:"team_code,omitempty" json:"team_code,omitempty"`
+
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
+	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
+
+	// Limit Item per halaman (maks 100).
+	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // GetPatrolPendingApprovals200JSONResponseBodySuccess defines parameters for GetPatrolPendingApprovals.
@@ -13508,6 +13713,9 @@ type GetReportsTeam200JSONResponseBodySuccess bool
 // GetReportsById200JSONResponseBodySuccess defines parameters for GetReportsById.
 type GetReportsById200JSONResponseBodySuccess bool
 
+// PostScansApprove200JSONResponseBodySuccess defines parameters for PostScansApprove.
+type PostScansApprove200JSONResponseBodySuccess bool
+
 // GetScansById200JSONResponseBodySuccess defines parameters for GetScansById.
 type GetScansById200JSONResponseBodySuccess bool
 
@@ -13598,6 +13806,21 @@ type GetZonesParamsType string
 // GetZones200JSONResponseBodySuccess defines parameters for GetZones.
 type GetZones200JSONResponseBodySuccess bool
 
+// GetZonesProgressParams defines parameters for GetZonesProgress.
+type GetZonesProgressParams struct {
+	// ProjectCode Bawaan: semua proyek tempat pemanggil bertugas.
+	ProjectCode *string                     `form:"project_code,omitempty" json:"project_code,omitempty"`
+	TeamCode    *string                     `form:"team_code,omitempty" json:"team_code,omitempty"`
+	Type        *GetZonesProgressParamsType `form:"type,omitempty" json:"type,omitempty"`
+	WorkDate    *openapi_types.Date         `form:"work_date,omitempty" json:"work_date,omitempty"`
+}
+
+// GetZonesProgressParamsType defines parameters for GetZonesProgress.
+type GetZonesProgressParamsType string
+
+// GetZonesProgress200JSONResponseBodySuccess defines parameters for GetZonesProgress.
+type GetZonesProgress200JSONResponseBodySuccess bool
+
 // GetZonesById200JSONResponseBodySuccess defines parameters for GetZonesById.
 type GetZonesById200JSONResponseBodySuccess bool
 
@@ -13640,14 +13863,30 @@ type PostZonesByIdScan200JSONResponseBodySuccess bool
 // PostZonesByIdScan201JSONResponseBodySuccess defines parameters for PostZonesByIdScan.
 type PostZonesByIdScan201JSONResponseBodySuccess bool
 
+// GetZonesByIdScannersParams defines parameters for GetZonesByIdScanners.
+type GetZonesByIdScannersParams struct {
+	TeamCode *string             `form:"team_code,omitempty" json:"team_code,omitempty"`
+	WorkDate *openapi_types.Date `form:"work_date,omitempty" json:"work_date,omitempty"`
+}
+
+// GetZonesByIdScanners200JSONResponseBodySuccess defines parameters for GetZonesByIdScanners.
+type GetZonesByIdScanners200JSONResponseBodySuccess bool
+
 // GetZonesByIdScansParams defines parameters for GetZonesByIdScans.
 type GetZonesByIdScansParams struct {
-	// DateFrom Awal rentang (YYYY-MM-DD, relatif TZ proyek).
-	DateFrom *DateFromParam `form:"date_from,omitempty" json:"date_from,omitempty"`
+	PersonnelId *int64                         `form:"personnel_id,omitempty" json:"personnel_id,omitempty"`
+	WorkDate    *openapi_types.Date            `form:"work_date,omitempty" json:"work_date,omitempty"`
+	Status      *GetZonesByIdScansParamsStatus `form:"status,omitempty" json:"status,omitempty"`
 
-	// DateTo Akhir rentang (YYYY-MM-DD, relatif TZ proyek).
-	DateTo *DateToParam `form:"date_to,omitempty" json:"date_to,omitempty"`
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
+	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
+
+	// Limit Item per halaman (maks 100).
+	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
 }
+
+// GetZonesByIdScansParamsStatus defines parameters for GetZonesByIdScans.
+type GetZonesByIdScansParamsStatus string
 
 // GetZonesByIdScans200JSONResponseBodySuccess defines parameters for GetZonesByIdScans.
 type GetZonesByIdScans200JSONResponseBodySuccess bool
@@ -14038,8 +14277,8 @@ type PostQrCodesGenerateJSONRequestBody = QrGenerateRequest
 // PostReportsJSONRequestBody defines body for PostReports for application/json ContentType.
 type PostReportsJSONRequestBody = ReportCreate
 
-// PostScansByIdApproveJSONRequestBody defines body for PostScansByIdApprove for application/json ContentType.
-type PostScansByIdApproveJSONRequestBody = ApprovalNote
+// PostScansApproveJSONRequestBody defines body for PostScansApprove for application/json ContentType.
+type PostScansApproveJSONRequestBody = BulkApproveInput
 
 // PostScansByIdDeclineJSONRequestBody defines body for PostScansByIdDecline for application/json ContentType.
 type PostScansByIdDeclineJSONRequestBody = RejectionNote

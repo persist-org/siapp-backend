@@ -156,16 +156,31 @@ func (s *Service) CheckOut(ctx context.Context, p auth.Principal, zoneID int64, 
 // their approve permission (a DANRU), or only their own (anybody else who serves in the project).
 // A person who does not serve in the zone's project reads nothing.
 func (s *Service) readReach(ctx context.Context, q *db.Queries, p auth.Principal, zone db.PatrolZone, project db.Project) (teams []string, own bool, err error) {
+	sc, err := s.scopeOf(ctx, q, p, zone, project)
+	return sc.teams, sc.own, err
+}
+
+// readScope is what a caller may read of one zone: the regu of their approve permission when they
+// are a DANRU, otherwise only their own records (own), and in any case the regu they serve in
+// there (mine), which is where a member's own team is.
+type readScope struct {
+	teams []string
+	own   bool
+	mine  []string
+}
+
+func (s *Service) scopeOf(ctx context.Context, q *db.Queries, p auth.Principal, zone db.PatrolZone, project db.Project) (readScope, error) {
 	if s.perms == nil {
-		return nil, false, errors.New("patrol: permissions are not plugged in")
+		return readScope{}, errors.New("patrol: permissions are not plugged in")
 	}
 	loc, err := time.LoadLocation(project.Timezone)
 	if err != nil {
-		return nil, false, fmt.Errorf("project %s: timezone %q: %w", project.Code, project.Timezone, err)
+		return readScope{}, fmt.Errorf("project %s: timezone %q: %w", project.Code, project.Timezone, err)
 	}
 	day := timeutil.BusinessDate(s.clock.Now(), loc)
-	if _, err := s.membershipIn(ctx, q, p.PersonnelID, zone, day); err != nil {
-		return nil, false, access.ErrPermissionDenied
+	mine, err := s.membershipIn(ctx, q, p.PersonnelID, zone, day)
+	if err != nil {
+		return readScope{}, access.ErrPermissionDenied
 	}
 	perm := access.PatrolApprove
 	if zone.Type == db.PatrolZoneTypeGUARD {
@@ -173,12 +188,12 @@ func (s *Service) readReach(ctx context.Context, q *db.Queries, p auth.Principal
 	}
 	res, err := s.perms.Resolve(ctx, q, p.PersonnelID, perm, day)
 	if err != nil {
-		return nil, false, err
+		return readScope{}, err
 	}
 	if res.Allowed && !res.SelfOnly {
-		return res.TeamCodes, false, nil
+		return readScope{teams: res.TeamCodes, mine: mine}, nil
 	}
-	return nil, true, nil
+	return readScope{own: true, mine: mine}, nil
 }
 
 // Live returns who is checked in to the zone now.

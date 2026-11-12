@@ -67,16 +67,24 @@ func (n notifier) NotifyAttendance(ctx context.Context, nt attendance.Notice) {
 }
 
 // NotifyPatrol sends PATROL_SUBMITTED or GUARD_SUBMITTED (by the zone's type) to who decides a scan,
-// and OFFLINE_SUBMISSION_SENT to the guard whose offline scan has arrived (patrol.Notifier).
+// OFFLINE_SUBMISSION_SENT to the guard whose offline scan has arrived, and PATROL_APPROVED or
+// GUARD_APPROVED to the author of scans that were decided. A decline uses the same type with
+// data.decision = DECLINED (patrol.Notifier).
 func (n notifier) NotifyPatrol(ctx context.Context, nt patrol.Notice) {
+	guard := nt.ZoneType == patrol.TypeGuard
 	typ := notifications.TypePatrolSubmitted
 	switch {
 	case nt.Kind == patrol.NoticeOfflineSent:
 		typ = notifications.TypeOfflineSubmissionSent
-	case nt.ZoneType == patrol.TypeGuard:
+	case nt.Kind == patrol.NoticeDecided && guard:
+		typ = notifications.TypeGuardApproved
+	case nt.Kind == patrol.NoticeDecided:
+		typ = notifications.TypePatrolApproved
+	case guard:
 		typ = notifications.TypeGuardSubmitted
 	}
-	n.service.Notify(ctx, notifications.Input{
+	data := map[string]any{"scan_id": nt.ScanID, "zone_id": nt.ZoneID, "team_code": nt.TeamCode, "work_date": nt.Date.String()}
+	in := notifications.Input{
 		Type:         typ,
 		RecipientIDs: nt.RecipientIDs,
 		Vars: notifications.Vars{
@@ -84,8 +92,21 @@ func (n notifier) NotifyPatrol(ctx context.Context, nt patrol.Notice) {
 			Subject: nt.Subject, Date: nt.Date,
 		},
 		Entity: &notifications.Entity{Type: patrol.EntityScan, ID: nt.ScanID},
-		Data:   map[string]any{"scan_id": nt.ScanID, "zone_id": nt.ZoneID, "team_code": nt.TeamCode, "work_date": nt.Date.String()},
-	})
+		Data:   data,
+	}
+	if nt.Kind == patrol.NoticeDecided {
+		data["decision"] = "APPROVED"
+		if nt.Declined {
+			data["decision"] = "DECLINED"
+			in.Vars.Declined, in.Vars.Note = true, nt.DecisionNote
+		}
+		data["scan_ids"] = nt.ScanIDs
+		// A notice that covers several scans leads to none of them in particular.
+		if len(nt.ScanIDs) > 1 {
+			in.Entity = nil
+		}
+	}
+	n.service.Notify(ctx, in)
 }
 
 // MemberMoved sends TEAM_CHANGED to the person who was moved.

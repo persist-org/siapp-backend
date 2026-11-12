@@ -64,6 +64,21 @@ var ErrAlreadyCheckedIn = apperr.New(http.StatusConflict, apperr.CodeConflict,
 var ErrPhotoRequired = apperr.New(http.StatusUnprocessableEntity, apperr.CodeUnprocessable,
 	ReasonPhotoRequired, "Zona ini mewajibkan minimal satu foto.")
 
+// Reasons of Phase 10.3.
+const (
+	ReasonScanNotFound       = "SCAN_NOT_FOUND"
+	ReasonScanAlreadyDecided = "SCAN_ALREADY_DECIDED"
+)
+
+// ErrScanNotFound is returned for a scan that does not exist, belongs to another organization, or
+// is not one the caller may read (a scan of another regu is answered like one that is not there).
+var ErrScanNotFound = apperr.New(http.StatusNotFound, apperr.CodeNotFound,
+	ReasonScanNotFound, "Scan tidak ditemukan.")
+
+// ErrScanAlreadyDecided is returned for an approve or decline of a scan that is no longer SUBMITTED.
+var ErrScanAlreadyDecided = apperr.New(http.StatusConflict, apperr.CodeConflict,
+	ReasonScanAlreadyDecided, "Scan ini sudah diputuskan.")
+
 // ErrLocalIDTaken is returned when a scan's local_id was already used by another person or for
 // another zone: it is the app's own id, so this is a bug or a forgery, never a replay.
 var ErrLocalIDTaken = apperr.New(http.StatusConflict, apperr.CodeDuplicate,

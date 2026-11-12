@@ -88,7 +88,10 @@ func (f *flow) photo(owner int64) int64 {
 	f.t.Helper()
 	var id int64
 	f.query([]any{&id}, `INSERT INTO media (owner_personnel_id, purpose, content_type, size_bytes, storage_key, status, capture_source)
-		VALUES ($1, 'PATROL_SCAN', 'image/jpeg', 1000, 'test/' || gen_random_uuid(), 'UPLOADED', 'CAMERA') RETURNING id`, owner)
+		VALUES ($1, 'PATROL_SCAN', 'image/jpeg', 1000, 'pending', 'UPLOADED', 'CAMERA') RETURNING id`, owner)
+	// The key has the shape the storage driver expects (media.ValidKey), so the photo can be shown.
+	f.exec(`UPDATE media SET storage_key = $1::text || '/PATROL_SCAN/' || to_char(now(), 'YYYY/MM') || '/' || id || '-' || md5(random()::text)
+		WHERE id = $2`, strconv.FormatInt(f.org, 10), id)
 	return id
 }
 

@@ -2896,6 +2896,17 @@ components:
         value: { nullable: true, description: "Boolean, teks, angka atau nilai opsi menurut `answer_type`; null bila pertanyaan opsional tidak dijawab." }
         note: { type: string, nullable: true }
         media_ids: { type: array, items: { type: integer, format: int64 } }
+        media: { type: array, items: { $ref: '#/components/schemas/PatrolScanPhoto' }, description: "Foto jawaban ini sebagai URL bertanda tangan. Hanya ada saat scan dibaca (daftar dan detail)." }
+    PatrolScanPhoto:
+      type: object
+      description: Foto sebuah scan. URL-nya bertanda tangan dan berumur sekitar satu jam; jangan disimpan, muat ulang scan untuk URL baru.
+      required: [id, url, content_type]
+      properties:
+        id: { type: integer, format: int64 }
+        url: { type: string, format: uri }
+        content_type: { type: string, example: image/jpeg }
+        captured_at: { type: string, format: date-time, nullable: true }
+        capture_source: { type: string, enum: [CAMERA, GALLERY, UNKNOWN] }
     PatrolScan:
       type: object
       description: Satu kunjungan ke zona. `team_code` dan `work_date` ditentukan server dari shift pemindai, bukan dikirim aplikasi.
@@ -2922,6 +2933,50 @@ components:
         patrol_id: { type: integer, format: int64, nullable: true, description: "Patroli yang sedang berjalan saat scan (Phase 10.4); diisi server." }
         submitted_offline: { type: boolean }
         created_at: { type: string, format: date-time }
+        personnel_name: { type: string, description: "Nama pemindai. Ada saat scan dibaca (daftar dan detail)." }
+        media: { type: array, items: { $ref: '#/components/schemas/PatrolScanPhoto' }, description: "Foto umum scan (bukan foto jawaban) sebagai URL bertanda tangan. Ada saat scan dibaca." }
+        decided_by_id: { type: integer, format: int64, nullable: true }
+        decided_at: { type: string, format: date-time, nullable: true }
+        decision_note: { type: string, nullable: true, description: "Catatan DANRU, wajib saat ditolak." }
+    ZoneProgressItem:
+      type: object
+      description: Tiga lingkaran satu zona pada satu tanggal kerja (Gambar 10).
+      required: [zone, required, submitted, approved, declined]
+      properties:
+        zone:
+          type: object
+          required: [id, project_code, type, name, min_visit]
+          properties:
+            id: { type: integer, format: int64 }
+            project_code: { type: string }
+            team_code: { type: string, nullable: true }
+            type: { type: string, enum: [PATROL, GUARD] }
+            name: { type: string }
+            alias: { type: string, nullable: true }
+            min_visit: { type: integer }
+        required: { type: integer, description: "Lingkaran merah: jumlah scan yang dibutuhkan (`min_visit`)." }
+        submitted: { type: integer, description: "Lingkaran biru: sudah di-scan, belum diputuskan." }
+        approved: { type: integer, description: "Lingkaran hijau: disetujui." }
+        declined: { type: integer, description: Ditolak. }
+    ZoneScanner:
+      type: object
+      required: [personnel_id, full_name, submitted_count, approved_count]
+      properties:
+        personnel_id: { type: integer, format: int64 }
+        full_name: { type: string }
+        submitted_count: { type: integer, description: "Angka di samping nama (§3.2.6.2): scan yang belum diputuskan." }
+        approved_count: { type: integer }
+    BulkApproveInput:
+      type: object
+      required: [ids]
+      properties:
+        ids: { type: array, minItems: 1, maxItems: 50, items: { type: integer, format: int64 }, description: "Id yang sama dihitung sekali." }
+    BulkApproveResult:
+      type: object
+      required: [approved, skipped]
+      properties:
+        approved: { type: array, items: { $ref: '#/components/schemas/PatrolScan' } }
+        skipped: { type: array, items: { type: integer, format: int64 }, description: "Scan yang sudah diputuskan lebih dulu; dilewati, tidak diubah." }
     PatrolScanAnswerInput:
       type: object
       required: [item_id]
@@ -11465,6 +11520,27 @@ paths:
       responses:
         '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/ListEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/PatrolZone' } } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /zones/progress:
+    get:
+      operationId: getZonesProgress
+      tags: [Patrol]
+      summary: Progres zona (lingkaran merah, biru, hijau)
+      description: |
+        Untuk tiap zona aktif: `required` (merah), `submitted` (biru), `approved` (hijau) dan
+        `declined`, pada satu tanggal kerja. `work_date` bawaannya hari ini menurut zona waktu proyek.
+        Anggota melihat angka regunya sendiri; DANRU juga regu dalam jangkauan izin approve-nya dan
+        boleh memilih satu dengan `team_code`. Regu atau proyek di luar jangkauan: 403
+        `PERMISSION_DENIED`. Semua hitungan diambil dalam satu query per proyek dan tipe zona.
+      parameters:
+        - { name: project_code, in: query, schema: { type: string }, description: "Bawaan: semua proyek tempat pemanggil bertugas." }
+        - { name: team_code, in: query, schema: { type: string } }
+        - { name: type, in: query, schema: { type: string, enum: [PATROL, GUARD] } }
+        - { name: work_date, in: query, schema: { type: string, format: date } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/ZoneProgressItem' } } } } ] } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /zones/{id}:
     parameters: [ { $ref: '#/components/parameters/IdPath' } ]
     get:
@@ -11513,10 +11589,41 @@ paths:
       operationId: getZonesByIdScans
       tags: [Patrol]
       summary: Riwayat scan zona
-      parameters: [ { $ref: '#/components/parameters/DateFromParam' }, { $ref: '#/components/parameters/DateToParam' } ]
+      description: |
+        Scan zona, terbaru dulu, lengkap dengan jawaban dan foto (URL bertanda tangan). DANRU melihat
+        scan regu dalam jangkauan izin approve-nya; anggota proyek lain hanya scan miliknya.
+        Scan yang disetujui atau ditolak tetap tampil (§3.2.6.3).
+      parameters:
+        - { name: personnel_id, in: query, schema: { type: integer, format: int64 } }
+        - { name: work_date, in: query, schema: { type: string, format: date } }
+        - { name: status, in: query, schema: { type: string, enum: [SUBMITTED, APPROVED, DECLINED] } }
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
       responses:
         '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/ListEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/PatrolScan' } } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /zones/{id}/scanners:
+    parameters: [ { $ref: '#/components/parameters/IdPath' } ]
+    get:
+      operationId: getZonesByIdScanners
+      tags: [Patrol]
+      summary: Siapa yang scan zona, dengan angka di samping nama
+      description: |
+        Pemindai zona pada satu tanggal kerja (bawaan hari ini menurut zona waktu proyek) dengan
+        `submitted_count` dan `approved_count` (§3.2.6.2). DANRU melihat regu dalam jangkauannya atau
+        yang dipilih dengan `team_code`; anggota proyek lain hanya melihat dirinya.
+      parameters:
+        - { name: team_code, in: query, schema: { type: string } }
+        - { name: work_date, in: query, schema: { type: string, format: date } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/ZoneScanner' } } } } ] } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /zones/{id}/check-in:
     parameters: [ { $ref: '#/components/parameters/IdPath' } ]
     post:
@@ -11594,40 +11701,78 @@ paths:
       operationId: getScansById
       tags: [Patrol]
       summary: Detail satu scan
+      description: |
+        Scan dengan tiap jawaban (pertanyaan, jawaban, catatan, foto) agar DANRU menilai jawaban
+        beserta buktinya. Pemindai membaca miliknya; DANRU membaca scan regu yang ia putuskan. Scan
+        lain dijawab 404 `SCAN_NOT_FOUND`.
       responses:
         '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/PatrolScan' } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+  /scans/approve:
+    post:
+      operationId: postScansApprove
+      tags: [Patrol]
+      summary: Setujui banyak scan sekaligus (DANRU)
+      description: |
+        Paling banyak 50 id. Tiap scan harus ada dan berada di regu yang boleh diputuskan pemanggil
+        (izin `patrol.approve`/`guard.approve` menurut tipe zona), kalau tidak seluruh permintaan
+        ditolak (404 `SCAN_NOT_FOUND` atau 403) dan tidak ada yang berubah. Scan yang ternyata sudah
+        diputuskan dilewati dan dicantumkan di `skipped`. Tiap pemindai hanya menerima satu
+        notifikasi per permintaan.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/BulkApproveInput' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/BulkApproveResult' } } } ] } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /scans/{id}/approve:
     parameters: [ { $ref: '#/components/parameters/IdPath' } ]
     post:
       operationId: postScansByIdApprove
       tags: [Patrol]
       summary: Approval laporan patroli/jaga (DANRU)
-      requestBody: { required: false, content: { application/json: { schema: { $ref: '#/components/schemas/ApprovalNote' } } } }
+      description: |
+        Perlu izin `patrol.approve` atau `guard.approve` menurut tipe zona, dengan regu scan dalam
+        jangkauan. Scan yang sudah diputuskan dijawab 409 `SCAN_ALREADY_DECIDED`. Pemindai
+        diberi tahu (`PATROL_APPROVED`/`GUARD_APPROVED`). Tanpa badan permintaan.
       responses:
         '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/PatrolScan' } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /scans/{id}/decline:
     parameters: [ { $ref: '#/components/parameters/IdPath' } ]
     post:
       operationId: postScansByIdDecline
       tags: [Patrol]
       summary: Tolak scan (DANRU)
+      description: |
+        Aturan izin sama dengan approve. `note` wajib (umpan balik DANRU, `danru_patrol_feedback`).
+        Scan yang sudah diputuskan dijawab 409 `SCAN_ALREADY_DECIDED`. Pemindai menerima notifikasi
+        `PATROL_APPROVED`/`GUARD_APPROVED` dengan `data.decision` = `DECLINED` dan catatannya.
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/RejectionNote' } } } }
       responses:
         '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/PatrolScan' } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /patrol/pending-approvals:
     get:
       operationId: getPatrolPendingApprovals
       tags: [Patrol]
       summary: Antrian approval (status Biru, DANRU)
-      parameters: [ { $ref: '#/components/parameters/TeamIdParam' } ]
+      description: |
+        Scan `SUBMITTED` regu yang diputuskan pemanggil, terlama dulu; zona patroli menurut
+        `patrol.approve` dan zona jaga menurut `guard.approve`. Yang tidak memutuskan regu mana pun: 403.
+      parameters:
+        - { name: team_code, in: query, schema: { type: string } }
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
       responses:
         '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/ListEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/PatrolScan' } } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }

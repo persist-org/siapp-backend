@@ -37,7 +37,16 @@ func NewHandler(service *Service, idempotent func(http.Handler) http.Handler) *H
 // of the day the request is about.
 func (h *Handler) MountField(r chi.Router) {
 	r.Get("/api/v1/zones", h.fieldList)
+	// chi matches a fixed segment before a parameter, so /zones/progress is not read as zone "progress".
+	r.Get("/api/v1/zones/progress", h.progress)
 	r.Get("/api/v1/zones/{id}", h.fieldGet)
+	r.Get("/api/v1/zones/{id}/scanners", h.scanners)
+	r.Get("/api/v1/zones/{id}/scans", h.zoneScans)
+	r.Get("/api/v1/scans/{id}", h.getScan)
+	r.Post("/api/v1/scans/{id}/approve", h.approve)
+	r.Post("/api/v1/scans/{id}/decline", h.decline)
+	r.Post("/api/v1/scans/approve", h.approveMany)
+	r.Get("/api/v1/patrol/pending-approvals", h.pending)
 	r.With(h.idempotent).Post("/api/v1/zones/{id}/scan", h.scan)
 	r.With(h.idempotent).Post("/api/v1/zones/{id}/check-in", h.checkIn)
 	r.With(h.idempotent).Post("/api/v1/zones/{id}/check-out", h.checkOut)
@@ -470,6 +479,32 @@ func (h *Handler) tracking(w http.ResponseWriter, r *http.Request) {
 
 // ---------- responses ----------
 
+func scansToAPI(list []Scan) []apigen.PatrolScan {
+	out := make([]apigen.PatrolScan, 0, len(list))
+	for _, sc := range list {
+		out = append(out, scanToAPI(sc))
+	}
+	return out
+}
+
+// photosToAPI maps photo views. A nil list stays nil (the scan was not read, it was just made, so
+// there are no URLs to show); an empty one is an empty array.
+func photosToAPI(photos []Photo) *[]apigen.PatrolScanPhoto {
+	if photos == nil {
+		return nil
+	}
+	out := make([]apigen.PatrolScanPhoto, 0, len(photos))
+	for _, p := range photos {
+		item := apigen.PatrolScanPhoto{Id: p.ID, Url: p.URL, ContentType: p.ContentType, CapturedAt: p.CapturedAt}
+		if p.CaptureSource != "" {
+			src := apigen.PatrolScanPhotoCaptureSource(p.CaptureSource)
+			item.CaptureSource = &src
+		}
+		out = append(out, item)
+	}
+	return &out
+}
+
 func scanToAPI(sc Scan) apigen.PatrolScan {
 	answers := make([]apigen.PatrolScanAnswer, 0, len(sc.Answers))
 	for _, a := range sc.Answers {
@@ -477,7 +512,7 @@ func scanToAPI(sc Scan) apigen.PatrolScan {
 			ItemId: a.ItemID, Label: a.Label, AnswerType: apigen.PatrolScanAnswerAnswerType(a.AnswerType), Required: a.Required,
 			PhotoMode: apigen.PatrolScanAnswerPhotoMode(a.PhotoMode), PhotoMax: a.PhotoMax,
 			NoteMode: apigen.PatrolScanAnswerNoteMode(a.NoteMode), AttachWhen: apigen.PatrolScanAnswerAttachWhen(a.AttachWhen),
-			Value: a.Value, Note: a.Note, MediaIds: a.MediaIDs,
+			Value: a.Value, Note: a.Note, MediaIds: a.MediaIDs, Media: photosToAPI(a.Photos),
 		}
 		if len(a.Options) > 0 {
 			opts := make([]apigen.PatrolChecklistOption, 0, len(a.Options))
@@ -489,6 +524,10 @@ func scanToAPI(sc Scan) apigen.PatrolScan {
 		answers = append(answers, out)
 	}
 	local, _ := uuid.Parse(sc.LocalID)
+	var name *string
+	if sc.PersonnelName != "" {
+		name = &sc.PersonnelName
+	}
 	return apigen.PatrolScan{
 		Id: sc.ID, LocalId: local, ZoneId: sc.ZoneID, ZoneType: apigen.PatrolScanZoneType(sc.ZoneType),
 		PersonnelId: sc.PersonnelID, TeamCode: sc.TeamCode, ProjectCode: sc.ProjectCode, OccurredAt: sc.OccurredAt,
@@ -496,6 +535,8 @@ func scanToAPI(sc Scan) apigen.PatrolScan {
 		Longitude: sc.Longitude, AccuracyMeters: sc.AccuracyMeters, DistanceMeters: sc.DistanceMeters, Subject: sc.Subject,
 		Notes: sc.Notes, Answers: answers, Status: apigen.PatrolScanStatus(sc.Status), PatrolId: sc.PatrolID,
 		SubmittedOffline: sc.SubmittedOffline, CreatedAt: sc.CreatedAt,
+		DecidedById: sc.DecidedByID, DecidedAt: sc.DecidedAt, DecisionNote: sc.DecisionNote,
+		PersonnelName: name, Media: photosToAPI(sc.Photos),
 	}
 }
 
