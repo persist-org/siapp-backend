@@ -226,6 +226,135 @@ func (ns NullCategoryKind) Value() (driver.Value, error) {
 	return string(ns.CategoryKind), nil
 }
 
+type ChecklistAnswerType string
+
+const (
+	ChecklistAnswerTypeBOOLEAN ChecklistAnswerType = "BOOLEAN"
+	ChecklistAnswerTypeTEXT    ChecklistAnswerType = "TEXT"
+	ChecklistAnswerTypeNUMBER  ChecklistAnswerType = "NUMBER"
+	ChecklistAnswerTypeCHOICE  ChecklistAnswerType = "CHOICE"
+)
+
+func (e *ChecklistAnswerType) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ChecklistAnswerType(s)
+	case string:
+		*e = ChecklistAnswerType(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ChecklistAnswerType: %T", src)
+	}
+	return nil
+}
+
+type NullChecklistAnswerType struct {
+	ChecklistAnswerType ChecklistAnswerType
+	Valid               bool // Valid is true if ChecklistAnswerType is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullChecklistAnswerType) Scan(value interface{}) error {
+	if value == nil {
+		ns.ChecklistAnswerType, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ChecklistAnswerType.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullChecklistAnswerType) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ChecklistAnswerType), nil
+}
+
+type ChecklistAttachMode string
+
+const (
+	ChecklistAttachModeNONE     ChecklistAttachMode = "NONE"
+	ChecklistAttachModeOPTIONAL ChecklistAttachMode = "OPTIONAL"
+	ChecklistAttachModeREQUIRED ChecklistAttachMode = "REQUIRED"
+)
+
+func (e *ChecklistAttachMode) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ChecklistAttachMode(s)
+	case string:
+		*e = ChecklistAttachMode(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ChecklistAttachMode: %T", src)
+	}
+	return nil
+}
+
+type NullChecklistAttachMode struct {
+	ChecklistAttachMode ChecklistAttachMode
+	Valid               bool // Valid is true if ChecklistAttachMode is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullChecklistAttachMode) Scan(value interface{}) error {
+	if value == nil {
+		ns.ChecklistAttachMode, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ChecklistAttachMode.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullChecklistAttachMode) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ChecklistAttachMode), nil
+}
+
+type ChecklistAttachWhen string
+
+const (
+	ChecklistAttachWhenALWAYS ChecklistAttachWhen = "ALWAYS"
+	ChecklistAttachWhenONNO   ChecklistAttachWhen = "ON_NO"
+)
+
+func (e *ChecklistAttachWhen) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ChecklistAttachWhen(s)
+	case string:
+		*e = ChecklistAttachWhen(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ChecklistAttachWhen: %T", src)
+	}
+	return nil
+}
+
+type NullChecklistAttachWhen struct {
+	ChecklistAttachWhen ChecklistAttachWhen
+	Valid               bool // Valid is true if ChecklistAttachWhen is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullChecklistAttachWhen) Scan(value interface{}) error {
+	if value == nil {
+		ns.ChecklistAttachWhen, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ChecklistAttachWhen.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullChecklistAttachWhen) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ChecklistAttachWhen), nil
+}
+
 type DevicePlatform string
 
 const (
@@ -758,6 +887,48 @@ func (ns NullOutboxStatus) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return string(ns.OutboxStatus), nil
+}
+
+type PatrolZoneType string
+
+const (
+	PatrolZoneTypePATROL PatrolZoneType = "PATROL"
+	PatrolZoneTypeGUARD  PatrolZoneType = "GUARD"
+)
+
+func (e *PatrolZoneType) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PatrolZoneType(s)
+	case string:
+		*e = PatrolZoneType(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PatrolZoneType: %T", src)
+	}
+	return nil
+}
+
+type NullPatrolZoneType struct {
+	PatrolZoneType PatrolZoneType
+	Valid          bool // Valid is true if PatrolZoneType is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPatrolZoneType) Scan(value interface{}) error {
+	if value == nil {
+		ns.PatrolZoneType, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PatrolZoneType.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPatrolZoneType) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PatrolZoneType), nil
 }
 
 type PermissionScope string
@@ -1490,6 +1661,49 @@ type PanicType struct {
 	CreatedAt         pgtype.Timestamptz
 	UpdatedAt         pgtype.Timestamptz
 	DeletedAt         pgtype.Timestamptz
+}
+
+type PatrolChecklistItem struct {
+	ID             int64
+	OrganizationID int64
+	ZoneID         int64
+	SortOrder      int32
+	Label          string
+	HelpText       pgtype.Text
+	AnswerType     ChecklistAnswerType
+	Options        json.RawMessage
+	Required       bool
+	PhotoMode      ChecklistAttachMode
+	PhotoMax       int16
+	NoteMode       ChecklistAttachMode
+	AttachWhen     ChecklistAttachWhen
+	Active         bool
+	DeactivatedAt  pgtype.Timestamptz
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
+type PatrolZone struct {
+	ID             int64
+	OrganizationID int64
+	ProjectCode    string
+	TeamCode       pgtype.Text
+	Type           PatrolZoneType
+	Name           string
+	Alias          pgtype.Text
+	Description    pgtype.Text
+	PopupText      pgtype.Text
+	Latitude       *float64
+	Longitude      *float64
+	RadiusMeters   pgtype.Int4
+	MinVisit       int32
+	StartDate      pgtype.Date
+	PhotoRequired  bool
+	QrSecret       string
+	Active         bool
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+	DeletedAt      pgtype.Timestamptz
 }
 
 type PersonelOutbox struct {

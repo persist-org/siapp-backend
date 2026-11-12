@@ -17,6 +17,7 @@ import (
 	"siapp/pkg/media"
 	"siapp/pkg/notifications"
 	"siapp/pkg/organization"
+	"siapp/pkg/patrol"
 	"siapp/pkg/platform/auth"
 	"siapp/pkg/platform/clock"
 	"siapp/pkg/platform/httpx"
@@ -169,6 +170,11 @@ func newRouter(d deps) *chi.Mux {
 	locationHandler := location.NewHandler(locationService, httpx.NewRateLimiter(d.Redis, d.RedisPrefix, d.Logger))
 	locationHandler.MountField(router, accessService)
 
+	// Patrol and guard zones (10.1): admins define them with a checklist and a printable QR, the
+	// field app lists them. Scans, approval and the patrol route arrive in the next phases.
+	patrolHandler := patrol.NewHandler(patrol.NewService(d.Pool, d.Clock))
+	patrolHandler.MountField(router)
+
 	// The WebSocket (05.3). The hub is shared with the Redis subscriber main starts, which feeds
 	// it the events other instances publish.
 	hub := d.Hub
@@ -193,6 +199,7 @@ func newRouter(d deps) *chi.Mux {
 		leaveHandler.MountAdmin(admin)
 		attendanceHandler.MountAdmin(admin)
 		locationHandler.MountAdmin(admin)
+		patrolHandler.MountAdmin(admin)
 	})
 
 	return router
