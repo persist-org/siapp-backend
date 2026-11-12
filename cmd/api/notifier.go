@@ -8,6 +8,7 @@ import (
 	"siapp/pkg/leave"
 	"siapp/pkg/notifications"
 	"siapp/pkg/organization"
+	"siapp/pkg/patrol"
 	"siapp/pkg/platform/auth"
 )
 
@@ -21,6 +22,7 @@ var (
 	_ organization.Notifier = notifier{}
 	_ leave.Notifier        = notifier{}
 	_ attendance.Notifier   = notifier{}
+	_ patrol.Notifier       = notifier{}
 )
 
 // NotifyLeave sends the notice of a leave request: LEAVE_REQUESTED and LEAVE_CANCELLED to who
@@ -61,6 +63,28 @@ func (n notifier) NotifyAttendance(ctx context.Context, nt attendance.Notice) {
 		},
 		Entity: &notifications.Entity{Type: nt.EntityType, ID: nt.EntityID},
 		Data:   map[string]any{"team_code": nt.TeamCode, "work_date": nt.Date.String()},
+	})
+}
+
+// NotifyPatrol sends PATROL_SUBMITTED or GUARD_SUBMITTED (by the zone's type) to who decides a scan,
+// and OFFLINE_SUBMISSION_SENT to the guard whose offline scan has arrived (patrol.Notifier).
+func (n notifier) NotifyPatrol(ctx context.Context, nt patrol.Notice) {
+	typ := notifications.TypePatrolSubmitted
+	switch {
+	case nt.Kind == patrol.NoticeOfflineSent:
+		typ = notifications.TypeOfflineSubmissionSent
+	case nt.ZoneType == patrol.TypeGuard:
+		typ = notifications.TypeGuardSubmitted
+	}
+	n.service.Notify(ctx, notifications.Input{
+		Type:         typ,
+		RecipientIDs: nt.RecipientIDs,
+		Vars: notifications.Vars{
+			BusinessLine: notifications.BusinessLine(nt.BusinessLine), ActorName: nt.ActorName, TeamName: nt.TeamCode,
+			Subject: nt.Subject, Date: nt.Date,
+		},
+		Entity: &notifications.Entity{Type: patrol.EntityScan, ID: nt.ScanID},
+		Data:   map[string]any{"scan_id": nt.ScanID, "zone_id": nt.ZoneID, "team_code": nt.TeamCode, "work_date": nt.Date.String()},
 	})
 }
 

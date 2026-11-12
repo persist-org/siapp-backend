@@ -889,6 +889,49 @@ func (ns NullOutboxStatus) Value() (driver.Value, error) {
 	return string(ns.OutboxStatus), nil
 }
 
+type PatrolScanStatus string
+
+const (
+	PatrolScanStatusSUBMITTED PatrolScanStatus = "SUBMITTED"
+	PatrolScanStatusAPPROVED  PatrolScanStatus = "APPROVED"
+	PatrolScanStatusDECLINED  PatrolScanStatus = "DECLINED"
+)
+
+func (e *PatrolScanStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PatrolScanStatus(s)
+	case string:
+		*e = PatrolScanStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PatrolScanStatus: %T", src)
+	}
+	return nil
+}
+
+type NullPatrolScanStatus struct {
+	PatrolScanStatus PatrolScanStatus
+	Valid            bool // Valid is true if PatrolScanStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPatrolScanStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.PatrolScanStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PatrolScanStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPatrolScanStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PatrolScanStatus), nil
+}
+
 type PatrolZoneType string
 
 const (
@@ -1683,6 +1726,35 @@ type PatrolChecklistItem struct {
 	UpdatedAt      pgtype.Timestamptz
 }
 
+type PatrolScan struct {
+	ID               int64
+	OrganizationID   int64
+	LocalID          pgtype.UUID
+	ZoneID           int64
+	ZoneType         PatrolZoneType
+	PersonnelID      int64
+	TeamCode         string
+	ProjectCode      string
+	OccurredAt       pgtype.Timestamptz
+	ReceivedAt       pgtype.Timestamptz
+	WorkDate         pgtype.Date
+	Latitude         float64
+	Longitude        float64
+	AccuracyMeters   float64
+	DistanceMeters   pgtype.Int4
+	Subject          string
+	Notes            pgtype.Text
+	Answers          json.RawMessage
+	Status           PatrolScanStatus
+	DecidedByID      pgtype.Int8
+	DecidedAt        pgtype.Timestamptz
+	DecisionNote     pgtype.Text
+	PatrolID         pgtype.Int8
+	SubmittedOffline bool
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+}
+
 type PatrolZone struct {
 	ID             int64
 	OrganizationID int64
@@ -1949,4 +2021,21 @@ type WebRoleAssignment struct {
 	CreatedAt            pgtype.Timestamptz
 	UpdatedAt            pgtype.Timestamptz
 	RegionCode           pgtype.Text
+}
+
+type ZoneCheckin struct {
+	ID             int64
+	OrganizationID int64
+	ZoneID         int64
+	PersonnelID    int64
+	TeamCode       string
+	ShiftID        pgtype.Int8
+	CheckInAt      pgtype.Timestamptz
+	CheckInLat     float64
+	CheckInLng     float64
+	CheckOutAt     pgtype.Timestamptz
+	CheckOutLat    *float64
+	CheckOutLng    *float64
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
 }

@@ -170,9 +170,15 @@ func newRouter(d deps) *chi.Mux {
 	locationHandler := location.NewHandler(locationService, httpx.NewRateLimiter(d.Redis, d.RedisPrefix, d.Logger))
 	locationHandler.MountField(router, accessService)
 
-	// Patrol and guard zones (10.1): admins define them with a checklist and a printable QR, the
-	// field app lists them. Scans, approval and the patrol route arrive in the next phases.
-	patrolHandler := patrol.NewHandler(patrol.NewService(d.Pool, d.Clock))
+	// Patrol and guard zones (10.1) and the scans and check-ins of the guards (10.2). The shifts
+	// decide the regu and the work date of a scan, the photos come from module 04, and the DANRU
+	// is told through the notifier. Approval and the patrol route arrive in the next phases.
+	patrolService := patrol.NewService(d.Pool, d.Clock)
+	patrolService.UseShifts(organization.NewShifts(d.Pool))
+	patrolService.UsePermissions(accessService)
+	patrolService.UseAttachments(mediaService)
+	patrolService.UseNotifier(notifier)
+	patrolHandler := patrol.NewHandler(patrolService, idempotency.Middleware(true))
 	patrolHandler.MountField(router)
 
 	// The WebSocket (05.3). The hub is shared with the Redis subscriber main starts, which feeds

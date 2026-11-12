@@ -101,6 +101,8 @@ GET /api/v1/teams/{code}/members
 GET /api/v1/ws
 GET /api/v1/zones
 GET /api/v1/zones/{id}
+GET /api/v1/zones/{id}/live
+GET /api/v1/zones/{id}/tracking
 PATCH /api/v1/admin/app-links/{id}
 PATCH /api/v1/admin/attendances/{id}
 PATCH /api/v1/admin/branches/{code}
@@ -166,6 +168,9 @@ POST /api/v1/permissions/{id}/cancel
 POST /api/v1/permissions/{id}/decline
 POST /api/v1/shift-swaps
 POST /api/v1/ws/ticket
+POST /api/v1/zones/{id}/check-in
+POST /api/v1/zones/{id}/check-out
+POST /api/v1/zones/{id}/scan
 PUT /api/v1/admin/field-permissions/{team_role}
 PUT /api/v1/admin/leave-client-settings/{client_code}
 PUT /api/v1/admin/permission-categories/{code}/quotas

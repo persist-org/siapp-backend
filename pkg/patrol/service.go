@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -24,16 +25,38 @@ import (
 	"siapp/pkg/platform/timeutil"
 )
 
-// Service keeps the zones and their checklists.
+// Service keeps the zones and their checklists, and takes the scans and check-ins of the guards.
 type Service struct {
 	pool  *pgxpool.Pool
 	clock clock.Clock
+
+	// Plugged in at start-up by the Use methods; scans and check-ins need the first three.
+	shifts   organization.Shifts
+	perms    *access.Service
+	attach   Attacher
+	notifier Notifier
 }
 
 // NewService returns the Service.
 func NewService(pool *pgxpool.Pool, c clock.Clock) *Service {
 	return &Service{pool: pool, clock: c}
 }
+
+// UseShifts plugs in the source of a person's shifts, which decides the regu and the work date of a
+// visit (organization.NewShifts).
+func (s *Service) UseShifts(sh organization.Shifts) { s.shifts = sh }
+
+// UsePermissions plugs in the field permission matrix: who may scan, who may see who is checked in.
+func (s *Service) UsePermissions(p *access.Service) { s.perms = p }
+
+// UseAttachments plugs in the module that takes uploaded photos into a record (media.Service).
+func (s *Service) UseAttachments(a Attacher) { s.attach = a }
+
+// UseNotifier plugs in the sender of notices. Without one, nothing is sent.
+func (s *Service) UseNotifier(n Notifier) { s.notifier = n }
+
+// Now is the service's clock, for the handler's check of a scan's occurred_at.
+func (s *Service) Now() time.Time { return s.clock.Now() }
 
 // ZoneInput is a request to create a zone.
 type ZoneInput struct {
@@ -618,7 +641,7 @@ func checkProjectAndTeam(ctx context.Context, q *db.Queries, projectCode string,
 	return nil
 }
 
-type geo struct {
+type fence struct {
 	lat, lng *float64
 	radius   *int
 }
@@ -626,7 +649,7 @@ type geo struct {
 // geofence checks the point and the radius as one thing: all three, or none. A point without a
 // radius gets DefaultRadiusMeters, unless the caller said the radius should be empty
 // (radiusCleared), which then conflicts with the point.
-func geofence(lat, lng *float64, radius *int, radiusCleared bool) (geo, error) {
+func geofence(lat, lng *float64, radius *int, radiusCleared bool) (fence, error) {
 	var problems []apperr.FieldError
 	fail := func(field, msg string) {
 		problems = append(problems, apperr.FieldError{Field: field, Code: "INVALID", Message: msg})
@@ -643,9 +666,9 @@ func geofence(lat, lng *float64, radius *int, radiusCleared bool) (geo, error) {
 		radius = &r
 	}
 	if len(problems) > 0 {
-		return geo{}, apperr.ErrValidation.WithFields(problems...)
+		return fence{}, apperr.ErrValidation.WithFields(problems...)
 	}
-	return geo{lat: lat, lng: lng, radius: radius}, nil
+	return fence{lat: lat, lng: lng, radius: radius}, nil
 }
 
 func withChecklist(ctx context.Context, q *db.Queries, row db.PatrolZone) (Zone, error) {

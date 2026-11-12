@@ -1467,6 +1467,129 @@ func (e PatrolChecklistItemInputPhotoMode) Valid() bool {
 	}
 }
 
+// Defines values for PatrolScanStatus.
+const (
+	PatrolScanStatusAPPROVED  PatrolScanStatus = "APPROVED"
+	PatrolScanStatusDECLINED  PatrolScanStatus = "DECLINED"
+	PatrolScanStatusSUBMITTED PatrolScanStatus = "SUBMITTED"
+)
+
+// Valid indicates whether the value is a known member of the PatrolScanStatus enum.
+func (e PatrolScanStatus) Valid() bool {
+	switch e {
+	case PatrolScanStatusAPPROVED:
+		return true
+	case PatrolScanStatusDECLINED:
+		return true
+	case PatrolScanStatusSUBMITTED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatrolScanZoneType.
+const (
+	PatrolScanZoneTypeGUARD  PatrolScanZoneType = "GUARD"
+	PatrolScanZoneTypePATROL PatrolScanZoneType = "PATROL"
+)
+
+// Valid indicates whether the value is a known member of the PatrolScanZoneType enum.
+func (e PatrolScanZoneType) Valid() bool {
+	switch e {
+	case PatrolScanZoneTypeGUARD:
+		return true
+	case PatrolScanZoneTypePATROL:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatrolScanAnswerAnswerType.
+const (
+	PatrolScanAnswerAnswerTypeBOOLEAN PatrolScanAnswerAnswerType = "BOOLEAN"
+	PatrolScanAnswerAnswerTypeCHOICE  PatrolScanAnswerAnswerType = "CHOICE"
+	PatrolScanAnswerAnswerTypeNUMBER  PatrolScanAnswerAnswerType = "NUMBER"
+	PatrolScanAnswerAnswerTypeTEXT    PatrolScanAnswerAnswerType = "TEXT"
+)
+
+// Valid indicates whether the value is a known member of the PatrolScanAnswerAnswerType enum.
+func (e PatrolScanAnswerAnswerType) Valid() bool {
+	switch e {
+	case PatrolScanAnswerAnswerTypeBOOLEAN:
+		return true
+	case PatrolScanAnswerAnswerTypeCHOICE:
+		return true
+	case PatrolScanAnswerAnswerTypeNUMBER:
+		return true
+	case PatrolScanAnswerAnswerTypeTEXT:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatrolScanAnswerAttachWhen.
+const (
+	PatrolScanAnswerAttachWhenALWAYS PatrolScanAnswerAttachWhen = "ALWAYS"
+	PatrolScanAnswerAttachWhenONNO   PatrolScanAnswerAttachWhen = "ON_NO"
+)
+
+// Valid indicates whether the value is a known member of the PatrolScanAnswerAttachWhen enum.
+func (e PatrolScanAnswerAttachWhen) Valid() bool {
+	switch e {
+	case PatrolScanAnswerAttachWhenALWAYS:
+		return true
+	case PatrolScanAnswerAttachWhenONNO:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatrolScanAnswerNoteMode.
+const (
+	PatrolScanAnswerNoteModeNONE     PatrolScanAnswerNoteMode = "NONE"
+	PatrolScanAnswerNoteModeOPTIONAL PatrolScanAnswerNoteMode = "OPTIONAL"
+	PatrolScanAnswerNoteModeREQUIRED PatrolScanAnswerNoteMode = "REQUIRED"
+)
+
+// Valid indicates whether the value is a known member of the PatrolScanAnswerNoteMode enum.
+func (e PatrolScanAnswerNoteMode) Valid() bool {
+	switch e {
+	case PatrolScanAnswerNoteModeNONE:
+		return true
+	case PatrolScanAnswerNoteModeOPTIONAL:
+		return true
+	case PatrolScanAnswerNoteModeREQUIRED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatrolScanAnswerPhotoMode.
+const (
+	PatrolScanAnswerPhotoModeNONE     PatrolScanAnswerPhotoMode = "NONE"
+	PatrolScanAnswerPhotoModeOPTIONAL PatrolScanAnswerPhotoMode = "OPTIONAL"
+	PatrolScanAnswerPhotoModeREQUIRED PatrolScanAnswerPhotoMode = "REQUIRED"
+)
+
+// Valid indicates whether the value is a known member of the PatrolScanAnswerPhotoMode enum.
+func (e PatrolScanAnswerPhotoMode) Valid() bool {
+	switch e {
+	case PatrolScanAnswerPhotoModeNONE:
+		return true
+	case PatrolScanAnswerPhotoModeOPTIONAL:
+		return true
+	case PatrolScanAnswerPhotoModeREQUIRED:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PatrolZoneType.
 const (
 	PatrolZoneTypeGUARD  PatrolZoneType = "GUARD"
@@ -6804,6 +6927,51 @@ func (e GetZonesById200JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
+// Defines values for PostZonesByIdCheckIn201JSONResponseBodySuccess.
+const (
+	PostZonesByIdCheckIn201JSONResponseBodySuccessTrue PostZonesByIdCheckIn201JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostZonesByIdCheckIn201JSONResponseBodySuccess enum.
+func (e PostZonesByIdCheckIn201JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostZonesByIdCheckIn201JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostZonesByIdCheckOut200JSONResponseBodySuccess.
+const (
+	PostZonesByIdCheckOut200JSONResponseBodySuccessTrue PostZonesByIdCheckOut200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostZonesByIdCheckOut200JSONResponseBodySuccess enum.
+func (e PostZonesByIdCheckOut200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostZonesByIdCheckOut200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetZonesByIdLive200JSONResponseBodySuccess.
+const (
+	GetZonesByIdLive200JSONResponseBodySuccessTrue GetZonesByIdLive200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetZonesByIdLive200JSONResponseBodySuccess enum.
+func (e GetZonesByIdLive200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetZonesByIdLive200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PostZonesByIdScan200JSONResponseBodySuccess.
 const (
 	PostZonesByIdScan200JSONResponseBodySuccessTrue PostZonesByIdScan200JSONResponseBodySuccess = true
@@ -8878,44 +9046,105 @@ type PatrolChecklistReplace struct {
 	Checklist []PatrolChecklistItemInput `json:"checklist"`
 }
 
-// PatrolScan defines model for PatrolScan.
+// PatrolScan Satu kunjungan ke zona. `team_code` dan `work_date` ditentukan server dari shift pemindai, bukan dikirim aplikasi.
 type PatrolScan struct {
-	ApprovedAt     *time.Time                `json:"approved_at,omitempty"`
-	ApprovedBy     *int64                    `json:"approved_by,omitempty"`
-	Checklist      *[]map[string]interface{} `json:"checklist,omitempty"`
-	CreatedAt      *time.Time                `json:"created_at,omitempty"`
-	Id             *int64                    `json:"id,omitempty"`
-	IsApproved     *bool                     `json:"is_approved,omitempty"`
-	Latitude       *float64                  `json:"latitude,omitempty"`
-	LocalId        *string                   `json:"local_id,omitempty"`
-	Longitude      *float64                  `json:"longitude,omitempty"`
-	Note           *string                   `json:"note,omitempty"`
-	OrganizationId *int64                    `json:"organization_id,omitempty"`
-	PersonnelId    *int64                    `json:"personnel_id,omitempty"`
+	AccuracyMeters float64            `json:"accuracy_meters"`
+	Answers        []PatrolScanAnswer `json:"answers"`
+	CreatedAt      time.Time          `json:"created_at"`
 
-	// Photos URL foto bertanda tangan yang berumur pendek (sekitar 1 jam). Jangan disimpan; muat ulang catatannya untuk URL baru. Isinya foto yang dilampirkan lewat `media_ids`.
-	Photos    *[]string  `json:"photos,omitempty"`
-	ScannedAt *time.Time `json:"scanned_at,omitempty"`
-	SyncedAt  *time.Time `json:"synced_at,omitempty"`
-	ZoneId    *int64     `json:"zone_id,omitempty"`
+	// DistanceMeters Jarak dari pusat zona; null bila zona tanpa geofence.
+	DistanceMeters *int               `json:"distance_meters,omitempty"`
+	Id             int64              `json:"id"`
+	Latitude       float64            `json:"latitude"`
+	LocalId        openapi_types.UUID `json:"local_id"`
+	Longitude      float64            `json:"longitude"`
+	Notes          *string            `json:"notes,omitempty"`
+	OccurredAt     time.Time          `json:"occurred_at"`
+
+	// PatrolId Patroli yang sedang berjalan saat scan (Phase 10.4); diisi server.
+	PatrolId         *int64           `json:"patrol_id,omitempty"`
+	PersonnelId      int64            `json:"personnel_id"`
+	ProjectCode      string           `json:"project_code"`
+	ReceivedAt       time.Time        `json:"received_at"`
+	Status           PatrolScanStatus `json:"status"`
+	Subject          string           `json:"subject"`
+	SubmittedOffline bool             `json:"submitted_offline"`
+	TeamCode         string           `json:"team_code"`
+
+	// WorkDate Tanggal mulai shift (shift malam setelah tengah malam tetap tanggal kemarin).
+	WorkDate openapi_types.Date `json:"work_date"`
+	ZoneId   int64              `json:"zone_id"`
+	ZoneType PatrolScanZoneType `json:"zone_type"`
+}
+
+// PatrolScanStatus defines model for PatrolScan.Status.
+type PatrolScanStatus string
+
+// PatrolScanZoneType defines model for PatrolScan.ZoneType.
+type PatrolScanZoneType string
+
+// PatrolScanAnswer Satu pertanyaan checklist beserta jawabannya, disalin seperti saat scan dibuat (judul,
+// tipe, opsi dan aturan lampiran), jadi mengubah checklist tidak menulis ulang riwayat.
+type PatrolScanAnswer struct {
+	AnswerType PatrolScanAnswerAnswerType `json:"answer_type"`
+	AttachWhen PatrolScanAnswerAttachWhen `json:"attach_when"`
+	ItemId     int64                      `json:"item_id"`
+	Label      string                     `json:"label"`
+	MediaIds   []int64                    `json:"media_ids"`
+	Note       *string                    `json:"note,omitempty"`
+	NoteMode   PatrolScanAnswerNoteMode   `json:"note_mode"`
+	Options    *[]PatrolChecklistOption   `json:"options,omitempty"`
+	PhotoMax   int                        `json:"photo_max"`
+	PhotoMode  PatrolScanAnswerPhotoMode  `json:"photo_mode"`
+	Required   bool                       `json:"required"`
+
+	// Value Boolean, teks, angka atau nilai opsi menurut `answer_type`; null bila pertanyaan opsional tidak dijawab.
+	Value interface{} `json:"value,omitempty"`
+}
+
+// PatrolScanAnswerAnswerType defines model for PatrolScanAnswer.AnswerType.
+type PatrolScanAnswerAnswerType string
+
+// PatrolScanAnswerAttachWhen defines model for PatrolScanAnswer.AttachWhen.
+type PatrolScanAnswerAttachWhen string
+
+// PatrolScanAnswerNoteMode defines model for PatrolScanAnswer.NoteMode.
+type PatrolScanAnswerNoteMode string
+
+// PatrolScanAnswerPhotoMode defines model for PatrolScanAnswer.PhotoMode.
+type PatrolScanAnswerPhotoMode string
+
+// PatrolScanAnswerInput defines model for PatrolScanAnswerInput.
+type PatrolScanAnswerInput struct {
+	ItemId int64 `json:"item_id"`
+
+	// MediaIds Foto jawaban ini (`POST /media` dengan tujuan `PATROL_SCAN`).
+	MediaIds *[]int64 `json:"media_ids,omitempty"`
+	Note     *string  `json:"note,omitempty"`
+
+	// Value Boolean, teks, angka atau nilai opsi menurut `answer_type` butirnya.
+	Value interface{} `json:"value,omitempty"`
 }
 
 // PatrolScanCreate defines model for PatrolScanCreate.
 type PatrolScanCreate struct {
-	Checklist *[]map[string]interface{} `json:"checklist,omitempty"`
-	Lat       float64                   `json:"lat"`
-	Lng       float64                   `json:"lng"`
+	AccuracyMeters float64                  `json:"accuracy_meters"`
+	Answers        *[]PatrolScanAnswerInput `json:"answers,omitempty"`
+	Latitude       float64                  `json:"latitude"`
 
-	// LocalId Dedup offline; SEBAIKNYA = Idempotency-Key.
-	LocalId *openapi_types.UUID `json:"local_id,omitempty"`
+	// LocalId Harus sama dengan header Idempotency-Key.
+	LocalId   openapi_types.UUID `json:"local_id"`
+	Longitude float64            `json:"longitude"`
 
-	// MediaIds Foto berstatus `UPLOADED` milik pengirim dengan tujuan `PATROL_SCAN` yang belum dilampirkan ke catatan lain. Tiap id hanya sekali.
+	// MediaIds Foto umum scan. Tiap id hanya sekali di seluruh scan (juga terhadap foto jawaban).
 	MediaIds *[]int64 `json:"media_ids,omitempty"`
-	Note     *string  `json:"note,omitempty"`
+	Notes    *string  `json:"notes,omitempty"`
 
-	// Photos Tidak lagi dipakai server. Unggah foto lewat `POST /media` lalu kirim `media_ids`.
-	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-	Photos *[]string `json:"photos,omitempty"`
+	// OccurredAt Saat scan terjadi di perangkat. Maksimal 5 menit di depan dan 7 hari ke belakang.
+	OccurredAt       time.Time `json:"occurred_at"`
+	QrPayload        string    `json:"qr_payload"`
+	Subject          string    `json:"subject"`
+	SubmittedOffline *bool     `json:"submitted_offline,omitempty"`
 }
 
 // PatrolZone Zona patroli (`PATROL`) atau pos jaga (`GUARD`) beserta checklist aktifnya (Phase 10.1).
@@ -10482,10 +10711,30 @@ type WsTicket struct {
 	Ticket string `json:"ticket"`
 }
 
-// ZoneCheckInInput defines model for ZoneCheckInInput.
+// ZoneCheckIn defines model for ZoneCheckIn.
+type ZoneCheckIn struct {
+	CheckInAt         time.Time  `json:"check_in_at"`
+	CheckInLatitude   float64    `json:"check_in_latitude"`
+	CheckInLongitude  float64    `json:"check_in_longitude"`
+	CheckOutAt        *time.Time `json:"check_out_at,omitempty"`
+	CheckOutLatitude  *float64   `json:"check_out_latitude,omitempty"`
+	CheckOutLongitude *float64   `json:"check_out_longitude,omitempty"`
+
+	// FullName Terisi di `live` dan `tracking`.
+	FullName    *string `json:"full_name,omitempty"`
+	Id          int64   `json:"id"`
+	PersonnelId int64   `json:"personnel_id"`
+	ShiftId     *int64  `json:"shift_id,omitempty"`
+	TeamCode    string  `json:"team_code"`
+	ZoneId      int64   `json:"zone_id"`
+}
+
+// ZoneCheckInInput Check-in dan check-out memakai badan yang sama. Waktunya waktu server.
 type ZoneCheckInInput struct {
-	Lat float64 `json:"lat"`
-	Lng float64 `json:"lng"`
+	AccuracyMeters float64 `json:"accuracy_meters"`
+	Latitude       float64 `json:"latitude"`
+	Longitude      float64 `json:"longitude"`
+	QrPayload      string  `json:"qr_payload"`
 }
 
 // BranchCodePath defines model for BranchCodePath.
@@ -13360,6 +13609,9 @@ type PostZonesByIdCheckInParams struct {
 	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
 }
 
+// PostZonesByIdCheckIn201JSONResponseBodySuccess defines parameters for PostZonesByIdCheckIn.
+type PostZonesByIdCheckIn201JSONResponseBodySuccess bool
+
 // PostZonesByIdCheckOutParams defines parameters for PostZonesByIdCheckOut.
 type PostZonesByIdCheckOutParams struct {
 	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
@@ -13367,6 +13619,12 @@ type PostZonesByIdCheckOutParams struct {
 	// 409 CONFLICT.
 	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
 }
+
+// PostZonesByIdCheckOut200JSONResponseBodySuccess defines parameters for PostZonesByIdCheckOut.
+type PostZonesByIdCheckOut200JSONResponseBodySuccess bool
+
+// GetZonesByIdLive200JSONResponseBodySuccess defines parameters for GetZonesByIdLive.
+type GetZonesByIdLive200JSONResponseBodySuccess bool
 
 // PostZonesByIdScanParams defines parameters for PostZonesByIdScan.
 type PostZonesByIdScanParams struct {
@@ -13396,11 +13654,16 @@ type GetZonesByIdScans200JSONResponseBodySuccess bool
 
 // GetZonesByIdTrackingParams defines parameters for GetZonesByIdTracking.
 type GetZonesByIdTrackingParams struct {
-	// DateFrom Awal rentang (YYYY-MM-DD, relatif TZ proyek).
-	DateFrom *DateFromParam `form:"date_from,omitempty" json:"date_from,omitempty"`
+	From        openapi_types.Date `form:"from" json:"from"`
+	To          openapi_types.Date `form:"to" json:"to"`
+	TeamCode    *string            `form:"team_code,omitempty" json:"team_code,omitempty"`
+	PersonnelId *int64             `form:"personnel_id,omitempty" json:"personnel_id,omitempty"`
 
-	// DateTo Akhir rentang (YYYY-MM-DD, relatif TZ proyek).
-	DateTo *DateToParam `form:"date_to,omitempty" json:"date_to,omitempty"`
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
+	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
+
+	// Limit Item per halaman (maks 100).
+	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // GetZonesByIdTracking200JSONResponseBodySuccess defines parameters for GetZonesByIdTracking.

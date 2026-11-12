@@ -1,6 +1,7 @@
 package patrol
 
 import (
+	"crypto/hmac"
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
@@ -36,6 +37,40 @@ const pngSize = 512
 //     every printed one stops working at once.
 func Payload(organizationID, zoneID int64, secret string) string {
 	return fmt.Sprintf("PERSIST-ZONE:%d:%d:%d:%s", qrPayloadVersion, organizationID, zoneID, secret)
+}
+
+// parsePayload reads what Payload wrote. ok is false for anything else, including a payload of
+// another version: a code of a later layout is not one this server can verify.
+func parsePayload(s string) (organizationID, zoneID int64, secret string, ok bool) {
+	parts := strings.Split(s, ":")
+	if len(parts) != 5 || parts[0] != "PERSIST-ZONE" || parts[1] != strconv.Itoa(qrPayloadVersion) {
+		return 0, 0, "", false
+	}
+	organizationID, err := strconv.ParseInt(parts[2], 10, 64)
+	if err != nil || organizationID < 1 {
+		return 0, 0, "", false
+	}
+	zoneID, err = strconv.ParseInt(parts[3], 10, 64)
+	if err != nil || zoneID < 1 {
+		return 0, 0, "", false
+	}
+	return organizationID, zoneID, parts[4], true
+}
+
+// verifyPayload says whether payload is the QR code of this zone of this organization.
+//
+// ⚠ All three parts must match: the organization (a sticker of another organization), the zone id
+// (a sticker of another zone held up at this one) and the secret, compared in constant time
+// (hmac.Equal) so the answer does not leak how much of a guess was right. Each failure is the
+// same ZONE_QR_INVALID: the caller learns nothing about which part was wrong.
+func verifyPayload(payload string, organizationID, zoneID int64, secret string) bool {
+	org, zone, got, ok := parsePayload(payload)
+	if !ok {
+		return false
+	}
+	// Both comparisons run whatever the first says, so the time taken is the same.
+	secretOK := hmac.Equal([]byte(got), []byte(secret))
+	return org == organizationID && zone == zoneID && secretOK
 }
 
 // newSecret returns a QR secret: 16 random bytes in base64url, which is 22 characters.

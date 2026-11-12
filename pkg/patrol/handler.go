@@ -1,12 +1,14 @@
 package patrol
 
 import (
+	"context"
 	"mime"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"siapp/internal/apigen"
@@ -14,21 +16,33 @@ import (
 	"siapp/pkg/platform/apperr"
 	"siapp/pkg/platform/auth"
 	"siapp/pkg/platform/httpx"
+	"siapp/pkg/platform/timeutil"
 )
 
 // Handler is the HTTP side of the patrol module: decode, call the service, respond.
 type Handler struct {
-	service *Service
+	service    *Service
+	idempotent func(http.Handler) http.Handler
 }
 
-// NewHandler returns the handler.
-func NewHandler(service *Service) *Handler { return &Handler{service: service} }
+// NewHandler returns the handler. idempotent is the Idempotency-Key middleware (required) that the
+// routes that write for the guard sit behind: a scan or a check-in that is retried after a lost
+// answer must give the same answer, not a second record.
+func NewHandler(service *Service, idempotent func(http.Handler) http.Handler) *Handler {
+	return &Handler{service: service, idempotent: idempotent}
+}
 
-// MountField adds the routes of the field app. Reading zones needs a signed-in person who serves
-// in the zone's project: the service decides that per request, from today's memberships.
+// MountField adds the routes of the field app. They need a signed-in person; whether they serve in
+// the zone's project, and may scan it, is the service's decision per request, from the memberships
+// of the day the request is about.
 func (h *Handler) MountField(r chi.Router) {
 	r.Get("/api/v1/zones", h.fieldList)
 	r.Get("/api/v1/zones/{id}", h.fieldGet)
+	r.With(h.idempotent).Post("/api/v1/zones/{id}/scan", h.scan)
+	r.With(h.idempotent).Post("/api/v1/zones/{id}/check-in", h.checkIn)
+	r.With(h.idempotent).Post("/api/v1/zones/{id}/check-out", h.checkOut)
+	r.Get("/api/v1/zones/{id}/live", h.live)
+	r.Get("/api/v1/zones/{id}/tracking", h.tracking)
 }
 
 // MountAdmin adds the web admin routes. access.RequireAdmin is mounted once on the whole group,
@@ -312,7 +326,199 @@ func (h *Handler) fieldGet(w http.ResponseWriter, r *http.Request) {
 	httpx.OK(w, r, http.StatusOK, zoneToAPI(zone))
 }
 
+// scan is POST /zones/{id}/scan.
+func (h *Handler) scan(w http.ResponseWriter, r *http.Request) {
+	p, ok := auth.From(r.Context())
+	if !ok {
+		httpx.Error(w, r, apperr.ErrUnauthenticated)
+		return
+	}
+	id, err := idParam(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	var in ScanInput
+	if err := httpx.Decode(r, &in); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	// local_id must be the Idempotency-Key, and occurred_at inside the window an offline app may claim.
+	if err := in.Offline().Check(r, h.service.Now()); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	res, err := h.service.Scan(r.Context(), p, id, in)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	status := http.StatusCreated
+	if res.Replayed {
+		status = http.StatusOK
+	}
+	httpx.OK(w, r, status, scanToAPI(res.Scan))
+}
+
+func (h *Handler) checkIn(w http.ResponseWriter, r *http.Request) {
+	h.presence(w, r, h.service.CheckIn, http.StatusCreated)
+}
+
+func (h *Handler) checkOut(w http.ResponseWriter, r *http.Request) {
+	h.presence(w, r, h.service.CheckOut, http.StatusOK)
+}
+
+// presence is the shared body of check-in and check-out.
+func (h *Handler) presence(w http.ResponseWriter, r *http.Request,
+	call func(ctx context.Context, p auth.Principal, zoneID int64, in PresenceInput) (CheckIn, error), status int,
+) {
+	p, ok := auth.From(r.Context())
+	if !ok {
+		httpx.Error(w, r, apperr.ErrUnauthenticated)
+		return
+	}
+	id, err := idParam(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	var in PresenceInput
+	if err := httpx.Decode(r, &in); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	got, err := call(r.Context(), p, id, in)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.OK(w, r, status, checkInToAPI(got))
+}
+
+func (h *Handler) live(w http.ResponseWriter, r *http.Request) {
+	p, ok := auth.From(r.Context())
+	if !ok {
+		httpx.Error(w, r, apperr.ErrUnauthenticated)
+		return
+	}
+	id, err := idParam(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	got, err := h.service.Live(r.Context(), p, id)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.OK(w, r, http.StatusOK, checkInsToAPI(got))
+}
+
+func (h *Handler) tracking(w http.ResponseWriter, r *http.Request) {
+	p, ok := auth.From(r.Context())
+	if !ok {
+		httpx.Error(w, r, apperr.ErrUnauthenticated)
+		return
+	}
+	id, err := idParam(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	query, err := httpx.ParseListQuery(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	f := TrackingFilter{TeamCode: r.URL.Query().Get("team_code"), Limit: query.Limit, Offset: query.Offset()}
+	var problems []apperr.FieldError
+	for _, name := range []string{"from", "to"} {
+		raw := r.URL.Query().Get(name)
+		if raw == "" {
+			problems = append(problems, apperr.FieldError{Field: name, Code: "REQUIRED", Message: "Wajib diisi."})
+			continue
+		}
+		d, err := timeutil.ParseDate(raw)
+		if err != nil {
+			problems = append(problems, apperr.FieldError{Field: name, Code: "INVALID", Message: "Harus berformat YYYY-MM-DD."})
+			continue
+		}
+		if name == "from" {
+			f.From = d
+		} else {
+			f.To = d
+		}
+	}
+	if s := r.URL.Query().Get("personnel_id"); s != "" {
+		n, err := strconv.ParseInt(s, 10, 64)
+		if err != nil || n < 1 {
+			problems = append(problems, apperr.FieldError{Field: "personnel_id", Code: "INVALID", Message: "Harus berupa angka positif."})
+		}
+		f.PersonnelID = n
+	}
+	if len(problems) > 0 {
+		httpx.Error(w, r, apperr.ErrValidation.WithFields(problems...))
+		return
+	}
+	got, total, err := h.service.Tracking(r.Context(), p, id, f)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.List(w, r, checkInsToAPI(got), query.WithTotal(total))
+}
+
 // ---------- responses ----------
+
+func scanToAPI(sc Scan) apigen.PatrolScan {
+	answers := make([]apigen.PatrolScanAnswer, 0, len(sc.Answers))
+	for _, a := range sc.Answers {
+		out := apigen.PatrolScanAnswer{
+			ItemId: a.ItemID, Label: a.Label, AnswerType: apigen.PatrolScanAnswerAnswerType(a.AnswerType), Required: a.Required,
+			PhotoMode: apigen.PatrolScanAnswerPhotoMode(a.PhotoMode), PhotoMax: a.PhotoMax,
+			NoteMode: apigen.PatrolScanAnswerNoteMode(a.NoteMode), AttachWhen: apigen.PatrolScanAnswerAttachWhen(a.AttachWhen),
+			Value: a.Value, Note: a.Note, MediaIds: a.MediaIDs,
+		}
+		if len(a.Options) > 0 {
+			opts := make([]apigen.PatrolChecklistOption, 0, len(a.Options))
+			for _, o := range a.Options {
+				opts = append(opts, apigen.PatrolChecklistOption{Value: o.Value, Label: o.Label})
+			}
+			out.Options = &opts
+		}
+		answers = append(answers, out)
+	}
+	local, _ := uuid.Parse(sc.LocalID)
+	return apigen.PatrolScan{
+		Id: sc.ID, LocalId: local, ZoneId: sc.ZoneID, ZoneType: apigen.PatrolScanZoneType(sc.ZoneType),
+		PersonnelId: sc.PersonnelID, TeamCode: sc.TeamCode, ProjectCode: sc.ProjectCode, OccurredAt: sc.OccurredAt,
+		ReceivedAt: sc.ReceivedAt, WorkDate: openapi_types.Date{Time: sc.WorkDate.Time()}, Latitude: sc.Latitude,
+		Longitude: sc.Longitude, AccuracyMeters: sc.AccuracyMeters, DistanceMeters: sc.DistanceMeters, Subject: sc.Subject,
+		Notes: sc.Notes, Answers: answers, Status: apigen.PatrolScanStatus(sc.Status), PatrolId: sc.PatrolID,
+		SubmittedOffline: sc.SubmittedOffline, CreatedAt: sc.CreatedAt,
+	}
+}
+
+func checkInToAPI(c CheckIn) apigen.ZoneCheckIn {
+	out := apigen.ZoneCheckIn{
+		Id: c.ID, ZoneId: c.ZoneID, PersonnelId: c.PersonnelID, TeamCode: c.TeamCode, ShiftId: c.ShiftID,
+		CheckInAt: c.CheckInAt, CheckInLatitude: c.CheckInLat, CheckInLongitude: c.CheckInLng,
+		CheckOutAt: c.CheckOutAt, CheckOutLatitude: c.CheckOutLat, CheckOutLongitude: c.CheckOutLng,
+	}
+	if c.FullName != "" {
+		name := c.FullName
+		out.FullName = &name
+	}
+	return out
+}
+
+func checkInsToAPI(list []CheckIn) []apigen.ZoneCheckIn {
+	out := make([]apigen.ZoneCheckIn, 0, len(list))
+	for _, c := range list {
+		out = append(out, checkInToAPI(c))
+	}
+	return out
+}
 
 func zonesToAPI(zones []Zone) []apigen.PatrolZone {
 	out := make([]apigen.PatrolZone, 0, len(zones))
