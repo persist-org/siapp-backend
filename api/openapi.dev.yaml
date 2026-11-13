@@ -98,6 +98,8 @@ tags:
     - Metadata pengambilan (waktu, GPS, sumber) disimpan sebagai bukti anti-kecurangan.
 - name: Report
   description: Laporan lapangan (offline-capable)
+- name: Patrol
+  description: Patroli & Jaga (zona, scan, check-in)
 - name: Panic
   description: Sinyal panik
 - name: Notification
@@ -4263,6 +4265,13 @@ components:
             type: integer
             format: int64
           description: Satu foto (purpose LEAVE_ATTACHMENT, sudah di-complete).
+    RejectionNote:
+      type: object
+      required:
+      - note
+      properties:
+        note:
+          type: string
     ShiftSwap:
       type: object
       description: 'Satu tukar jaga (tukar jaga berlaku seketika, tidak ada persetujuan): DANRU menunjuk pengganti untuk satu
@@ -4553,6 +4562,1111 @@ components:
         created_at:
           type: string
           format: date-time
+    PatrolZone:
+      type: object
+      description: |
+        Zona patroli (`PATROL`) atau pos jaga (`GUARD`) beserta checklist aktifnya (Phase 10.1).
+        Proyek dan regu dikenali dengan kode (D19), bukan id. Rahasia QR TIDAK pernah ada di sini:
+        isinya hanya ada di gambar QR yang dicetak admin (`GET /admin/zones/{id}/qr`).
+      required:
+      - id
+      - project_code
+      - type
+      - name
+      - min_visit
+      - photo_required
+      - is_active
+      - checklist
+      - created_at
+      - updated_at
+      properties:
+        id:
+          type: integer
+          format: int64
+        project_code:
+          type: string
+          example: 1K-IBMI-S
+        team_code:
+          type: string
+          nullable: true
+          example: 1K-IBMI-S1
+          description: null = zona untuk seluruh proyek; terisi = zona khusus satu regu.
+        type:
+          type: string
+          enum:
+          - PATROL
+          - GUARD
+          description: Jaga = GUARD (DL-11).
+        name:
+          type: string
+        alias:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        popup_text:
+          type: string
+          nullable: true
+          description: Ditampilkan saat zona dibuka.
+        latitude:
+          type: number
+          format: double
+          nullable: true
+          example: -6.2
+          description: Pusat zona. latitude, longitude dan radius_meters terisi bersama atau kosong bersama.
+        longitude:
+          type: number
+          format: double
+          nullable: true
+          example: 106.8
+        radius_meters:
+          type: integer
+          nullable: true
+          minimum: 1
+          description: Zona tanpa geofence (semua null) hanya mengandalkan QR.
+        min_visit:
+          type: integer
+          minimum: 1
+          description: Jumlah scan yang dibutuhkan (lingkaran merah).
+        start_date:
+          type: string
+          format: date
+          nullable: true
+        photo_required:
+          type: boolean
+          description: Scan butuh minimal satu foto, walau tidak ada butir checklist yang meminta (SQD §4.3).
+        is_active:
+          type: boolean
+        checklist:
+          type: array
+          description: Butir checklist yang aktif, urut menurut `sort_order`.
+          items:
+            $ref: '#/components/schemas/PatrolChecklistItem'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    PatrolChecklistOption:
+      type: object
+      required:
+      - value
+      - label
+      properties:
+        value:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Nilai yang dikirim aplikasi; unik dalam satu butir.
+        label:
+          type: string
+          minLength: 1
+          maxLength: 200
+    PatrolChecklistItem:
+      type: object
+      required:
+      - id
+      - sort_order
+      - label
+      - answer_type
+      - required
+      - photo_mode
+      - photo_max
+      - note_mode
+      - attach_when
+      properties:
+        id:
+          type: integer
+          format: int64
+        sort_order:
+          type: integer
+        label:
+          type: string
+          description: Pertanyaan.
+        help_text:
+          type: string
+          nullable: true
+          description: Petunjuk di bawah pertanyaan.
+        answer_type:
+          type: string
+          enum:
+          - BOOLEAN
+          - TEXT
+          - NUMBER
+          - CHOICE
+          description: '`BOOLEAN` = centang ya/tidak; `CHOICE` = pilih satu dari `options`.'
+        options:
+          type: array
+          nullable: true
+          items:
+            $ref: '#/components/schemas/PatrolChecklistOption'
+          description: Hanya untuk `CHOICE`; null untuk tipe lain.
+        required:
+          type: boolean
+          description: Wajib dijawab.
+        photo_mode:
+          type: string
+          enum:
+          - NONE
+          - OPTIONAL
+          - REQUIRED
+        photo_max:
+          type: integer
+          minimum: 1
+          maximum: 5
+        note_mode:
+          type: string
+          enum:
+          - NONE
+          - OPTIONAL
+          - REQUIRED
+        attach_when:
+          type: string
+          enum:
+          - ALWAYS
+          - ON_NO
+          description: '`ON_NO` (hanya `BOOLEAN`): foto atau catatan `REQUIRED` hanya diminta bila jawabannya "tidak".'
+    PatrolChecklistItemInput:
+      type: object
+      description: |
+        Butir yang punya `id` diubah, yang tanpa `id` dibuat, dan yang tidak ada di badan permintaan
+        dinonaktifkan (tidak pernah dihapus). Urutan array menentukan `sort_order`.
+        Kombinasi yang salah (`CHOICE` tanpa opsi, `photo_max` di luar 1 sampai 5, `ON_NO` pada
+        tipe selain `BOOLEAN`) ditolak 422 dengan nama field-nya, mis. `checklist[2].options`.
+      required:
+      - label
+      - answer_type
+      properties:
+        id:
+          type: integer
+          format: int64
+        label:
+          type: string
+          minLength: 1
+          maxLength: 500
+        help_text:
+          type: string
+          nullable: true
+          maxLength: 1000
+        answer_type:
+          type: string
+          enum:
+          - BOOLEAN
+          - TEXT
+          - NUMBER
+          - CHOICE
+        options:
+          type: array
+          nullable: true
+          minItems: 2
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/PatrolChecklistOption'
+        required:
+          type: boolean
+          default: true
+        photo_mode:
+          type: string
+          enum:
+          - NONE
+          - OPTIONAL
+          - REQUIRED
+          default: NONE
+        photo_max:
+          type: integer
+          minimum: 1
+          maximum: 5
+          default: 1
+        note_mode:
+          type: string
+          enum:
+          - NONE
+          - OPTIONAL
+          - REQUIRED
+          default: NONE
+        attach_when:
+          type: string
+          enum:
+          - ALWAYS
+          - ON_NO
+          default: ALWAYS
+    PatrolChecklistReplace:
+      type: object
+      required:
+      - checklist
+      properties:
+        checklist:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/PatrolChecklistItemInput'
+    PatrolZoneInput:
+      type: object
+      required:
+      - project_code
+      - type
+      - name
+      properties:
+        project_code:
+          type: string
+          example: 1K-IBMI-S
+        team_code:
+          type: string
+          nullable: true
+          description: Regu dari proyek itu; kosong = seluruh proyek.
+        type:
+          type: string
+          enum:
+          - PATROL
+          - GUARD
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        alias:
+          type: string
+          nullable: true
+          maxLength: 200
+        description:
+          type: string
+          nullable: true
+          maxLength: 2000
+        popup_text:
+          type: string
+          nullable: true
+          maxLength: 2000
+        latitude:
+          type: number
+          format: double
+          nullable: true
+          minimum: -90
+          maximum: 90
+        longitude:
+          type: number
+          format: double
+          nullable: true
+          minimum: -180
+          maximum: 180
+        radius_meters:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 5000
+          description: Bawaan 50 bila titik dikirim tanpa radius.
+        min_visit:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 1
+        start_date:
+          type: string
+          format: date
+          nullable: true
+        photo_required:
+          type: boolean
+          default: true
+        is_active:
+          type: boolean
+          default: true
+        checklist:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/PatrolChecklistItemInput'
+    PatrolZoneUpdate:
+      type: object
+      description: |
+        Hanya field yang dikirim yang berubah; `null` mengosongkan field yang boleh kosong.
+        `project_code` tidak bisa diubah. `checklist`, bila dikirim, menggantikan checklist
+        (aturannya sama dengan `PUT /admin/zones/{id}/checklist`). Titik dan radius harus tetap
+        terisi bersama atau kosong bersama setelah perubahan.
+      properties:
+        team_code:
+          type: string
+          nullable: true
+        type:
+          type: string
+          enum:
+          - PATROL
+          - GUARD
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        alias:
+          type: string
+          nullable: true
+          maxLength: 200
+        description:
+          type: string
+          nullable: true
+          maxLength: 2000
+        popup_text:
+          type: string
+          nullable: true
+          maxLength: 2000
+        latitude:
+          type: number
+          format: double
+          nullable: true
+          minimum: -90
+          maximum: 90
+        longitude:
+          type: number
+          format: double
+          nullable: true
+          minimum: -180
+          maximum: 180
+        radius_meters:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 5000
+        min_visit:
+          type: integer
+          minimum: 1
+          maximum: 100
+        start_date:
+          type: string
+          format: date
+          nullable: true
+        photo_required:
+          type: boolean
+        is_active:
+          type: boolean
+        checklist:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/PatrolChecklistItemInput'
+    PatrolScanAnswer:
+      type: object
+      description: |
+        Satu pertanyaan checklist beserta jawabannya, disalin seperti saat scan dibuat (judul,
+        tipe, opsi dan aturan lampiran), jadi mengubah checklist tidak menulis ulang riwayat.
+      required:
+      - item_id
+      - label
+      - answer_type
+      - required
+      - photo_mode
+      - photo_max
+      - note_mode
+      - attach_when
+      - media_ids
+      properties:
+        item_id:
+          type: integer
+          format: int64
+        label:
+          type: string
+        answer_type:
+          type: string
+          enum:
+          - BOOLEAN
+          - TEXT
+          - NUMBER
+          - CHOICE
+        options:
+          type: array
+          items:
+            $ref: '#/components/schemas/PatrolChecklistOption'
+        required:
+          type: boolean
+        photo_mode:
+          type: string
+          enum:
+          - NONE
+          - OPTIONAL
+          - REQUIRED
+        photo_max:
+          type: integer
+        note_mode:
+          type: string
+          enum:
+          - NONE
+          - OPTIONAL
+          - REQUIRED
+        attach_when:
+          type: string
+          enum:
+          - ALWAYS
+          - ON_NO
+        value:
+          nullable: true
+          description: Boolean, teks, angka atau nilai opsi menurut `answer_type`; null bila pertanyaan opsional tidak dijawab.
+        note:
+          type: string
+          nullable: true
+        media_ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+        media:
+          type: array
+          items:
+            $ref: '#/components/schemas/PatrolScanPhoto'
+          description: Foto jawaban ini sebagai URL bertanda tangan. Hanya ada saat scan dibaca (daftar dan detail).
+    PatrolScanPhoto:
+      type: object
+      description: Foto sebuah scan. URL-nya bertanda tangan dan berumur sekitar satu jam; jangan disimpan, muat ulang scan
+        untuk URL baru.
+      required:
+      - id
+      - url
+      - content_type
+      properties:
+        id:
+          type: integer
+          format: int64
+        url:
+          type: string
+          format: uri
+        content_type:
+          type: string
+          example: image/jpeg
+        captured_at:
+          type: string
+          format: date-time
+          nullable: true
+        capture_source:
+          type: string
+          enum:
+          - CAMERA
+          - GALLERY
+          - UNKNOWN
+    PatrolScan:
+      type: object
+      description: Satu kunjungan ke zona. `team_code` dan `work_date` ditentukan server dari shift pemindai, bukan dikirim
+        aplikasi.
+      required:
+      - id
+      - local_id
+      - zone_id
+      - zone_type
+      - personnel_id
+      - team_code
+      - project_code
+      - occurred_at
+      - received_at
+      - work_date
+      - latitude
+      - longitude
+      - accuracy_meters
+      - subject
+      - answers
+      - status
+      - submitted_offline
+      - created_at
+      properties:
+        id:
+          type: integer
+          format: int64
+        local_id:
+          type: string
+          format: uuid
+        zone_id:
+          type: integer
+          format: int64
+        zone_type:
+          type: string
+          enum:
+          - PATROL
+          - GUARD
+        personnel_id:
+          type: integer
+          format: int64
+        team_code:
+          type: string
+          example: 1K-IBMI-S1
+        project_code:
+          type: string
+          example: 1K-IBMI-S
+        occurred_at:
+          type: string
+          format: date-time
+        received_at:
+          type: string
+          format: date-time
+        work_date:
+          type: string
+          format: date
+          description: Tanggal mulai shift (shift malam setelah tengah malam tetap tanggal kemarin).
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+        accuracy_meters:
+          type: number
+          format: double
+        distance_meters:
+          type: integer
+          nullable: true
+          description: Jarak dari pusat zona; null bila zona tanpa geofence.
+        subject:
+          type: string
+        notes:
+          type: string
+          nullable: true
+        answers:
+          type: array
+          items:
+            $ref: '#/components/schemas/PatrolScanAnswer'
+        status:
+          type: string
+          enum:
+          - SUBMITTED
+          - APPROVED
+          - DECLINED
+        patrol_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: Patroli yang sedang berjalan saat scan (Phase 10.4); diisi server.
+        submitted_offline:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        personnel_name:
+          type: string
+          description: Nama pemindai. Ada saat scan dibaca (daftar dan detail).
+        media:
+          type: array
+          items:
+            $ref: '#/components/schemas/PatrolScanPhoto'
+          description: Foto umum scan (bukan foto jawaban) sebagai URL bertanda tangan. Ada saat scan dibaca.
+        decided_by_id:
+          type: integer
+          format: int64
+          nullable: true
+        decided_at:
+          type: string
+          format: date-time
+          nullable: true
+        decision_note:
+          type: string
+          nullable: true
+          description: Catatan DANRU, wajib saat ditolak.
+    ZoneProgressItem:
+      type: object
+      description: Tiga lingkaran satu zona pada satu tanggal kerja (Gambar 10).
+      required:
+      - zone
+      - required
+      - submitted
+      - approved
+      - declined
+      properties:
+        zone:
+          type: object
+          required:
+          - id
+          - project_code
+          - type
+          - name
+          - min_visit
+          properties:
+            id:
+              type: integer
+              format: int64
+            project_code:
+              type: string
+            team_code:
+              type: string
+              nullable: true
+            type:
+              type: string
+              enum:
+              - PATROL
+              - GUARD
+            name:
+              type: string
+            alias:
+              type: string
+              nullable: true
+            min_visit:
+              type: integer
+        required:
+          type: integer
+          description: 'Lingkaran merah: jumlah scan yang dibutuhkan (`min_visit`).'
+        submitted:
+          type: integer
+          description: 'Lingkaran biru: sudah di-scan, belum diputuskan.'
+        approved:
+          type: integer
+          description: 'Lingkaran hijau: disetujui.'
+        declined:
+          type: integer
+          description: Ditolak.
+    ZoneScanner:
+      type: object
+      required:
+      - personnel_id
+      - full_name
+      - submitted_count
+      - approved_count
+      properties:
+        personnel_id:
+          type: integer
+          format: int64
+        full_name:
+          type: string
+        submitted_count:
+          type: integer
+          description: 'Angka di samping nama (§3.2.6.2): scan yang belum diputuskan.'
+        approved_count:
+          type: integer
+    BulkApproveInput:
+      type: object
+      required:
+      - ids
+      properties:
+        ids:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            type: integer
+            format: int64
+          description: Id yang sama dihitung sekali.
+    BulkApproveResult:
+      type: object
+      required:
+      - approved
+      - skipped
+      properties:
+        approved:
+          type: array
+          items:
+            $ref: '#/components/schemas/PatrolScan'
+        skipped:
+          type: array
+          items:
+            type: integer
+            format: int64
+          description: Scan yang sudah diputuskan lebih dulu; dilewati, tidak diubah.
+    PatrolScanAnswerInput:
+      type: object
+      required:
+      - item_id
+      properties:
+        item_id:
+          type: integer
+          format: int64
+        value:
+          nullable: true
+          description: Boolean, teks, angka atau nilai opsi menurut `answer_type` butirnya.
+        note:
+          type: string
+          nullable: true
+          maxLength: 1000
+        media_ids:
+          type: array
+          maxItems: 5
+          items:
+            type: integer
+            format: int64
+          description: Foto jawaban ini (`POST /media` dengan tujuan `PATROL_SCAN`).
+    PatrolScanCreate:
+      type: object
+      required:
+      - local_id
+      - occurred_at
+      - qr_payload
+      - latitude
+      - longitude
+      - accuracy_meters
+      - subject
+      properties:
+        local_id:
+          type: string
+          format: uuid
+          description: Harus sama dengan header Idempotency-Key.
+        occurred_at:
+          type: string
+          format: date-time
+          description: Saat scan terjadi di perangkat. Maksimal 5 menit di depan dan 7 hari ke belakang.
+        qr_payload:
+          type: string
+          example: PERSIST-ZONE:1:900101:42:abcdefghijklmnopqrstuv
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+        accuracy_meters:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 100000
+        subject:
+          type: string
+          maxLength: 200
+        notes:
+          type: string
+          nullable: true
+          maxLength: 2000
+        answers:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/PatrolScanAnswerInput'
+        media_ids:
+          type: array
+          maxItems: 20
+          items:
+            type: integer
+            format: int64
+          description: Foto umum scan. Tiap id hanya sekali di seluruh scan (juga terhadap foto jawaban).
+        submitted_offline:
+          type: boolean
+          default: false
+    ZoneCheckInInput:
+      type: object
+      description: Check-in dan check-out memakai badan yang sama. Waktunya waktu server.
+      required:
+      - qr_payload
+      - latitude
+      - longitude
+      - accuracy_meters
+      properties:
+        qr_payload:
+          type: string
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+        accuracy_meters:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 100000
+    ZoneCheckIn:
+      type: object
+      required:
+      - id
+      - zone_id
+      - personnel_id
+      - team_code
+      - check_in_at
+      - check_in_latitude
+      - check_in_longitude
+      properties:
+        id:
+          type: integer
+          format: int64
+        zone_id:
+          type: integer
+          format: int64
+        personnel_id:
+          type: integer
+          format: int64
+        full_name:
+          type: string
+          description: Terisi di `live` dan `tracking`.
+        team_code:
+          type: string
+        shift_id:
+          type: integer
+          format: int64
+          nullable: true
+        check_in_at:
+          type: string
+          format: date-time
+        check_in_latitude:
+          type: number
+          format: double
+        check_in_longitude:
+          type: number
+          format: double
+        check_out_at:
+          type: string
+          format: date-time
+          nullable: true
+        check_out_latitude:
+          type: number
+          format: double
+          nullable: true
+        check_out_longitude:
+          type: number
+          format: double
+          nullable: true
+    PatrolRouteStart:
+      type: object
+      description: Badan `POST /patrols/start`. `local_id` harus sama dengan header Idempotency-Key.
+      required:
+      - local_id
+      - started_at
+      - project_code
+      - latitude
+      - longitude
+      - accuracy_meters
+      properties:
+        local_id:
+          type: string
+          format: uuid
+        started_at:
+          type: string
+          format: date-time
+          description: Saat patroli dimulai di perangkat. Maksimal 5 menit di depan dan 7 hari ke belakang.
+        project_code:
+          type: string
+          example: 1K-IBMI-S
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+        accuracy_meters:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 100000
+        submitted_offline:
+          type: boolean
+          default: false
+    PatrolRoutePointInput:
+      type: object
+      required:
+      - seq
+      - logged_at
+      - latitude
+      - longitude
+      - accuracy_meters
+      properties:
+        seq:
+          type: integer
+          format: int32
+          minimum: 0
+          description: Nomor titik, dari aplikasi. Titik awal (seq 0) dibuat server saat patroli dimulai; titik yang `seq`-nya
+            sudah ada dilewati.
+        logged_at:
+          type: string
+          format: date-time
+          description: Maksimal 5 menit di depan waktu server.
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+        accuracy_meters:
+          type: number
+          format: double
+          minimum: 0
+          description: Di atas 100000 disimpan sebagai 100000 (titik seperti itu tidak digambar).
+    PatrolRoutePoints:
+      type: object
+      required:
+      - points
+      properties:
+        points:
+          type: array
+          minItems: 1
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/PatrolRoutePointInput'
+    PatrolRouteEnd:
+      type: object
+      required:
+      - ended_at
+      properties:
+        ended_at:
+          type: string
+          format: date-time
+          description: Tidak boleh sebelum `started_at`; maksimal 5 menit di depan dan 7 hari ke belakang.
+        points:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/PatrolRoutePointInput'
+          description: Batch titik terakhir, boleh ikut dikirim.
+    PatrolRoutePointsResult:
+      type: object
+      required:
+      - accepted
+      - duplicates
+      properties:
+        accepted:
+          type: integer
+        duplicates:
+          type: integer
+          description: Titik yang `seq`-nya sudah diterima sebelumnya (kiriman ulang).
+    PatrolRoute:
+      type: object
+      description: |
+        Satu patroli. `team_code` dan `work_date` ditentukan server dari shift penjaga. `point_count` adalah
+        titik mentah yang diterima, `distance_meters` panjang garis yang disimpan, `scan_count` scan yang
+        terjadi selama patroli.
+      required:
+      - id
+      - local_id
+      - personnel_id
+      - team_code
+      - project_code
+      - status
+      - started_at
+      - work_date
+      - distance_meters
+      - point_count
+      - scan_count
+      - submitted_offline
+      - last_point_at
+      properties:
+        id:
+          type: integer
+          format: int64
+        local_id:
+          type: string
+          format: uuid
+        personnel_id:
+          type: integer
+          format: int64
+        personnel_name:
+          type: string
+          description: Ada saat patroli dibaca (daftar dan detail).
+        team_code:
+          type: string
+          example: 1K-IBMI-S1
+        project_code:
+          type: string
+          example: 1K-IBMI-S
+        status:
+          type: string
+          enum:
+          - ACTIVE
+          - ENDED
+          - AUTO_ENDED
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: string
+          format: date-time
+          nullable: true
+        work_date:
+          type: string
+          format: date
+        distance_meters:
+          type: integer
+        point_count:
+          type: integer
+        scan_count:
+          type: integer
+        submitted_offline:
+          type: boolean
+        last_point_at:
+          type: string
+          format: date-time
+    PatrolRoutePathPoint:
+      type: object
+      required:
+      - latitude
+      - longitude
+      - at
+      - accuracy_meters
+      properties:
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+        at:
+          type: string
+          format: date-time
+        accuracy_meters:
+          type: number
+          format: double
+    PatrolRouteScan:
+      type: object
+      description: Scan di sepanjang patroli, untuk pin di garis peta.
+      required:
+      - id
+      - zone_id
+      - zone_name
+      - occurred_at
+      - latitude
+      - longitude
+      - status
+      - subject
+      properties:
+        id:
+          type: integer
+          format: int64
+        zone_id:
+          type: integer
+          format: int64
+        zone_name:
+          type: string
+        occurred_at:
+          type: string
+          format: date-time
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+        status:
+          type: string
+          enum:
+          - SUBMITTED
+          - APPROVED
+          - DECLINED
+        subject:
+          type: string
+    GeoJsonLineString:
+      type: object
+      required:
+      - type
+      - coordinates
+      properties:
+        type:
+          type: string
+          enum:
+          - LineString
+        coordinates:
+          type: array
+          description: Posisi `[longitude, latitude]`, bujur dulu (urutan GeoJSON). Satu titik ditulis dua kali; tanpa titik,
+            larik kosong.
+          items:
+            type: array
+            minItems: 2
+            maxItems: 2
+            items:
+              type: number
+              format: double
+    PatrolRouteDetail:
+      allOf:
+      - $ref: '#/components/schemas/PatrolRoute'
+      - type: object
+        required:
+        - route
+        - path
+        - scans
+        properties:
+          route:
+            $ref: '#/components/schemas/GeoJsonLineString'
+          path:
+            type: array
+            items:
+              $ref: '#/components/schemas/PatrolRoutePathPoint'
+            description: Titik yang sama dengan `route`, lengkap dengan waktu dan akurasi.
+          scans:
+            type: array
+            items:
+              $ref: '#/components/schemas/PatrolRouteScan'
     LocationPoint:
       type: object
       description: Satu titik GPS hasil rekam perangkat (Fase 08.2).
@@ -10145,6 +11259,180 @@ paths:
                         reason: TEAM_NOT_FOUND
                     meta:
                       request_id: req_abc123
+  /admin/zones:
+    get:
+      operationId: getAdminZones
+      tags:
+      - Patrol
+      summary: List PatrolZone
+      description: |
+        Zona di wilayah admin. REGION_ADMIN hanya melihat zona proyek di wilayahnya.
+        `q` mencari pada nama dan alias.
+      security:
+      - bearerSession: []
+      - oauth2ClientCredentials:
+        - patrol:read
+      - apiKey: []
+      parameters:
+      - $ref: '#/components/parameters/PageParam'
+      - $ref: '#/components/parameters/LimitParam'
+      - $ref: '#/components/parameters/QParam'
+      - $ref: '#/components/parameters/IsActiveParam'
+      - name: project_code
+        in: query
+        schema:
+          type: string
+      - name: team_code
+        in: query
+        schema:
+          type: string
+      - name: type
+        in: query
+        schema:
+          type: string
+          enum:
+          - PATROL
+          - GUARD
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/ListEnvelope'
+                - properties:
+                    data:
+                      type: array
+                      items:
+                        $ref: '#/components/schemas/PatrolZone'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      operationId: postAdminZones
+      tags:
+      - Patrol
+      summary: Buat PatrolZone
+      security:
+      - bearerSession: []
+      - oauth2ClientCredentials:
+        - patrol:write
+      - apiKey: []
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatrolZoneInput'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/SuccessEnvelope'
+                - properties:
+                    data:
+                      $ref: '#/components/schemas/PatrolZone'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /admin/zones/{id}:
+    parameters:
+    - $ref: '#/components/parameters/IdPath'
+    get:
+      operationId: getAdminZonesById
+      tags:
+      - Patrol
+      summary: Detail PatrolZone
+      security:
+      - bearerSession: []
+      - oauth2ClientCredentials:
+        - patrol:read
+      - apiKey: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/SuccessEnvelope'
+                - properties:
+                    data:
+                      $ref: '#/components/schemas/PatrolZone'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: patchAdminZonesById
+      tags:
+      - Patrol
+      summary: Ubah PatrolZone
+      security:
+      - bearerSession: []
+      - oauth2ClientCredentials:
+        - patrol:write
+      - apiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatrolZoneUpdate'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/SuccessEnvelope'
+                - properties:
+                    data:
+                      $ref: '#/components/schemas/PatrolZone'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      operationId: deleteAdminZonesById
+      tags:
+      - Patrol
+      summary: Hapus/non-aktifkan PatrolZone
+      security:
+      - bearerSession: []
+      - oauth2ClientCredentials:
+        - patrol:write
+      - apiKey: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /admin/teams/{code}/members:
     parameters:
     - $ref: '#/components/parameters/TeamCodePath'
@@ -13651,6 +14939,126 @@ paths:
                         reason: SCHEDULE_NOT_FOUND
                     meta:
                       request_id: req_abc123
+  /admin/zones/{id}/qr:
+    parameters:
+    - $ref: '#/components/parameters/IdPath'
+    get:
+      operationId: getAdminZonesByIdQr
+      tags:
+      - Patrol
+      summary: Generate/print QR zona
+      description: |
+        Gambar QR berisi `PERSIST-ZONE:1:{organizationId}:{zoneId}:{qrSecret}`. QR ini statis
+        karena dicetak jadi stiker; keamanannya dari geofence di server, id organisasi di
+        isinya, dan `POST /admin/zones/{id}/rotate-qr` bila stiker bocor. Header
+        `Content-Disposition` memuat nama berkas dari nama zona.
+      parameters:
+      - name: format
+        in: query
+        schema:
+          type: string
+          enum:
+          - png
+          - svg
+          default: png
+      responses:
+        '200':
+          description: Gambar QR
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+              description: attachment; filename=qr-zona-nama-zona.png
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/svg+xml:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /admin/zones/{id}/rotate-qr:
+    parameters:
+    - $ref: '#/components/parameters/IdPath'
+    post:
+      operationId: postAdminZonesByIdRotateQr
+      tags:
+      - Patrol
+      summary: Ganti rahasia QR zona
+      description: |
+        Membuat rahasia QR baru. Semua stiker yang sudah dicetak berhenti berlaku; cetak ulang
+        lewat `GET /admin/zones/{id}/qr`.
+      security:
+      - bearerSession: []
+      - oauth2ClientCredentials:
+        - patrol:write
+      - apiKey: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/SuccessEnvelope'
+                - properties:
+                    data:
+                      $ref: '#/components/schemas/PatrolZone'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /admin/zones/{id}/checklist:
+    parameters:
+    - $ref: '#/components/parameters/IdPath'
+    put:
+      operationId: putAdminZonesByIdChecklist
+      tags:
+      - Patrol
+      summary: Ganti checklist zona
+      description: |
+        Mengganti checklist saja, tanpa mengirim ulang zonanya. Aturannya sama dengan `checklist`
+        pada badan zona: butir ber-`id` diubah, tanpa `id` dibuat, yang tidak dikirim dinonaktifkan.
+        Mengubah butir tidak mengubah scan yang sudah dikirim (scan menyimpan salinan pertanyaan).
+      security:
+      - bearerSession: []
+      - oauth2ClientCredentials:
+        - patrol:write
+      - apiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatrolChecklistReplace'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/SuccessEnvelope'
+                - properties:
+                    data:
+                      $ref: '#/components/schemas/PatrolZone'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /attendances/qr/check-in:
     post:
       operationId: postAttendancesQrCheckIn
@@ -15685,6 +17093,868 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /zones:
+    get:
+      operationId: getZones
+      tags:
+      - Patrol
+      summary: List zona (filter Patroli/Jaga)
+      description: |
+        Zona aktif dari proyek tempat pemanggil bertugas hari ini, yang untuk seluruh proyek atau
+        untuk regu pemanggil sendiri, beserta checklist aktifnya (aplikasi menggambar formulir
+        dari sini). `project_code` yang bukan proyek pemanggil dijawab 403 PERMISSION_DENIED.
+        Rahasia QR tidak pernah dikembalikan.
+      security:
+      - bearerSession: []
+      - oauth2ClientCredentials:
+        - patrol:read
+      - apiKey: []
+      parameters:
+      - name: type
+        in: query
+        schema:
+          type: string
+          enum:
+          - PATROL
+          - GUARD
+      - name: project_code
+        in: query
+        schema:
+          type: string
+      - name: team_code
+        in: query
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/ListEnvelope'
+                - properties:
+                    data:
+                      type: array
+                      items:
+                        $ref: '#/components/schemas/PatrolZone'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /zones/progress:
+    get:
+      operationId: getZonesProgress
+      tags:
+      - Patrol
+      summary: Progres zona (lingkaran merah, biru, hijau)
+      description: |
+        Untuk tiap zona aktif: `required` (merah), `submitted` (biru), `approved` (hijau) dan
+        `declined`, pada satu tanggal kerja. `work_date` bawaannya hari ini menurut zona waktu proyek.
+        Anggota melihat angka regunya sendiri; DANRU juga regu dalam jangkauan izin approve-nya dan
+        boleh memilih satu dengan `team_code`. Regu atau proyek di luar jangkauan: 403
+        `PERMISSION_DENIED`. Semua hitungan diambil dalam satu query per proyek dan tipe zona.
+      parameters:
+      - name: project_code
+        in: query
+        schema:
+          type: string
+        description: 'Bawaan: semua proyek tempat pemanggil bertugas.'
+      - name: team_code
+        in: query
+        schema:
+          type: string
+      - name: type
+        in: query
+        schema:
+          type: string
+          enum:
+          - PATROL
+          - GUARD
+      - name: work_date
+        in: query
+        schema:
+          type: string
+          format: date
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/SuccessEnvelope'
+                - properties:
+                    data:
+                      type: array
+                      items:
+                        $ref: '#/components/schemas/ZoneProgressItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /zones/{id}:
+    parameters:
+    - $ref: '#/components/parameters/IdPath'
+    get:
+      operationId: getZonesById
+      tags:
+      - Patrol
+      summary: Detail zona
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/SuccessEnvelope'
+                - properties:
+                    data:
+                      $ref: '#/components/schemas/PatrolZone'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /zones/{id}/scan:
+    parameters:
+    - $ref: '#/components/parameters/IdPath'
+    post:
+      operationId: postZonesByIdScan
+      tags:
+      - Patrol
+      summary: Scan QR zona (offline-capable, geofence)
+      description: |
+        Memeriksa berurutan, dan yang pertama gagal menjadi jawabannya: QR (`ZONE_QR_INVALID`),
+        izin `patrol.scan`/`guard.scan` menurut tipe zona, keanggotaan proyek dan regu
+        (`ZONE_NOT_IN_PROJECT`, 403), geofence (`ZONE_OUTSIDE_RADIUS`: jarak lebih dari radius
+        ditambah `min(accuracy_meters, 30)`), interval patroli proyek (`ZONE_INTERVAL_NOT_ELAPSED`),
+        lalu checklist (`CHECKLIST_ITEM_INVALID`, `CHECKLIST_ANSWER_REQUIRED`,
+        `CHECKLIST_ANSWER_INVALID`, `CHECKLIST_ATTACHMENT_REQUIRED`) dan foto (`SCAN_PHOTO_REQUIRED`).
+        Scan offline dinilai dengan checklist saat `occurred_at`: butir yang dinonaktifkan sesudahnya
+        diabaikan, butir yang dibuat sesudahnya tidak wajib. Kirim ulang dengan `local_id` yang sama
+        mengembalikan scan tersimpan (200) tanpa notifikasi. Setelah tersimpan, DANRU regu diberi tahu
+        (`PATROL_SUBMITTED`/`GUARD_SUBMITTED`) dan, untuk `submitted_offline`, pengirim menerima
+        `OFFLINE_SUBMISSION_SENT`.
+      security:
+      - bearerSession: []
+      - oauth2ClientCredentials:
+        - patrol:write
+      - apiKey: []
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatrolScanCreate'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/SuccessEnvelope'
+                - properties:
+                    data:
+                      $ref: '#/components/schemas/PatrolScan'
+        '200':
+          description: Idempotent replay (local_id/key sama)
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/SuccessEnvelope'
+                - properties:
+                    data:
+                      $ref: '#/components/schemas/PatrolScan'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: Validasi atau aturan bisnis gagal; `details.reason` memuat alasannya
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /zones/{id}/scans:
+    parameters:
+    - $ref: '#/components/parameters/IdPath'
+    get:
+      operationId: getZonesByIdScans
+      tags:
+      - Patrol
+      summary: Riwayat scan zona
+      description: |
+        Scan zona, terbaru dulu, lengkap dengan jawaban dan foto (URL bertanda tangan). DANRU melihat
+        scan regu dalam jangkauan izin approve-nya; anggota proyek lain hanya scan miliknya.
+        Scan yang disetujui atau ditolak tetap tampil (§3.2.6.3).
+      parameters:
+      - name: personnel_id
+        in: query
+        schema:
+          type: integer
+          format: int64
+      - name: work_date
+        in: query
+        schema:
+          type: string
+          format: date
+      - name: status
+        in: query
+        schema:
+          type: string
+          enum:
+          - SUBMITTED
+          - APPROVED
+          - DECLINED
+      - $ref: '#/components/parameters/PageParam'
+      - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/ListEnvelope'
+                - properties:
+                    data:
+                      type: array
+                      items:
+                        $ref: '#/components/schemas/PatrolScan'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /zones/{id}/scanners:
+    parameters:
+    - $ref: '#/components/parameters/IdPath'
+    get:
+      operationId: getZonesByIdScanners
+      tags:
+      - Patrol
+      summary: Siapa yang scan zona, dengan angka di samping nama
+      description: |
+        Pemindai zona pada satu tanggal kerja (bawaan hari ini menurut zona waktu proyek) dengan
+        `submitted_count` dan `approved_count` (§3.2.6.2). DANRU melihat regu dalam jangkauannya atau
+        yang dipilih dengan `team_code`; anggota proyek lain hanya melihat dirinya.
+      parameters:
+      - name: team_code
+        in: query
+        schema:
+          type: string
+      - name: work_date
+        in: query
+        schema:
+          type: string
+          format: date
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/SuccessEnvelope'
+                - properties:
+                    data:
+                      type: array
+                      items:
+                        $ref: '#/components/schemas/ZoneScanner'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /zones/{id}/check-in:
+    parameters:
+    - $ref: '#/components/parameters/IdPath'
+    post:
+      operationId: postZonesByIdCheckIn
+      tags:
+      - Patrol
+      summary: Check-in pos (Jaga)
+      description: |
+        QR dan geofence diperiksa seperti scan. Satu orang hanya boleh punya satu check-in terbuka;
+        check-in lagi sebelum check-out dijawab 409 `ZONE_ALREADY_CHECKED_IN`.
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ZoneCheckInInput'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/SuccessEnvelope'
+                - properties:
+                    data:
+                      $ref: '#/components/schemas/ZoneCheckIn'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /zones/{id}/check-out:
+    parameters:
+    - $ref: '#/components/parameters/IdPath'
+    post:
+      operationId: postZonesByIdCheckOut
+      tags:
+      - Patrol
+      summary: Check-out pos (Jaga)
+      description: Tanpa check-in terbuka di zona ini dijawab 409 `ZONE_NOT_CHECKED_IN`. QR dan geofence diperiksa seperti
+        check-in.
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ZoneCheckInInput'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/SuccessEnvelope'
+                - properties:
+                    data:
+                      $ref: '#/components/schemas/ZoneCheckIn'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /zones/{id}/live:
+    parameters:
+    - $ref: '#/components/parameters/IdPath'
+    get:
+      operationId: getZonesByIdLive
+      tags:
+      - Patrol
+      summary: Live check-ins zona (DANRU)
+      description: |
+        Siapa yang check-in sekarang. DANRU (izin `patrol.approve`/`guard.approve` sesuai tipe zona)
+        melihat regu dalam jangkauannya; anggota proyek lain hanya melihat check-in-nya sendiri;
+        yang bukan anggota proyek zona 403.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/SuccessEnvelope'
+                - properties:
+                    data:
+                      type: array
+                      items:
+                        $ref: '#/components/schemas/ZoneCheckIn'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /zones/{id}/tracking:
+    parameters:
+    - $ref: '#/components/parameters/IdPath'
+    get:
+      operationId: getZonesByIdTracking
+      tags:
+      - Patrol
+      summary: Riwayat check-in zona (DANRU)
+      description: |
+        Check-in zona pada rentang tanggal (zona waktu proyek, keduanya termasuk, maksimal 31 hari),
+        terbaru dulu. Jangkauannya sama dengan `live`.
+      parameters:
+      - name: from
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+      - name: to
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+      - name: team_code
+        in: query
+        schema:
+          type: string
+      - name: personnel_id
+        in: query
+        schema:
+          type: integer
+          format: int64
+      - $ref: '#/components/parameters/PageParam'
+      - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/ListEnvelope'
+                - properties:
+                    data:
+                      type: array
+                      items:
+                        $ref: '#/components/schemas/ZoneCheckIn'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /scans/{id}:
+    parameters:
+    - $ref: '#/components/parameters/IdPath'
+    get:
+      operationId: getScansById
+      tags:
+      - Patrol
+      summary: Detail satu scan
+      description: |
+        Scan dengan tiap jawaban (pertanyaan, jawaban, catatan, foto) agar DANRU menilai jawaban
+        beserta buktinya. Pemindai membaca miliknya; DANRU membaca scan regu yang ia putuskan. Scan
+        lain dijawab 404 `SCAN_NOT_FOUND`.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/SuccessEnvelope'
+                - properties:
+                    data:
+                      $ref: '#/components/schemas/PatrolScan'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /scans/approve:
+    post:
+      operationId: postScansApprove
+      tags:
+      - Patrol
+      summary: Setujui banyak scan sekaligus (DANRU)
+      description: |
+        Paling banyak 50 id. Tiap scan harus ada dan berada di regu yang boleh diputuskan pemanggil
+        (izin `patrol.approve`/`guard.approve` menurut tipe zona), kalau tidak seluruh permintaan
+        ditolak (404 `SCAN_NOT_FOUND` atau 403) dan tidak ada yang berubah. Scan yang ternyata sudah
+        diputuskan dilewati dan dicantumkan di `skipped`. Tiap pemindai hanya menerima satu
+        notifikasi per permintaan.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkApproveInput'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/SuccessEnvelope'
+                - properties:
+                    data:
+                      $ref: '#/components/schemas/BulkApproveResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /scans/{id}/approve:
+    parameters:
+    - $ref: '#/components/parameters/IdPath'
+    post:
+      operationId: postScansByIdApprove
+      tags:
+      - Patrol
+      summary: Approval laporan patroli/jaga (DANRU)
+      description: |
+        Perlu izin `patrol.approve` atau `guard.approve` menurut tipe zona, dengan regu scan dalam
+        jangkauan. Scan yang sudah diputuskan dijawab 409 `SCAN_ALREADY_DECIDED`. Pemindai
+        diberi tahu (`PATROL_APPROVED`/`GUARD_APPROVED`). Tanpa badan permintaan.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/SuccessEnvelope'
+                - properties:
+                    data:
+                      $ref: '#/components/schemas/PatrolScan'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /scans/{id}/decline:
+    parameters:
+    - $ref: '#/components/parameters/IdPath'
+    post:
+      operationId: postScansByIdDecline
+      tags:
+      - Patrol
+      summary: Tolak scan (DANRU)
+      description: |
+        Aturan izin sama dengan approve. `note` wajib (umpan balik DANRU, `danru_patrol_feedback`).
+        Scan yang sudah diputuskan dijawab 409 `SCAN_ALREADY_DECIDED`. Pemindai menerima notifikasi
+        `PATROL_APPROVED`/`GUARD_APPROVED` dengan `data.decision` = `DECLINED` dan catatannya.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RejectionNote'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/SuccessEnvelope'
+                - properties:
+                    data:
+                      $ref: '#/components/schemas/PatrolScan'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /patrol/pending-approvals:
+    get:
+      operationId: getPatrolPendingApprovals
+      tags:
+      - Patrol
+      summary: Antrian approval (status Biru, DANRU)
+      description: |
+        Scan `SUBMITTED` regu yang diputuskan pemanggil, terlama dulu; zona patroli menurut
+        `patrol.approve` dan zona jaga menurut `guard.approve`. Yang tidak memutuskan regu mana pun: 403.
+      parameters:
+      - name: team_code
+        in: query
+        schema:
+          type: string
+      - $ref: '#/components/parameters/PageParam'
+      - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/ListEnvelope'
+                - properties:
+                    data:
+                      type: array
+                      items:
+                        $ref: '#/components/schemas/PatrolScan'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /patrols/start:
+    post:
+      operationId: postPatrolsStart
+      tags:
+      - Patrol
+      summary: Mulai patroli (rekam garis rute)
+      description: |
+        Penjaga mengetuk "mulai patroli" dan aplikasi merekam posisi sampai patroli diakhiri. Perlu izin
+        `patrol.scan` atau `guard.scan` dan penugasan di proyek, seperti scan (403 `PERMISSION_DENIED`,
+        403 `ZONE_NOT_IN_PROJECT`). Satu orang hanya boleh punya satu patroli berjalan: mulai lagi
+        sebelum mengakhiri dijawab 409 `PATROL_ALREADY_ACTIVE`. Kirim ulang dengan `local_id` yang sama
+        mengembalikan patroli tersimpan (200). Titik awal tercatat sebagai titik `seq` 0. Perekaman tidak
+        memerlukan `gps_tracking_enabled` proyek: izinnya adalah ketukan "mulai patroli".
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatrolRouteStart'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/SuccessEnvelope'
+                - properties:
+                    data:
+                      $ref: '#/components/schemas/PatrolRoute'
+        '200':
+          description: Idempotent replay (local_id/key sama)
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/SuccessEnvelope'
+                - properties:
+                    data:
+                      $ref: '#/components/schemas/PatrolRoute'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /patrols/active:
+    get:
+      operationId: getPatrolsActive
+      tags:
+      - Patrol
+      summary: Patroli yang sedang berjalan (untuk melanjutkan setelah aplikasi dibuka ulang)
+      description: |
+        Patroli berjalan milik pemanggil, dengan garis sejauh titik yang diterima. `data` adalah larik:
+        satu patroli, atau kosong `[]` bila tidak ada patroli berjalan (bukan 404).
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/SuccessEnvelope'
+                - properties:
+                    data:
+                      type: array
+                      maxItems: 1
+                      items:
+                        $ref: '#/components/schemas/PatrolRouteDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /patrols:
+    get:
+      operationId: getPatrols
+      tags:
+      - Patrol
+      summary: Daftar patroli
+      description: |
+        Terbaru dulu, tanpa garis (`path`). Penjaga melihat patrolinya sendiri; DANRU juga patroli regu dalam
+        jangkauan izin approve-nya (`patrol.approve` atau `guard.approve`).
+      parameters:
+      - name: project_code
+        in: query
+        schema:
+          type: string
+      - name: team_code
+        in: query
+        schema:
+          type: string
+      - name: personnel_id
+        in: query
+        schema:
+          type: integer
+          format: int64
+      - name: work_date
+        in: query
+        schema:
+          type: string
+          format: date
+      - name: status
+        in: query
+        schema:
+          type: string
+          enum:
+          - ACTIVE
+          - ENDED
+          - AUTO_ENDED
+      - $ref: '#/components/parameters/PageParam'
+      - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/ListEnvelope'
+                - properties:
+                    data:
+                      type: array
+                      items:
+                        $ref: '#/components/schemas/PatrolRoute'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /patrols/{id}:
+    parameters:
+    - $ref: '#/components/parameters/IdPath'
+    get:
+      operationId: getPatrolsById
+      tags:
+      - Patrol
+      summary: Detail patroli dengan garis rute di peta
+      description: |
+        `route` adalah GeoJSON `LineString` (bujur dulu) yang bisa digambar pustaka peta langsung, `path`
+        titik yang sama dengan waktu dan akurasi, `scans` scan di sepanjang patroli untuk pin. Untuk patroli
+        `ACTIVE`, garis dibangun dari titik yang sudah diterima, jadi DANRU melihatnya tumbuh. Patroli orang
+        lain di luar jangkauan: 404 `PATROL_NOT_FOUND`.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/SuccessEnvelope'
+                - properties:
+                    data:
+                      $ref: '#/components/schemas/PatrolRouteDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /patrols/{id}/points:
+    parameters:
+    - $ref: '#/components/parameters/IdPath'
+    post:
+      operationId: postPatrolsByIdPoints
+      tags:
+      - Patrol
+      summary: Kirim titik posisi patroli (batch, aman diulang)
+      description: |
+        Paling banyak 200 titik (lebih dari itu 422 `PATROL_POINTS_TOO_LARGE`). Aplikasi menomori titiknya
+        (`seq`), jadi batch yang dikirim ulang atau tidak berurutan tidak menggandakan atau mengacak titik:
+        titik yang `seq`-nya sudah ada dilewati dan dihitung di `duplicates`. Hanya pemilik patroli, dan
+        hanya saat `ACTIVE` (409 `PATROL_NOT_ACTIVE`); aplikasi yang offline mengirim titiknya dulu, baru
+        mengakhiri patroli. Patroli milik orang lain dijawab 404 `PATROL_NOT_FOUND`.
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatrolRoutePoints'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/SuccessEnvelope'
+                - properties:
+                    data:
+                      $ref: '#/components/schemas/PatrolRoutePointsResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /patrols/{id}/end:
+    parameters:
+    - $ref: '#/components/parameters/IdPath'
+    post:
+      operationId: postPatrolsByIdEnd
+      tags:
+      - Patrol
+      summary: Akhiri patroli
+      description: |
+        Dalam satu transaksi: menyimpan titik terakhir, membangun garis (titik berakurasi di atas 50 m dan
+        lonjakan lebih dari 15 m/detik dibuang, lalu disederhanakan 3 m tanpa membuang titik awal, titik akhir
+        dan titik terdekat tiap scan), menghitung jarak dan scan, lalu status `ENDED`. Diulang dengan `ended_at`
+        yang sama (aplikasi kehilangan jawaban), mengembalikan patroli tersimpan. Patroli yang sudah berakhir
+        (juga `AUTO_ENDED`) dengan `ended_at` lain: 409 `PATROL_NOT_ACTIVE`. Tidak ada notifikasi: scan-nya
+        sudah memberi tahu DANRU.
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatrolRouteEnd'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/SuccessEnvelope'
+                - properties:
+                    data:
+                      $ref: '#/components/schemas/PatrolRouteDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /notifications/token:
     post:
       operationId: postNotificationsToken

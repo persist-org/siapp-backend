@@ -14,6 +14,8 @@
 #   - ATTENDANCE for the last 6 days: on time, late, absent (mangkir), leave. TODAY IS LEFT EMPTY
 #     on purpose, so you can test check-in yourself.
 #   - leave categories, a permit quota, 12 days of annual leave per person
+#   - patrol zones in 1K-DEMO-S (50 m radius): PATROL "Pos Gerbang Utama" (3 questions) and "Pos Belakang",
+#     GUARD "Pos Jaga Depan" (regu 1). Their QR secrets are made here; print or read them from patrol_zones.
 #
 # Personalia is NOT touched. These accounts must already exist THERE (same NIKs, domain "siapp",
 # active, work row in a company listed in GROUP_COMPANY_IDS), or nobody can log in:
@@ -108,7 +110,7 @@ PSQL() {
 }
 
 # ---------- 1. hierarchy + people ----------
-say "1/5 Organization, hierarchy, people, memberships"
+say "1/6 Organization, hierarchy, people, memberships"
 PSQL <<'SQL'
 SELECT set_config('app.current_org', :'org', false) \gset
 BEGIN;
@@ -152,14 +154,14 @@ echo "ok"
 # ---------- 2-3. SiAPP seed commands ----------
 SEED() { dc run --rm -T --entrypoint /seed api "$@"; }
 
-say "2/5 Starting shifts and shift group (seed shifts)"
+say "2/6 Starting shifts and shift group (seed shifts)"
 SEED shifts
 
-say "3/5 Default field permissions (seed permissions)"
+say "3/6 Default field permissions (seed permissions)"
 SEED permissions
 
 # ---------- 4. first admin ----------
-say "4/5 First ORG_ADMIN ($ADMIN_NIK)"
+say "4/6 First ORG_ADMIN ($ADMIN_NIK)"
 if SEED grant-admin --nik "$ADMIN_NIK"; then
   echo "ok"
 else
@@ -168,7 +170,7 @@ else
 fi
 
 # ---------- 5. schedules, leave, attendance ----------
-say "5/5 Schedules, leave data and attendance"
+say "5/6 Schedules, leave data and attendance"
 PSQL <<'SQL'
 SELECT set_config('app.current_org', :'org', false) \gset
 BEGIN;
@@ -301,6 +303,63 @@ SQL
 echo "ok"
 
 # ---------- summary ----------
+say "6/6 Patrol zones and checklists"
+PSQL <<'SQL'
+SELECT set_config('app.current_org', :'org', false) \gset
+BEGIN;
+
+-- Three zones in project 1K-DEMO-S, all near its GPS point (a 50 m radius; the second is about
+-- 60 m north of the first, so a walked patrol has a line to draw). A zone is told apart by its
+-- name inside project + type, so running this again keeps what is there.
+INSERT INTO patrol_zones (project_code, team_code, type, name, alias, description, popup_text,
+                          latitude, longitude, radius_meters, min_visit, photo_required, qr_secret)
+SELECT '1K-DEMO-S', v.team_code, v.type::patrol_zone_type, v.name, v.alias, v.description, v.popup_text,
+       v.latitude, v.longitude, 50, v.min_visit, v.photo_required,
+       -- 16 random bytes as base64url, 22 characters, like the app makes them.
+       substr(translate(encode(decode(md5(random()::text || v.name), 'hex'), 'base64'), '+/=', '-_'), 1, 22)
+FROM (VALUES
+  ('Pos Gerbang Utama', 'PATROL', NULL::text,   'Gerbang',  'Gerbang depan proyek demo', 'Periksa pagar dan lampu gerbang.',
+   -6.175392::numeric, 106.827153::numeric, 1, false),
+  ('Pos Belakang',      'PATROL', NULL::text,   'Belakang', 'Pintu belakang gedung',     NULL::text,
+   -6.174850::numeric, 106.827153::numeric, 1, false),
+  ('Pos Jaga Depan',    'GUARD',  '1K-DEMO-S1', 'Jaga',     'Pos jaga regu 1',           NULL::text,
+   -6.175392::numeric, 106.827600::numeric, 1, true)
+) AS v(name, type, team_code, alias, description, popup_text, latitude, longitude, min_visit, photo_required)
+ON CONFLICT DO NOTHING;
+
+-- The questions, only for a zone that has none yet, so an admin's edits are never overwritten.
+INSERT INTO patrol_checklist_items (zone_id, sort_order, label, help_text, answer_type, options,
+                                    required, photo_mode, note_mode, attach_when)
+SELECT z.id, c.sort_order, c.label, c.help_text, c.answer_type::checklist_answer_type, c.options,
+       c.required, c.photo_mode::checklist_attach_mode, c.note_mode::checklist_attach_mode,
+       c.attach_when::checklist_attach_when
+FROM (VALUES
+  ('Pos Gerbang Utama', 'PATROL', 1, 'Pagar terkunci dan utuh?', 'Foto wajib bila jawabannya tidak.',
+   'BOOLEAN', NULL::jsonb, true, 'REQUIRED', 'NONE', 'ON_NO'),
+  ('Pos Gerbang Utama', 'PATROL', 2, 'Kondisi lampu', NULL,
+   'CHOICE', '[{"value":"baik","label":"Baik"},{"value":"redup","label":"Redup"},{"value":"mati","label":"Mati"}]'::jsonb,
+   true, 'NONE', 'NONE', 'ALWAYS'),
+  ('Pos Gerbang Utama', 'PATROL', 3, 'Catatan lain', NULL,
+   'TEXT', NULL::jsonb, false, 'NONE', 'OPTIONAL', 'ALWAYS'),
+  ('Pos Belakang', 'PATROL', 1, 'Pintu belakang terkunci?', NULL,
+   'BOOLEAN', NULL::jsonb, true, 'NONE', 'REQUIRED', 'ON_NO'),
+  ('Pos Jaga Depan', 'GUARD', 1, 'Jumlah tamu hari ini', NULL,
+   'NUMBER', NULL::jsonb, false, 'NONE', 'NONE', 'ALWAYS')
+) AS c(zone_name, zone_type, sort_order, label, help_text, answer_type, options, required, photo_mode, note_mode, attach_when)
+JOIN patrol_zones z ON z.project_code = '1K-DEMO-S' AND z.name = c.zone_name
+                   AND z.type = c.zone_type::patrol_zone_type AND z.deleted_at IS NULL
+WHERE NOT EXISTS (SELECT 1 FROM patrol_checklist_items i WHERE i.zone_id = z.id);
+
+COMMIT;
+
+\pset footer off
+\echo Patrol zones
+SELECT z.id, z.type, z.name, z.team_code, z.radius_meters, count(i.id) AS questions
+FROM patrol_zones z LEFT JOIN patrol_checklist_items i ON i.zone_id = z.id
+WHERE z.project_code = '1K-DEMO-S' AND z.deleted_at IS NULL
+GROUP BY z.id ORDER BY z.id;
+SQL
+
 say "Result"
 PSQL <<'SQL'
 SELECT set_config('app.current_org', :'org', false) \gset
@@ -325,4 +384,5 @@ Test login body (POST /api/v1/auth/login). The password is whatever the account 
 People: danru KPIDANRU01, members KPIANG0001 and KPIANG0002, admin $ADMIN_NIK (ORG_ADMIN, if step 4 worked)
 Regu 1K-DEMO-S1 at project 1K-DEMO-S, GPS -6.175392, 106.827153 (radius 150 m).
 Today has no attendance rows: check in as a member to test it.
+Patrol zones: Pos Gerbang Utama, Pos Belakang (PATROL) and Pos Jaga Depan (GUARD), see the table above.
 EOF

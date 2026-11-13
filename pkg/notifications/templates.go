@@ -75,12 +75,20 @@ func Render(t Type, v Vars) (title, body string) {
 		return l.patrol + " menunggu persetujuan",
 			actor + " mengirim " + strings.ToLower(l.patrol) + with(" ", v.Subject) + ". Menunggu persetujuan Anda."
 	case TypePatrolApproved:
+		if v.Declined {
+			return l.patrol + " ditolak",
+				l.patrol + with(" ", v.Subject) + " Anda ditolak" + by(" oleh ", v.ActorName) + with(". Catatan: ", v.Note) + "."
+		}
 		return l.patrol + " disetujui",
 			l.patrol + with(" ", v.Subject) + " Anda telah disetujui" + by(" oleh ", v.ActorName) + "."
 	case TypeGuardSubmitted:
 		return l.guard + " menunggu persetujuan",
 			actor + " mengirim " + strings.ToLower(l.guard) + with(" ", v.Subject) + ". Menunggu persetujuan Anda."
 	case TypeGuardApproved:
+		if v.Declined {
+			return l.guard + " ditolak",
+				l.guard + with(" ", v.Subject) + " Anda ditolak" + by(" oleh ", v.ActorName) + with(". Catatan: ", v.Note) + "."
+		}
 		return l.guard + " disetujui",
 			l.guard + with(" ", v.Subject) + " Anda telah disetujui" + by(" oleh ", v.ActorName) + "."
 	case TypePanicTriggered:

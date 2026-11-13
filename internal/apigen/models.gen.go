@@ -338,19 +338,19 @@ func (e BusinessLine) Valid() bool {
 
 // Defines values for CaptureSource.
 const (
-	CAMERA  CaptureSource = "CAMERA"
-	GALLERY CaptureSource = "GALLERY"
-	UNKNOWN CaptureSource = "UNKNOWN"
+	CaptureSourceCAMERA  CaptureSource = "CAMERA"
+	CaptureSourceGALLERY CaptureSource = "GALLERY"
+	CaptureSourceUNKNOWN CaptureSource = "UNKNOWN"
 )
 
 // Valid indicates whether the value is a known member of the CaptureSource enum.
 func (e CaptureSource) Valid() bool {
 	switch e {
-	case CAMERA:
+	case CaptureSourceCAMERA:
 		return true
-	case GALLERY:
+	case CaptureSourceGALLERY:
 		return true
-	case UNKNOWN:
+	case CaptureSourceUNKNOWN:
 		return true
 	default:
 		return false
@@ -591,6 +591,21 @@ func (e FieldPermissionScope) Valid() bool {
 	case FieldPermissionScopeSELF:
 		return true
 	case FieldPermissionScopeTEAM:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GeoJsonLineStringType.
+const (
+	LineString GeoJsonLineStringType = "LineString"
+)
+
+// Valid indicates whether the value is a known member of the GeoJsonLineStringType enum.
+func (e GeoJsonLineStringType) Valid() bool {
+	switch e {
+	case LineString:
 		return true
 	default:
 		return false
@@ -1283,16 +1298,391 @@ func (e OrganizationUpdateEnabledBusinessLines) Valid() bool {
 
 // Defines values for PanicStatus.
 const (
-	ACTIVE   PanicStatus = "ACTIVE"
-	RESOLVED PanicStatus = "RESOLVED"
+	PanicStatusACTIVE   PanicStatus = "ACTIVE"
+	PanicStatusRESOLVED PanicStatus = "RESOLVED"
 )
 
 // Valid indicates whether the value is a known member of the PanicStatus enum.
 func (e PanicStatus) Valid() bool {
 	switch e {
-	case ACTIVE:
+	case PanicStatusACTIVE:
 		return true
-	case RESOLVED:
+	case PanicStatusRESOLVED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatrolChecklistItemAnswerType.
+const (
+	PatrolChecklistItemAnswerTypeBOOLEAN PatrolChecklistItemAnswerType = "BOOLEAN"
+	PatrolChecklistItemAnswerTypeCHOICE  PatrolChecklistItemAnswerType = "CHOICE"
+	PatrolChecklistItemAnswerTypeNUMBER  PatrolChecklistItemAnswerType = "NUMBER"
+	PatrolChecklistItemAnswerTypeTEXT    PatrolChecklistItemAnswerType = "TEXT"
+)
+
+// Valid indicates whether the value is a known member of the PatrolChecklistItemAnswerType enum.
+func (e PatrolChecklistItemAnswerType) Valid() bool {
+	switch e {
+	case PatrolChecklistItemAnswerTypeBOOLEAN:
+		return true
+	case PatrolChecklistItemAnswerTypeCHOICE:
+		return true
+	case PatrolChecklistItemAnswerTypeNUMBER:
+		return true
+	case PatrolChecklistItemAnswerTypeTEXT:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatrolChecklistItemAttachWhen.
+const (
+	PatrolChecklistItemAttachWhenALWAYS PatrolChecklistItemAttachWhen = "ALWAYS"
+	PatrolChecklistItemAttachWhenONNO   PatrolChecklistItemAttachWhen = "ON_NO"
+)
+
+// Valid indicates whether the value is a known member of the PatrolChecklistItemAttachWhen enum.
+func (e PatrolChecklistItemAttachWhen) Valid() bool {
+	switch e {
+	case PatrolChecklistItemAttachWhenALWAYS:
+		return true
+	case PatrolChecklistItemAttachWhenONNO:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatrolChecklistItemNoteMode.
+const (
+	PatrolChecklistItemNoteModeNONE     PatrolChecklistItemNoteMode = "NONE"
+	PatrolChecklistItemNoteModeOPTIONAL PatrolChecklistItemNoteMode = "OPTIONAL"
+	PatrolChecklistItemNoteModeREQUIRED PatrolChecklistItemNoteMode = "REQUIRED"
+)
+
+// Valid indicates whether the value is a known member of the PatrolChecklistItemNoteMode enum.
+func (e PatrolChecklistItemNoteMode) Valid() bool {
+	switch e {
+	case PatrolChecklistItemNoteModeNONE:
+		return true
+	case PatrolChecklistItemNoteModeOPTIONAL:
+		return true
+	case PatrolChecklistItemNoteModeREQUIRED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatrolChecklistItemPhotoMode.
+const (
+	PatrolChecklistItemPhotoModeNONE     PatrolChecklistItemPhotoMode = "NONE"
+	PatrolChecklistItemPhotoModeOPTIONAL PatrolChecklistItemPhotoMode = "OPTIONAL"
+	PatrolChecklistItemPhotoModeREQUIRED PatrolChecklistItemPhotoMode = "REQUIRED"
+)
+
+// Valid indicates whether the value is a known member of the PatrolChecklistItemPhotoMode enum.
+func (e PatrolChecklistItemPhotoMode) Valid() bool {
+	switch e {
+	case PatrolChecklistItemPhotoModeNONE:
+		return true
+	case PatrolChecklistItemPhotoModeOPTIONAL:
+		return true
+	case PatrolChecklistItemPhotoModeREQUIRED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatrolChecklistItemInputAnswerType.
+const (
+	PatrolChecklistItemInputAnswerTypeBOOLEAN PatrolChecklistItemInputAnswerType = "BOOLEAN"
+	PatrolChecklistItemInputAnswerTypeCHOICE  PatrolChecklistItemInputAnswerType = "CHOICE"
+	PatrolChecklistItemInputAnswerTypeNUMBER  PatrolChecklistItemInputAnswerType = "NUMBER"
+	PatrolChecklistItemInputAnswerTypeTEXT    PatrolChecklistItemInputAnswerType = "TEXT"
+)
+
+// Valid indicates whether the value is a known member of the PatrolChecklistItemInputAnswerType enum.
+func (e PatrolChecklistItemInputAnswerType) Valid() bool {
+	switch e {
+	case PatrolChecklistItemInputAnswerTypeBOOLEAN:
+		return true
+	case PatrolChecklistItemInputAnswerTypeCHOICE:
+		return true
+	case PatrolChecklistItemInputAnswerTypeNUMBER:
+		return true
+	case PatrolChecklistItemInputAnswerTypeTEXT:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatrolChecklistItemInputAttachWhen.
+const (
+	PatrolChecklistItemInputAttachWhenALWAYS PatrolChecklistItemInputAttachWhen = "ALWAYS"
+	PatrolChecklistItemInputAttachWhenONNO   PatrolChecklistItemInputAttachWhen = "ON_NO"
+)
+
+// Valid indicates whether the value is a known member of the PatrolChecklistItemInputAttachWhen enum.
+func (e PatrolChecklistItemInputAttachWhen) Valid() bool {
+	switch e {
+	case PatrolChecklistItemInputAttachWhenALWAYS:
+		return true
+	case PatrolChecklistItemInputAttachWhenONNO:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatrolChecklistItemInputNoteMode.
+const (
+	PatrolChecklistItemInputNoteModeNONE     PatrolChecklistItemInputNoteMode = "NONE"
+	PatrolChecklistItemInputNoteModeOPTIONAL PatrolChecklistItemInputNoteMode = "OPTIONAL"
+	PatrolChecklistItemInputNoteModeREQUIRED PatrolChecklistItemInputNoteMode = "REQUIRED"
+)
+
+// Valid indicates whether the value is a known member of the PatrolChecklistItemInputNoteMode enum.
+func (e PatrolChecklistItemInputNoteMode) Valid() bool {
+	switch e {
+	case PatrolChecklistItemInputNoteModeNONE:
+		return true
+	case PatrolChecklistItemInputNoteModeOPTIONAL:
+		return true
+	case PatrolChecklistItemInputNoteModeREQUIRED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatrolChecklistItemInputPhotoMode.
+const (
+	PatrolChecklistItemInputPhotoModeNONE     PatrolChecklistItemInputPhotoMode = "NONE"
+	PatrolChecklistItemInputPhotoModeOPTIONAL PatrolChecklistItemInputPhotoMode = "OPTIONAL"
+	PatrolChecklistItemInputPhotoModeREQUIRED PatrolChecklistItemInputPhotoMode = "REQUIRED"
+)
+
+// Valid indicates whether the value is a known member of the PatrolChecklistItemInputPhotoMode enum.
+func (e PatrolChecklistItemInputPhotoMode) Valid() bool {
+	switch e {
+	case PatrolChecklistItemInputPhotoModeNONE:
+		return true
+	case PatrolChecklistItemInputPhotoModeOPTIONAL:
+		return true
+	case PatrolChecklistItemInputPhotoModeREQUIRED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatrolRouteStatus.
+const (
+	PatrolRouteStatusACTIVE    PatrolRouteStatus = "ACTIVE"
+	PatrolRouteStatusAUTOENDED PatrolRouteStatus = "AUTO_ENDED"
+	PatrolRouteStatusENDED     PatrolRouteStatus = "ENDED"
+)
+
+// Valid indicates whether the value is a known member of the PatrolRouteStatus enum.
+func (e PatrolRouteStatus) Valid() bool {
+	switch e {
+	case PatrolRouteStatusACTIVE:
+		return true
+	case PatrolRouteStatusAUTOENDED:
+		return true
+	case PatrolRouteStatusENDED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatrolRouteDetailStatus.
+const (
+	PatrolRouteDetailStatusACTIVE    PatrolRouteDetailStatus = "ACTIVE"
+	PatrolRouteDetailStatusAUTOENDED PatrolRouteDetailStatus = "AUTO_ENDED"
+	PatrolRouteDetailStatusENDED     PatrolRouteDetailStatus = "ENDED"
+)
+
+// Valid indicates whether the value is a known member of the PatrolRouteDetailStatus enum.
+func (e PatrolRouteDetailStatus) Valid() bool {
+	switch e {
+	case PatrolRouteDetailStatusACTIVE:
+		return true
+	case PatrolRouteDetailStatusAUTOENDED:
+		return true
+	case PatrolRouteDetailStatusENDED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatrolRouteScanStatus.
+const (
+	PatrolRouteScanStatusAPPROVED  PatrolRouteScanStatus = "APPROVED"
+	PatrolRouteScanStatusDECLINED  PatrolRouteScanStatus = "DECLINED"
+	PatrolRouteScanStatusSUBMITTED PatrolRouteScanStatus = "SUBMITTED"
+)
+
+// Valid indicates whether the value is a known member of the PatrolRouteScanStatus enum.
+func (e PatrolRouteScanStatus) Valid() bool {
+	switch e {
+	case PatrolRouteScanStatusAPPROVED:
+		return true
+	case PatrolRouteScanStatusDECLINED:
+		return true
+	case PatrolRouteScanStatusSUBMITTED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatrolScanStatus.
+const (
+	PatrolScanStatusAPPROVED  PatrolScanStatus = "APPROVED"
+	PatrolScanStatusDECLINED  PatrolScanStatus = "DECLINED"
+	PatrolScanStatusSUBMITTED PatrolScanStatus = "SUBMITTED"
+)
+
+// Valid indicates whether the value is a known member of the PatrolScanStatus enum.
+func (e PatrolScanStatus) Valid() bool {
+	switch e {
+	case PatrolScanStatusAPPROVED:
+		return true
+	case PatrolScanStatusDECLINED:
+		return true
+	case PatrolScanStatusSUBMITTED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatrolScanZoneType.
+const (
+	PatrolScanZoneTypeGUARD  PatrolScanZoneType = "GUARD"
+	PatrolScanZoneTypePATROL PatrolScanZoneType = "PATROL"
+)
+
+// Valid indicates whether the value is a known member of the PatrolScanZoneType enum.
+func (e PatrolScanZoneType) Valid() bool {
+	switch e {
+	case PatrolScanZoneTypeGUARD:
+		return true
+	case PatrolScanZoneTypePATROL:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatrolScanAnswerAnswerType.
+const (
+	PatrolScanAnswerAnswerTypeBOOLEAN PatrolScanAnswerAnswerType = "BOOLEAN"
+	PatrolScanAnswerAnswerTypeCHOICE  PatrolScanAnswerAnswerType = "CHOICE"
+	PatrolScanAnswerAnswerTypeNUMBER  PatrolScanAnswerAnswerType = "NUMBER"
+	PatrolScanAnswerAnswerTypeTEXT    PatrolScanAnswerAnswerType = "TEXT"
+)
+
+// Valid indicates whether the value is a known member of the PatrolScanAnswerAnswerType enum.
+func (e PatrolScanAnswerAnswerType) Valid() bool {
+	switch e {
+	case PatrolScanAnswerAnswerTypeBOOLEAN:
+		return true
+	case PatrolScanAnswerAnswerTypeCHOICE:
+		return true
+	case PatrolScanAnswerAnswerTypeNUMBER:
+		return true
+	case PatrolScanAnswerAnswerTypeTEXT:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatrolScanAnswerAttachWhen.
+const (
+	PatrolScanAnswerAttachWhenALWAYS PatrolScanAnswerAttachWhen = "ALWAYS"
+	PatrolScanAnswerAttachWhenONNO   PatrolScanAnswerAttachWhen = "ON_NO"
+)
+
+// Valid indicates whether the value is a known member of the PatrolScanAnswerAttachWhen enum.
+func (e PatrolScanAnswerAttachWhen) Valid() bool {
+	switch e {
+	case PatrolScanAnswerAttachWhenALWAYS:
+		return true
+	case PatrolScanAnswerAttachWhenONNO:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatrolScanAnswerNoteMode.
+const (
+	PatrolScanAnswerNoteModeNONE     PatrolScanAnswerNoteMode = "NONE"
+	PatrolScanAnswerNoteModeOPTIONAL PatrolScanAnswerNoteMode = "OPTIONAL"
+	PatrolScanAnswerNoteModeREQUIRED PatrolScanAnswerNoteMode = "REQUIRED"
+)
+
+// Valid indicates whether the value is a known member of the PatrolScanAnswerNoteMode enum.
+func (e PatrolScanAnswerNoteMode) Valid() bool {
+	switch e {
+	case PatrolScanAnswerNoteModeNONE:
+		return true
+	case PatrolScanAnswerNoteModeOPTIONAL:
+		return true
+	case PatrolScanAnswerNoteModeREQUIRED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatrolScanAnswerPhotoMode.
+const (
+	PatrolScanAnswerPhotoModeNONE     PatrolScanAnswerPhotoMode = "NONE"
+	PatrolScanAnswerPhotoModeOPTIONAL PatrolScanAnswerPhotoMode = "OPTIONAL"
+	PatrolScanAnswerPhotoModeREQUIRED PatrolScanAnswerPhotoMode = "REQUIRED"
+)
+
+// Valid indicates whether the value is a known member of the PatrolScanAnswerPhotoMode enum.
+func (e PatrolScanAnswerPhotoMode) Valid() bool {
+	switch e {
+	case PatrolScanAnswerPhotoModeNONE:
+		return true
+	case PatrolScanAnswerPhotoModeOPTIONAL:
+		return true
+	case PatrolScanAnswerPhotoModeREQUIRED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatrolScanPhotoCaptureSource.
+const (
+	PatrolScanPhotoCaptureSourceCAMERA  PatrolScanPhotoCaptureSource = "CAMERA"
+	PatrolScanPhotoCaptureSourceGALLERY PatrolScanPhotoCaptureSource = "GALLERY"
+	PatrolScanPhotoCaptureSourceUNKNOWN PatrolScanPhotoCaptureSource = "UNKNOWN"
+)
+
+// Valid indicates whether the value is a known member of the PatrolScanPhotoCaptureSource enum.
+func (e PatrolScanPhotoCaptureSource) Valid() bool {
+	switch e {
+	case PatrolScanPhotoCaptureSourceCAMERA:
+		return true
+	case PatrolScanPhotoCaptureSourceGALLERY:
+		return true
+	case PatrolScanPhotoCaptureSourceUNKNOWN:
 		return true
 	default:
 		return false
@@ -1329,6 +1719,24 @@ func (e PatrolZoneInputType) Valid() bool {
 	case PatrolZoneInputTypeGUARD:
 		return true
 	case PatrolZoneInputTypePATROL:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatrolZoneUpdateType.
+const (
+	PatrolZoneUpdateTypeGUARD  PatrolZoneUpdateType = "GUARD"
+	PatrolZoneUpdateTypePATROL PatrolZoneUpdateType = "PATROL"
+)
+
+// Valid indicates whether the value is a known member of the PatrolZoneUpdateType enum.
+func (e PatrolZoneUpdateType) Valid() bool {
+	switch e {
+	case PatrolZoneUpdateTypeGUARD:
+		return true
+	case PatrolZoneUpdateTypePATROL:
 		return true
 	default:
 		return false
@@ -1983,6 +2391,24 @@ func (e Weekday) Valid() bool {
 	case Tuesday:
 		return true
 	case Wednesday:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ZoneProgressItemZoneType.
+const (
+	ZoneProgressItemZoneTypeGUARD  ZoneProgressItemZoneType = "GUARD"
+	ZoneProgressItemZoneTypePATROL ZoneProgressItemZoneType = "PATROL"
+)
+
+// Valid indicates whether the value is a known member of the ZoneProgressItemZoneType enum.
+func (e ZoneProgressItemZoneType) Valid() bool {
+	switch e {
+	case ZoneProgressItemZoneTypeGUARD:
+		return true
+	case ZoneProgressItemZoneTypePATROL:
 		return true
 	default:
 		return false
@@ -4134,6 +4560,24 @@ func (e PatchAdminWebUsersById200JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
+// Defines values for GetAdminZonesParamsType.
+const (
+	GetAdminZonesParamsTypeGUARD  GetAdminZonesParamsType = "GUARD"
+	GetAdminZonesParamsTypePATROL GetAdminZonesParamsType = "PATROL"
+)
+
+// Valid indicates whether the value is a known member of the GetAdminZonesParamsType enum.
+func (e GetAdminZonesParamsType) Valid() bool {
+	switch e {
+	case GetAdminZonesParamsTypeGUARD:
+		return true
+	case GetAdminZonesParamsTypePATROL:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetAdminZones200JSONResponseBodySuccess.
 const (
 	GetAdminZones200JSONResponseBodySuccessTrue GetAdminZones200JSONResponseBodySuccess = true
@@ -4194,18 +4638,48 @@ func (e PatchAdminZonesById200JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
+// Defines values for PutAdminZonesByIdChecklist200JSONResponseBodySuccess.
+const (
+	PutAdminZonesByIdChecklist200JSONResponseBodySuccessTrue PutAdminZonesByIdChecklist200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PutAdminZonesByIdChecklist200JSONResponseBodySuccess enum.
+func (e PutAdminZonesByIdChecklist200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PutAdminZonesByIdChecklist200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetAdminZonesByIdQrParamsFormat.
 const (
-	GetAdminZonesByIdQrParamsFormatPdf GetAdminZonesByIdQrParamsFormat = "pdf"
 	GetAdminZonesByIdQrParamsFormatPng GetAdminZonesByIdQrParamsFormat = "png"
+	GetAdminZonesByIdQrParamsFormatSvg GetAdminZonesByIdQrParamsFormat = "svg"
 )
 
 // Valid indicates whether the value is a known member of the GetAdminZonesByIdQrParamsFormat enum.
 func (e GetAdminZonesByIdQrParamsFormat) Valid() bool {
 	switch e {
-	case GetAdminZonesByIdQrParamsFormatPdf:
-		return true
 	case GetAdminZonesByIdQrParamsFormatPng:
+		return true
+	case GetAdminZonesByIdQrParamsFormatSvg:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostAdminZonesByIdRotateQr200JSONResponseBodySuccess.
+const (
+	PostAdminZonesByIdRotateQr200JSONResponseBodySuccessTrue PostAdminZonesByIdRotateQr200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostAdminZonesByIdRotateQr200JSONResponseBodySuccess enum.
+func (e PostAdminZonesByIdRotateQr200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostAdminZonesByIdRotateQr200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
@@ -5535,6 +6009,132 @@ func (e GetPatrolPendingApprovals200JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
+// Defines values for GetPatrolsParamsStatus.
+const (
+	GetPatrolsParamsStatusACTIVE    GetPatrolsParamsStatus = "ACTIVE"
+	GetPatrolsParamsStatusAUTOENDED GetPatrolsParamsStatus = "AUTO_ENDED"
+	GetPatrolsParamsStatusENDED     GetPatrolsParamsStatus = "ENDED"
+)
+
+// Valid indicates whether the value is a known member of the GetPatrolsParamsStatus enum.
+func (e GetPatrolsParamsStatus) Valid() bool {
+	switch e {
+	case GetPatrolsParamsStatusACTIVE:
+		return true
+	case GetPatrolsParamsStatusAUTOENDED:
+		return true
+	case GetPatrolsParamsStatusENDED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetPatrols200JSONResponseBodySuccess.
+const (
+	GetPatrols200JSONResponseBodySuccessTrue GetPatrols200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetPatrols200JSONResponseBodySuccess enum.
+func (e GetPatrols200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetPatrols200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetPatrolsActive200JSONResponseBodySuccess.
+const (
+	GetPatrolsActive200JSONResponseBodySuccessTrue GetPatrolsActive200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetPatrolsActive200JSONResponseBodySuccess enum.
+func (e GetPatrolsActive200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetPatrolsActive200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostPatrolsStart200JSONResponseBodySuccess.
+const (
+	PostPatrolsStart200JSONResponseBodySuccessTrue PostPatrolsStart200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostPatrolsStart200JSONResponseBodySuccess enum.
+func (e PostPatrolsStart200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostPatrolsStart200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostPatrolsStart201JSONResponseBodySuccess.
+const (
+	PostPatrolsStart201JSONResponseBodySuccessTrue PostPatrolsStart201JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostPatrolsStart201JSONResponseBodySuccess enum.
+func (e PostPatrolsStart201JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostPatrolsStart201JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetPatrolsById200JSONResponseBodySuccess.
+const (
+	GetPatrolsById200JSONResponseBodySuccessTrue GetPatrolsById200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetPatrolsById200JSONResponseBodySuccess enum.
+func (e GetPatrolsById200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetPatrolsById200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostPatrolsByIdEnd200JSONResponseBodySuccess.
+const (
+	PostPatrolsByIdEnd200JSONResponseBodySuccessTrue PostPatrolsByIdEnd200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostPatrolsByIdEnd200JSONResponseBodySuccess enum.
+func (e PostPatrolsByIdEnd200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostPatrolsByIdEnd200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostPatrolsByIdPoints200JSONResponseBodySuccess.
+const (
+	PostPatrolsByIdPoints200JSONResponseBodySuccessTrue PostPatrolsByIdPoints200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostPatrolsByIdPoints200JSONResponseBodySuccess enum.
+func (e PostPatrolsByIdPoints200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostPatrolsByIdPoints200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetPermissionCategories200JSONResponseBodySuccess.
 const (
 	GetPermissionCategories200JSONResponseBodySuccessTrue GetPermissionCategories200JSONResponseBodySuccess = true
@@ -6342,6 +6942,21 @@ func (e GetReportsById200JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
+// Defines values for PostScansApprove200JSONResponseBodySuccess.
+const (
+	PostScansApprove200JSONResponseBodySuccessTrue PostScansApprove200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostScansApprove200JSONResponseBodySuccess enum.
+func (e PostScansApprove200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostScansApprove200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetScansById200JSONResponseBodySuccess.
 const (
 	GetScansById200JSONResponseBodySuccessTrue GetScansById200JSONResponseBodySuccess = true
@@ -6555,6 +7170,39 @@ func (e GetZones200JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
+// Defines values for GetZonesProgressParamsType.
+const (
+	GetZonesProgressParamsTypeGUARD  GetZonesProgressParamsType = "GUARD"
+	GetZonesProgressParamsTypePATROL GetZonesProgressParamsType = "PATROL"
+)
+
+// Valid indicates whether the value is a known member of the GetZonesProgressParamsType enum.
+func (e GetZonesProgressParamsType) Valid() bool {
+	switch e {
+	case GetZonesProgressParamsTypeGUARD:
+		return true
+	case GetZonesProgressParamsTypePATROL:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetZonesProgress200JSONResponseBodySuccess.
+const (
+	GetZonesProgress200JSONResponseBodySuccessTrue GetZonesProgress200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetZonesProgress200JSONResponseBodySuccess enum.
+func (e GetZonesProgress200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetZonesProgress200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetZonesById200JSONResponseBodySuccess.
 const (
 	GetZonesById200JSONResponseBodySuccessTrue GetZonesById200JSONResponseBodySuccess = true
@@ -6564,6 +7212,51 @@ const (
 func (e GetZonesById200JSONResponseBodySuccess) Valid() bool {
 	switch e {
 	case GetZonesById200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostZonesByIdCheckIn201JSONResponseBodySuccess.
+const (
+	PostZonesByIdCheckIn201JSONResponseBodySuccessTrue PostZonesByIdCheckIn201JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostZonesByIdCheckIn201JSONResponseBodySuccess enum.
+func (e PostZonesByIdCheckIn201JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostZonesByIdCheckIn201JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostZonesByIdCheckOut200JSONResponseBodySuccess.
+const (
+	PostZonesByIdCheckOut200JSONResponseBodySuccessTrue PostZonesByIdCheckOut200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostZonesByIdCheckOut200JSONResponseBodySuccess enum.
+func (e PostZonesByIdCheckOut200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostZonesByIdCheckOut200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetZonesByIdLive200JSONResponseBodySuccess.
+const (
+	GetZonesByIdLive200JSONResponseBodySuccessTrue GetZonesByIdLive200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetZonesByIdLive200JSONResponseBodySuccess enum.
+func (e GetZonesByIdLive200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetZonesByIdLive200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
@@ -6594,6 +7287,42 @@ const (
 func (e PostZonesByIdScan201JSONResponseBodySuccess) Valid() bool {
 	switch e {
 	case PostZonesByIdScan201JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetZonesByIdScanners200JSONResponseBodySuccess.
+const (
+	GetZonesByIdScanners200JSONResponseBodySuccessTrue GetZonesByIdScanners200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetZonesByIdScanners200JSONResponseBodySuccess enum.
+func (e GetZonesByIdScanners200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetZonesByIdScanners200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetZonesByIdScansParamsStatus.
+const (
+	GetZonesByIdScansParamsStatusAPPROVED  GetZonesByIdScansParamsStatus = "APPROVED"
+	GetZonesByIdScansParamsStatusDECLINED  GetZonesByIdScansParamsStatus = "DECLINED"
+	GetZonesByIdScansParamsStatusSUBMITTED GetZonesByIdScansParamsStatus = "SUBMITTED"
+)
+
+// Valid indicates whether the value is a known member of the GetZonesByIdScansParamsStatus enum.
+func (e GetZonesByIdScansParamsStatus) Valid() bool {
+	switch e {
+	case GetZonesByIdScansParamsStatusAPPROVED:
+		return true
+	case GetZonesByIdScansParamsStatusDECLINED:
+		return true
+	case GetZonesByIdScansParamsStatusSUBMITTED:
 		return true
 	default:
 		return false
@@ -7210,6 +7939,20 @@ type BranchUpdate struct {
 	ZipCode     *string `json:"zip_code,omitempty"`
 }
 
+// BulkApproveInput defines model for BulkApproveInput.
+type BulkApproveInput struct {
+	// Ids Id yang sama dihitung sekali.
+	Ids []int64 `json:"ids"`
+}
+
+// BulkApproveResult defines model for BulkApproveResult.
+type BulkApproveResult struct {
+	Approved []PatrolScan `json:"approved"`
+
+	// Skipped Scan yang sudah diputuskan lebih dulu; dilewati, tidak diubah.
+	Skipped []int64 `json:"skipped"`
+}
+
 // BusinessLine Bidang usaha proyek (DL-20). security membentuk kode berakhiran S, cleaning berakhiran C; satu klien paling banyak satu proyek per bidang.
 type BusinessLine string
 
@@ -7676,6 +8419,16 @@ type ForgotPasswordRequest struct {
 	Email            openapi_types.Email `json:"email"`
 	OrganizationCode *string             `json:"organization_code,omitempty"`
 }
+
+// GeoJsonLineString defines model for GeoJsonLineString.
+type GeoJsonLineString struct {
+	// Coordinates Posisi `[longitude, latitude]`, bujur dulu (urutan GeoJSON). Satu titik ditulis dua kali; tanpa titik, larik kosong.
+	Coordinates [][]float64           `json:"coordinates"`
+	Type        GeoJsonLineStringType `json:"type"`
+}
+
+// GeoJsonLineStringType defines model for GeoJsonLineString.Type.
+type GeoJsonLineStringType string
 
 // HeadcountSnapshot defines model for HeadcountSnapshot.
 type HeadcountSnapshot struct {
@@ -8564,70 +9317,378 @@ type PanicTypePatch struct {
 	StakeholderTypeId *int64  `json:"stakeholder_type_id,omitempty"`
 }
 
-// PatrolScan defines model for PatrolScan.
-type PatrolScan struct {
-	ApprovedAt     *time.Time                `json:"approved_at,omitempty"`
-	ApprovedBy     *int64                    `json:"approved_by,omitempty"`
-	Checklist      *[]map[string]interface{} `json:"checklist,omitempty"`
-	CreatedAt      *time.Time                `json:"created_at,omitempty"`
-	Id             *int64                    `json:"id,omitempty"`
-	IsApproved     *bool                     `json:"is_approved,omitempty"`
-	Latitude       *float64                  `json:"latitude,omitempty"`
-	LocalId        *string                   `json:"local_id,omitempty"`
-	Longitude      *float64                  `json:"longitude,omitempty"`
-	Note           *string                   `json:"note,omitempty"`
-	OrganizationId *int64                    `json:"organization_id,omitempty"`
-	PersonnelId    *int64                    `json:"personnel_id,omitempty"`
+// PatrolChecklistItem defines model for PatrolChecklistItem.
+type PatrolChecklistItem struct {
+	// AnswerType `BOOLEAN` = centang ya/tidak; `CHOICE` = pilih satu dari `options`.
+	AnswerType PatrolChecklistItemAnswerType `json:"answer_type"`
 
-	// Photos URL foto bertanda tangan yang berumur pendek (sekitar 1 jam). Jangan disimpan; muat ulang catatannya untuk URL baru. Isinya foto yang dilampirkan lewat `media_ids`.
-	Photos    *[]string  `json:"photos,omitempty"`
-	ScannedAt *time.Time `json:"scanned_at,omitempty"`
-	SyncedAt  *time.Time `json:"synced_at,omitempty"`
-	ZoneId    *int64     `json:"zone_id,omitempty"`
+	// AttachWhen `ON_NO` (hanya `BOOLEAN`): foto atau catatan `REQUIRED` hanya diminta bila jawabannya "tidak".
+	AttachWhen PatrolChecklistItemAttachWhen `json:"attach_when"`
+
+	// HelpText Petunjuk di bawah pertanyaan.
+	HelpText *string `json:"help_text,omitempty"`
+	Id       int64   `json:"id"`
+
+	// Label Pertanyaan.
+	Label    string                      `json:"label"`
+	NoteMode PatrolChecklistItemNoteMode `json:"note_mode"`
+
+	// Options Hanya untuk `CHOICE`; null untuk tipe lain.
+	Options   *[]PatrolChecklistOption     `json:"options,omitempty"`
+	PhotoMax  int                          `json:"photo_max"`
+	PhotoMode PatrolChecklistItemPhotoMode `json:"photo_mode"`
+
+	// Required Wajib dijawab.
+	Required  bool `json:"required"`
+	SortOrder int  `json:"sort_order"`
+}
+
+// PatrolChecklistItemAnswerType `BOOLEAN` = centang ya/tidak; `CHOICE` = pilih satu dari `options`.
+type PatrolChecklistItemAnswerType string
+
+// PatrolChecklistItemAttachWhen `ON_NO` (hanya `BOOLEAN`): foto atau catatan `REQUIRED` hanya diminta bila jawabannya "tidak".
+type PatrolChecklistItemAttachWhen string
+
+// PatrolChecklistItemNoteMode defines model for PatrolChecklistItem.NoteMode.
+type PatrolChecklistItemNoteMode string
+
+// PatrolChecklistItemPhotoMode defines model for PatrolChecklistItem.PhotoMode.
+type PatrolChecklistItemPhotoMode string
+
+// PatrolChecklistItemInput Butir yang punya `id` diubah, yang tanpa `id` dibuat, dan yang tidak ada di badan permintaan
+// dinonaktifkan (tidak pernah dihapus). Urutan array menentukan `sort_order`.
+// Kombinasi yang salah (`CHOICE` tanpa opsi, `photo_max` di luar 1 sampai 5, `ON_NO` pada
+// tipe selain `BOOLEAN`) ditolak 422 dengan nama field-nya, mis. `checklist[2].options`.
+type PatrolChecklistItemInput struct {
+	AnswerType PatrolChecklistItemInputAnswerType  `json:"answer_type"`
+	AttachWhen *PatrolChecklistItemInputAttachWhen `json:"attach_when,omitempty"`
+	HelpText   *string                             `json:"help_text,omitempty"`
+	Id         *int64                              `json:"id,omitempty"`
+	Label      string                              `json:"label"`
+	NoteMode   *PatrolChecklistItemInputNoteMode   `json:"note_mode,omitempty"`
+	Options    *[]PatrolChecklistOption            `json:"options,omitempty"`
+	PhotoMax   *int                                `json:"photo_max,omitempty"`
+	PhotoMode  *PatrolChecklistItemInputPhotoMode  `json:"photo_mode,omitempty"`
+	Required   *bool                               `json:"required,omitempty"`
+}
+
+// PatrolChecklistItemInputAnswerType defines model for PatrolChecklistItemInput.AnswerType.
+type PatrolChecklistItemInputAnswerType string
+
+// PatrolChecklistItemInputAttachWhen defines model for PatrolChecklistItemInput.AttachWhen.
+type PatrolChecklistItemInputAttachWhen string
+
+// PatrolChecklistItemInputNoteMode defines model for PatrolChecklistItemInput.NoteMode.
+type PatrolChecklistItemInputNoteMode string
+
+// PatrolChecklistItemInputPhotoMode defines model for PatrolChecklistItemInput.PhotoMode.
+type PatrolChecklistItemInputPhotoMode string
+
+// PatrolChecklistOption defines model for PatrolChecklistOption.
+type PatrolChecklistOption struct {
+	Label string `json:"label"`
+
+	// Value Nilai yang dikirim aplikasi; unik dalam satu butir.
+	Value string `json:"value"`
+}
+
+// PatrolChecklistReplace defines model for PatrolChecklistReplace.
+type PatrolChecklistReplace struct {
+	Checklist []PatrolChecklistItemInput `json:"checklist"`
+}
+
+// PatrolRoute Satu patroli. `team_code` dan `work_date` ditentukan server dari shift penjaga. `point_count` adalah
+// titik mentah yang diterima, `distance_meters` panjang garis yang disimpan, `scan_count` scan yang
+// terjadi selama patroli.
+type PatrolRoute struct {
+	DistanceMeters int                `json:"distance_meters"`
+	EndedAt        *time.Time         `json:"ended_at,omitempty"`
+	Id             int64              `json:"id"`
+	LastPointAt    time.Time          `json:"last_point_at"`
+	LocalId        openapi_types.UUID `json:"local_id"`
+	PersonnelId    int64              `json:"personnel_id"`
+
+	// PersonnelName Ada saat patroli dibaca (daftar dan detail).
+	PersonnelName    *string            `json:"personnel_name,omitempty"`
+	PointCount       int                `json:"point_count"`
+	ProjectCode      string             `json:"project_code"`
+	ScanCount        int                `json:"scan_count"`
+	StartedAt        time.Time          `json:"started_at"`
+	Status           PatrolRouteStatus  `json:"status"`
+	SubmittedOffline bool               `json:"submitted_offline"`
+	TeamCode         string             `json:"team_code"`
+	WorkDate         openapi_types.Date `json:"work_date"`
+}
+
+// PatrolRouteStatus defines model for PatrolRoute.Status.
+type PatrolRouteStatus string
+
+// PatrolRouteDetail defines model for PatrolRouteDetail.
+type PatrolRouteDetail struct {
+	DistanceMeters int                `json:"distance_meters"`
+	EndedAt        *time.Time         `json:"ended_at,omitempty"`
+	Id             int64              `json:"id"`
+	LastPointAt    time.Time          `json:"last_point_at"`
+	LocalId        openapi_types.UUID `json:"local_id"`
+
+	// Path Titik yang sama dengan `route`, lengkap dengan waktu dan akurasi.
+	Path        []PatrolRoutePathPoint `json:"path"`
+	PersonnelId int64                  `json:"personnel_id"`
+
+	// PersonnelName Ada saat patroli dibaca (daftar dan detail).
+	PersonnelName    *string                 `json:"personnel_name,omitempty"`
+	PointCount       int                     `json:"point_count"`
+	ProjectCode      string                  `json:"project_code"`
+	Route            GeoJsonLineString       `json:"route"`
+	ScanCount        int                     `json:"scan_count"`
+	Scans            []PatrolRouteScan       `json:"scans"`
+	StartedAt        time.Time               `json:"started_at"`
+	Status           PatrolRouteDetailStatus `json:"status"`
+	SubmittedOffline bool                    `json:"submitted_offline"`
+	TeamCode         string                  `json:"team_code"`
+	WorkDate         openapi_types.Date      `json:"work_date"`
+}
+
+// PatrolRouteDetailStatus defines model for PatrolRouteDetail.Status.
+type PatrolRouteDetailStatus string
+
+// PatrolRouteEnd defines model for PatrolRouteEnd.
+type PatrolRouteEnd struct {
+	// EndedAt Tidak boleh sebelum `started_at`; maksimal 5 menit di depan dan 7 hari ke belakang.
+	EndedAt time.Time `json:"ended_at"`
+
+	// Points Batch titik terakhir, boleh ikut dikirim.
+	Points *[]PatrolRoutePointInput `json:"points,omitempty"`
+}
+
+// PatrolRoutePathPoint defines model for PatrolRoutePathPoint.
+type PatrolRoutePathPoint struct {
+	AccuracyMeters float64   `json:"accuracy_meters"`
+	At             time.Time `json:"at"`
+	Latitude       float64   `json:"latitude"`
+	Longitude      float64   `json:"longitude"`
+}
+
+// PatrolRoutePointInput defines model for PatrolRoutePointInput.
+type PatrolRoutePointInput struct {
+	// AccuracyMeters Di atas 100000 disimpan sebagai 100000 (titik seperti itu tidak digambar).
+	AccuracyMeters float64 `json:"accuracy_meters"`
+	Latitude       float64 `json:"latitude"`
+
+	// LoggedAt Maksimal 5 menit di depan waktu server.
+	LoggedAt  time.Time `json:"logged_at"`
+	Longitude float64   `json:"longitude"`
+
+	// Seq Nomor titik, dari aplikasi. Titik awal (seq 0) dibuat server saat patroli dimulai; titik yang `seq`-nya sudah ada dilewati.
+	Seq int32 `json:"seq"`
+}
+
+// PatrolRoutePoints defines model for PatrolRoutePoints.
+type PatrolRoutePoints struct {
+	Points []PatrolRoutePointInput `json:"points"`
+}
+
+// PatrolRoutePointsResult defines model for PatrolRoutePointsResult.
+type PatrolRoutePointsResult struct {
+	Accepted int `json:"accepted"`
+
+	// Duplicates Titik yang `seq`-nya sudah diterima sebelumnya (kiriman ulang).
+	Duplicates int `json:"duplicates"`
+}
+
+// PatrolRouteScan Scan di sepanjang patroli, untuk pin di garis peta.
+type PatrolRouteScan struct {
+	Id         int64                 `json:"id"`
+	Latitude   float64               `json:"latitude"`
+	Longitude  float64               `json:"longitude"`
+	OccurredAt time.Time             `json:"occurred_at"`
+	Status     PatrolRouteScanStatus `json:"status"`
+	Subject    string                `json:"subject"`
+	ZoneId     int64                 `json:"zone_id"`
+	ZoneName   string                `json:"zone_name"`
+}
+
+// PatrolRouteScanStatus defines model for PatrolRouteScan.Status.
+type PatrolRouteScanStatus string
+
+// PatrolRouteStart Badan `POST /patrols/start`. `local_id` harus sama dengan header Idempotency-Key.
+type PatrolRouteStart struct {
+	AccuracyMeters float64            `json:"accuracy_meters"`
+	Latitude       float64            `json:"latitude"`
+	LocalId        openapi_types.UUID `json:"local_id"`
+	Longitude      float64            `json:"longitude"`
+	ProjectCode    string             `json:"project_code"`
+
+	// StartedAt Saat patroli dimulai di perangkat. Maksimal 5 menit di depan dan 7 hari ke belakang.
+	StartedAt        time.Time `json:"started_at"`
+	SubmittedOffline *bool     `json:"submitted_offline,omitempty"`
+}
+
+// PatrolScan Satu kunjungan ke zona. `team_code` dan `work_date` ditentukan server dari shift pemindai, bukan dikirim aplikasi.
+type PatrolScan struct {
+	AccuracyMeters float64            `json:"accuracy_meters"`
+	Answers        []PatrolScanAnswer `json:"answers"`
+	CreatedAt      time.Time          `json:"created_at"`
+	DecidedAt      *time.Time         `json:"decided_at,omitempty"`
+	DecidedById    *int64             `json:"decided_by_id,omitempty"`
+
+	// DecisionNote Catatan DANRU, wajib saat ditolak.
+	DecisionNote *string `json:"decision_note,omitempty"`
+
+	// DistanceMeters Jarak dari pusat zona; null bila zona tanpa geofence.
+	DistanceMeters *int               `json:"distance_meters,omitempty"`
+	Id             int64              `json:"id"`
+	Latitude       float64            `json:"latitude"`
+	LocalId        openapi_types.UUID `json:"local_id"`
+	Longitude      float64            `json:"longitude"`
+
+	// Media Foto umum scan (bukan foto jawaban) sebagai URL bertanda tangan. Ada saat scan dibaca.
+	Media      *[]PatrolScanPhoto `json:"media,omitempty"`
+	Notes      *string            `json:"notes,omitempty"`
+	OccurredAt time.Time          `json:"occurred_at"`
+
+	// PatrolId Patroli yang sedang berjalan saat scan (Phase 10.4); diisi server.
+	PatrolId    *int64 `json:"patrol_id,omitempty"`
+	PersonnelId int64  `json:"personnel_id"`
+
+	// PersonnelName Nama pemindai. Ada saat scan dibaca (daftar dan detail).
+	PersonnelName    *string          `json:"personnel_name,omitempty"`
+	ProjectCode      string           `json:"project_code"`
+	ReceivedAt       time.Time        `json:"received_at"`
+	Status           PatrolScanStatus `json:"status"`
+	Subject          string           `json:"subject"`
+	SubmittedOffline bool             `json:"submitted_offline"`
+	TeamCode         string           `json:"team_code"`
+
+	// WorkDate Tanggal mulai shift (shift malam setelah tengah malam tetap tanggal kemarin).
+	WorkDate openapi_types.Date `json:"work_date"`
+	ZoneId   int64              `json:"zone_id"`
+	ZoneType PatrolScanZoneType `json:"zone_type"`
+}
+
+// PatrolScanStatus defines model for PatrolScan.Status.
+type PatrolScanStatus string
+
+// PatrolScanZoneType defines model for PatrolScan.ZoneType.
+type PatrolScanZoneType string
+
+// PatrolScanAnswer Satu pertanyaan checklist beserta jawabannya, disalin seperti saat scan dibuat (judul,
+// tipe, opsi dan aturan lampiran), jadi mengubah checklist tidak menulis ulang riwayat.
+type PatrolScanAnswer struct {
+	AnswerType PatrolScanAnswerAnswerType `json:"answer_type"`
+	AttachWhen PatrolScanAnswerAttachWhen `json:"attach_when"`
+	ItemId     int64                      `json:"item_id"`
+	Label      string                     `json:"label"`
+
+	// Media Foto jawaban ini sebagai URL bertanda tangan. Hanya ada saat scan dibaca (daftar dan detail).
+	Media     *[]PatrolScanPhoto        `json:"media,omitempty"`
+	MediaIds  []int64                   `json:"media_ids"`
+	Note      *string                   `json:"note,omitempty"`
+	NoteMode  PatrolScanAnswerNoteMode  `json:"note_mode"`
+	Options   *[]PatrolChecklistOption  `json:"options,omitempty"`
+	PhotoMax  int                       `json:"photo_max"`
+	PhotoMode PatrolScanAnswerPhotoMode `json:"photo_mode"`
+	Required  bool                      `json:"required"`
+
+	// Value Boolean, teks, angka atau nilai opsi menurut `answer_type`; null bila pertanyaan opsional tidak dijawab.
+	Value interface{} `json:"value,omitempty"`
+}
+
+// PatrolScanAnswerAnswerType defines model for PatrolScanAnswer.AnswerType.
+type PatrolScanAnswerAnswerType string
+
+// PatrolScanAnswerAttachWhen defines model for PatrolScanAnswer.AttachWhen.
+type PatrolScanAnswerAttachWhen string
+
+// PatrolScanAnswerNoteMode defines model for PatrolScanAnswer.NoteMode.
+type PatrolScanAnswerNoteMode string
+
+// PatrolScanAnswerPhotoMode defines model for PatrolScanAnswer.PhotoMode.
+type PatrolScanAnswerPhotoMode string
+
+// PatrolScanAnswerInput defines model for PatrolScanAnswerInput.
+type PatrolScanAnswerInput struct {
+	ItemId int64 `json:"item_id"`
+
+	// MediaIds Foto jawaban ini (`POST /media` dengan tujuan `PATROL_SCAN`).
+	MediaIds *[]int64 `json:"media_ids,omitempty"`
+	Note     *string  `json:"note,omitempty"`
+
+	// Value Boolean, teks, angka atau nilai opsi menurut `answer_type` butirnya.
+	Value interface{} `json:"value,omitempty"`
 }
 
 // PatrolScanCreate defines model for PatrolScanCreate.
 type PatrolScanCreate struct {
-	Checklist *[]map[string]interface{} `json:"checklist,omitempty"`
-	Lat       float64                   `json:"lat"`
-	Lng       float64                   `json:"lng"`
+	AccuracyMeters float64                  `json:"accuracy_meters"`
+	Answers        *[]PatrolScanAnswerInput `json:"answers,omitempty"`
+	Latitude       float64                  `json:"latitude"`
 
-	// LocalId Dedup offline; SEBAIKNYA = Idempotency-Key.
-	LocalId *openapi_types.UUID `json:"local_id,omitempty"`
+	// LocalId Harus sama dengan header Idempotency-Key.
+	LocalId   openapi_types.UUID `json:"local_id"`
+	Longitude float64            `json:"longitude"`
 
-	// MediaIds Foto berstatus `UPLOADED` milik pengirim dengan tujuan `PATROL_SCAN` yang belum dilampirkan ke catatan lain. Tiap id hanya sekali.
+	// MediaIds Foto umum scan. Tiap id hanya sekali di seluruh scan (juga terhadap foto jawaban).
 	MediaIds *[]int64 `json:"media_ids,omitempty"`
-	Note     *string  `json:"note,omitempty"`
+	Notes    *string  `json:"notes,omitempty"`
 
-	// Photos Tidak lagi dipakai server. Unggah foto lewat `POST /media` lalu kirim `media_ids`.
-	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-	Photos *[]string `json:"photos,omitempty"`
+	// OccurredAt Saat scan terjadi di perangkat. Maksimal 5 menit di depan dan 7 hari ke belakang.
+	OccurredAt       time.Time `json:"occurred_at"`
+	QrPayload        string    `json:"qr_payload"`
+	Subject          string    `json:"subject"`
+	SubmittedOffline *bool     `json:"submitted_offline,omitempty"`
 }
 
-// PatrolZone defines model for PatrolZone.
+// PatrolScanPhoto Foto sebuah scan. URL-nya bertanda tangan dan berumur sekitar satu jam; jangan disimpan, muat ulang scan untuk URL baru.
+type PatrolScanPhoto struct {
+	CaptureSource *PatrolScanPhotoCaptureSource `json:"capture_source,omitempty"`
+	CapturedAt    *time.Time                    `json:"captured_at,omitempty"`
+	ContentType   string                        `json:"content_type"`
+	Id            int64                         `json:"id"`
+	Url           string                        `json:"url"`
+}
+
+// PatrolScanPhotoCaptureSource defines model for PatrolScanPhoto.CaptureSource.
+type PatrolScanPhotoCaptureSource string
+
+// PatrolZone Zona patroli (`PATROL`) atau pos jaga (`GUARD`) beserta checklist aktifnya (Phase 10.1).
+// Proyek dan regu dikenali dengan kode (D19), bukan id. Rahasia QR TIDAK pernah ada di sini:
+// isinya hanya ada di gambar QR yang dicetak admin (`GET /admin/zones/{id}/qr`).
 type PatrolZone struct {
-	Alias     *string    `json:"alias,omitempty"`
-	CreatedAt *time.Time `json:"created_at,omitempty"`
-	Id        *int64     `json:"id,omitempty"`
-	IsActive  *bool      `json:"is_active,omitempty"`
+	Alias *string `json:"alias,omitempty"`
 
-	// Latitude Pusat zona.
-	Latitude *float64 `json:"latitude,omitempty"`
+	// Checklist Butir checklist yang aktif, urut menurut `sort_order`.
+	Checklist   []PatrolChecklistItem `json:"checklist"`
+	CreatedAt   time.Time             `json:"created_at"`
+	Description *string               `json:"description,omitempty"`
+	Id          int64                 `json:"id"`
+	IsActive    bool                  `json:"is_active"`
 
-	// Longitude Pusat zona.
-	Longitude      *float64            `json:"longitude,omitempty"`
-	Members        *[]int64            `json:"members,omitempty"`
-	MinVisit       *int                `json:"min_visit,omitempty"`
-	Name           *string             `json:"name,omitempty"`
-	OrganizationId *int64              `json:"organization_id,omitempty"`
-	PopupText      *string             `json:"popup_text,omitempty"`
-	ProjectId      *int64              `json:"project_id,omitempty"`
-	RadiusMeters   *int                `json:"radius_meters,omitempty"`
-	StartDate      *openapi_types.Date `json:"start_date,omitempty"`
+	// Latitude Pusat zona. latitude, longitude dan radius_meters terisi bersama atau kosong bersama.
+	Latitude  *float64 `json:"latitude,omitempty"`
+	Longitude *float64 `json:"longitude,omitempty"`
+
+	// MinVisit Jumlah scan yang dibutuhkan (lingkaran merah).
+	MinVisit int    `json:"min_visit"`
+	Name     string `json:"name"`
+
+	// PhotoRequired Scan butuh minimal satu foto, walau tidak ada butir checklist yang meminta (SQD §4.3).
+	PhotoRequired bool `json:"photo_required"`
+
+	// PopupText Ditampilkan saat zona dibuka.
+	PopupText   *string `json:"popup_text,omitempty"`
+	ProjectCode string  `json:"project_code"`
+
+	// RadiusMeters Zona tanpa geofence (semua null) hanya mengandalkan QR.
+	RadiusMeters *int                `json:"radius_meters,omitempty"`
+	StartDate    *openapi_types.Date `json:"start_date,omitempty"`
+
+	// TeamCode null = zona untuk seluruh proyek; terisi = zona khusus satu regu.
+	TeamCode *string `json:"team_code,omitempty"`
 
 	// Type Jaga = GUARD (DL-11).
-	Type      *PatrolZoneType `json:"type,omitempty"`
-	UpdatedAt *time.Time      `json:"updated_at,omitempty"`
+	Type      PatrolZoneType `json:"type"`
+	UpdatedAt time.Time      `json:"updated_at"`
 }
 
 // PatrolZoneType Jaga = GUARD (DL-11).
@@ -8635,22 +9696,53 @@ type PatrolZoneType string
 
 // PatrolZoneInput defines model for PatrolZoneInput.
 type PatrolZoneInput struct {
-	Alias        *string             `json:"alias,omitempty"`
-	IsActive     *bool               `json:"is_active,omitempty"`
-	Lat          *float64            `json:"lat,omitempty"`
-	Lng          *float64            `json:"lng,omitempty"`
-	Members      *[]int64            `json:"members,omitempty"`
-	MinVisit     *int                `json:"min_visit,omitempty"`
-	Name         string              `json:"name"`
-	PopupText    *string             `json:"popup_text,omitempty"`
-	ProjectId    int64               `json:"project_id"`
+	Alias         *string                     `json:"alias,omitempty"`
+	Checklist     *[]PatrolChecklistItemInput `json:"checklist,omitempty"`
+	Description   *string                     `json:"description,omitempty"`
+	IsActive      *bool                       `json:"is_active,omitempty"`
+	Latitude      *float64                    `json:"latitude,omitempty"`
+	Longitude     *float64                    `json:"longitude,omitempty"`
+	MinVisit      *int                        `json:"min_visit,omitempty"`
+	Name          string                      `json:"name"`
+	PhotoRequired *bool                       `json:"photo_required,omitempty"`
+	PopupText     *string                     `json:"popup_text,omitempty"`
+	ProjectCode   string                      `json:"project_code"`
+
+	// RadiusMeters Bawaan 50 bila titik dikirim tanpa radius.
 	RadiusMeters *int                `json:"radius_meters,omitempty"`
 	StartDate    *openapi_types.Date `json:"start_date,omitempty"`
-	Type         PatrolZoneInputType `json:"type"`
+
+	// TeamCode Regu dari proyek itu; kosong = seluruh proyek.
+	TeamCode *string             `json:"team_code,omitempty"`
+	Type     PatrolZoneInputType `json:"type"`
 }
 
 // PatrolZoneInputType defines model for PatrolZoneInput.Type.
 type PatrolZoneInputType string
+
+// PatrolZoneUpdate Hanya field yang dikirim yang berubah; `null` mengosongkan field yang boleh kosong.
+// `project_code` tidak bisa diubah. `checklist`, bila dikirim, menggantikan checklist
+// (aturannya sama dengan `PUT /admin/zones/{id}/checklist`). Titik dan radius harus tetap
+// terisi bersama atau kosong bersama setelah perubahan.
+type PatrolZoneUpdate struct {
+	Alias         *string                     `json:"alias,omitempty"`
+	Checklist     *[]PatrolChecklistItemInput `json:"checklist,omitempty"`
+	Description   *string                     `json:"description,omitempty"`
+	IsActive      *bool                       `json:"is_active,omitempty"`
+	Latitude      *float64                    `json:"latitude,omitempty"`
+	Longitude     *float64                    `json:"longitude,omitempty"`
+	MinVisit      *int                        `json:"min_visit,omitempty"`
+	Name          *string                     `json:"name,omitempty"`
+	PhotoRequired *bool                       `json:"photo_required,omitempty"`
+	PopupText     *string                     `json:"popup_text,omitempty"`
+	RadiusMeters  *int                        `json:"radius_meters,omitempty"`
+	StartDate     *openapi_types.Date         `json:"start_date,omitempty"`
+	TeamCode      *string                     `json:"team_code,omitempty"`
+	Type          *PatrolZoneUpdateType       `json:"type,omitempty"`
+}
+
+// PatrolZoneUpdateType defines model for PatrolZoneUpdate.Type.
+type PatrolZoneUpdateType string
 
 // Payment defines model for Payment.
 type Payment struct {
@@ -10123,10 +11215,67 @@ type WsTicket struct {
 	Ticket string `json:"ticket"`
 }
 
-// ZoneCheckInInput defines model for ZoneCheckInInput.
+// ZoneCheckIn defines model for ZoneCheckIn.
+type ZoneCheckIn struct {
+	CheckInAt         time.Time  `json:"check_in_at"`
+	CheckInLatitude   float64    `json:"check_in_latitude"`
+	CheckInLongitude  float64    `json:"check_in_longitude"`
+	CheckOutAt        *time.Time `json:"check_out_at,omitempty"`
+	CheckOutLatitude  *float64   `json:"check_out_latitude,omitempty"`
+	CheckOutLongitude *float64   `json:"check_out_longitude,omitempty"`
+
+	// FullName Terisi di `live` dan `tracking`.
+	FullName    *string `json:"full_name,omitempty"`
+	Id          int64   `json:"id"`
+	PersonnelId int64   `json:"personnel_id"`
+	ShiftId     *int64  `json:"shift_id,omitempty"`
+	TeamCode    string  `json:"team_code"`
+	ZoneId      int64   `json:"zone_id"`
+}
+
+// ZoneCheckInInput Check-in dan check-out memakai badan yang sama. Waktunya waktu server.
 type ZoneCheckInInput struct {
-	Lat float64 `json:"lat"`
-	Lng float64 `json:"lng"`
+	AccuracyMeters float64 `json:"accuracy_meters"`
+	Latitude       float64 `json:"latitude"`
+	Longitude      float64 `json:"longitude"`
+	QrPayload      string  `json:"qr_payload"`
+}
+
+// ZoneProgressItem Tiga lingkaran satu zona pada satu tanggal kerja (Gambar 10).
+type ZoneProgressItem struct {
+	// Approved Lingkaran hijau: disetujui.
+	Approved int `json:"approved"`
+
+	// Declined Ditolak.
+	Declined int `json:"declined"`
+
+	// Required Lingkaran merah: jumlah scan yang dibutuhkan (`min_visit`).
+	Required int `json:"required"`
+
+	// Submitted Lingkaran biru: sudah di-scan, belum diputuskan.
+	Submitted int `json:"submitted"`
+	Zone      struct {
+		Alias       *string                  `json:"alias,omitempty"`
+		Id          int64                    `json:"id"`
+		MinVisit    int                      `json:"min_visit"`
+		Name        string                   `json:"name"`
+		ProjectCode string                   `json:"project_code"`
+		TeamCode    *string                  `json:"team_code,omitempty"`
+		Type        ZoneProgressItemZoneType `json:"type"`
+	} `json:"zone"`
+}
+
+// ZoneProgressItemZoneType defines model for ZoneProgressItem.Zone.Type.
+type ZoneProgressItemZoneType string
+
+// ZoneScanner defines model for ZoneScanner.
+type ZoneScanner struct {
+	ApprovedCount int    `json:"approved_count"`
+	FullName      string `json:"full_name"`
+	PersonnelId   int64  `json:"personnel_id"`
+
+	// SubmittedCount Angka di samping nama (§3.2.6.2): scan yang belum diputuskan.
+	SubmittedCount int `json:"submitted_count"`
 }
 
 // BranchCodePath defines model for BranchCodePath.
@@ -11468,18 +12617,18 @@ type GetAdminZonesParams struct {
 	// Limit Item per halaman (maks 100).
 	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Sort Sortir per-resource, mis. `created_at:desc`.
-	Sort *SortParam `form:"sort,omitempty" json:"sort,omitempty"`
-
 	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
 	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
 
 	// IsActive Filter status aktif.
-	IsActive *IsActiveParam `form:"is_active,omitempty" json:"is_active,omitempty"`
-
-	// ProjectId Filter scope proyek.
-	ProjectId *ProjectIdParam `form:"project_id,omitempty" json:"project_id,omitempty"`
+	IsActive    *IsActiveParam           `form:"is_active,omitempty" json:"is_active,omitempty"`
+	ProjectCode *string                  `form:"project_code,omitempty" json:"project_code,omitempty"`
+	TeamCode    *string                  `form:"team_code,omitempty" json:"team_code,omitempty"`
+	Type        *GetAdminZonesParamsType `form:"type,omitempty" json:"type,omitempty"`
 }
+
+// GetAdminZonesParamsType defines parameters for GetAdminZones.
+type GetAdminZonesParamsType string
 
 // GetAdminZones200JSONResponseBodySuccess defines parameters for GetAdminZones.
 type GetAdminZones200JSONResponseBodySuccess bool
@@ -11501,6 +12650,9 @@ type GetAdminZonesById200JSONResponseBodySuccess bool
 // PatchAdminZonesById200JSONResponseBodySuccess defines parameters for PatchAdminZonesById.
 type PatchAdminZonesById200JSONResponseBodySuccess bool
 
+// PutAdminZonesByIdChecklist200JSONResponseBodySuccess defines parameters for PutAdminZonesByIdChecklist.
+type PutAdminZonesByIdChecklist200JSONResponseBodySuccess bool
+
 // GetAdminZonesByIdQrParams defines parameters for GetAdminZonesByIdQr.
 type GetAdminZonesByIdQrParams struct {
 	Format *GetAdminZonesByIdQrParamsFormat `form:"format,omitempty" json:"format,omitempty"`
@@ -11508,6 +12660,9 @@ type GetAdminZonesByIdQrParams struct {
 
 // GetAdminZonesByIdQrParamsFormat defines parameters for GetAdminZonesByIdQr.
 type GetAdminZonesByIdQrParamsFormat string
+
+// PostAdminZonesByIdRotateQr200JSONResponseBodySuccess defines parameters for PostAdminZonesByIdRotateQr.
+type PostAdminZonesByIdRotateQr200JSONResponseBodySuccess bool
 
 // GetAppLinksParams defines parameters for GetAppLinks.
 type GetAppLinksParams struct {
@@ -12350,12 +13505,80 @@ type PostPanicsByIdFinish200JSONResponseBodySuccess bool
 
 // GetPatrolPendingApprovalsParams defines parameters for GetPatrolPendingApprovals.
 type GetPatrolPendingApprovalsParams struct {
-	// TeamId Filter scope regu.
-	TeamId *TeamIdParam `form:"team_id,omitempty" json:"team_id,omitempty"`
+	TeamCode *string `form:"team_code,omitempty" json:"team_code,omitempty"`
+
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
+	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
+
+	// Limit Item per halaman (maks 100).
+	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // GetPatrolPendingApprovals200JSONResponseBodySuccess defines parameters for GetPatrolPendingApprovals.
 type GetPatrolPendingApprovals200JSONResponseBodySuccess bool
+
+// GetPatrolsParams defines parameters for GetPatrols.
+type GetPatrolsParams struct {
+	ProjectCode *string                 `form:"project_code,omitempty" json:"project_code,omitempty"`
+	TeamCode    *string                 `form:"team_code,omitempty" json:"team_code,omitempty"`
+	PersonnelId *int64                  `form:"personnel_id,omitempty" json:"personnel_id,omitempty"`
+	WorkDate    *openapi_types.Date     `form:"work_date,omitempty" json:"work_date,omitempty"`
+	Status      *GetPatrolsParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
+	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
+
+	// Limit Item per halaman (maks 100).
+	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetPatrolsParamsStatus defines parameters for GetPatrols.
+type GetPatrolsParamsStatus string
+
+// GetPatrols200JSONResponseBodySuccess defines parameters for GetPatrols.
+type GetPatrols200JSONResponseBodySuccess bool
+
+// GetPatrolsActive200JSONResponseBodySuccess defines parameters for GetPatrolsActive.
+type GetPatrolsActive200JSONResponseBodySuccess bool
+
+// PostPatrolsStartParams defines parameters for PostPatrolsStart.
+type PostPatrolsStartParams struct {
+	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
+	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
+	// 409 CONFLICT.
+	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
+}
+
+// PostPatrolsStart200JSONResponseBodySuccess defines parameters for PostPatrolsStart.
+type PostPatrolsStart200JSONResponseBodySuccess bool
+
+// PostPatrolsStart201JSONResponseBodySuccess defines parameters for PostPatrolsStart.
+type PostPatrolsStart201JSONResponseBodySuccess bool
+
+// GetPatrolsById200JSONResponseBodySuccess defines parameters for GetPatrolsById.
+type GetPatrolsById200JSONResponseBodySuccess bool
+
+// PostPatrolsByIdEndParams defines parameters for PostPatrolsByIdEnd.
+type PostPatrolsByIdEndParams struct {
+	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
+	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
+	// 409 CONFLICT.
+	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
+}
+
+// PostPatrolsByIdEnd200JSONResponseBodySuccess defines parameters for PostPatrolsByIdEnd.
+type PostPatrolsByIdEnd200JSONResponseBodySuccess bool
+
+// PostPatrolsByIdPointsParams defines parameters for PostPatrolsByIdPoints.
+type PostPatrolsByIdPointsParams struct {
+	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
+	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
+	// 409 CONFLICT.
+	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
+}
+
+// PostPatrolsByIdPoints200JSONResponseBodySuccess defines parameters for PostPatrolsByIdPoints.
+type PostPatrolsByIdPoints200JSONResponseBodySuccess bool
 
 // GetPermissionCategoriesParams defines parameters for GetPermissionCategories.
 type GetPermissionCategoriesParams struct {
@@ -12894,6 +14117,9 @@ type GetReportsTeam200JSONResponseBodySuccess bool
 // GetReportsById200JSONResponseBodySuccess defines parameters for GetReportsById.
 type GetReportsById200JSONResponseBodySuccess bool
 
+// PostScansApprove200JSONResponseBodySuccess defines parameters for PostScansApprove.
+type PostScansApprove200JSONResponseBodySuccess bool
+
 // GetScansById200JSONResponseBodySuccess defines parameters for GetScansById.
 type GetScansById200JSONResponseBodySuccess bool
 
@@ -12973,13 +14199,9 @@ type PostWsTicket200JSONResponseBodySuccess bool
 
 // GetZonesParams defines parameters for GetZones.
 type GetZonesParams struct {
-	Type *GetZonesParamsType `form:"type,omitempty" json:"type,omitempty"`
-
-	// ProjectId Filter scope proyek.
-	ProjectId *ProjectIdParam `form:"project_id,omitempty" json:"project_id,omitempty"`
-
-	// TeamId Filter scope regu.
-	TeamId *TeamIdParam `form:"team_id,omitempty" json:"team_id,omitempty"`
+	Type        *GetZonesParamsType `form:"type,omitempty" json:"type,omitempty"`
+	ProjectCode *string             `form:"project_code,omitempty" json:"project_code,omitempty"`
+	TeamCode    *string             `form:"team_code,omitempty" json:"team_code,omitempty"`
 }
 
 // GetZonesParamsType defines parameters for GetZones.
@@ -12987,6 +14209,21 @@ type GetZonesParamsType string
 
 // GetZones200JSONResponseBodySuccess defines parameters for GetZones.
 type GetZones200JSONResponseBodySuccess bool
+
+// GetZonesProgressParams defines parameters for GetZonesProgress.
+type GetZonesProgressParams struct {
+	// ProjectCode Bawaan: semua proyek tempat pemanggil bertugas.
+	ProjectCode *string                     `form:"project_code,omitempty" json:"project_code,omitempty"`
+	TeamCode    *string                     `form:"team_code,omitempty" json:"team_code,omitempty"`
+	Type        *GetZonesProgressParamsType `form:"type,omitempty" json:"type,omitempty"`
+	WorkDate    *openapi_types.Date         `form:"work_date,omitempty" json:"work_date,omitempty"`
+}
+
+// GetZonesProgressParamsType defines parameters for GetZonesProgress.
+type GetZonesProgressParamsType string
+
+// GetZonesProgress200JSONResponseBodySuccess defines parameters for GetZonesProgress.
+type GetZonesProgress200JSONResponseBodySuccess bool
 
 // GetZonesById200JSONResponseBodySuccess defines parameters for GetZonesById.
 type GetZonesById200JSONResponseBodySuccess bool
@@ -12999,6 +14236,9 @@ type PostZonesByIdCheckInParams struct {
 	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
 }
 
+// PostZonesByIdCheckIn201JSONResponseBodySuccess defines parameters for PostZonesByIdCheckIn.
+type PostZonesByIdCheckIn201JSONResponseBodySuccess bool
+
 // PostZonesByIdCheckOutParams defines parameters for PostZonesByIdCheckOut.
 type PostZonesByIdCheckOutParams struct {
 	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
@@ -13006,6 +14246,12 @@ type PostZonesByIdCheckOutParams struct {
 	// 409 CONFLICT.
 	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
 }
+
+// PostZonesByIdCheckOut200JSONResponseBodySuccess defines parameters for PostZonesByIdCheckOut.
+type PostZonesByIdCheckOut200JSONResponseBodySuccess bool
+
+// GetZonesByIdLive200JSONResponseBodySuccess defines parameters for GetZonesByIdLive.
+type GetZonesByIdLive200JSONResponseBodySuccess bool
 
 // PostZonesByIdScanParams defines parameters for PostZonesByIdScan.
 type PostZonesByIdScanParams struct {
@@ -13021,25 +14267,46 @@ type PostZonesByIdScan200JSONResponseBodySuccess bool
 // PostZonesByIdScan201JSONResponseBodySuccess defines parameters for PostZonesByIdScan.
 type PostZonesByIdScan201JSONResponseBodySuccess bool
 
+// GetZonesByIdScannersParams defines parameters for GetZonesByIdScanners.
+type GetZonesByIdScannersParams struct {
+	TeamCode *string             `form:"team_code,omitempty" json:"team_code,omitempty"`
+	WorkDate *openapi_types.Date `form:"work_date,omitempty" json:"work_date,omitempty"`
+}
+
+// GetZonesByIdScanners200JSONResponseBodySuccess defines parameters for GetZonesByIdScanners.
+type GetZonesByIdScanners200JSONResponseBodySuccess bool
+
 // GetZonesByIdScansParams defines parameters for GetZonesByIdScans.
 type GetZonesByIdScansParams struct {
-	// DateFrom Awal rentang (YYYY-MM-DD, relatif TZ proyek).
-	DateFrom *DateFromParam `form:"date_from,omitempty" json:"date_from,omitempty"`
+	PersonnelId *int64                         `form:"personnel_id,omitempty" json:"personnel_id,omitempty"`
+	WorkDate    *openapi_types.Date            `form:"work_date,omitempty" json:"work_date,omitempty"`
+	Status      *GetZonesByIdScansParamsStatus `form:"status,omitempty" json:"status,omitempty"`
 
-	// DateTo Akhir rentang (YYYY-MM-DD, relatif TZ proyek).
-	DateTo *DateToParam `form:"date_to,omitempty" json:"date_to,omitempty"`
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
+	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
+
+	// Limit Item per halaman (maks 100).
+	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
 }
+
+// GetZonesByIdScansParamsStatus defines parameters for GetZonesByIdScans.
+type GetZonesByIdScansParamsStatus string
 
 // GetZonesByIdScans200JSONResponseBodySuccess defines parameters for GetZonesByIdScans.
 type GetZonesByIdScans200JSONResponseBodySuccess bool
 
 // GetZonesByIdTrackingParams defines parameters for GetZonesByIdTracking.
 type GetZonesByIdTrackingParams struct {
-	// DateFrom Awal rentang (YYYY-MM-DD, relatif TZ proyek).
-	DateFrom *DateFromParam `form:"date_from,omitempty" json:"date_from,omitempty"`
+	From        openapi_types.Date `form:"from" json:"from"`
+	To          openapi_types.Date `form:"to" json:"to"`
+	TeamCode    *string            `form:"team_code,omitempty" json:"team_code,omitempty"`
+	PersonnelId *int64             `form:"personnel_id,omitempty" json:"personnel_id,omitempty"`
 
-	// DateTo Akhir rentang (YYYY-MM-DD, relatif TZ proyek).
-	DateTo *DateToParam `form:"date_to,omitempty" json:"date_to,omitempty"`
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
+	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
+
+	// Limit Item per halaman (maks 100).
+	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // GetZonesByIdTracking200JSONResponseBodySuccess defines parameters for GetZonesByIdTracking.
@@ -13256,7 +14523,10 @@ type PatchAdminWebUsersByIdJSONRequestBody = WebUserInput
 type PostAdminZonesJSONRequestBody = PatrolZoneInput
 
 // PatchAdminZonesByIdJSONRequestBody defines body for PatchAdminZonesById for application/json ContentType.
-type PatchAdminZonesByIdJSONRequestBody = PatrolZoneInput
+type PatchAdminZonesByIdJSONRequestBody = PatrolZoneUpdate
+
+// PutAdminZonesByIdChecklistJSONRequestBody defines body for PutAdminZonesByIdChecklist for application/json ContentType.
+type PutAdminZonesByIdChecklistJSONRequestBody = PatrolChecklistReplace
 
 // PostAssetReportsJSONRequestBody defines body for PostAssetReports for application/json ContentType.
 type PostAssetReportsJSONRequestBody = AssetReportCreate
@@ -13360,6 +14630,15 @@ type PostPanicsJSONRequestBody = PanicCreate
 // PostPanicsByIdFinishJSONRequestBody defines body for PostPanicsByIdFinish for application/json ContentType.
 type PostPanicsByIdFinishJSONRequestBody = PanicResolve
 
+// PostPatrolsStartJSONRequestBody defines body for PostPatrolsStart for application/json ContentType.
+type PostPatrolsStartJSONRequestBody = PatrolRouteStart
+
+// PostPatrolsByIdEndJSONRequestBody defines body for PostPatrolsByIdEnd for application/json ContentType.
+type PostPatrolsByIdEndJSONRequestBody = PatrolRouteEnd
+
+// PostPatrolsByIdPointsJSONRequestBody defines body for PostPatrolsByIdPoints for application/json ContentType.
+type PostPatrolsByIdPointsJSONRequestBody = PatrolRoutePoints
+
 // PostPermissionsJSONRequestBody defines body for PostPermissions for application/json ContentType.
 type PostPermissionsJSONRequestBody = PermissionCreate
 
@@ -13411,8 +14690,8 @@ type PostQrCodesGenerateJSONRequestBody = QrGenerateRequest
 // PostReportsJSONRequestBody defines body for PostReports for application/json ContentType.
 type PostReportsJSONRequestBody = ReportCreate
 
-// PostScansByIdApproveJSONRequestBody defines body for PostScansByIdApprove for application/json ContentType.
-type PostScansByIdApproveJSONRequestBody = ApprovalNote
+// PostScansApproveJSONRequestBody defines body for PostScansApprove for application/json ContentType.
+type PostScansApproveJSONRequestBody = BulkApproveInput
 
 // PostScansByIdDeclineJSONRequestBody defines body for PostScansByIdDecline for application/json ContentType.
 type PostScansByIdDeclineJSONRequestBody = RejectionNote

@@ -8,6 +8,7 @@ import (
 	"siapp/pkg/leave"
 	"siapp/pkg/notifications"
 	"siapp/pkg/organization"
+	"siapp/pkg/patrol"
 	"siapp/pkg/platform/auth"
 )
 
@@ -21,6 +22,7 @@ var (
 	_ organization.Notifier = notifier{}
 	_ leave.Notifier        = notifier{}
 	_ attendance.Notifier   = notifier{}
+	_ patrol.Notifier       = notifier{}
 )
 
 // NotifyLeave sends the notice of a leave request: LEAVE_REQUESTED and LEAVE_CANCELLED to who
@@ -62,6 +64,49 @@ func (n notifier) NotifyAttendance(ctx context.Context, nt attendance.Notice) {
 		Entity: &notifications.Entity{Type: nt.EntityType, ID: nt.EntityID},
 		Data:   map[string]any{"team_code": nt.TeamCode, "work_date": nt.Date.String()},
 	})
+}
+
+// NotifyPatrol sends PATROL_SUBMITTED or GUARD_SUBMITTED (by the zone's type) to who decides a scan,
+// OFFLINE_SUBMISSION_SENT to the guard whose offline scan has arrived, and PATROL_APPROVED or
+// GUARD_APPROVED to the author of scans that were decided. A decline uses the same type with
+// data.decision = DECLINED (patrol.Notifier).
+func (n notifier) NotifyPatrol(ctx context.Context, nt patrol.Notice) {
+	guard := nt.ZoneType == patrol.TypeGuard
+	typ := notifications.TypePatrolSubmitted
+	switch {
+	case nt.Kind == patrol.NoticeOfflineSent:
+		typ = notifications.TypeOfflineSubmissionSent
+	case nt.Kind == patrol.NoticeDecided && guard:
+		typ = notifications.TypeGuardApproved
+	case nt.Kind == patrol.NoticeDecided:
+		typ = notifications.TypePatrolApproved
+	case guard:
+		typ = notifications.TypeGuardSubmitted
+	}
+	data := map[string]any{"scan_id": nt.ScanID, "zone_id": nt.ZoneID, "team_code": nt.TeamCode, "work_date": nt.Date.String()}
+	in := notifications.Input{
+		Type:         typ,
+		RecipientIDs: nt.RecipientIDs,
+		Vars: notifications.Vars{
+			BusinessLine: notifications.BusinessLine(nt.BusinessLine), ActorName: nt.ActorName, TeamName: nt.TeamCode,
+			Subject: nt.Subject, Date: nt.Date,
+		},
+		Entity: &notifications.Entity{Type: patrol.EntityScan, ID: nt.ScanID},
+		Data:   data,
+	}
+	if nt.Kind == patrol.NoticeDecided {
+		data["decision"] = "APPROVED"
+		if nt.Declined {
+			data["decision"] = "DECLINED"
+			in.Vars.Declined, in.Vars.Note = true, nt.DecisionNote
+		}
+		data["scan_ids"] = nt.ScanIDs
+		// A notice that covers several scans leads to none of them in particular.
+		if len(nt.ScanIDs) > 1 {
+			in.Entity = nil
+		}
+	}
+	n.service.Notify(ctx, in)
 }
 
 // MemberMoved sends TEAM_CHANGED to the person who was moved.

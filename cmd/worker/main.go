@@ -25,6 +25,7 @@ import (
 	"siapp/pkg/notifications"
 	"siapp/pkg/notifications/push"
 	"siapp/pkg/organization"
+	"siapp/pkg/patrol"
 	"siapp/pkg/platform/audit"
 	"siapp/pkg/platform/auth"
 	"siapp/pkg/platform/clock"
@@ -120,6 +121,9 @@ func run() error {
 	organization.RegisterScheduleJob(mux, organization.NewScheduleExtender(pool, clock.System{}), logger)
 	media.RegisterJobs(mux, media.NewCleaner(pool, mediaStorage, clock.System{}, logger), logger)
 	location.RegisterJobs(mux, location.NewMaintenance(pool, clock.System{}), logger)
+	// The patrol route's two tasks need nothing but the pool and the clock: they end stale patrols and
+	// purge old points, they never check a permission or send a notice.
+	patrol.RegisterJobs(mux, patrol.NewService(pool, clock.System{}), logger)
 	registerPlatformJobs(mux, pool, logger)
 
 	// ⚠ The scheduler runs in UTC, so the cron expressions below read the same on every host.
@@ -137,6 +141,9 @@ func run() error {
 		return err
 	}
 	if err := location.RegisterSchedule(scheduler); err != nil {
+		return err
+	}
+	if err := patrol.RegisterSchedule(scheduler); err != nil {
 		return err
 	}
 	if err := registerPlatformSchedule(scheduler); err != nil {

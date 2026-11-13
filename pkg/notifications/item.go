@@ -93,6 +93,11 @@ type Vars struct {
 	Date timeutil.Date
 	// Approved is the outcome of LEAVE_DECIDED.
 	Approved bool
+	// Declined turns PATROL_APPROVED and GUARD_APPROVED into the text of a decline: the types keep
+	// their name (the plan has one type for both outcomes, with data.decision telling them apart).
+	Declined bool
+	// Note is what the decider wrote, shown with a decline.
+	Note string
 }
 
 // Entity is the record a notification is about, so the app can open it.
