@@ -31,7 +31,7 @@ type Service struct {
 	clock clock.Clock
 
 	// Plugged in at start-up by the Use methods; scans and check-ins need the first three.
-	shifts   organization.Shifts
+	shifts   ShiftSource
 	perms    *access.Service
 	attach   Attacher
 	notifier Notifier
@@ -44,7 +44,13 @@ func NewService(pool *pgxpool.Pool, c clock.Clock) *Service {
 
 // UseShifts plugs in the source of a person's shifts, which decides the regu and the work date of a
 // visit (organization.NewShifts).
-func (s *Service) UseShifts(sh organization.Shifts) { s.shifts = sh }
+func (s *Service) UseShifts(sh ShiftSource) { s.shifts = sh }
+
+// ShiftSource is the part of organization.LocalShifts the patrol needs. It reads on the transaction
+// the patrol already holds: a second connection per request would deadlock the pool under load.
+type ShiftSource interface {
+	CurrentIn(ctx context.Context, q *db.Queries, personnelID int64, at time.Time) ([]organization.ShiftInstance, error)
+}
 
 // UsePermissions plugs in the field permission matrix: who may scan, who may see who is checked in.
 func (s *Service) UsePermissions(p *access.Service) { s.perms = p }

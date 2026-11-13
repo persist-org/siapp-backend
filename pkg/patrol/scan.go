@@ -309,7 +309,7 @@ type placement struct {
 // place decides the regu and the work date of a visit at a moment.
 //
 // ⚠ They come from the person's shift, not from the app and not from the calendar:
-// organization.Shifts.Current(person, at) for the zone's project. That is what makes a night-shift
+// organization.LocalShifts.CurrentIn(person, at) for the zone's project. That is what makes a night-shift
 // scan after midnight count for the day the shift started, the same date attendance uses.
 // When no shift matches (an unscheduled round, an OFF day, a schedule that is ambiguous between two
 // timezones) the visit still counts: it goes to the person's first active regu in the project, on
@@ -333,7 +333,7 @@ func (s *Service) placeIn(ctx context.Context, q *db.Queries, p auth.Principal, 
 	if s.shifts == nil {
 		return pl, nil
 	}
-	instances, err := s.shifts.Current(ctx, p.OrganizationID, p.PersonnelID, at)
+	instances, err := s.shifts.CurrentIn(ctx, q, p.PersonnelID, at)
 	switch {
 	case errors.Is(err, organization.ErrScheduleTimezoneAmbiguous):
 		return pl, nil

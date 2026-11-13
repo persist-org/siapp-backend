@@ -97,46 +97,54 @@ func (s *LocalShifts) Available(ctx context.Context, organizationID, personnelID
 func (s *LocalShifts) resolve(ctx context.Context, organizationID, personnelID int64, from, to timeutil.Date) ([]ShiftInstance, *apperr.Error, error) {
 	var out []ShiftInstance
 	var ambiguous *apperr.Error
-	err := database.WithTenant(ctx, s.pool, organizationID, func(q *db.Queries) error {
-		rows, err := q.ListSchedulesOfPersonnelBetween(ctx, db.ListSchedulesOfPersonnelBetweenParams{
-			PersonnelID: personnelID, DateFrom: dateParam(from), DateTo: dateParam(to),
-		})
-		if err != nil {
-			return fmt.Errorf("list schedules: %w", err)
-		}
-		if len(rows) == 0 {
-			return nil
-		}
-		zones, err := zonesBetween(ctx, q, personnelID, from, to)
-		if err != nil {
-			return err
-		}
-		for _, r := range rows {
-			day := dateValue(r.WorkDate)
-			z := zones[day]
-			inst := ShiftInstance{
-				ScheduleID: r.ID, WorkDate: day, ShiftID: r.ShiftID, ShiftName: r.ShiftName, IsOff: r.IsOff,
-				ToleranceMinutes: int(r.ToleranceMinutes), Location: z.loc, ProjectCodes: z.projects, TeamCodes: z.teams,
-			}
-			if !r.IsOff {
-				if z.ambiguous != nil {
-					if ambiguous == nil {
-						ambiguous = z.ambiguous
-					}
-					continue
-				}
-				inst.StartsAt = timeutil.At(day, int(r.StartMinute), z.loc)
-				endDay := day
-				if r.EndMinute <= r.StartMinute {
-					endDay = day.AddDays(1)
-				}
-				inst.EndsAt = timeutil.At(endDay, int(r.EndMinute), z.loc)
-			}
-			out = append(out, inst)
-		}
-		return nil
+	err := database.WithTenant(ctx, s.pool, organizationID, func(q *db.Queries) (err error) {
+		out, ambiguous, err = resolveIn(ctx, q, personnelID, from, to)
+		return err
 	})
 	return out, ambiguous, err
+}
+
+// resolveIn is resolve on a transaction the caller already holds.
+func resolveIn(ctx context.Context, q *db.Queries, personnelID int64, from, to timeutil.Date) ([]ShiftInstance, *apperr.Error, error) {
+	rows, err := q.ListSchedulesOfPersonnelBetween(ctx, db.ListSchedulesOfPersonnelBetweenParams{
+		PersonnelID: personnelID, DateFrom: dateParam(from), DateTo: dateParam(to),
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("list schedules: %w", err)
+	}
+	if len(rows) == 0 {
+		return nil, nil, nil
+	}
+	zones, err := zonesBetween(ctx, q, personnelID, from, to)
+	if err != nil {
+		return nil, nil, err
+	}
+	var out []ShiftInstance
+	var ambiguous *apperr.Error
+	for _, r := range rows {
+		day := dateValue(r.WorkDate)
+		z := zones[day]
+		inst := ShiftInstance{
+			ScheduleID: r.ID, WorkDate: day, ShiftID: r.ShiftID, ShiftName: r.ShiftName, IsOff: r.IsOff,
+			ToleranceMinutes: int(r.ToleranceMinutes), Location: z.loc, ProjectCodes: z.projects, TeamCodes: z.teams,
+		}
+		if !r.IsOff {
+			if z.ambiguous != nil {
+				if ambiguous == nil {
+					ambiguous = z.ambiguous
+				}
+				continue
+			}
+			inst.StartsAt = timeutil.At(day, int(r.StartMinute), z.loc)
+			endDay := day
+			if r.EndMinute <= r.StartMinute {
+				endDay = day.AddDays(1)
+			}
+			inst.EndsAt = timeutil.At(endDay, int(r.EndMinute), z.loc)
+		}
+		out = append(out, inst)
+	}
+	return out, ambiguous, nil
 }
 
 // Current returns the working shifts whose window [StartsAt - 2h, EndsAt + 4h] contains at.
@@ -153,6 +161,25 @@ func (s *LocalShifts) Current(ctx context.Context, organizationID, personnelID i
 	if err != nil {
 		return nil, err
 	}
+	return currentOf(instances, ambiguous, at)
+}
+
+// CurrentIn is Current on a transaction the caller already holds (its tenant is set).
+//
+// ⚠ A caller inside database.WithTenant must use this, not Current: Current takes a second
+// connection from the pool while the first is held, and enough such requests at once hold every
+// connection and wait for one more, for ever.
+func (s *LocalShifts) CurrentIn(ctx context.Context, q *db.Queries, personnelID int64, at time.Time) ([]ShiftInstance, error) {
+	today := earliestToday(at)
+	instances, ambiguous, err := resolveIn(ctx, q, personnelID, today.AddDays(-2), today.AddDays(1))
+	if err != nil {
+		return nil, err
+	}
+	return currentOf(instances, ambiguous, at)
+}
+
+// currentOf keeps the working shifts whose check-in/check-out window contains at.
+func currentOf(instances []ShiftInstance, ambiguous *apperr.Error, at time.Time) ([]ShiftInstance, error) {
 	var out []ShiftInstance
 	for _, inst := range instances {
 		if inst.IsOff {
