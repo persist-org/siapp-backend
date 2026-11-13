@@ -81,6 +81,9 @@ GET /api/v1/notifications/count
 GET /api/v1/notifications/{id}
 GET /api/v1/panic-types
 GET /api/v1/patrol/pending-approvals
+GET /api/v1/patrols
+GET /api/v1/patrols/active
+GET /api/v1/patrols/{id}
 GET /api/v1/permission-categories
 GET /api/v1/permissions
 GET /api/v1/permissions/approver
@@ -167,6 +170,9 @@ POST /api/v1/media/{id}/upload-url
 POST /api/v1/notifications/read-all
 POST /api/v1/notifications/token
 POST /api/v1/notifications/{id}/read
+POST /api/v1/patrols/start
+POST /api/v1/patrols/{id}/end
+POST /api/v1/patrols/{id}/points
 POST /api/v1/permissions
 POST /api/v1/permissions/{id}/approve
 POST /api/v1/permissions/{id}/cancel

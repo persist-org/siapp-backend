@@ -103,6 +103,9 @@ func TestPatrolScanHistoryIsNotRewrittenByChecklistEdits(t *testing.T) {
 	pagar, lampu := z.Checklist[0].ID, z.Checklist[1].ID
 
 	b := scanBody(z)
+	// Ten minutes ago: the scans below that are made "now" must be after the edit and still more
+	// than the minimum gap away from this one.
+	b["occurred_at"] = time.Now().Add(-10 * time.Minute).UTC().Format(time.RFC3339Nano)
 	b["answers"] = []map[string]any{{"item_id": pagar, "value": true}, {"item_id": lampu, "value": false}}
 	scan := f.mustScan(f.personTok, z, b)
 
@@ -141,6 +144,7 @@ func TestPatrolScanHistoryIsNotRewrittenByChecklistEdits(t *testing.T) {
 
 	t.Run("a scan made after the edit has to answer the new question", func(t *testing.T) {
 		live := scanBody(z)
+		live["occurred_at"] = time.Now().UTC().Format(time.RFC3339Nano)
 		live["answers"] = []map[string]any{{"item_id": pagar, "value": true}}
 		code, _, raw := f.scan(f.personTok, z.ID, live)
 		reasonIs(t, code, raw, http.StatusUnprocessableEntity, "CHECKLIST_ANSWER_REQUIRED")
@@ -148,6 +152,7 @@ func TestPatrolScanHistoryIsNotRewrittenByChecklistEdits(t *testing.T) {
 
 	t.Run("answering a question that was removed before the scan is refused", func(t *testing.T) {
 		now := scanBody(z)
+		now["occurred_at"] = time.Now().UTC().Format(time.RFC3339Nano)
 		now["answers"] = []map[string]any{{"item_id": lampu, "value": true}}
 		code, _, raw := f.scan(f.personTok, z.ID, now)
 		reasonIs(t, code, raw, http.StatusUnprocessableEntity, "CHECKLIST_ITEM_INVALID")

@@ -684,3 +684,41 @@ func TestPatrolZoneRegionScope(t *testing.T) {
 		require.Equal(t, http.StatusOK, code, string(raw))
 	})
 }
+
+// A zone is told apart by its name inside a project and type, ignoring case and outer spaces.
+func TestPatrolZoneNameIsUnique(t *testing.T) {
+	f := newFlow(t)
+	create := func(typ, name string) (int, zoneOut, []byte) {
+		return f.zoneCall(http.MethodPost, "/api/v1/admin/zones", f.adminTok,
+			map[string]any{"project_code": "1K-IBMI-S", "type": typ, "name": name})
+	}
+
+	code, z, raw := create("PATROL", "Pos Depan")
+	require.Equal(t, http.StatusCreated, code, string(raw))
+
+	t.Run("the same name, in any case, in the same project and type is refused", func(t *testing.T) {
+		for _, name := range []string{"Pos Depan", "  pos depan ", "POS DEPAN"} {
+			code, _, raw := create("PATROL", name)
+			reasonIs(t, code, raw, http.StatusConflict, "ZONE_NAME_TAKEN")
+		}
+	})
+
+	t.Run("another type may use the name", func(t *testing.T) {
+		code, _, raw := create("GUARD", "Pos Depan")
+		require.Equal(t, http.StatusCreated, code, string(raw))
+	})
+
+	t.Run("renaming a zone to a taken name is refused", func(t *testing.T) {
+		code, other, raw := create("PATROL", "Pos Belakang")
+		require.Equal(t, http.StatusCreated, code, string(raw))
+		code, _, raw = f.zoneCall(http.MethodPatch, zonePath(other.ID), f.adminTok, map[string]any{"name": "pos depan"})
+		reasonIs(t, code, raw, http.StatusConflict, "ZONE_NAME_TAKEN")
+	})
+
+	t.Run("a deleted zone frees its name", func(t *testing.T) {
+		code, _, raw := f.zoneCall(http.MethodDelete, zonePath(z.ID), f.adminTok, nil)
+		require.Less(t, code, 300, string(raw))
+		code, _, raw = create("PATROL", "Pos Depan")
+		require.Equal(t, http.StatusCreated, code, string(raw))
+	})
+}

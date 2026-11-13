@@ -52,6 +52,7 @@ func (h *Handler) MountField(r chi.Router) {
 	r.With(h.idempotent).Post("/api/v1/zones/{id}/check-out", h.checkOut)
 	r.Get("/api/v1/zones/{id}/live", h.live)
 	r.Get("/api/v1/zones/{id}/tracking", h.tracking)
+	h.MountRoutes(r)
 }
 
 // MountAdmin adds the web admin routes. access.RequireAdmin is mounted once on the whole group,

@@ -249,6 +249,9 @@ func (s *Service) Create(ctx context.Context, actor auth.Principal, scope access
 			StartDate: dateParam(in.StartDate), PhotoRequired: in.PhotoRequired == nil || *in.PhotoRequired,
 			QrSecret: secret, Active: in.Active == nil || *in.Active, Now: ts(s.clock.Now()),
 		})
+		if database.IsUniqueViolation(err) && database.ConstraintName(err) == "patrol_zones_name_uq" {
+			return ErrZoneNameTaken
+		}
 		if err != nil {
 			return fmt.Errorf("insert zone: %w", err)
 		}
@@ -372,6 +375,9 @@ func (s *Service) Update(ctx context.Context, actor auth.Principal, scope access
 		next.Latitude, next.Longitude, next.RadiusMeters = geo.lat, geo.lng, intParam(geo.radius)
 
 		row, err = q.UpdatePatrolZone(ctx, next)
+		if database.IsUniqueViolation(err) && database.ConstraintName(err) == "patrol_zones_name_uq" {
+			return ErrZoneNameTaken
+		}
 		if err != nil {
 			return fmt.Errorf("update zone: %w", err)
 		}

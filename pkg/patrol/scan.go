@@ -23,6 +23,10 @@ import (
 	"siapp/pkg/platform/timeutil"
 )
 
+// scanMinGap is the least time between two scans of one zone by one person, whatever the project's
+// patrol_interval_minutes says (or does not say).
+const scanMinGap = 30 * time.Second
+
 // Offline is the offline fields of the scan, for idem.OfflineCreate's checks.
 func (in ScanInput) Offline() idem.OfflineCreate {
 	return idem.OfflineCreate{LocalID: in.LocalID, OccurredAt: in.OccurredAt}
@@ -242,6 +246,14 @@ func (s *Service) admit(ctx context.Context, q *db.Queries, p auth.Principal, zo
 // membershipIn returns the regu of the person that count for the zone on a date: those in the
 // zone's project, and when the zone is for one regu, only that regu. None is ZONE_NOT_IN_PROJECT.
 func (s *Service) membershipIn(ctx context.Context, q *db.Queries, personnelID int64, zone db.PatrolZone, day timeutil.Date) ([]string, error) {
+	return s.membershipInProject(ctx, q, personnelID, zone.ProjectCode, zone.TeamCode, day)
+}
+
+// membershipInProject is membershipIn for a project and, when teamCode is set, one regu of it: a
+// patrol route belongs to a project, not to a zone, so it asks with no regu.
+func (s *Service) membershipInProject(ctx context.Context, q *db.Queries, personnelID int64, projectCode string,
+	teamCode pgtype.Text, day timeutil.Date,
+) ([]string, error) {
 	rows, err := q.ListMembershipsOfPersonnelOn(ctx, db.ListMembershipsOfPersonnelOnParams{
 		PersonnelID: personnelID, OnDate: pgtype.Date{Time: day.Time(), Valid: true},
 	})
@@ -250,7 +262,7 @@ func (s *Service) membershipIn(ctx context.Context, q *db.Queries, personnelID i
 	}
 	var teams []string
 	for _, r := range rows {
-		if r.ProjectCode == zone.ProjectCode && (!zone.TeamCode.Valid || r.TeamCode == zone.TeamCode.String) {
+		if r.ProjectCode == projectCode && (!teamCode.Valid || r.TeamCode == teamCode.String) {
 			teams = append(teams, r.TeamCode)
 		}
 	}
@@ -276,8 +288,16 @@ type placement struct {
 // timezones) the visit still counts: it goes to the person's first active regu in the project, on
 // the business date of the moment in the project's timezone.
 func (s *Service) place(ctx context.Context, q *db.Queries, p auth.Principal, v visit, at time.Time) (placement, error) {
-	day := timeutil.BusinessDate(at, v.loc)
-	teams, err := s.membershipIn(ctx, q, p.PersonnelID, v.zone, day)
+	return s.placeIn(ctx, q, p, v.zone.ProjectCode, v.zone.TeamCode, v.loc, at)
+}
+
+// placeIn is place for a project and, when teamCode is set, one regu of it: what a patrol route
+// asks, with no zone and so no regu.
+func (s *Service) placeIn(ctx context.Context, q *db.Queries, p auth.Principal, projectCode string, teamCode pgtype.Text,
+	loc *time.Location, at time.Time,
+) (placement, error) {
+	day := timeutil.BusinessDate(at, loc)
+	teams, err := s.membershipInProject(ctx, q, p.PersonnelID, projectCode, teamCode, day)
 	if err != nil {
 		return placement{}, err
 	}
@@ -294,7 +314,7 @@ func (s *Service) place(ctx context.Context, q *db.Queries, p auth.Principal, v 
 		return placement{}, fmt.Errorf("current shifts: %w", err)
 	}
 	for _, inst := range instances {
-		if !slices.Contains(inst.ProjectCodes, v.zone.ProjectCode) {
+		if !slices.Contains(inst.ProjectCodes, projectCode) {
 			continue
 		}
 		// The shift's regu that is also a regu this zone counts for.
@@ -410,11 +430,16 @@ func (s *Service) scan(ctx context.Context, p auth.Principal, zoneID int64, in S
 		// ⚠ The patrol interval (DL-48): a second scan of the same zone by the same person within
 		// project.patrol_interval_minutes is refused. The lock makes two scans that arrive together
 		// take turns, so both cannot pass the check before either is stored.
-		if project.PatrolIntervalMinutes.Valid {
+		// ⚠ Even a project with no interval refuses a second scan within scanMinGap: a double tap or
+		// a retry with a new local_id must not make two scans of one visit.
+		{
 			if err := q.LockPatrolKey(ctx, fmt.Sprintf("patrol:scan:%d:%d:%d", p.OrganizationID, p.PersonnelID, zoneID)); err != nil {
 				return fmt.Errorf("lock scan: %w", err)
 			}
-			interval := time.Duration(project.PatrolIntervalMinutes.Int32) * time.Minute
+			interval := scanMinGap
+			if project.PatrolIntervalMinutes.Valid {
+				interval = max(interval, time.Duration(project.PatrolIntervalMinutes.Int32)*time.Minute)
+			}
 			// Either side of the scan's own moment: an offline scan can arrive after a later one.
 			tooSoon, err := q.HasScanBetween(ctx, db.HasScanBetweenParams{
 				PersonnelID: p.PersonnelID, ZoneID: zoneID, After: ts(at.Add(-interval)), Before: ts(at.Add(interval)),
@@ -423,7 +448,7 @@ func (s *Service) scan(ctx context.Context, p auth.Principal, zoneID int64, in S
 				return fmt.Errorf("check patrol interval: %w", err)
 			}
 			if tooSoon {
-				return ErrIntervalNotElapsed.WithDetails(map[string]any{"interval_minutes": int(project.PatrolIntervalMinutes.Int32)})
+				return ErrIntervalNotElapsed.WithDetails(map[string]any{"interval_seconds": int(interval.Seconds())})
 			}
 		}
 
@@ -451,16 +476,26 @@ func (s *Service) scan(ctx context.Context, p auth.Principal, zoneID int64, in S
 			return fmt.Errorf("encode answers: %w", err)
 		}
 
+		patrolID, err := s.joinPatrol(ctx, q, p, zone.ProjectCode, at)
+		if err != nil {
+			return err
+		}
+
 		row, err := q.InsertPatrolScan(ctx, db.InsertPatrolScanParams{
 			LocalID: pgtype.UUID{Bytes: localID, Valid: true}, ZoneID: zoneID, ZoneType: zone.Type,
 			PersonnelID: p.PersonnelID, TeamCode: pl.team, ProjectCode: zone.ProjectCode,
 			OccurredAt: ts(at), ReceivedAt: ts(now), WorkDate: pgtype.Date{Time: pl.workDate.Time(), Valid: true},
 			Latitude: *in.Latitude, Longitude: *in.Longitude, AccuracyMeters: *in.AccuracyMeters,
 			DistanceMeters: intParam(v.distance), Subject: in.Subject, Notes: textOrNull(in.Notes),
-			Answers: answers, SubmittedOffline: in.SubmittedOffline,
+			Answers: answers, PatrolID: patrolID, SubmittedOffline: in.SubmittedOffline,
 		})
 		if err != nil {
 			return fmt.Errorf("insert scan: %w", err)
+		}
+		if patrolID.Valid {
+			if err := q.AddScanToRoute(ctx, patrolID.Int64); err != nil {
+				return fmt.Errorf("count scan on patrol: %w", err)
+			}
 		}
 
 		// Every photo of the scan, the general ones and those of the answers, in the same

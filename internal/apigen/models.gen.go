@@ -597,6 +597,21 @@ func (e FieldPermissionScope) Valid() bool {
 	}
 }
 
+// Defines values for GeoJsonLineStringType.
+const (
+	LineString GeoJsonLineStringType = "LineString"
+)
+
+// Valid indicates whether the value is a known member of the GeoJsonLineStringType enum.
+func (e GeoJsonLineStringType) Valid() bool {
+	switch e {
+	case LineString:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for InstructionFeedbackRead.
 const (
 	InstructionFeedbackReadTrue InstructionFeedbackRead = true
@@ -1283,16 +1298,16 @@ func (e OrganizationUpdateEnabledBusinessLines) Valid() bool {
 
 // Defines values for PanicStatus.
 const (
-	ACTIVE   PanicStatus = "ACTIVE"
-	RESOLVED PanicStatus = "RESOLVED"
+	PanicStatusACTIVE   PanicStatus = "ACTIVE"
+	PanicStatusRESOLVED PanicStatus = "RESOLVED"
 )
 
 // Valid indicates whether the value is a known member of the PanicStatus enum.
 func (e PanicStatus) Valid() bool {
 	switch e {
-	case ACTIVE:
+	case PanicStatusACTIVE:
 		return true
-	case RESOLVED:
+	case PanicStatusRESOLVED:
 		return true
 	default:
 		return false
@@ -1461,6 +1476,69 @@ func (e PatrolChecklistItemInputPhotoMode) Valid() bool {
 	case PatrolChecklistItemInputPhotoModeOPTIONAL:
 		return true
 	case PatrolChecklistItemInputPhotoModeREQUIRED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatrolRouteStatus.
+const (
+	PatrolRouteStatusACTIVE    PatrolRouteStatus = "ACTIVE"
+	PatrolRouteStatusAUTOENDED PatrolRouteStatus = "AUTO_ENDED"
+	PatrolRouteStatusENDED     PatrolRouteStatus = "ENDED"
+)
+
+// Valid indicates whether the value is a known member of the PatrolRouteStatus enum.
+func (e PatrolRouteStatus) Valid() bool {
+	switch e {
+	case PatrolRouteStatusACTIVE:
+		return true
+	case PatrolRouteStatusAUTOENDED:
+		return true
+	case PatrolRouteStatusENDED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatrolRouteDetailStatus.
+const (
+	PatrolRouteDetailStatusACTIVE    PatrolRouteDetailStatus = "ACTIVE"
+	PatrolRouteDetailStatusAUTOENDED PatrolRouteDetailStatus = "AUTO_ENDED"
+	PatrolRouteDetailStatusENDED     PatrolRouteDetailStatus = "ENDED"
+)
+
+// Valid indicates whether the value is a known member of the PatrolRouteDetailStatus enum.
+func (e PatrolRouteDetailStatus) Valid() bool {
+	switch e {
+	case PatrolRouteDetailStatusACTIVE:
+		return true
+	case PatrolRouteDetailStatusAUTOENDED:
+		return true
+	case PatrolRouteDetailStatusENDED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatrolRouteScanStatus.
+const (
+	PatrolRouteScanStatusAPPROVED  PatrolRouteScanStatus = "APPROVED"
+	PatrolRouteScanStatusDECLINED  PatrolRouteScanStatus = "DECLINED"
+	PatrolRouteScanStatusSUBMITTED PatrolRouteScanStatus = "SUBMITTED"
+)
+
+// Valid indicates whether the value is a known member of the PatrolRouteScanStatus enum.
+func (e PatrolRouteScanStatus) Valid() bool {
+	switch e {
+	case PatrolRouteScanStatusAPPROVED:
+		return true
+	case PatrolRouteScanStatusDECLINED:
+		return true
+	case PatrolRouteScanStatusSUBMITTED:
 		return true
 	default:
 		return false
@@ -5931,6 +6009,132 @@ func (e GetPatrolPendingApprovals200JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
+// Defines values for GetPatrolsParamsStatus.
+const (
+	GetPatrolsParamsStatusACTIVE    GetPatrolsParamsStatus = "ACTIVE"
+	GetPatrolsParamsStatusAUTOENDED GetPatrolsParamsStatus = "AUTO_ENDED"
+	GetPatrolsParamsStatusENDED     GetPatrolsParamsStatus = "ENDED"
+)
+
+// Valid indicates whether the value is a known member of the GetPatrolsParamsStatus enum.
+func (e GetPatrolsParamsStatus) Valid() bool {
+	switch e {
+	case GetPatrolsParamsStatusACTIVE:
+		return true
+	case GetPatrolsParamsStatusAUTOENDED:
+		return true
+	case GetPatrolsParamsStatusENDED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetPatrols200JSONResponseBodySuccess.
+const (
+	GetPatrols200JSONResponseBodySuccessTrue GetPatrols200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetPatrols200JSONResponseBodySuccess enum.
+func (e GetPatrols200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetPatrols200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetPatrolsActive200JSONResponseBodySuccess.
+const (
+	GetPatrolsActive200JSONResponseBodySuccessTrue GetPatrolsActive200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetPatrolsActive200JSONResponseBodySuccess enum.
+func (e GetPatrolsActive200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetPatrolsActive200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostPatrolsStart200JSONResponseBodySuccess.
+const (
+	PostPatrolsStart200JSONResponseBodySuccessTrue PostPatrolsStart200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostPatrolsStart200JSONResponseBodySuccess enum.
+func (e PostPatrolsStart200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostPatrolsStart200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostPatrolsStart201JSONResponseBodySuccess.
+const (
+	PostPatrolsStart201JSONResponseBodySuccessTrue PostPatrolsStart201JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostPatrolsStart201JSONResponseBodySuccess enum.
+func (e PostPatrolsStart201JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostPatrolsStart201JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetPatrolsById200JSONResponseBodySuccess.
+const (
+	GetPatrolsById200JSONResponseBodySuccessTrue GetPatrolsById200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetPatrolsById200JSONResponseBodySuccess enum.
+func (e GetPatrolsById200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetPatrolsById200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostPatrolsByIdEnd200JSONResponseBodySuccess.
+const (
+	PostPatrolsByIdEnd200JSONResponseBodySuccessTrue PostPatrolsByIdEnd200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostPatrolsByIdEnd200JSONResponseBodySuccess enum.
+func (e PostPatrolsByIdEnd200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostPatrolsByIdEnd200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostPatrolsByIdPoints200JSONResponseBodySuccess.
+const (
+	PostPatrolsByIdPoints200JSONResponseBodySuccessTrue PostPatrolsByIdPoints200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostPatrolsByIdPoints200JSONResponseBodySuccess enum.
+func (e PostPatrolsByIdPoints200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostPatrolsByIdPoints200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetPermissionCategories200JSONResponseBodySuccess.
 const (
 	GetPermissionCategories200JSONResponseBodySuccessTrue GetPermissionCategories200JSONResponseBodySuccess = true
@@ -8216,6 +8420,16 @@ type ForgotPasswordRequest struct {
 	OrganizationCode *string             `json:"organization_code,omitempty"`
 }
 
+// GeoJsonLineString defines model for GeoJsonLineString.
+type GeoJsonLineString struct {
+	// Coordinates Posisi `[longitude, latitude]`, bujur dulu (urutan GeoJSON). Satu titik ditulis dua kali; tanpa titik, larik kosong.
+	Coordinates [][]float64           `json:"coordinates"`
+	Type        GeoJsonLineStringType `json:"type"`
+}
+
+// GeoJsonLineStringType defines model for GeoJsonLineString.Type.
+type GeoJsonLineStringType string
+
 // HeadcountSnapshot defines model for HeadcountSnapshot.
 type HeadcountSnapshot struct {
 	ActiveFieldSeats *int                    `json:"active_field_seats,omitempty"`
@@ -9181,6 +9395,132 @@ type PatrolChecklistOption struct {
 // PatrolChecklistReplace defines model for PatrolChecklistReplace.
 type PatrolChecklistReplace struct {
 	Checklist []PatrolChecklistItemInput `json:"checklist"`
+}
+
+// PatrolRoute Satu patroli. `team_code` dan `work_date` ditentukan server dari shift penjaga. `point_count` adalah
+// titik mentah yang diterima, `distance_meters` panjang garis yang disimpan, `scan_count` scan yang
+// terjadi selama patroli.
+type PatrolRoute struct {
+	DistanceMeters int                `json:"distance_meters"`
+	EndedAt        *time.Time         `json:"ended_at,omitempty"`
+	Id             int64              `json:"id"`
+	LastPointAt    time.Time          `json:"last_point_at"`
+	LocalId        openapi_types.UUID `json:"local_id"`
+	PersonnelId    int64              `json:"personnel_id"`
+
+	// PersonnelName Ada saat patroli dibaca (daftar dan detail).
+	PersonnelName    *string            `json:"personnel_name,omitempty"`
+	PointCount       int                `json:"point_count"`
+	ProjectCode      string             `json:"project_code"`
+	ScanCount        int                `json:"scan_count"`
+	StartedAt        time.Time          `json:"started_at"`
+	Status           PatrolRouteStatus  `json:"status"`
+	SubmittedOffline bool               `json:"submitted_offline"`
+	TeamCode         string             `json:"team_code"`
+	WorkDate         openapi_types.Date `json:"work_date"`
+}
+
+// PatrolRouteStatus defines model for PatrolRoute.Status.
+type PatrolRouteStatus string
+
+// PatrolRouteDetail defines model for PatrolRouteDetail.
+type PatrolRouteDetail struct {
+	DistanceMeters int                `json:"distance_meters"`
+	EndedAt        *time.Time         `json:"ended_at,omitempty"`
+	Id             int64              `json:"id"`
+	LastPointAt    time.Time          `json:"last_point_at"`
+	LocalId        openapi_types.UUID `json:"local_id"`
+
+	// Path Titik yang sama dengan `route`, lengkap dengan waktu dan akurasi.
+	Path        []PatrolRoutePathPoint `json:"path"`
+	PersonnelId int64                  `json:"personnel_id"`
+
+	// PersonnelName Ada saat patroli dibaca (daftar dan detail).
+	PersonnelName    *string                 `json:"personnel_name,omitempty"`
+	PointCount       int                     `json:"point_count"`
+	ProjectCode      string                  `json:"project_code"`
+	Route            GeoJsonLineString       `json:"route"`
+	ScanCount        int                     `json:"scan_count"`
+	Scans            []PatrolRouteScan       `json:"scans"`
+	StartedAt        time.Time               `json:"started_at"`
+	Status           PatrolRouteDetailStatus `json:"status"`
+	SubmittedOffline bool                    `json:"submitted_offline"`
+	TeamCode         string                  `json:"team_code"`
+	WorkDate         openapi_types.Date      `json:"work_date"`
+}
+
+// PatrolRouteDetailStatus defines model for PatrolRouteDetail.Status.
+type PatrolRouteDetailStatus string
+
+// PatrolRouteEnd defines model for PatrolRouteEnd.
+type PatrolRouteEnd struct {
+	// EndedAt Tidak boleh sebelum `started_at`; maksimal 5 menit di depan dan 7 hari ke belakang.
+	EndedAt time.Time `json:"ended_at"`
+
+	// Points Batch titik terakhir, boleh ikut dikirim.
+	Points *[]PatrolRoutePointInput `json:"points,omitempty"`
+}
+
+// PatrolRoutePathPoint defines model for PatrolRoutePathPoint.
+type PatrolRoutePathPoint struct {
+	AccuracyMeters float64   `json:"accuracy_meters"`
+	At             time.Time `json:"at"`
+	Latitude       float64   `json:"latitude"`
+	Longitude      float64   `json:"longitude"`
+}
+
+// PatrolRoutePointInput defines model for PatrolRoutePointInput.
+type PatrolRoutePointInput struct {
+	AccuracyMeters float64 `json:"accuracy_meters"`
+	Latitude       float64 `json:"latitude"`
+
+	// LoggedAt Maksimal 5 menit di depan waktu server.
+	LoggedAt  time.Time `json:"logged_at"`
+	Longitude float64   `json:"longitude"`
+
+	// Seq Nomor titik, dari aplikasi. Titik awal (seq 0) dibuat server saat patroli dimulai; titik yang `seq`-nya sudah ada dilewati.
+	Seq int32 `json:"seq"`
+}
+
+// PatrolRoutePoints defines model for PatrolRoutePoints.
+type PatrolRoutePoints struct {
+	Points []PatrolRoutePointInput `json:"points"`
+}
+
+// PatrolRoutePointsResult defines model for PatrolRoutePointsResult.
+type PatrolRoutePointsResult struct {
+	Accepted int `json:"accepted"`
+
+	// Duplicates Titik yang `seq`-nya sudah diterima sebelumnya (kiriman ulang).
+	Duplicates int `json:"duplicates"`
+}
+
+// PatrolRouteScan Scan di sepanjang patroli, untuk pin di garis peta.
+type PatrolRouteScan struct {
+	Id         int64                 `json:"id"`
+	Latitude   float64               `json:"latitude"`
+	Longitude  float64               `json:"longitude"`
+	OccurredAt time.Time             `json:"occurred_at"`
+	Status     PatrolRouteScanStatus `json:"status"`
+	Subject    string                `json:"subject"`
+	ZoneId     int64                 `json:"zone_id"`
+	ZoneName   string                `json:"zone_name"`
+}
+
+// PatrolRouteScanStatus defines model for PatrolRouteScan.Status.
+type PatrolRouteScanStatus string
+
+// PatrolRouteStart Badan `POST /patrols/start`. `local_id` harus sama dengan header Idempotency-Key.
+type PatrolRouteStart struct {
+	AccuracyMeters float64            `json:"accuracy_meters"`
+	Latitude       float64            `json:"latitude"`
+	LocalId        openapi_types.UUID `json:"local_id"`
+	Longitude      float64            `json:"longitude"`
+	ProjectCode    string             `json:"project_code"`
+
+	// StartedAt Saat patroli dimulai di perangkat. Maksimal 5 menit di depan dan 7 hari ke belakang.
+	StartedAt        time.Time `json:"started_at"`
+	SubmittedOffline *bool     `json:"submitted_offline,omitempty"`
 }
 
 // PatrolScan Satu kunjungan ke zona. `team_code` dan `work_date` ditentukan server dari shift pemindai, bukan dikirim aplikasi.
@@ -13176,6 +13516,69 @@ type GetPatrolPendingApprovalsParams struct {
 // GetPatrolPendingApprovals200JSONResponseBodySuccess defines parameters for GetPatrolPendingApprovals.
 type GetPatrolPendingApprovals200JSONResponseBodySuccess bool
 
+// GetPatrolsParams defines parameters for GetPatrols.
+type GetPatrolsParams struct {
+	ProjectCode *string                 `form:"project_code,omitempty" json:"project_code,omitempty"`
+	TeamCode    *string                 `form:"team_code,omitempty" json:"team_code,omitempty"`
+	PersonnelId *int64                  `form:"personnel_id,omitempty" json:"personnel_id,omitempty"`
+	WorkDate    *openapi_types.Date     `form:"work_date,omitempty" json:"work_date,omitempty"`
+	Status      *GetPatrolsParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
+	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
+
+	// Limit Item per halaman (maks 100).
+	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetPatrolsParamsStatus defines parameters for GetPatrols.
+type GetPatrolsParamsStatus string
+
+// GetPatrols200JSONResponseBodySuccess defines parameters for GetPatrols.
+type GetPatrols200JSONResponseBodySuccess bool
+
+// GetPatrolsActive200JSONResponseBodySuccess defines parameters for GetPatrolsActive.
+type GetPatrolsActive200JSONResponseBodySuccess bool
+
+// PostPatrolsStartParams defines parameters for PostPatrolsStart.
+type PostPatrolsStartParams struct {
+	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
+	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
+	// 409 CONFLICT.
+	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
+}
+
+// PostPatrolsStart200JSONResponseBodySuccess defines parameters for PostPatrolsStart.
+type PostPatrolsStart200JSONResponseBodySuccess bool
+
+// PostPatrolsStart201JSONResponseBodySuccess defines parameters for PostPatrolsStart.
+type PostPatrolsStart201JSONResponseBodySuccess bool
+
+// GetPatrolsById200JSONResponseBodySuccess defines parameters for GetPatrolsById.
+type GetPatrolsById200JSONResponseBodySuccess bool
+
+// PostPatrolsByIdEndParams defines parameters for PostPatrolsByIdEnd.
+type PostPatrolsByIdEndParams struct {
+	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
+	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
+	// 409 CONFLICT.
+	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
+}
+
+// PostPatrolsByIdEnd200JSONResponseBodySuccess defines parameters for PostPatrolsByIdEnd.
+type PostPatrolsByIdEnd200JSONResponseBodySuccess bool
+
+// PostPatrolsByIdPointsParams defines parameters for PostPatrolsByIdPoints.
+type PostPatrolsByIdPointsParams struct {
+	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
+	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
+	// 409 CONFLICT.
+	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
+}
+
+// PostPatrolsByIdPoints200JSONResponseBodySuccess defines parameters for PostPatrolsByIdPoints.
+type PostPatrolsByIdPoints200JSONResponseBodySuccess bool
+
 // GetPermissionCategoriesParams defines parameters for GetPermissionCategories.
 type GetPermissionCategoriesParams struct {
 	Type *LeaveCategoryType `form:"type,omitempty" json:"type,omitempty"`
@@ -14225,6 +14628,15 @@ type PostPanicsJSONRequestBody = PanicCreate
 
 // PostPanicsByIdFinishJSONRequestBody defines body for PostPanicsByIdFinish for application/json ContentType.
 type PostPanicsByIdFinishJSONRequestBody = PanicResolve
+
+// PostPatrolsStartJSONRequestBody defines body for PostPatrolsStart for application/json ContentType.
+type PostPatrolsStartJSONRequestBody = PatrolRouteStart
+
+// PostPatrolsByIdEndJSONRequestBody defines body for PostPatrolsByIdEnd for application/json ContentType.
+type PostPatrolsByIdEndJSONRequestBody = PatrolRouteEnd
+
+// PostPatrolsByIdPointsJSONRequestBody defines body for PostPatrolsByIdPoints for application/json ContentType.
+type PostPatrolsByIdPointsJSONRequestBody = PatrolRoutePoints
 
 // PostPermissionsJSONRequestBody defines body for PostPermissions for application/json ContentType.
 type PostPermissionsJSONRequestBody = PermissionCreate

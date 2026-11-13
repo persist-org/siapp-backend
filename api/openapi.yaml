@@ -3025,6 +3025,106 @@ components:
         check_out_at: { type: string, format: date-time, nullable: true }
         check_out_latitude: { type: number, format: double, nullable: true }
         check_out_longitude: { type: number, format: double, nullable: true }
+    PatrolRouteStart:
+      type: object
+      description: Badan `POST /patrols/start`. `local_id` harus sama dengan header Idempotency-Key.
+      required: [local_id, started_at, project_code, latitude, longitude, accuracy_meters]
+      properties:
+        local_id: { type: string, format: uuid }
+        started_at: { type: string, format: date-time, description: "Saat patroli dimulai di perangkat. Maksimal 5 menit di depan dan 7 hari ke belakang." }
+        project_code: { type: string, example: 1K-IBMI-S }
+        latitude: { type: number, format: double }
+        longitude: { type: number, format: double }
+        accuracy_meters: { type: number, format: double, minimum: 0 }
+        submitted_offline: { type: boolean, default: false }
+    PatrolRoutePointInput:
+      type: object
+      required: [seq, logged_at, latitude, longitude, accuracy_meters]
+      properties:
+        seq: { type: integer, format: int32, minimum: 0, description: "Nomor titik, dari aplikasi. Titik awal (seq 0) dibuat server saat patroli dimulai; titik yang `seq`-nya sudah ada dilewati." }
+        logged_at: { type: string, format: date-time, description: "Maksimal 5 menit di depan waktu server." }
+        latitude: { type: number, format: double }
+        longitude: { type: number, format: double }
+        accuracy_meters: { type: number, format: double, minimum: 0 }
+    PatrolRoutePoints:
+      type: object
+      required: [points]
+      properties:
+        points: { type: array, minItems: 1, maxItems: 200, items: { $ref: '#/components/schemas/PatrolRoutePointInput' } }
+    PatrolRouteEnd:
+      type: object
+      required: [ended_at]
+      properties:
+        ended_at: { type: string, format: date-time, description: "Tidak boleh sebelum `started_at`; maksimal 5 menit di depan dan 7 hari ke belakang." }
+        points: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/PatrolRoutePointInput' }, description: "Batch titik terakhir, boleh ikut dikirim." }
+    PatrolRoutePointsResult:
+      type: object
+      required: [accepted, duplicates]
+      properties:
+        accepted: { type: integer }
+        duplicates: { type: integer, description: "Titik yang `seq`-nya sudah diterima sebelumnya (kiriman ulang)." }
+    PatrolRoute:
+      type: object
+      description: |
+        Satu patroli. `team_code` dan `work_date` ditentukan server dari shift penjaga. `point_count` adalah
+        titik mentah yang diterima, `distance_meters` panjang garis yang disimpan, `scan_count` scan yang
+        terjadi selama patroli.
+      required: [id, local_id, personnel_id, team_code, project_code, status, started_at, work_date, distance_meters, point_count, scan_count, submitted_offline, last_point_at]
+      properties:
+        id: { type: integer, format: int64 }
+        local_id: { type: string, format: uuid }
+        personnel_id: { type: integer, format: int64 }
+        personnel_name: { type: string, description: "Ada saat patroli dibaca (daftar dan detail)." }
+        team_code: { type: string, example: 1K-IBMI-S1 }
+        project_code: { type: string, example: 1K-IBMI-S }
+        status: { type: string, enum: [ACTIVE, ENDED, AUTO_ENDED] }
+        started_at: { type: string, format: date-time }
+        ended_at: { type: string, format: date-time, nullable: true }
+        work_date: { type: string, format: date }
+        distance_meters: { type: integer }
+        point_count: { type: integer }
+        scan_count: { type: integer }
+        submitted_offline: { type: boolean }
+        last_point_at: { type: string, format: date-time }
+    PatrolRoutePathPoint:
+      type: object
+      required: [latitude, longitude, at, accuracy_meters]
+      properties:
+        latitude: { type: number, format: double }
+        longitude: { type: number, format: double }
+        at: { type: string, format: date-time }
+        accuracy_meters: { type: number, format: double }
+    PatrolRouteScan:
+      type: object
+      description: Scan di sepanjang patroli, untuk pin di garis peta.
+      required: [id, zone_id, zone_name, occurred_at, latitude, longitude, status, subject]
+      properties:
+        id: { type: integer, format: int64 }
+        zone_id: { type: integer, format: int64 }
+        zone_name: { type: string }
+        occurred_at: { type: string, format: date-time }
+        latitude: { type: number, format: double }
+        longitude: { type: number, format: double }
+        status: { type: string, enum: [SUBMITTED, APPROVED, DECLINED] }
+        subject: { type: string }
+    GeoJsonLineString:
+      type: object
+      required: [type, coordinates]
+      properties:
+        type: { type: string, enum: [LineString] }
+        coordinates:
+          type: array
+          description: "Posisi `[longitude, latitude]`, bujur dulu (urutan GeoJSON). Satu titik ditulis dua kali; tanpa titik, larik kosong."
+          items: { type: array, minItems: 2, maxItems: 2, items: { type: number, format: double } }
+    PatrolRouteDetail:
+      allOf:
+        - $ref: '#/components/schemas/PatrolRoute'
+        - type: object
+          required: [route, path, scans]
+          properties:
+            route: { $ref: '#/components/schemas/GeoJsonLineString' }
+            path: { type: array, items: { $ref: '#/components/schemas/PatrolRoutePathPoint' }, description: "Titik yang sama dengan `route`, lengkap dengan waktu dan akurasi." }
+            scans: { type: array, items: { $ref: '#/components/schemas/PatrolRouteScan' } }
     # ---------- 29. panics ----------
     Panic:
       type: object
@@ -11777,6 +11877,114 @@ paths:
         '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/ListEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/PatrolScan' } } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /patrols/start:
+    post:
+      operationId: postPatrolsStart
+      tags: [Patrol]
+      summary: Mulai patroli (rekam garis rute)
+      description: |
+        Penjaga mengetuk "mulai patroli" dan aplikasi merekam posisi sampai patroli diakhiri. Perlu izin
+        `patrol.scan` atau `guard.scan` dan penugasan di proyek, seperti scan (403 `PERMISSION_DENIED`,
+        403 `ZONE_NOT_IN_PROJECT`). Satu orang hanya boleh punya satu patroli berjalan: mulai lagi
+        sebelum mengakhiri dijawab 409 `PATROL_ALREADY_ACTIVE`. Kirim ulang dengan `local_id` yang sama
+        mengembalikan patroli tersimpan (200). Titik awal tercatat sebagai titik `seq` 0. Perekaman tidak
+        memerlukan `gps_tracking_enabled` proyek: izinnya adalah ketukan "mulai patroli".
+      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyHeader' } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PatrolRouteStart' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/PatrolRoute' } } } ] } } } }
+        '200': { description: Idempotent replay (local_id/key sama), content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/PatrolRoute' } } } ] } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /patrols/active:
+    get:
+      operationId: getPatrolsActive
+      tags: [Patrol]
+      summary: Patroli yang sedang berjalan (untuk melanjutkan setelah aplikasi dibuka ulang)
+      description: |
+        Patroli berjalan milik pemanggil, dengan garis sejauh titik yang diterima. `data` adalah larik:
+        satu patroli, atau kosong `[]` bila tidak ada patroli berjalan (bukan 404).
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { type: array, maxItems: 1, items: { $ref: '#/components/schemas/PatrolRouteDetail' } } } } ] } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /patrols:
+    get:
+      operationId: getPatrols
+      tags: [Patrol]
+      summary: Daftar patroli
+      description: |
+        Terbaru dulu, tanpa garis (`path`). Penjaga melihat patrolinya sendiri; DANRU juga patroli regu dalam
+        jangkauan izin approve-nya (`patrol.approve` atau `guard.approve`).
+      parameters:
+        - { name: project_code, in: query, schema: { type: string } }
+        - { name: team_code, in: query, schema: { type: string } }
+        - { name: personnel_id, in: query, schema: { type: integer, format: int64 } }
+        - { name: work_date, in: query, schema: { type: string, format: date } }
+        - { name: status, in: query, schema: { type: string, enum: [ACTIVE, ENDED, AUTO_ENDED] } }
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/ListEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/PatrolRoute' } } } } ] } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /patrols/{id}:
+    parameters: [ { $ref: '#/components/parameters/IdPath' } ]
+    get:
+      operationId: getPatrolsById
+      tags: [Patrol]
+      summary: Detail patroli dengan garis rute di peta
+      description: |
+        `route` adalah GeoJSON `LineString` (bujur dulu) yang bisa digambar pustaka peta langsung, `path`
+        titik yang sama dengan waktu dan akurasi, `scans` scan di sepanjang patroli untuk pin. Untuk patroli
+        `ACTIVE`, garis dibangun dari titik yang sudah diterima, jadi DANRU melihatnya tumbuh. Patroli orang
+        lain di luar jangkauan: 404 `PATROL_NOT_FOUND`.
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/PatrolRouteDetail' } } } ] } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /patrols/{id}/points:
+    parameters: [ { $ref: '#/components/parameters/IdPath' } ]
+    post:
+      operationId: postPatrolsByIdPoints
+      tags: [Patrol]
+      summary: Kirim titik posisi patroli (batch, aman diulang)
+      description: |
+        Paling banyak 200 titik (lebih dari itu 422 `PATROL_POINTS_TOO_LARGE`). Aplikasi menomori titiknya
+        (`seq`), jadi batch yang dikirim ulang atau tidak berurutan tidak menggandakan atau mengacak titik:
+        titik yang `seq`-nya sudah ada dilewati dan dihitung di `duplicates`. Hanya pemilik patroli, dan
+        hanya saat `ACTIVE` (409 `PATROL_NOT_ACTIVE`); aplikasi yang offline mengirim titiknya dulu, baru
+        mengakhiri patroli. Patroli milik orang lain dijawab 404 `PATROL_NOT_FOUND`.
+      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyHeader' } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PatrolRoutePoints' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/PatrolRoutePointsResult' } } } ] } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /patrols/{id}/end:
+    parameters: [ { $ref: '#/components/parameters/IdPath' } ]
+    post:
+      operationId: postPatrolsByIdEnd
+      tags: [Patrol]
+      summary: Akhiri patroli
+      description: |
+        Dalam satu transaksi: menyimpan titik terakhir, membangun garis (titik berakurasi di atas 50 m dan
+        lonjakan lebih dari 15 m/detik dibuang, lalu disederhanakan 3 m tanpa membuang titik awal, titik akhir
+        dan titik terdekat tiap scan), menghitung jarak dan scan, lalu status `ENDED`. Diulang dengan `ended_at`
+        yang sama (aplikasi kehilangan jawaban), mengembalikan patroli tersimpan. Patroli yang sudah berakhir
+        (juga `AUTO_ENDED`) dengan `ended_at` lain: 409 `PATROL_NOT_ACTIVE`. Tidak ada notifikasi: scan-nya
+        sudah memberi tahu DANRU.
+      parameters: [ { $ref: '#/components/parameters/IdempotencyKeyHeader' } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PatrolRouteEnd' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/PatrolRouteDetail' } } } ] } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
 
   # ============ PANIC ============
   /panics:

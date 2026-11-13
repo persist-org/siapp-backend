@@ -1,6 +1,6 @@
 // Package patrol is module 10: QR-tagged zones, the checklist each zone asks of the guard, scans
 // and the patrol route. Phase 10.1 is the zones and their checklists; 10.2 the scans and the
-// check-in/out of a zone; approval and the route arrive in the phases after it.
+// check-in/out of a zone; 10.3 progress and approval; 10.4 the patrol route, the line a guard walks.
 package patrol
 
 import (
@@ -26,6 +26,7 @@ const (
 	ReasonNotCheckedIn         = "ZONE_NOT_CHECKED_IN"
 	ReasonAlreadyCheckedIn     = "ZONE_ALREADY_CHECKED_IN" // not in the plan's list: "check in twice fails" needs a reason
 	ReasonLocalIDTaken         = "SCAN_LOCAL_ID_TAKEN"
+	ReasonZoneNameTaken        = "ZONE_NAME_TAKEN"
 )
 
 // ErrZoneNotFound is returned for a zone that does not exist, is deleted or switched off, or
@@ -78,6 +79,41 @@ var ErrScanNotFound = apperr.New(http.StatusNotFound, apperr.CodeNotFound,
 // ErrScanAlreadyDecided is returned for an approve or decline of a scan that is no longer SUBMITTED.
 var ErrScanAlreadyDecided = apperr.New(http.StatusConflict, apperr.CodeConflict,
 	ReasonScanAlreadyDecided, "Scan ini sudah diputuskan.")
+
+// Reasons of Phase 10.4.
+const (
+	ReasonPatrolNotFound      = "PATROL_NOT_FOUND"
+	ReasonPatrolAlreadyActive = "PATROL_ALREADY_ACTIVE"
+	ReasonPatrolNotActive     = "PATROL_NOT_ACTIVE"
+	ReasonPointsTooLarge      = "PATROL_POINTS_TOO_LARGE"
+	ReasonPatrolLocalIDTaken  = "PATROL_LOCAL_ID_TAKEN" // not in the plan's list, like SCAN_LOCAL_ID_TAKEN
+)
+
+// ErrPatrolNotFound is returned for a patrol that does not exist, belongs to another organization,
+// or is not one the caller may read: another person's patrol is answered like one that is not there.
+var ErrPatrolNotFound = apperr.New(http.StatusNotFound, apperr.CodeNotFound,
+	ReasonPatrolNotFound, "Patroli tidak ditemukan.")
+
+// ErrPatrolAlreadyActive is returned for a start while the person's other patrol still runs.
+var ErrPatrolAlreadyActive = apperr.New(http.StatusConflict, apperr.CodeConflict,
+	ReasonPatrolAlreadyActive, "Anda masih punya patroli yang berjalan. Akhiri lebih dulu.")
+
+// ErrPatrolNotActive is returned for points sent to a patrol that has ended.
+var ErrPatrolNotActive = apperr.New(http.StatusConflict, apperr.CodeConflict,
+	ReasonPatrolNotActive, "Patroli ini sudah berakhir.")
+
+// ErrPointsTooLarge is returned for a batch of more than MaxRoutePoints points.
+var ErrPointsTooLarge = apperr.New(http.StatusUnprocessableEntity, apperr.CodeUnprocessable,
+	ReasonPointsTooLarge, "Terlalu banyak titik dalam satu permintaan.")
+
+// ErrZoneNameTaken is returned when another live zone of the same project and type has the name.
+var ErrZoneNameTaken = apperr.New(http.StatusConflict, apperr.CodeDuplicate,
+	ReasonZoneNameTaken, "Sudah ada zona dengan nama ini di proyek dan tipe yang sama.")
+
+// ErrPatrolLocalIDTaken is returned when a patrol's local_id was already used by another person: it
+// is the app's own id, so this is a bug or a forgery, never a replay.
+var ErrPatrolLocalIDTaken = apperr.New(http.StatusConflict, apperr.CodeDuplicate,
+	ReasonPatrolLocalIDTaken, "local_id sudah dipakai untuk patroli lain.")
 
 // ErrLocalIDTaken is returned when a scan's local_id was already used by another person or for
 // another zone: it is the app's own id, so this is a bug or a forgery, never a replay.

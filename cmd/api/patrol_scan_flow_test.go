@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -95,10 +96,23 @@ func (f *flow) photo(owner int64) int64 {
 	return id
 }
 
-// scanBody is a valid scan of the zone made now, at its centre.
+// scansMade counts the bodies made for each zone: the server refuses two scans of a zone by one
+// person less than 30 seconds apart, so each later body of a zone is made 31 seconds earlier than
+// the one before it, as a guard's scans would be. The first is made now.
+var (
+	scansMadeMu sync.Mutex
+	scansMade   = map[string]int{}
+)
+
+// scanBody is a valid scan of the zone, at its centre.
 func scanBody(z patrolZone) map[string]any {
+	scansMadeMu.Lock()
+	n := scansMade[z.payload]
+	scansMade[z.payload]++
+	scansMadeMu.Unlock()
+	occurred := time.Now().Add(-time.Duration(n) * 31 * time.Second)
 	return map[string]any{
-		"local_id": uuid.NewString(), "occurred_at": time.Now().UTC().Format(time.RFC3339Nano), "qr_payload": z.payload,
+		"local_id": uuid.NewString(), "occurred_at": occurred.UTC().Format(time.RFC3339Nano), "qr_payload": z.payload,
 		"latitude": zoneLat, "longitude": zoneLng, "accuracy_meters": 5, "subject": "Patroli malam",
 	}
 }
@@ -480,6 +494,30 @@ func TestPatrolScanInterval(t *testing.T) {
 	})
 
 	t.Run("after the interval it is accepted, and so is another zone", func(_ *testing.T) {
+		f.mustScan(f.personTok, z, scanBody(z))
+		f.mustScan(f.personTok, other, scanBody(other))
+	})
+}
+
+// A project with no patrol_interval_minutes still refuses a rapid second scan of the same zone, even
+// with a new local_id, so a double tap cannot make two scans of one visit.
+func TestPatrolScanMinimumGap(t *testing.T) {
+	f := newFlow(t)
+	z := f.fencedZone(nil, nil)
+	other := f.fencedZone(nil, nil)
+
+	first := scanBody(z)
+	first["occurred_at"] = time.Now().Add(-10 * time.Minute).UTC().Format(time.RFC3339Nano)
+	f.mustScan(f.personTok, z, first)
+
+	t.Run("a second scan seconds later is refused", func(t *testing.T) {
+		soon := scanBody(z)
+		soon["occurred_at"] = time.Now().Add(-10*time.Minute + 5*time.Second).UTC().Format(time.RFC3339Nano)
+		code, _, raw := f.scan(f.personTok, z.ID, soon)
+		reasonIs(t, code, raw, http.StatusUnprocessableEntity, "ZONE_INTERVAL_NOT_ELAPSED")
+	})
+
+	t.Run("a scan past the gap and a scan of another zone are accepted", func(_ *testing.T) {
 		f.mustScan(f.personTok, z, scanBody(z))
 		f.mustScan(f.personTok, other, scanBody(other))
 	})

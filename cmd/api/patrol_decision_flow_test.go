@@ -609,6 +609,7 @@ func TestPatrolScanViews(t *testing.T) {
 	t.Run("the zone's list: the DANRU sees the regu's scans, a member their own, newest first", func(t *testing.T) {
 		_, colleagueTok := f.addMember("1K-IBMI-S1", "MEMBER", 900551, "KOLEGA0008", "Kolega Delapan")
 		theirBody := scanBody(z)
+		theirBody["occurred_at"] = time.Now().UTC().Format(time.RFC3339Nano) // the newest of the zone's scans
 		theirBody["answers"] = []map[string]any{{"item_id": pagar, "value": true}}
 		theirs := f.mustScan(colleagueTok, z, theirBody)
 

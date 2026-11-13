@@ -889,6 +889,49 @@ func (ns NullOutboxStatus) Value() (driver.Value, error) {
 	return string(ns.OutboxStatus), nil
 }
 
+type PatrolRouteStatus string
+
+const (
+	PatrolRouteStatusACTIVE    PatrolRouteStatus = "ACTIVE"
+	PatrolRouteStatusENDED     PatrolRouteStatus = "ENDED"
+	PatrolRouteStatusAUTOENDED PatrolRouteStatus = "AUTO_ENDED"
+)
+
+func (e *PatrolRouteStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PatrolRouteStatus(s)
+	case string:
+		*e = PatrolRouteStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PatrolRouteStatus: %T", src)
+	}
+	return nil
+}
+
+type NullPatrolRouteStatus struct {
+	PatrolRouteStatus PatrolRouteStatus
+	Valid             bool // Valid is true if PatrolRouteStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPatrolRouteStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.PatrolRouteStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PatrolRouteStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPatrolRouteStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PatrolRouteStatus), nil
+}
+
 type PatrolScanStatus string
 
 const (
@@ -1724,6 +1767,37 @@ type PatrolChecklistItem struct {
 	DeactivatedAt  pgtype.Timestamptz
 	CreatedAt      pgtype.Timestamptz
 	UpdatedAt      pgtype.Timestamptz
+}
+
+type PatrolRoute struct {
+	ID               int64
+	OrganizationID   int64
+	LocalID          pgtype.UUID
+	PersonnelID      int64
+	TeamCode         string
+	ProjectCode      string
+	Status           PatrolRouteStatus
+	StartedAt        pgtype.Timestamptz
+	EndedAt          pgtype.Timestamptz
+	WorkDate         pgtype.Date
+	Path             json.RawMessage
+	DistanceMeters   int32
+	PointCount       int32
+	ScanCount        int32
+	SubmittedOffline bool
+	LastPointAt      pgtype.Timestamptz
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+}
+
+type PatrolRoutePoint struct {
+	PatrolID       int64
+	Seq            int32
+	OrganizationID int64
+	LoggedAt       pgtype.Timestamptz
+	Latitude       float64
+	Longitude      float64
+	AccuracyMeters float64
 }
 
 type PatrolScan struct {
