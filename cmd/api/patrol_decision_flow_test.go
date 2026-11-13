@@ -758,3 +758,18 @@ func TestPatrolPendingApprovals(t *testing.T) {
 		require.Len(t, list, 1)
 	})
 }
+
+// A DANRU may decide their own scan: the product's rule, unlike leave (decide's comment says so). It
+// is a test of its own so that it does not change the audit counts of TestPatrolDecisions.
+func TestPatrolDanruMayDecideOwnScan(t *testing.T) {
+	f := newFlow(t)
+	_, danruTok := f.danru()
+	z := f.fencedZone(nil, nil)
+
+	own := f.mustScan(danruTok, z, scanBody(z))
+	code, raw := f.approve(danruTok, own.ID)
+	require.Equal(t, http.StatusOK, code, string(raw))
+	code, got, raw := f.getScan(danruTok, own.ID)
+	require.Equal(t, http.StatusOK, code, string(raw))
+	require.Equal(t, "APPROVED", got.Status)
+}

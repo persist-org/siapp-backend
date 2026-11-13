@@ -6,7 +6,9 @@ import (
 	"image/png"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/require"
 
 	"siapp/internal/db"
@@ -195,4 +197,29 @@ func TestSVGRunsOfModules(t *testing.T) {
 	require.Contains(t, got, `viewBox="0 0 2 2"`) // n is the row count; the QR bitmap is square
 	require.Contains(t, got, "M0 0h2v1h-2z", "two modules in a row are one rectangle")
 	require.Contains(t, got, "M1 1h2v1h-2z")
+}
+
+func TestActiveMemberships(t *testing.T) {
+	d := func(y int, m time.Month, day int) pgtype.Date {
+		return pgtype.Date{Time: time.Date(y, m, day, 0, 0, 0, 0, time.UTC), Valid: true}
+	}
+	spans := []db.ListMembershipSpansRow{
+		{ID: 7, StartDate: d(2026, 1, 1), EndDate: d(2026, 3, 31)},
+		{ID: 3, StartDate: d(2026, 3, 1)}, // still running
+	}
+	for name, tc := range map[string]struct {
+		day  pgtype.Date
+		want string
+	}{
+		"before every membership": {d(2025, 12, 31), ""},
+		"the first starts":        {d(2026, 1, 1), "7,"},
+		"only the first":          {d(2026, 2, 15), "7,"},
+		"both, ids in order":      {d(2026, 3, 15), "3,7,"},
+		"the first ends that day": {d(2026, 3, 31), "3,7,"},
+		"the day after it ended":  {d(2026, 4, 1), "3,"},
+		"the open one, far later": {d(2030, 1, 1), "3,"},
+	} {
+		require.Equal(t, tc.want, activeMemberships(spans, tc.day), name)
+	}
+	require.Empty(t, activeMemberships(nil, d(2026, 1, 1)), "no memberships")
 }

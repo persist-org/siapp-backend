@@ -514,6 +514,10 @@ func (s *Service) Decline(ctx context.Context, p auth.Principal, ids []int64, no
 // SCAN_ALREADY_DECIDED, a bulk by listing them as skipped).
 //
 // After the commit each author is told ONCE, however many of their scans the request covers.
+//
+// ⚠ A DANRU may decide their own scan. That is the product's rule (unlike leave, where a person never
+// approves their own request): a DANRU's round is checked by the DANRU who walked it, and nobody is
+// above them in the regu. Do not add a check on the author here. TestPatrolDecisions holds the rule.
 func (s *Service) decide(ctx context.Context, p auth.Principal, ids []int64, status db.PatrolScanStatus, note *string) (Decision, error) {
 	ids = dedupe(ids)
 	var (

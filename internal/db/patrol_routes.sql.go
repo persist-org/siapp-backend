@@ -342,6 +342,37 @@ func (q *Queries) InsertRoutePoints(ctx context.Context, arg InsertRoutePointsPa
 	return result.RowsAffected(), nil
 }
 
+const listMembershipSpans = `-- name: ListMembershipSpans :many
+SELECT id, start_date, end_date FROM team_members WHERE personnel_id = $1
+`
+
+type ListMembershipSpansRow struct {
+	ID        int64
+	StartDate pgtype.Date
+	EndDate   pgtype.Date
+}
+
+// The caller's memberships as date spans, to tell which dates share the same reach.
+func (q *Queries) ListMembershipSpans(ctx context.Context, personnelID int64) ([]ListMembershipSpansRow, error) {
+	rows, err := q.db.Query(ctx, listMembershipSpans, personnelID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListMembershipSpansRow{}
+	for rows.Next() {
+		var i ListMembershipSpansRow
+		if err := rows.Scan(&i.ID, &i.StartDate, &i.EndDate); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPatrolRoutes = `-- name: ListPatrolRoutes :many
 SELECT r.id, r.organization_id, r.local_id, r.personnel_id, r.team_code, r.project_code, r.status, r.started_at,
        r.ended_at, r.work_date, r.distance_meters, r.point_count, r.scan_count, r.submitted_offline,
@@ -448,6 +479,9 @@ func (q *Queries) ListPatrolRoutes(ctx context.Context, arg ListPatrolRoutesPara
 const listRouteKeys = `-- name: ListRouteKeys :many
 SELECT DISTINCT r.work_date, r.team_code FROM patrol_routes r
 WHERE r.personnel_id <> $1
+  AND EXISTS (SELECT 1 FROM team_members tm
+              WHERE tm.personnel_id = $1 AND tm.start_date <= r.work_date
+                AND (tm.end_date IS NULL OR tm.end_date >= r.work_date))
   AND ($2::text IS NULL OR r.project_code = $2)
   AND ($3::text IS NULL OR r.team_code = $3)
   AND ($4::bigint IS NULL OR r.personnel_id = $4)
@@ -470,7 +504,9 @@ type ListRouteKeysRow struct {
 }
 
 // The (work date, regu) pairs of the other people's patrols that match a list's filters: what the
-// service resolves the caller's reach for, one date at a time, before it lists them.
+// service resolves the caller's reach for before it lists them. A date on which the caller has no
+// membership cannot give them reach (a grant comes through a membership), so it is left out here
+// and the history of the table does not set the cost of a list.
 func (q *Queries) ListRouteKeys(ctx context.Context, arg ListRouteKeysParams) ([]ListRouteKeysRow, error) {
 	rows, err := q.db.Query(ctx, listRouteKeys,
 		arg.ViewerID,

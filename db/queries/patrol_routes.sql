@@ -71,15 +71,24 @@ LIMIT 1;
 UPDATE patrol_routes SET scan_count = scan_count + 1 WHERE id = $1;
 
 -- The (work date, regu) pairs of the other people's patrols that match a list's filters: what the
--- service resolves the caller's reach for, one date at a time, before it lists them.
+-- service resolves the caller's reach for before it lists them. A date on which the caller has no
+-- membership cannot give them reach (a grant comes through a membership), so it is left out here
+-- and the history of the table does not set the cost of a list.
 -- name: ListRouteKeys :many
 SELECT DISTINCT r.work_date, r.team_code FROM patrol_routes r
 WHERE r.personnel_id <> @viewer_id
+  AND EXISTS (SELECT 1 FROM team_members tm
+              WHERE tm.personnel_id = @viewer_id AND tm.start_date <= r.work_date
+                AND (tm.end_date IS NULL OR tm.end_date >= r.work_date))
   AND (sqlc.narg('project_code')::text IS NULL OR r.project_code = sqlc.narg('project_code'))
   AND (sqlc.narg('team_code')::text IS NULL OR r.team_code = sqlc.narg('team_code'))
   AND (sqlc.narg('personnel_id')::bigint IS NULL OR r.personnel_id = sqlc.narg('personnel_id'))
   AND (sqlc.narg('work_date')::date IS NULL OR r.work_date = sqlc.narg('work_date'))
   AND (sqlc.narg('status')::patrol_route_status IS NULL OR r.status = sqlc.narg('status'));
+
+-- The caller's memberships as date spans, to tell which dates share the same reach.
+-- name: ListMembershipSpans :many
+SELECT id, start_date, end_date FROM team_members WHERE personnel_id = $1;
 
 -- The list leaves the path out: a long patrol's path is a megabyte, and a page holds fifty.
 -- days and teams are the (work date, regu) pairs the caller reaches as a DANRU, judged on each

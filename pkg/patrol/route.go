@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -699,6 +702,24 @@ type RouteFilter struct {
 	Offset      int
 }
 
+// activeMemberships names the set of memberships that are active on a date, as their ids in order
+// ("" when there is none). Two dates with the same name have the same reach.
+func activeMemberships(spans []db.ListMembershipSpansRow, day pgtype.Date) string {
+	var ids []int64
+	for _, m := range spans {
+		if !m.StartDate.Time.After(day.Time) && (!m.EndDate.Valid || !m.EndDate.Time.Before(day.Time)) {
+			ids = append(ids, m.ID)
+		}
+	}
+	slices.Sort(ids)
+	var b strings.Builder
+	for _, id := range ids {
+		b.WriteString(strconv.FormatInt(id, 10))
+		b.WriteByte(',')
+	}
+	return b.String()
+}
+
 // ListRoutes returns one page of patrols, newest first, without their paths, and the total. A guard
 // sees their own; a DANRU also those of the regu their approve permission reaches.
 func (s *Service) ListRoutes(ctx context.Context, p auth.Principal, f RouteFilter) ([]Route, int, error) {
@@ -715,16 +736,27 @@ func (s *Service) ListRoutes(ctx context.Context, p auth.Principal, f RouteFilte
 		if err != nil {
 			return fmt.Errorf("list patrol keys: %w", err)
 		}
-		reach := map[timeutil.Date][]string{}
+		spans, err := q.ListMembershipSpans(ctx, p.PersonnelID)
+		if err != nil {
+			return fmt.Errorf("list membership spans: %w", err)
+		}
+		// ⚠ The reach on a date depends only on which of the caller's memberships are active on it, so
+		// it is resolved once for each distinct set of them, not once for each date a patrol was
+		// walked on: the cost follows the caller's own history, not the table's.
+		reach := map[string][]string{}
 		days, teams := []pgtype.Date{}, []string{}
 		for _, k := range keys {
-			day := dateOf(k.WorkDate)
-			list, cached := reach[day]
+			set := activeMemberships(spans, k.WorkDate)
+			if set == "" {
+				continue
+			}
+			list, cached := reach[set]
 			if !cached {
+				day := dateOf(k.WorkDate)
 				if list, err = s.routeReach(ctx, q, p.PersonnelID, &day); err != nil {
 					return err
 				}
-				reach[day] = list
+				reach[set] = list
 			}
 			if containsString(list, k.TeamCode) {
 				days, teams = append(days, k.WorkDate), append(teams, k.TeamCode)
