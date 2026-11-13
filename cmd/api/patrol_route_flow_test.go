@@ -529,7 +529,6 @@ func TestPatrolRouteVisibility(t *testing.T) {
 	mine := f.walkSquare(f.personTok, time.Now().Add(-40*time.Minute))
 	theirs := f.walkSquare(otherTok, time.Now().Add(-40*time.Minute))
 	require.NotEqual(t, mine.ID, theirs.ID)
-	_ = danruID
 
 	read := func(token string, id int64) int {
 		code, _ := f.getPatrol(token, id)
@@ -583,6 +582,21 @@ func TestPatrolRouteVisibility(t *testing.T) {
 			code, raw := f.do(http.MethodGet, "/api/v1/patrols"+q, f.personTok, nil, nil)
 			require.Equal(t, http.StatusUnprocessableEntity, code, q+": "+string(raw))
 		}
+	})
+
+	t.Run("the list and the detail judge a patrol on the same date", func(t *testing.T) {
+		// The DANRU took the regu over today: a patrol of last week is neither listed nor readable,
+		// and one of today is both. The list used to show the old one while its detail was a 404.
+		old := f.walkSquare(f.personTok, time.Now().Add(-50*time.Minute))
+		f.exec("UPDATE patrol_routes SET work_date = current_date - 7 WHERE id = $1", old.ID)
+		f.exec("UPDATE team_members SET start_date = current_date WHERE personnel_id = $1 AND role = 'DANRU'", danruID)
+		defer f.exec("UPDATE team_members SET start_date = current_date - 30 WHERE personnel_id = $1 AND role = 'DANRU'", danruID)
+
+		require.Equal(t, http.StatusNotFound, read(danruTok, old.ID))
+		require.NotContains(t, listIDs(danruTok, ""), old.ID)
+		require.Equal(t, http.StatusOK, read(danruTok, theirs.ID))
+		require.Contains(t, listIDs(danruTok, ""), theirs.ID)
+		require.Contains(t, listIDs(f.personTok, ""), old.ID, "the guard still sees their own")
 	})
 
 	t.Run("a patrol that does not exist, and a bad id, are not found", func(t *testing.T) {

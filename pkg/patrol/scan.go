@@ -225,16 +225,11 @@ type visit struct {
 func (s *Service) admit(ctx context.Context, q *db.Queries, p auth.Principal, zone db.PatrolZone, project db.Project,
 	qrPayload string, lat, lng, accuracy float64, at time.Time,
 ) (visit, error) {
-	v := visit{zone: zone, project: project}
-	if !verifyPayload(qrPayload, p.OrganizationID, zone.ID, zone.QrSecret) {
-		return v, ErrQRInvalid
-	}
-	loc, err := time.LoadLocation(project.Timezone)
+	v, err := s.verifyVisit(zone, project, p.OrganizationID, qrPayload)
 	if err != nil {
-		return v, fmt.Errorf("project %s: timezone %q: %w", project.Code, project.Timezone, err)
+		return v, err
 	}
-	v.loc = loc
-	day := timeutil.BusinessDate(at, loc)
+	day := timeutil.BusinessDate(at, v.loc)
 
 	// The permission is the one of the zone's type, judged on the date of the scan in the project's
 	// timezone: someone who changed regu this morning still has yesterday's scans in the old one.
@@ -257,6 +252,39 @@ func (s *Service) admit(ctx context.Context, q *db.Queries, p auth.Principal, zo
 		return v, err
 	}
 
+	return checkGeofence(v, lat, lng, accuracy)
+}
+
+// admitRelease is what a check-out needs: the QR and the geofence, as proof that the guard is
+// there, but not the permission or the membership. A guard whose membership or permission ended
+// while they were checked in must still be able to leave, or the open check-in blocks every
+// check-in they make afterwards.
+func (s *Service) admitRelease(p auth.Principal, zone db.PatrolZone, project db.Project, qrPayload string, lat, lng, accuracy float64) (visit, error) {
+	v, err := s.verifyVisit(zone, project, p.OrganizationID, qrPayload)
+	if err != nil {
+		return v, err
+	}
+	return checkGeofence(v, lat, lng, accuracy)
+}
+
+// verifyVisit checks the QR and loads the project's timezone: the first step of every visit.
+func (s *Service) verifyVisit(zone db.PatrolZone, project db.Project, organizationID int64, qrPayload string) (visit, error) {
+	v := visit{zone: zone, project: project}
+	if !verifyPayload(qrPayload, organizationID, zone.ID, zone.QrSecret) {
+		return v, ErrQRInvalid
+	}
+	loc, err := time.LoadLocation(project.Timezone)
+	if err != nil {
+		return v, fmt.Errorf("project %s: timezone %q: %w", project.Code, project.Timezone, err)
+	}
+	v.loc = loc
+	return v, nil
+}
+
+// checkGeofence refuses a position outside the zone's radius (plus the capped tolerance) and records
+// how far from the centre it was. A zone with no geofence accepts any position.
+func checkGeofence(v visit, lat, lng, accuracy float64) (visit, error) {
+	zone := v.zone
 	if zone.Latitude != nil && zone.Longitude != nil && zone.RadiusMeters.Valid {
 		d := distanceTo(*zone.Latitude, *zone.Longitude, lat, lng)
 		if !insideZone(d, float64(zone.RadiusMeters.Int32), accuracy) {

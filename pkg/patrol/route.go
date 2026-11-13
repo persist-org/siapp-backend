@@ -705,13 +705,33 @@ func (s *Service) ListRoutes(ctx context.Context, p auth.Principal, f RouteFilte
 	var out []Route
 	var total int64
 	err := database.WithTenant(ctx, s.pool, p.OrganizationID, func(q *db.Queries) error {
-		teams, err := s.routeReach(ctx, q, p.PersonnelID, nil)
-		if err != nil {
-			return err
-		}
 		status := db.NullPatrolRouteStatus{PatrolRouteStatus: db.PatrolRouteStatus(f.Status), Valid: f.Status != ""}
+		// ⚠ Each patrol is judged on its own work date, as GetRoute does: a DANRU is never shown in the
+		// list a patrol whose detail would be a 404 (or the other way round).
+		keys, err := q.ListRouteKeys(ctx, db.ListRouteKeysParams{
+			ViewerID: p.PersonnelID, ProjectCode: text(f.ProjectCode), TeamCode: text(f.TeamCode),
+			PersonnelID: int8Param(positive(f.PersonnelID)), WorkDate: dateParam(f.WorkDate), Status: status,
+		})
+		if err != nil {
+			return fmt.Errorf("list patrol keys: %w", err)
+		}
+		reach := map[timeutil.Date][]string{}
+		days, teams := []pgtype.Date{}, []string{}
+		for _, k := range keys {
+			day := dateOf(k.WorkDate)
+			list, cached := reach[day]
+			if !cached {
+				if list, err = s.routeReach(ctx, q, p.PersonnelID, &day); err != nil {
+					return err
+				}
+				reach[day] = list
+			}
+			if containsString(list, k.TeamCode) {
+				days, teams = append(days, k.WorkDate), append(teams, k.TeamCode)
+			}
+		}
 		rows, err := q.ListPatrolRoutes(ctx, db.ListPatrolRoutesParams{
-			ViewerID: p.PersonnelID, TeamCodes: teams, ProjectCode: text(f.ProjectCode), TeamCode: text(f.TeamCode),
+			ViewerID: p.PersonnelID, Days: days, Teams: teams, ProjectCode: text(f.ProjectCode), TeamCode: text(f.TeamCode),
 			PersonnelID: int8Param(positive(f.PersonnelID)), WorkDate: dateParam(f.WorkDate), Status: status,
 			PageLimit: int32(f.Limit), PageOffset: int32(f.Offset), //nolint:gosec // bounded by ParseListQuery
 		})
@@ -719,7 +739,7 @@ func (s *Service) ListRoutes(ctx context.Context, p auth.Principal, f RouteFilte
 			return fmt.Errorf("list patrols: %w", err)
 		}
 		total, err = q.CountPatrolRoutes(ctx, db.CountPatrolRoutesParams{
-			ViewerID: p.PersonnelID, TeamCodes: teams, ProjectCode: text(f.ProjectCode), TeamCode: text(f.TeamCode),
+			ViewerID: p.PersonnelID, Days: days, Teams: teams, ProjectCode: text(f.ProjectCode), TeamCode: text(f.TeamCode),
 			PersonnelID: int8Param(positive(f.PersonnelID)), WorkDate: dateParam(f.WorkDate), Status: status,
 		})
 		if err != nil {

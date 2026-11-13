@@ -23,17 +23,18 @@ func (q *Queries) AddScanToRoute(ctx context.Context, id int64) error {
 
 const countPatrolRoutes = `-- name: CountPatrolRoutes :one
 SELECT count(*) FROM patrol_routes r
-WHERE (r.personnel_id = $1 OR r.team_code = ANY($2::text[]))
-  AND ($3::text IS NULL OR r.project_code = $3)
-  AND ($4::text IS NULL OR r.team_code = $4)
-  AND ($5::bigint IS NULL OR r.personnel_id = $5)
-  AND ($6::date IS NULL OR r.work_date = $6)
-  AND ($7::patrol_route_status IS NULL OR r.status = $7)
+WHERE (r.personnel_id = $1 OR (r.work_date, r.team_code) IN (SELECT unnest($2::date[]), unnest($3::text[])))
+  AND ($4::text IS NULL OR r.project_code = $4)
+  AND ($5::text IS NULL OR r.team_code = $5)
+  AND ($6::bigint IS NULL OR r.personnel_id = $6)
+  AND ($7::date IS NULL OR r.work_date = $7)
+  AND ($8::patrol_route_status IS NULL OR r.status = $8)
 `
 
 type CountPatrolRoutesParams struct {
 	ViewerID    int64
-	TeamCodes   []string
+	Days        []pgtype.Date
+	Teams       []string
 	ProjectCode pgtype.Text
 	TeamCode    pgtype.Text
 	PersonnelID pgtype.Int8
@@ -44,7 +45,8 @@ type CountPatrolRoutesParams struct {
 func (q *Queries) CountPatrolRoutes(ctx context.Context, arg CountPatrolRoutesParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countPatrolRoutes,
 		arg.ViewerID,
-		arg.TeamCodes,
+		arg.Days,
+		arg.Teams,
 		arg.ProjectCode,
 		arg.TeamCode,
 		arg.PersonnelID,
@@ -346,19 +348,20 @@ SELECT r.id, r.organization_id, r.local_id, r.personnel_id, r.team_code, r.proje
        r.last_point_at, r.created_at, r.updated_at, p.full_name
 FROM patrol_routes r
 JOIN personnels p ON p.id = r.personnel_id
-WHERE (r.personnel_id = $1 OR r.team_code = ANY($2::text[]))
-  AND ($3::text IS NULL OR r.project_code = $3)
-  AND ($4::text IS NULL OR r.team_code = $4)
-  AND ($5::bigint IS NULL OR r.personnel_id = $5)
-  AND ($6::date IS NULL OR r.work_date = $6)
-  AND ($7::patrol_route_status IS NULL OR r.status = $7)
+WHERE (r.personnel_id = $1 OR (r.work_date, r.team_code) IN (SELECT unnest($2::date[]), unnest($3::text[])))
+  AND ($4::text IS NULL OR r.project_code = $4)
+  AND ($5::text IS NULL OR r.team_code = $5)
+  AND ($6::bigint IS NULL OR r.personnel_id = $6)
+  AND ($7::date IS NULL OR r.work_date = $7)
+  AND ($8::patrol_route_status IS NULL OR r.status = $8)
 ORDER BY r.started_at DESC, r.id DESC
-LIMIT $9 OFFSET $8
+LIMIT $10 OFFSET $9
 `
 
 type ListPatrolRoutesParams struct {
 	ViewerID    int64
-	TeamCodes   []string
+	Days        []pgtype.Date
+	Teams       []string
 	ProjectCode pgtype.Text
 	TeamCode    pgtype.Text
 	PersonnelID pgtype.Int8
@@ -390,11 +393,13 @@ type ListPatrolRoutesRow struct {
 }
 
 // The list leaves the path out: a long patrol's path is a megabyte, and a page holds fifty.
-// team_codes is what the caller reaches as a DANRU; their own patrols are always visible.
+// days and teams are the (work date, regu) pairs the caller reaches as a DANRU, judged on each
+// patrol's own work date as GetPatrolRoute is; their own patrols are always visible.
 func (q *Queries) ListPatrolRoutes(ctx context.Context, arg ListPatrolRoutesParams) ([]ListPatrolRoutesRow, error) {
 	rows, err := q.db.Query(ctx, listPatrolRoutes,
 		arg.ViewerID,
-		arg.TeamCodes,
+		arg.Days,
+		arg.Teams,
 		arg.ProjectCode,
 		arg.TeamCode,
 		arg.PersonnelID,
@@ -430,6 +435,59 @@ func (q *Queries) ListPatrolRoutes(ctx context.Context, arg ListPatrolRoutesPara
 			&i.UpdatedAt,
 			&i.FullName,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRouteKeys = `-- name: ListRouteKeys :many
+SELECT DISTINCT r.work_date, r.team_code FROM patrol_routes r
+WHERE r.personnel_id <> $1
+  AND ($2::text IS NULL OR r.project_code = $2)
+  AND ($3::text IS NULL OR r.team_code = $3)
+  AND ($4::bigint IS NULL OR r.personnel_id = $4)
+  AND ($5::date IS NULL OR r.work_date = $5)
+  AND ($6::patrol_route_status IS NULL OR r.status = $6)
+`
+
+type ListRouteKeysParams struct {
+	ViewerID    int64
+	ProjectCode pgtype.Text
+	TeamCode    pgtype.Text
+	PersonnelID pgtype.Int8
+	WorkDate    pgtype.Date
+	Status      NullPatrolRouteStatus
+}
+
+type ListRouteKeysRow struct {
+	WorkDate pgtype.Date
+	TeamCode string
+}
+
+// The (work date, regu) pairs of the other people's patrols that match a list's filters: what the
+// service resolves the caller's reach for, one date at a time, before it lists them.
+func (q *Queries) ListRouteKeys(ctx context.Context, arg ListRouteKeysParams) ([]ListRouteKeysRow, error) {
+	rows, err := q.db.Query(ctx, listRouteKeys,
+		arg.ViewerID,
+		arg.ProjectCode,
+		arg.TeamCode,
+		arg.PersonnelID,
+		arg.WorkDate,
+		arg.Status,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRouteKeysRow{}
+	for rows.Next() {
+		var i ListRouteKeysRow
+		if err := rows.Scan(&i.WorkDate, &i.TeamCode); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

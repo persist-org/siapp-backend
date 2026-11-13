@@ -70,15 +70,27 @@ LIMIT 1;
 -- name: AddScanToRoute :exec
 UPDATE patrol_routes SET scan_count = scan_count + 1 WHERE id = $1;
 
+-- The (work date, regu) pairs of the other people's patrols that match a list's filters: what the
+-- service resolves the caller's reach for, one date at a time, before it lists them.
+-- name: ListRouteKeys :many
+SELECT DISTINCT r.work_date, r.team_code FROM patrol_routes r
+WHERE r.personnel_id <> @viewer_id
+  AND (sqlc.narg('project_code')::text IS NULL OR r.project_code = sqlc.narg('project_code'))
+  AND (sqlc.narg('team_code')::text IS NULL OR r.team_code = sqlc.narg('team_code'))
+  AND (sqlc.narg('personnel_id')::bigint IS NULL OR r.personnel_id = sqlc.narg('personnel_id'))
+  AND (sqlc.narg('work_date')::date IS NULL OR r.work_date = sqlc.narg('work_date'))
+  AND (sqlc.narg('status')::patrol_route_status IS NULL OR r.status = sqlc.narg('status'));
+
 -- The list leaves the path out: a long patrol's path is a megabyte, and a page holds fifty.
--- team_codes is what the caller reaches as a DANRU; their own patrols are always visible.
+-- days and teams are the (work date, regu) pairs the caller reaches as a DANRU, judged on each
+-- patrol's own work date as GetPatrolRoute is; their own patrols are always visible.
 -- name: ListPatrolRoutes :many
 SELECT r.id, r.organization_id, r.local_id, r.personnel_id, r.team_code, r.project_code, r.status, r.started_at,
        r.ended_at, r.work_date, r.distance_meters, r.point_count, r.scan_count, r.submitted_offline,
        r.last_point_at, r.created_at, r.updated_at, p.full_name
 FROM patrol_routes r
 JOIN personnels p ON p.id = r.personnel_id
-WHERE (r.personnel_id = @viewer_id OR r.team_code = ANY(@team_codes::text[]))
+WHERE (r.personnel_id = @viewer_id OR (r.work_date, r.team_code) IN (SELECT unnest(@days::date[]), unnest(@teams::text[])))
   AND (sqlc.narg('project_code')::text IS NULL OR r.project_code = sqlc.narg('project_code'))
   AND (sqlc.narg('team_code')::text IS NULL OR r.team_code = sqlc.narg('team_code'))
   AND (sqlc.narg('personnel_id')::bigint IS NULL OR r.personnel_id = sqlc.narg('personnel_id'))
@@ -89,7 +101,7 @@ LIMIT @page_limit OFFSET @page_offset;
 
 -- name: CountPatrolRoutes :one
 SELECT count(*) FROM patrol_routes r
-WHERE (r.personnel_id = @viewer_id OR r.team_code = ANY(@team_codes::text[]))
+WHERE (r.personnel_id = @viewer_id OR (r.work_date, r.team_code) IN (SELECT unnest(@days::date[]), unnest(@teams::text[])))
   AND (sqlc.narg('project_code')::text IS NULL OR r.project_code = sqlc.narg('project_code'))
   AND (sqlc.narg('team_code')::text IS NULL OR r.team_code = sqlc.narg('team_code'))
   AND (sqlc.narg('personnel_id')::bigint IS NULL OR r.personnel_id = sqlc.narg('personnel_id'))

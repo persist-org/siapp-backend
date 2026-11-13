@@ -14,19 +14,24 @@ import (
 const countPendingScans = `-- name: CountPendingScans :one
 SELECT count(*) FROM patrol_scans
 WHERE status = 'SUBMITTED'
-  AND ((zone_type = 'PATROL' AND team_code = ANY($1::text[]))
-    OR (zone_type = 'GUARD' AND team_code = ANY($2::text[])))
-  AND ($3::text IS NULL OR team_code = $3)
+  AND (zone_type::text, team_code, work_date) IN (SELECT unnest($1::text[]), unnest($2::text[]), unnest($3::date[]))
+  AND ($4::text IS NULL OR team_code = $4)
 `
 
 type CountPendingScansParams struct {
-	PatrolTeams []string
-	GuardTeams  []string
-	TeamCode    pgtype.Text
+	Types    []string
+	Teams    []string
+	Days     []pgtype.Date
+	TeamCode pgtype.Text
 }
 
 func (q *Queries) CountPendingScans(ctx context.Context, arg CountPendingScansParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countPendingScans, arg.PatrolTeams, arg.GuardTeams, arg.TeamCode)
+	row := q.db.QueryRow(ctx, countPendingScans,
+		arg.Types,
+		arg.Teams,
+		arg.Days,
+		arg.TeamCode,
+	)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -226,31 +231,66 @@ func (q *Queries) GetPatrolScansByIDs(ctx context.Context, ids []int64) ([]Patro
 	return items, nil
 }
 
-const listPendingScans = `-- name: ListPendingScans :many
-SELECT id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, answers, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at FROM patrol_scans
+const listPendingKeys = `-- name: ListPendingKeys :many
+SELECT DISTINCT zone_type, team_code, work_date FROM patrol_scans
 WHERE status = 'SUBMITTED'
-  AND ((zone_type = 'PATROL' AND team_code = ANY($1::text[]))
-    OR (zone_type = 'GUARD' AND team_code = ANY($2::text[])))
-  AND ($3::text IS NULL OR team_code = $3)
-ORDER BY occurred_at, id
-LIMIT $5 OFFSET $4
+  AND ($1::text IS NULL OR team_code = $1)
 `
 
-type ListPendingScansParams struct {
-	PatrolTeams []string
-	GuardTeams  []string
-	TeamCode    pgtype.Text
-	PageOffset  int32
-	PageLimit   int32
+type ListPendingKeysRow struct {
+	ZoneType PatrolZoneType
+	TeamCode string
+	WorkDate pgtype.Date
 }
 
 // The DANRU's queue: SUBMITTED scans, oldest first, of the regu each permission reaches. A scan of a
 // patrol zone is judged by patrol.approve and one of a guard zone by guard.approve, so each type
 // has its own list of regu.
+// Which (zone type, regu, work date) the SUBMITTED scans fall in: what the service resolves the
+// caller's reach for, one date at a time, before it lists them.
+func (q *Queries) ListPendingKeys(ctx context.Context, teamCode pgtype.Text) ([]ListPendingKeysRow, error) {
+	rows, err := q.db.Query(ctx, listPendingKeys, teamCode)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPendingKeysRow{}
+	for rows.Next() {
+		var i ListPendingKeysRow
+		if err := rows.Scan(&i.ZoneType, &i.TeamCode, &i.WorkDate); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPendingScans = `-- name: ListPendingScans :many
+SELECT id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, answers, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at FROM patrol_scans
+WHERE status = 'SUBMITTED'
+  AND (zone_type::text, team_code, work_date) IN (SELECT unnest($1::text[]), unnest($2::text[]), unnest($3::date[]))
+  AND ($4::text IS NULL OR team_code = $4)
+ORDER BY occurred_at, id
+LIMIT $6 OFFSET $5
+`
+
+type ListPendingScansParams struct {
+	Types      []string
+	Teams      []string
+	Days       []pgtype.Date
+	TeamCode   pgtype.Text
+	PageOffset int32
+	PageLimit  int32
+}
+
 func (q *Queries) ListPendingScans(ctx context.Context, arg ListPendingScansParams) ([]PatrolScan, error) {
 	rows, err := q.db.Query(ctx, listPendingScans,
-		arg.PatrolTeams,
-		arg.GuardTeams,
+		arg.Types,
+		arg.Teams,
+		arg.Days,
 		arg.TeamCode,
 		arg.PageOffset,
 		arg.PageLimit,

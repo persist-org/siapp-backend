@@ -29,11 +29,17 @@ WHERE zone_id = @zone_id
 -- The DANRU's queue: SUBMITTED scans, oldest first, of the regu each permission reaches. A scan of a
 -- patrol zone is judged by patrol.approve and one of a guard zone by guard.approve, so each type
 -- has its own list of regu.
+-- Which (zone type, regu, work date) the SUBMITTED scans fall in: what the service resolves the
+-- caller's reach for, one date at a time, before it lists them.
+-- name: ListPendingKeys :many
+SELECT DISTINCT zone_type, team_code, work_date FROM patrol_scans
+WHERE status = 'SUBMITTED'
+  AND (sqlc.narg('team_code')::text IS NULL OR team_code = sqlc.narg('team_code'));
+
 -- name: ListPendingScans :many
 SELECT * FROM patrol_scans
 WHERE status = 'SUBMITTED'
-  AND ((zone_type = 'PATROL' AND team_code = ANY(@patrol_teams::text[]))
-    OR (zone_type = 'GUARD' AND team_code = ANY(@guard_teams::text[])))
+  AND (zone_type::text, team_code, work_date) IN (SELECT unnest(@types::text[]), unnest(@teams::text[]), unnest(@days::date[]))
   AND (sqlc.narg('team_code')::text IS NULL OR team_code = sqlc.narg('team_code'))
 ORDER BY occurred_at, id
 LIMIT @page_limit OFFSET @page_offset;
@@ -41,8 +47,7 @@ LIMIT @page_limit OFFSET @page_offset;
 -- name: CountPendingScans :one
 SELECT count(*) FROM patrol_scans
 WHERE status = 'SUBMITTED'
-  AND ((zone_type = 'PATROL' AND team_code = ANY(@patrol_teams::text[]))
-    OR (zone_type = 'GUARD' AND team_code = ANY(@guard_teams::text[])))
+  AND (zone_type::text, team_code, work_date) IN (SELECT unnest(@types::text[]), unnest(@teams::text[]), unnest(@days::date[]))
   AND (sqlc.narg('team_code')::text IS NULL OR team_code = sqlc.narg('team_code'));
 
 -- ⚠ The three circles of every zone in ONE query: the zones LEFT JOIN the day's scans, grouped by

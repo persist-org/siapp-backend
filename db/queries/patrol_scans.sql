@@ -42,6 +42,15 @@ UPDATE zone_checkins SET check_out_at = @at, check_out_lat = @latitude, check_ou
 WHERE zone_id = @zone_id AND personnel_id = @personnel_id AND check_out_at IS NULL
 RETURNING *;
 
+-- Everyone still checked in to a zone that goes away: nothing else would let them out, and one
+-- open check-in blocks a check-in anywhere.
+-- name: CloseZoneCheckinsOfZone :execrows
+-- The check-out position is the check-in's own (the last place the guard was seen): the table wants
+-- one whenever there is a check-out time.
+UPDATE zone_checkins SET check_out_at = GREATEST(@at::timestamptz, check_in_at), updated_at = @at,
+    check_out_lat = check_in_lat, check_out_lng = check_in_lng
+WHERE zone_id = @zone_id AND check_out_at IS NULL;
+
 -- Who is checked in to the zone now. team_codes and personnel_id narrow it to what the caller
 -- may see.
 -- name: ListZoneLive :many

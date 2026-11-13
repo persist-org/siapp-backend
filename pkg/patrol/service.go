@@ -459,6 +459,11 @@ func (s *Service) Delete(ctx context.Context, actor auth.Principal, scope access
 		if _, err := q.SoftDeletePatrolZone(ctx, db.SoftDeletePatrolZoneParams{ID: id, Now: ts(s.clock.Now())}); err != nil {
 			return fmt.Errorf("delete zone: %w", err)
 		}
+		// ⚠ A guard still checked in here could never check out of a zone that no longer loads, and one
+		// open check-in blocks a check-in in every zone (ZONE_ALREADY_CHECKED_IN): close them now.
+		if _, err := q.CloseZoneCheckinsOfZone(ctx, db.CloseZoneCheckinsOfZoneParams{ZoneID: id, At: ts(s.clock.Now())}); err != nil {
+			return fmt.Errorf("close check-ins of deleted zone: %w", err)
+		}
 		zone, err := zoneOf(row, nil)
 		if err != nil {
 			return err
@@ -676,6 +681,18 @@ func geofence(lat, lng *float64, radius *int, radiusCleared bool) (fence, error)
 	case lat != nil && radius == nil:
 		r := DefaultRadiusMeters
 		radius = &r
+	}
+	// The same limits the create body declares: a PATCH has no validate tags (a field may be left
+	// out or null), so without these a latitude of 95 or a radius of 0 would reach the database's
+	// CHECK and come back as a 500, and a radius past int32 would wrap.
+	if lat != nil && (*lat < -90 || *lat > 90) {
+		fail("latitude", "Harus antara -90 dan 90.")
+	}
+	if lng != nil && (*lng < -180 || *lng > 180) {
+		fail("longitude", "Harus antara -180 dan 180.")
+	}
+	if radius != nil && (*radius < 1 || *radius > MaxRadiusMeters) {
+		fail("radius_meters", fmt.Sprintf("Harus antara 1 dan %d.", MaxRadiusMeters))
 	}
 	if len(problems) > 0 {
 		return fence{}, apperr.ErrValidation.WithFields(problems...)

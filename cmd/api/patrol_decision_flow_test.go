@@ -680,7 +680,7 @@ func TestPatrolScanViews(t *testing.T) {
 
 func TestPatrolPendingApprovals(t *testing.T) {
 	f := newFlow(t)
-	_, danruTok := f.danru()
+	danruID, danruTok := f.danru()
 	_, s2Tok := f.addMember("1K-IBMI-S2", "MEMBER", 900560, "REGUDUA003", "Anggota S2 Tiga")
 	z := f.fencedZone(nil, nil)
 	g := f.fencedZone(nil, map[string]any{"type": "GUARD"})
@@ -723,6 +723,29 @@ func TestPatrolPendingApprovals(t *testing.T) {
 		f.exec("UPDATE role_permissions SET scope = 'TEAM' WHERE permission = 'guard.approve' AND team_role = 'DANRU'")
 		_, list, _ = f.getScans(danruTok, "/api/v1/patrol/pending-approvals")
 		require.Len(t, list, 1)
+	})
+
+	t.Run("a scan the DANRU could not decide on its work date is not queued", func(t *testing.T) {
+		// decide judges a scan on its own work date; the queue used to judge on today, so it listed
+		// scans whose approval was a 403 (and refused the whole page in a bulk).
+		old := scanBody(z)
+		old["occurred_at"] = time.Now().Add(-90 * time.Minute).UTC().Format(time.RFC3339Nano)
+		stale := f.mustScan(f.personTok, z, old)
+		f.exec("UPDATE patrol_scans SET work_date = current_date - 5 WHERE id = $1", stale.ID)
+		f.exec("UPDATE team_members SET start_date = current_date WHERE personnel_id = $1 AND role = 'DANRU'", danruID)
+
+		_, list, _ := f.getScans(danruTok, "/api/v1/patrol/pending-approvals")
+		require.NotContains(t, ids(list), stale.ID)
+		require.Contains(t, ids(list), guardScan.ID, "a scan of today is still queued")
+		code, raw := f.approve(danruTok, stale.ID)
+		reasonIs(t, code, raw, http.StatusForbidden, "PERMISSION_DENIED")
+
+		// Back in the regu on that date: queued, and decidable.
+		f.exec("UPDATE team_members SET start_date = current_date - 30 WHERE personnel_id = $1 AND role = 'DANRU'", danruID)
+		_, list, _ = f.getScans(danruTok, "/api/v1/patrol/pending-approvals")
+		require.Contains(t, ids(list), stale.ID)
+		code, raw = f.approve(danruTok, stale.ID)
+		require.Equal(t, http.StatusOK, code, string(raw))
 	})
 
 	t.Run("a member has no queue, and the regu filter stays inside the reach", func(t *testing.T) {

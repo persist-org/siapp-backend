@@ -132,9 +132,11 @@ func (s *Service) CheckOut(ctx context.Context, p auth.Principal, zoneID int64, 
 		if err != nil {
 			return err
 		}
-		// A zone switched off while someone is in it can still be checked out of, or the guard
-		// would be stuck there: nothing else closes an open check-in.
-		if _, err := s.admit(ctx, q, p, zone, project, in.QRPayload, *in.Latitude, *in.Longitude, *in.AccuracyMeters, now); err != nil {
+		// A zone switched off while someone is in it can still be checked out of, and so can one whose
+		// regu or permission the guard has left since (admitRelease): an open check-in blocks every
+		// check-in, so a guard must always be able to leave. A deleted zone closes its check-ins
+		// itself (Delete).
+		if _, err := s.admitRelease(p, zone, project, in.QRPayload, *in.Latitude, *in.Longitude, *in.AccuracyMeters); err != nil {
 			return err
 		}
 		row, err := q.CloseZoneCheckin(ctx, db.CloseZoneCheckinParams{

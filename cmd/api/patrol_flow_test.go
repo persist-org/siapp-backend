@@ -722,3 +722,30 @@ func TestPatrolZoneNameIsUnique(t *testing.T) {
 		require.Equal(t, http.StatusCreated, code, string(raw))
 	})
 }
+
+// A PATCH has no validate tags (a field may be left out or null), so its limits are checked on the
+// result: a latitude off the globe or a radius of 0 was a 500 from the database's CHECK.
+func TestPatrolZoneUpdateIsBounded(t *testing.T) {
+	f := newFlow(t)
+	code, z, raw := f.zoneCall(http.MethodPost, "/api/v1/admin/zones", f.adminTok, map[string]any{
+		"project_code": "1K-IBMI-S", "type": "PATROL", "name": "Pos Batas", "latitude": -6.2, "longitude": 106.8, "radius_meters": 50,
+	})
+	require.Equal(t, http.StatusCreated, code, string(raw))
+
+	for name, body := range map[string]map[string]any{
+		"latitude 95":       {"latitude": 95},
+		"latitude 1000":     {"latitude": 1000},
+		"longitude -181":    {"longitude": -181},
+		"radius 0":          {"radius_meters": 0},
+		"radius 5001":       {"radius_meters": 5001},
+		"radius past int32": {"radius_meters": 5_000_000_000},
+		"radius negative":   {"radius_meters": -3},
+	} {
+		code, _, raw := f.zoneCall(http.MethodPatch, zonePath(z.ID), f.adminTok, body)
+		require.Equal(t, http.StatusUnprocessableEntity, code, name+": "+string(raw))
+	}
+
+	code, got, raw := f.zoneCall(http.MethodPatch, zonePath(z.ID), f.adminTok, map[string]any{"latitude": -6.3, "radius_meters": 5000})
+	require.Equal(t, http.StatusOK, code, "the limits themselves are fine: "+string(raw))
+	require.Equal(t, 5000, *got.RadiusMeters)
+}

@@ -249,14 +249,21 @@ func (s *Service) Pending(ctx context.Context, p auth.Principal, teamCode string
 		if teamCode != "" && !slices.Contains(patrolTeams, teamCode) && !slices.Contains(guardTeams, teamCode) {
 			return access.ErrPermissionDenied
 		}
+		// ⚠ The queue shows what decide would accept. decide judges each scan's regu on the scan's own
+		// work date, so the queue does too: a scan of a regu the caller decided for last week and does
+		// not today is not listed, instead of listed and refused with 403 (a whole bulk with it).
+		types, teams, days, err := s.decidableKeys(ctx, q, p.PersonnelID, teamCode)
+		if err != nil {
+			return err
+		}
 		rows, err := q.ListPendingScans(ctx, db.ListPendingScansParams{
-			PatrolTeams: patrolTeams, GuardTeams: guardTeams, TeamCode: text(teamCode),
+			Types: types, Teams: teams, Days: days, TeamCode: text(teamCode),
 			PageLimit: int32(limit), PageOffset: int32(offset), //nolint:gosec // bounded by ParseListQuery
 		})
 		if err != nil {
 			return fmt.Errorf("list pending scans: %w", err)
 		}
-		total, err = q.CountPendingScans(ctx, db.CountPendingScansParams{PatrolTeams: patrolTeams, GuardTeams: guardTeams, TeamCode: text(teamCode)})
+		total, err = q.CountPendingScans(ctx, db.CountPendingScansParams{Types: types, Teams: teams, Days: days, TeamCode: text(teamCode)})
 		if err != nil {
 			return fmt.Errorf("count pending scans: %w", err)
 		}
@@ -264,6 +271,36 @@ func (s *Service) Pending(ctx context.Context, p auth.Principal, teamCode string
 		return err
 	})
 	return out, int(total), err
+}
+
+// decidableKeys returns, as three parallel arrays, the (zone type, regu, work date) combinations of
+// the SUBMITTED scans that the person may decide on: each judged by approveReach on its own date,
+// the rule decide applies.
+func (s *Service) decidableKeys(ctx context.Context, q *db.Queries, personnelID int64, teamCode string) ([]string, []string, []pgtype.Date, error) {
+	keys, err := q.ListPendingKeys(ctx, text(teamCode))
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("list pending keys: %w", err)
+	}
+	type reachKey struct {
+		zoneType db.PatrolZoneType
+		day      timeutil.Date
+	}
+	reach := map[reachKey][]string{}
+	types, teams, days := []string{}, []string{}, []pgtype.Date{}
+	for _, k := range keys {
+		rk := reachKey{k.ZoneType, dateOf(k.WorkDate)}
+		list, cached := reach[rk]
+		if !cached {
+			if list, err = s.approveReach(ctx, q, personnelID, rk.zoneType, rk.day); err != nil {
+				return nil, nil, nil, err
+			}
+			reach[rk] = list
+		}
+		if slices.Contains(list, k.TeamCode) {
+			types, teams, days = append(types, string(k.ZoneType)), append(teams, k.TeamCode), append(days, k.WorkDate)
+		}
+	}
+	return types, teams, days, nil
 }
 
 // ZoneRef is a zone as the progress screen lists it.

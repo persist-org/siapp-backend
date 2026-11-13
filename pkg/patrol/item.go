@@ -21,6 +21,9 @@ const (
 // DefaultRadiusMeters is the geofence radius of a zone whose point is sent without one.
 const DefaultRadiusMeters = 50
 
+// MaxRadiusMeters is the largest geofence radius of a zone.
+const MaxRadiusMeters = 5000
+
 // Zone is a patrol route zone or a guard post, with its active checklist.
 //
 // ⚠ There is no field for the QR secret on purpose: nothing that serializes a Zone can leak it.

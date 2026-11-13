@@ -55,6 +55,29 @@ func (q *Queries) CloseZoneCheckin(ctx context.Context, arg CloseZoneCheckinPara
 	return i, err
 }
 
+const closeZoneCheckinsOfZone = `-- name: CloseZoneCheckinsOfZone :execrows
+UPDATE zone_checkins SET check_out_at = GREATEST($1::timestamptz, check_in_at), updated_at = $1,
+    check_out_lat = check_in_lat, check_out_lng = check_in_lng
+WHERE zone_id = $2 AND check_out_at IS NULL
+`
+
+type CloseZoneCheckinsOfZoneParams struct {
+	At     pgtype.Timestamptz
+	ZoneID int64
+}
+
+// Everyone still checked in to a zone that goes away: nothing else would let them out, and one
+// open check-in blocks a check-in anywhere.
+// The check-out position is the check-in's own (the last place the guard was seen): the table wants
+// one whenever there is a check-out time.
+func (q *Queries) CloseZoneCheckinsOfZone(ctx context.Context, arg CloseZoneCheckinsOfZoneParams) (int64, error) {
+	result, err := q.db.Exec(ctx, closeZoneCheckinsOfZone, arg.At, arg.ZoneID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const countZoneTracking = `-- name: CountZoneTracking :one
 SELECT count(*) FROM zone_checkins c
 WHERE c.zone_id = $1 AND c.check_in_at >= $2 AND c.check_in_at < $3

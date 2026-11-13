@@ -383,3 +383,48 @@ func TestPatrolZoneCheckInOut(t *testing.T) {
 		require.Equal(t, 1, countOf(t, f, "SELECT count(*) FROM zone_checkins WHERE check_out_at IS NULL"))
 	})
 }
+
+// One open check-in blocks a check-in anywhere, so a guard must always be able to get out of it.
+func TestPatrolCheckOutIsAlwaysPossible(t *testing.T) {
+	f := newFlow(t)
+
+	t.Run("deleting a zone closes the check-ins in it, and the guard can check in elsewhere", func(t *testing.T) {
+		z := f.fencedZone(nil, nil)
+		other := f.fencedZone(nil, nil)
+		code, _, raw := f.presence(f.personTok, z, "check-in", zoneLat)
+		require.Equal(t, http.StatusCreated, code, string(raw))
+
+		code, _, raw = f.zoneCall(http.MethodDelete, zonePath(z.ID), f.adminTok, nil)
+		require.Less(t, code, 300, string(raw))
+		require.Zero(t, countOf(t, f, "SELECT count(*) FROM zone_checkins WHERE zone_id = $1 AND check_out_at IS NULL", z.ID))
+
+		code, _, raw = f.presence(f.personTok, other, "check-in", zoneLat)
+		require.Equal(t, http.StatusCreated, code, "ZONE_ALREADY_CHECKED_IN would mean the guard is stuck: "+string(raw))
+		code, _, raw = f.presence(f.personTok, other, "check-out", zoneLat)
+		require.Equal(t, http.StatusOK, code, string(raw))
+	})
+
+	t.Run("a guard who left the regu while checked in can still check out", func(t *testing.T) {
+		z := f.fencedZone(nil, nil)
+		code, _, raw := f.presence(f.personTok, z, "check-in", zoneLat)
+		require.Equal(t, http.StatusCreated, code, string(raw))
+		f.exec("UPDATE team_members SET start_date = current_date - 5, end_date = current_date - 1 WHERE personnel_id = $1 AND team_code = '1K-IBMI-S1'", f.person)
+
+		code, _, raw = f.presence(f.personTok, z, "check-out", zoneLat)
+		require.Equal(t, http.StatusOK, code, "the membership is not asked of a check-out: "+string(raw))
+	})
+
+	t.Run("a check-out still needs the QR and the position", func(t *testing.T) {
+		f.exec("UPDATE team_members SET end_date = NULL WHERE personnel_id = $1 AND team_code = '1K-IBMI-S1'", f.person)
+		z := f.fencedZone(nil, nil)
+		code, _, raw := f.presence(f.personTok, z, "check-in", zoneLat)
+		require.Equal(t, http.StatusCreated, code, string(raw))
+
+		code, _, raw = f.presence(f.personTok, z, "check-out", zoneLat+1)
+		reasonIs(t, code, raw, http.StatusUnprocessableEntity, "ZONE_OUTSIDE_RADIUS")
+		bad := z
+		bad.payload = "PERSIST-ZONE:1:1:1:wrong"
+		code, _, raw = f.presence(f.personTok, bad, "check-out", zoneLat)
+		reasonIs(t, code, raw, http.StatusUnprocessableEntity, "ZONE_QR_INVALID")
+	})
+}
