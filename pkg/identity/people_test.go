@@ -78,25 +78,32 @@ func TestEnsureInParallelCreatesOneRow(t *testing.T) {
 	people := e.people()
 
 	const callers = 8
-	ids := make(chan int64, callers)
-	errs := make(chan error, callers)
+	// One channel of (id, err) pairs: two channels read apart would pair one caller's id with
+	// another caller's error, and a failure would hide its own cause.
+	type result struct {
+		id  int64
+		err error
+	}
+	results := make(chan result, callers)
 	var start sync.WaitGroup
 	start.Add(1)
 	for range callers {
 		go func() {
 			start.Wait()
 			id, err := people.Ensure(t.Context(), satu, personeltest.NIKAnggota1Satu)
-			ids <- id
-			errs <- err
+			results <- result{id, err}
 		}()
 	}
 	start.Done()
 
-	first := <-ids
-	require.NoError(t, <-errs)
-	for range callers - 1 {
-		require.Equal(t, first, <-ids)
-		require.NoError(t, <-errs)
+	var first int64
+	for i := range callers {
+		r := <-results
+		require.NoError(t, r.err)
+		if i == 0 {
+			first = r.id
+		}
+		require.Equal(t, first, r.id)
 	}
 	require.Equal(t, 1, countRows(t, satu, "personnels"))
 }

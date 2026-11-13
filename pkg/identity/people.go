@@ -94,5 +94,22 @@ func (p *People) Ensure(ctx context.Context, organizationID int64, nik string) (
 		id = row.ID
 		return err
 	})
-	return id, err
+	if err == nil || !database.IsUniqueViolation(err) {
+		return id, err
+	}
+	// ⚠ ON CONFLICT only absorbs a conflict on its own key, (organization, Personalia user id). Two
+	// inserts of the same new person at the very same moment can still collide on the other unique
+	// index, (organization, nik), and the loser gets a unique violation instead of the update. The
+	// winner has committed the row by then, so it is read back.
+	if err := database.WithTenant(ctx, p.pool, organizationID, func(q *db.Queries) error {
+		row, ok, err := p.repo.personnelByNIK(ctx, q, nik)
+		id, found = row.ID, ok
+		return err
+	}); err != nil {
+		return 0, err
+	}
+	if !found {
+		return 0, fmt.Errorf("personnel %s: unique violation, then not found", nik)
+	}
+	return id, nil
 }
