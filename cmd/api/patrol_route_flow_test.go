@@ -217,6 +217,9 @@ func TestPatrolRouteLifecycle(t *testing.T) {
 		r := routeOf(t, code, raw, http.StatusOK)
 		require.Equal(t, "ENDED", r.Status)
 		requireSquare(t, r)
+		// The app may send nanoseconds the database rounded away: still the same end.
+		code, raw = f.end(f.personTok, id, endedAt.Add(700*time.Nanosecond))
+		require.Equal(t, "ENDED", routeOf(t, code, raw, http.StatusOK).Status)
 
 		code, raw = f.end(f.personTok, id, endedAt.Add(time.Minute))
 		reasonIs(t, code, raw, http.StatusConflict, "PATROL_NOT_ACTIVE")
@@ -400,6 +403,17 @@ func TestPatrolRoutePoints(t *testing.T) {
 
 		got := f.mustPoints(f.personTok, r.ID, pts[:200]...)
 		require.Equal(t, 200, got.Accepted)
+	})
+
+	t.Run("a point with an absurd accuracy is stored capped, and does not fail its batch", func(t *testing.T) {
+		// numeric(8,2) holds less than a million: an uncapped value was a 500 on every retry.
+		wild := rp(600, now, 0, 0)
+		wild["accuracy_meters"] = 5_000_000
+		got := f.mustPoints(f.personTok, r.ID, wild, rp(601, now, 0, 1))
+		require.Equal(t, 2, got.Accepted)
+		var acc float64
+		f.query([]any{&acc}, "SELECT accuracy_meters::float8 FROM patrol_route_points WHERE patrol_id = $1 AND seq = 600", r.ID)
+		require.InDelta(t, 100000, acc, 0.001)
 	})
 
 	t.Run("the batch is checked", func(t *testing.T) {

@@ -5305,6 +5305,7 @@ components:
           type: number
           format: double
           minimum: 0
+          maximum: 100000
         subject:
           type: string
           maxLength: 200
@@ -5348,6 +5349,7 @@ components:
           type: number
           format: double
           minimum: 0
+          maximum: 100000
     ZoneCheckIn:
       type: object
       required:
@@ -5429,6 +5431,7 @@ components:
           type: number
           format: double
           minimum: 0
+          maximum: 100000
         submitted_offline:
           type: boolean
           default: false
@@ -5461,6 +5464,7 @@ components:
           type: number
           format: double
           minimum: 0
+          description: Di atas 100000 disimpan sebagai 100000 (titik seperti itu tidak digambar).
     PatrolRoutePoints:
       type: object
       required:

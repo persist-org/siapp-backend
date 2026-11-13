@@ -27,7 +27,7 @@ type PresenceInput struct {
 	QRPayload      string   `json:"qr_payload" validate:"required,max=200"`
 	Latitude       *float64 `json:"latitude" validate:"required,gte=-90,lte=90"`
 	Longitude      *float64 `json:"longitude" validate:"required,gte=-180,lte=180"`
-	AccuracyMeters *float64 `json:"accuracy_meters" validate:"required,gte=0"`
+	AccuracyMeters *float64 `json:"accuracy_meters" validate:"required,gte=0,lte=100000"`
 }
 
 // CheckIn is a guard's stay in a zone, from check-in to check-out.

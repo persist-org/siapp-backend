@@ -522,3 +522,15 @@ func TestPatrolScanMinimumGap(t *testing.T) {
 		f.mustScan(f.personTok, other, scanBody(other))
 	})
 }
+
+// accuracy_meters is numeric(8,2) in the database: a value it cannot hold is a validation error, not
+// a 500.
+func TestPatrolScanAccuracyIsBounded(t *testing.T) {
+	f := newFlow(t)
+	z := f.fencedZone(nil, nil)
+	b := scanBody(z)
+	b["accuracy_meters"] = 2_000_000
+	code, _, raw := f.scan(f.personTok, z.ID, b)
+	require.Equal(t, http.StatusUnprocessableEntity, code, string(raw))
+	require.Contains(t, string(raw), "accuracy_meters")
+}

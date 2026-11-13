@@ -9471,6 +9471,7 @@ type PatrolRoutePathPoint struct {
 
 // PatrolRoutePointInput defines model for PatrolRoutePointInput.
 type PatrolRoutePointInput struct {
+	// AccuracyMeters Di atas 100000 disimpan sebagai 100000 (titik seperti itu tidak digambar).
 	AccuracyMeters float64 `json:"accuracy_meters"`
 	Latitude       float64 `json:"latitude"`
 

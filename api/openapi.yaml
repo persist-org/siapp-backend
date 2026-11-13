@@ -2994,7 +2994,7 @@ components:
         qr_payload: { type: string, example: "PERSIST-ZONE:1:900101:42:abcdefghijklmnopqrstuv" }
         latitude: { type: number, format: double }
         longitude: { type: number, format: double }
-        accuracy_meters: { type: number, format: double, minimum: 0 }
+        accuracy_meters: { type: number, format: double, minimum: 0, maximum: 100000 }
         subject: { type: string, maxLength: 200 }
         notes: { type: string, nullable: true, maxLength: 2000 }
         answers: { type: array, maxItems: 100, items: { $ref: '#/components/schemas/PatrolScanAnswerInput' } }
@@ -3008,7 +3008,7 @@ components:
         qr_payload: { type: string }
         latitude: { type: number, format: double }
         longitude: { type: number, format: double }
-        accuracy_meters: { type: number, format: double, minimum: 0 }
+        accuracy_meters: { type: number, format: double, minimum: 0, maximum: 100000 }
     ZoneCheckIn:
       type: object
       required: [id, zone_id, personnel_id, team_code, check_in_at, check_in_latitude, check_in_longitude]
@@ -3035,7 +3035,7 @@ components:
         project_code: { type: string, example: 1K-IBMI-S }
         latitude: { type: number, format: double }
         longitude: { type: number, format: double }
-        accuracy_meters: { type: number, format: double, minimum: 0 }
+        accuracy_meters: { type: number, format: double, minimum: 0, maximum: 100000 }
         submitted_offline: { type: boolean, default: false }
     PatrolRoutePointInput:
       type: object
@@ -3045,7 +3045,7 @@ components:
         logged_at: { type: string, format: date-time, description: "Maksimal 5 menit di depan waktu server." }
         latitude: { type: number, format: double }
         longitude: { type: number, format: double }
-        accuracy_meters: { type: number, format: double, minimum: 0 }
+        accuracy_meters: { type: number, format: double, minimum: 0, description: "Di atas 100000 disimpan sebagai 100000 (titik seperti itu tidak digambar)." }
     PatrolRoutePoints:
       type: object
       required: [points]

@@ -25,6 +25,10 @@ import (
 // batch of /end).
 const MaxRoutePoints = 200
 
+// maxStoredAccuracy is the largest accuracy a point is stored with. The column is numeric(8,2), and a
+// phone with no fix may report anything: a larger value is stored as this one.
+const maxStoredAccuracy = 100000.0
+
 // maxPointFuture is how far ahead of the server's clock a point's time may be: a phone's clock is
 // never exact, but a point from the future is a broken clock.
 const maxPointFuture = 5 * time.Minute
@@ -45,7 +49,7 @@ type StartInput struct {
 	ProjectCode      string    `json:"project_code" validate:"required,notblank,max=100"`
 	Latitude         *float64  `json:"latitude" validate:"required,gte=-90,lte=90"`
 	Longitude        *float64  `json:"longitude" validate:"required,gte=-180,lte=180"`
-	AccuracyMeters   *float64  `json:"accuracy_meters" validate:"required,gte=0"`
+	AccuracyMeters   *float64  `json:"accuracy_meters" validate:"required,gte=0,lte=100000"`
 	SubmittedOffline bool      `json:"submitted_offline"`
 }
 
@@ -367,7 +371,10 @@ func (s *Service) checkPoints(points []PointInput, field string) (db.InsertRoute
 		out.LoggedAts = append(out.LoggedAts, ts(pt.LoggedAt.UTC()))
 		out.Lats = append(out.Lats, *pt.Latitude)
 		out.Lngs = append(out.Lngs, *pt.Longitude)
-		out.Accs = append(out.Accs, *pt.AccuracyMeters)
+		// ⚠ Capped, not refused: one bad fix must not make a whole batch fail, or the app would retry it
+		// for ever and no later point would arrive. A point this inaccurate is dropped from the line
+		// anyway (maxPointAccuracy).
+		out.Accs = append(out.Accs, min(*pt.AccuracyMeters, maxStoredAccuracy))
 	}
 	return out, nil
 }
@@ -422,8 +429,8 @@ func (s *Service) AddPoints(ctx context.Context, p auth.Principal, id int64, in 
 // ---------- end ----------
 
 // End finishes the caller's patrol: the last points, the path, the length, the count of scans, and
-// the status ENDED. It is idempotent: a patrol that has ended already (by the guard or by
-// patrol:auto-end) is returned as it is stored.
+// the status ENDED. A retry of the same end (the same ended_at) returns the patrol as stored; any other
+// end of a patrol that is over, by the guard or by patrol:auto-end, is PATROL_NOT_ACTIVE.
 func (s *Service) End(ctx context.Context, p auth.Principal, id int64, in EndInput) (RouteDetail, error) {
 	var out RouteDetail
 	err := database.WithTenant(ctx, s.pool, p.OrganizationID, func(q *db.Queries) error {
@@ -435,7 +442,7 @@ func (s *Service) End(ctx context.Context, p auth.Principal, id int64, in EndInp
 			// Only a retry of the very same end (the app lost the response) gets the stored patrol
 			// back. Any other end of a patrol that is over is an error: the guard must not think a
 			// second "end" changed anything.
-			if !route.EndedAt.Valid || !route.EndedAt.Time.Equal(in.EndedAt.UTC().Truncate(time.Microsecond)) {
+			if !route.EndedAt.Valid || !sameInstant(route.EndedAt.Time, in.EndedAt) {
 				return ErrPatrolNotActive
 			}
 		}
@@ -466,6 +473,14 @@ func (s *Service) End(ctx context.Context, p auth.Principal, id int64, in EndInp
 	return out, err
 }
 
+// sameInstant compares a stored time with one a client sent. PostgreSQL keeps microseconds and rounds
+// what it gets, so a time sent with nanoseconds is the same instant when it is less than a
+// microsecond away; truncating would refuse half of them.
+func sameInstant(stored, sent time.Time) bool {
+	d := stored.Sub(sent)
+	return d > -time.Microsecond && d < time.Microsecond
+}
+
 // finish ends an ACTIVE patrol: it builds the path from the points received, counts the scans that
 // joined it, and stores both with the new status. The caller holds the patrol's lock, so no point
 // and no scan arrives between the reading and the writing.
@@ -493,15 +508,24 @@ func (s *Service) finish(ctx context.Context, q *db.Queries, route db.PatrolRout
 	return row, nil
 }
 
-// pointsAndScans reads what a path is built from: the raw points in order, and the scans of the patrol.
-func (s *Service) pointsAndScans(ctx context.Context, q *db.Queries, id int64) ([]RoutePoint, []db.ListRouteScansRow, error) {
+// routePoints reads the raw points of a patrol, in the order of their seq.
+func (s *Service) routePoints(ctx context.Context, q *db.Queries, id int64) ([]RoutePoint, error) {
 	rows, err := q.ListRoutePoints(ctx, id)
 	if err != nil {
-		return nil, nil, fmt.Errorf("list points: %w", err)
+		return nil, fmt.Errorf("list points: %w", err)
 	}
 	raw := make([]RoutePoint, 0, len(rows))
 	for _, r := range rows {
 		raw = append(raw, RoutePoint{Seq: r.Seq, At: r.LoggedAt.Time, Lat: r.Latitude, Lng: r.Longitude, Accuracy: r.AccuracyMeters})
+	}
+	return raw, nil
+}
+
+// pointsAndScans reads what a path is built from: the raw points in order, and the scans of the patrol.
+func (s *Service) pointsAndScans(ctx context.Context, q *db.Queries, id int64) ([]RoutePoint, []db.ListRouteScansRow, error) {
+	raw, err := s.routePoints(ctx, q, id)
+	if err != nil {
+		return nil, nil, err
 	}
 	scans, err := q.ListRouteScans(ctx, pgtype.Int8{Int64: id, Valid: true})
 	if err != nil {
@@ -573,7 +597,7 @@ func (s *Service) detail(ctx context.Context, q *db.Queries, row db.PatrolRoute)
 		}
 		return out, nil
 	}
-	raw, _, err := s.pointsAndScans(ctx, q, row.ID)
+	raw, err := s.routePoints(ctx, q, row.ID)
 	if err != nil {
 		return RouteDetail{}, err
 	}

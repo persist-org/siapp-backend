@@ -23,6 +23,33 @@ import (
 	"siapp/pkg/platform/timeutil"
 )
 
+// checkScanInterval refuses a second scan of the zone by the person too close to another one, on
+// either side of its own moment: an offline scan can arrive after a later one.
+//
+// ⚠ The patrol interval (DL-48) is project.patrol_interval_minutes. Even a project with none refuses
+// a scan within scanMinGap of another: a double tap, or a retry with a new local_id, must not make two
+// scans of one visit. The lock makes two scans that arrive together take turns, so both cannot pass
+// the check before either is stored.
+func (s *Service) checkScanInterval(ctx context.Context, q *db.Queries, p auth.Principal, zoneID int64, project db.Project, at time.Time) error {
+	if err := q.LockPatrolKey(ctx, fmt.Sprintf("patrol:scan:%d:%d:%d", p.OrganizationID, p.PersonnelID, zoneID)); err != nil {
+		return fmt.Errorf("lock scan: %w", err)
+	}
+	interval := scanMinGap
+	if project.PatrolIntervalMinutes.Valid {
+		interval = max(interval, time.Duration(project.PatrolIntervalMinutes.Int32)*time.Minute)
+	}
+	tooSoon, err := q.HasScanBetween(ctx, db.HasScanBetweenParams{
+		PersonnelID: p.PersonnelID, ZoneID: zoneID, After: ts(at.Add(-interval)), Before: ts(at.Add(interval)),
+	})
+	if err != nil {
+		return fmt.Errorf("check patrol interval: %w", err)
+	}
+	if tooSoon {
+		return ErrIntervalNotElapsed.WithDetails(map[string]any{"interval_seconds": int(interval.Seconds())})
+	}
+	return nil
+}
+
 // scanMinGap is the least time between two scans of one zone by one person, whatever the project's
 // patrol_interval_minutes says (or does not say).
 const scanMinGap = 30 * time.Second
@@ -88,7 +115,7 @@ type ScanInput struct {
 	QRPayload        string        `json:"qr_payload" validate:"required,max=200"`
 	Latitude         *float64      `json:"latitude" validate:"required,gte=-90,lte=90"`
 	Longitude        *float64      `json:"longitude" validate:"required,gte=-180,lte=180"`
-	AccuracyMeters   *float64      `json:"accuracy_meters" validate:"required,gte=0"`
+	AccuracyMeters   *float64      `json:"accuracy_meters" validate:"required,gte=0,lte=100000"`
 	Subject          string        `json:"subject" validate:"required,notblank,max=200"`
 	Notes            *string       `json:"notes" validate:"omitempty,max=2000"`
 	Answers          []AnswerInput `json:"answers" validate:"omitempty,max=100,dive"`
@@ -427,29 +454,8 @@ func (s *Service) scan(ctx context.Context, p auth.Principal, zoneID int64, in S
 			return err
 		}
 
-		// ⚠ The patrol interval (DL-48): a second scan of the same zone by the same person within
-		// project.patrol_interval_minutes is refused. The lock makes two scans that arrive together
-		// take turns, so both cannot pass the check before either is stored.
-		// ⚠ Even a project with no interval refuses a second scan within scanMinGap: a double tap or
-		// a retry with a new local_id must not make two scans of one visit.
-		{
-			if err := q.LockPatrolKey(ctx, fmt.Sprintf("patrol:scan:%d:%d:%d", p.OrganizationID, p.PersonnelID, zoneID)); err != nil {
-				return fmt.Errorf("lock scan: %w", err)
-			}
-			interval := scanMinGap
-			if project.PatrolIntervalMinutes.Valid {
-				interval = max(interval, time.Duration(project.PatrolIntervalMinutes.Int32)*time.Minute)
-			}
-			// Either side of the scan's own moment: an offline scan can arrive after a later one.
-			tooSoon, err := q.HasScanBetween(ctx, db.HasScanBetweenParams{
-				PersonnelID: p.PersonnelID, ZoneID: zoneID, After: ts(at.Add(-interval)), Before: ts(at.Add(interval)),
-			})
-			if err != nil {
-				return fmt.Errorf("check patrol interval: %w", err)
-			}
-			if tooSoon {
-				return ErrIntervalNotElapsed.WithDetails(map[string]any{"interval_seconds": int(interval.Seconds())})
-			}
+		if err := s.checkScanInterval(ctx, q, p, zoneID, project, at); err != nil {
+			return err
 		}
 
 		pl, err := s.place(ctx, q, p, v, at)
