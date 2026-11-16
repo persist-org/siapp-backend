@@ -838,21 +838,72 @@ components:
           description: Diabaikan. Organisasi ditentukan oleh Personalia (perusahaan tempat orang itu bekerja), bukan oleh
             request.
           example: OS1
+    AuthUser:
+      type: object
+      description: |
+        Orang yang sedang masuk, seperti yang dikirim `/auth/login`, `/auth/refresh`, dan `/auth/me`. Hanya field di bawah
+        yang dikirim; data lain milik Personalia tidak pernah muncul di sini.
+      required:
+      - id
+      - organization_id
+      - first_name
+      - is_active
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: id personil.
+        organization_id:
+          type: integer
+          format: int64
+        first_name:
+          type: string
+          example: Andi Budi
+          description: Nama lengkap dari Personalia (satu nama utuh, tidak dipecah menjadi first/middle/last).
+        is_active:
+          type: boolean
+          description: Selalu true pada login dan refresh. Di `/auth/me` bisa false bila token dibuat sebelum orang itu
+            dinonaktifkan.
+        nik:
+          type: string
+          example: '************5678'
+          description: NIK yang sudah disamarkan (hanya 4 karakter terakhir terlihat). Tidak dikirim bila orang itu tidak punya NIK.
+        email:
+          type: string
+          example: user01@contoh.com
+          description: Tidak dikirim bila kosong.
+        phone:
+          type: string
+          example: 08xxxxxxxxxx
+          description: Tidak dikirim bila kosong.
+        profile_photo:
+          type: string
+          description: URL foto profil dari Personalia. Tidak dikirim bila kosong.
     LoginResult:
       type: object
+      required:
+      - access_token
+      - refresh_token
+      - token_type
+      - expires_in
+      - user
       properties:
         access_token:
           type: string
+          description: 'JWT sesi SiAPP. Kirim sebagai `Authorization: Bearer <token>`.'
         refresh_token:
           type: string
+          description: Dipakai di `POST /auth/refresh`; berotasi dan hanya berlaku sekali.
         token_type:
           type: string
-          example: Bearer
+          enum:
+          - Bearer
         expires_in:
           type: integer
-          example: 3600
+          example: 900
+          description: Umur access token dalam detik.
         user:
-          $ref: '#/components/schemas/Personnel'
+          $ref: '#/components/schemas/AuthUser'
     RefreshRequest:
       type: object
       required:
@@ -862,27 +913,34 @@ components:
           type: string
     MeResult:
       type: object
+      description: Hanya field di bawah yang dikirim. `web_role` tidak ada untuk petugas lapangan; `team_role` tidak pernah
+        dikirim (peran per regu ada di `memberships[].role`).
+      required:
+      - user
+      - organization
+      - roles
+      - memberships
+      - permissions
       properties:
         user:
-          $ref: '#/components/schemas/Personnel'
+          $ref: '#/components/schemas/AuthUser'
         roles:
           type: array
+          description: Peran web orang ini. `[]` untuk petugas lapangan; satu isi (`ORG_ADMIN` atau `REGION_ADMIN`) untuk admin.
           items:
             type: string
+            enum:
+            - ORG_ADMIN
+            - REGION_ADMIN
           example:
-          - OWNER
-          - PLATFORM
-        team_role:
-          type: string
-          enum:
-          - DANRU
-          - MEMBER
-          nullable: true
-          example: DANRU
+          - REGION_ADMIN
         organization:
           type: object
           description: Organisasi (tenant) orang ini. Satu organisasi untuk seluruh grup (KPI, IDS, PCD); PT orang itu hanya
             informasi tampilan (D17).
+          required:
+          - id
+          - name
           properties:
             id:
               type: integer
@@ -891,8 +949,9 @@ components:
               type: string
         web_role:
           type: object
-          nullable: true
-          description: Penugasan peran web (admin) milik SiAPP; null untuk petugas lapangan.
+          description: Penugasan peran web (admin) milik SiAPP. Field ini tidak dikirim sama sekali untuk petugas lapangan.
+          required:
+          - role
           properties:
             role:
               type: string
@@ -901,9 +960,8 @@ components:
               - REGION_ADMIN
             region_code:
               type: string
-              nullable: true
               example: OS1
-              description: Koordinator wilayah milik REGION_ADMIN; tidak ada (atau null) untuk ORG_ADMIN.
+              description: Koordinator wilayah milik REGION_ADMIN. Tidak dikirim untuk ORG_ADMIN.
         memberships:
           type: array
           description: Regu tempat orang ini bertugas hari ini (kosong bila tidak ada).
@@ -1959,6 +2017,13 @@ components:
     MeMembership:
       type: object
       description: Satu regu tempat orang ini bertugas hari ini (tanggal bisnis di zona waktu proyek regu itu).
+      required:
+      - team_code
+      - team_name
+      - project_code
+      - project_name
+      - role
+      - start_date
       properties:
         team_code:
           type: string
@@ -2562,118 +2627,6 @@ components:
           items:
             $ref: '#/components/schemas/PersonnelMembership'
           description: Regu personil hari ini di proyek yang juga proyek pemanggil (semua regunya bila melihat diri sendiri).
-    Personnel:
-      type: object
-      properties:
-        id:
-          type: integer
-          format: int64
-        organization_id:
-          type: integer
-          format: int64
-        nik:
-          type: string
-          example: 32xxxxxxxxxxxxxx
-          description: 16 digit, PII tinggi (mask + audit).
-        npwp:
-          type: string
-          nullable: true
-        first_name:
-          type: string
-          example: Andi
-        middle_name:
-          type: string
-          nullable: true
-        last_name:
-          type: string
-          nullable: true
-          example: Budi
-        position_id:
-          type: integer
-          format: int64
-        gender:
-          type: string
-          enum:
-          - M
-          - F
-        username:
-          type: string
-          example: username01
-        email:
-          type: string
-          nullable: true
-          example: user01@contoh.com
-        height_cm:
-          type: integer
-          nullable: true
-          minimum: 100
-          maximum: 230
-        weight_kg:
-          type: integer
-          nullable: true
-          minimum: 30
-          maximum: 200
-        birth_date:
-          type: string
-          format: date
-          nullable: true
-        birth_place:
-          type: string
-          nullable: true
-        phone:
-          type: string
-          nullable: true
-          example: 08xxxxxxxxxx
-        address:
-          type: string
-          nullable: true
-        province_id:
-          type: integer
-          format: int64
-          nullable: true
-        city_id:
-          type: integer
-          format: int64
-          nullable: true
-        postal_code:
-          type: string
-          nullable: true
-        site_unit:
-          type: string
-          nullable: true
-        qualification_id:
-          type: integer
-          format: int64
-        personnel_code:
-          type: string
-          nullable: true
-        description:
-          type: string
-          nullable: true
-        profile_photo:
-          type: string
-          nullable: true
-          format: uri
-        id_card_photo:
-          type: string
-          nullable: true
-          format: uri
-        contract_document:
-          type: string
-          nullable: true
-          format: uri
-        last_seen_at:
-          type: string
-          format: date-time
-          nullable: true
-        is_active:
-          type: boolean
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
     StakeholderType:
       type: object
       description: Tipe stakeholder darurat (Polisi, Rumah Sakit, Pemadam Kebakaran). `code` adalah identitasnya dan tidak
@@ -5995,6 +5948,12 @@ paths:
       responses:
         '200':
           description: OK
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                enum:
+                - no-store
           content:
             application/json:
               schema:
@@ -6034,6 +5993,12 @@ paths:
       responses:
         '200':
           description: OK
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                enum:
+                - no-store
           content:
             application/json:
               schema:
@@ -6053,7 +6018,12 @@ paths:
       operationId: getAuthMe
       tags:
       - Auth
-      summary: Profil + role per-regu
+      summary: Profil, peran web, regu hari ini, dan hak akses lapangan
+      description: |
+        - Admin web: `web_role` dan `roles` terisi; `memberships` dan `permissions` kosong bila ia tidak bertugas di regu.
+        - Petugas lapangan: `web_role` tidak ada, `roles` = `[]`.
+        - Token milik orang yang sudah tidak ada di cache Personalia dijawab 401 UNAUTHENTICATED.
+        - NIK selalu disamarkan; token perangkat tidak pernah dikirim.
       responses:
         '200':
           description: OK

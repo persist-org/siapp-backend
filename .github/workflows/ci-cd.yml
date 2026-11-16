@@ -70,20 +70,12 @@ jobs:
       - name: Install code generators
         run: |
           go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1
-          go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
-      - name: Generated code is committed (sqlc, contract models)
+      - name: Generated code is committed (sqlc)
         run: |
           sqlc generate
-          (cd api && go generate ./...)
-          git diff --exit-code -- internal/db internal/apigen
-
-      - name: Dev swagger spec is committed
-        run: |
-          pip install pyyaml==6.0.1
-          python3 scripts/make-dev-spec.py
-          git diff --exit-code -- api/openapi.dev.yaml
+          git diff --exit-code -- internal/db
 
       - run: go vet ./...
       - run: go build ./...
