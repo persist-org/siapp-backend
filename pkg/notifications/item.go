@@ -38,6 +38,9 @@ const (
 	TypeInstructionFeedback = db.NotificationTypeINSTRUCTIONFEEDBACK
 	TypeSwapAssigned        = db.NotificationTypeSWAPASSIGNED
 	TypePanicResolved       = db.NotificationTypePANICRESOLVED
+	// TypePatrolScheduleChanged tells a person that patrol schedules of theirs were made, changed or cancelled
+	// (Phase 10.11); data.change says which.
+	TypePatrolScheduleChanged = db.NotificationTypePATROLSCHEDULECHANGED
 )
 
 // Priorities. HIGH is for panic only.
@@ -55,6 +58,7 @@ func AllTypes() []Type {
 		TypeTeamChanged, TypePositionChanged, TypePatrolSubmitted, TypePatrolApproved,
 		TypeGuardSubmitted, TypeGuardApproved, TypePanicTriggered, TypeOfflineSubmissionSent,
 		TypeLeaveDecided, TypeInstructionFeedback, TypeSwapAssigned, TypePanicResolved, TypeLeaveCancelled,
+		TypePatrolScheduleChanged,
 	}
 }
 
@@ -98,6 +102,9 @@ type Vars struct {
 	Declined bool
 	// Note is what the decider wrote, shown with a decline.
 	Note string
+	// Change is what happened to patrol schedules (CREATED, UPDATED or CANCELLED) and Count how many of them.
+	Change string
+	Count  int
 }
 
 // Entity is the record a notification is about, so the app can open it.

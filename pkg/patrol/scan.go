@@ -86,6 +86,9 @@ const (
 	// NoticeDecided tells an author that their scans were approved or declined. One notice per
 	// author per request, however many of their scans the request decided.
 	NoticeDecided
+	// NoticeScheduleChanged tells a person that patrol schedules of theirs were made, changed or cancelled: one
+	// notice per person per request, however many schedules the request touched.
+	NoticeScheduleChanged
 )
 
 // Notice is something to tell people about. cmd/api turns it into a notification.
@@ -110,6 +113,12 @@ type Notice struct {
 	Declined     bool
 	DecisionNote string
 	ScanIDs      []int64
+
+	// For NoticeScheduleChanged (Subject is the zone's name): what happened (ScheduleChangeCreated, ...), the
+	// schedules it covers, and their project.
+	ProjectCode    string
+	ScheduleChange string
+	ScheduleIDs    []string
 }
 
 // Notifier sends notices. cmd/api adapts notifications.Service to it.

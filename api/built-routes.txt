@@ -7,6 +7,7 @@ DELETE /api/v1/admin/clients/{code}
 DELETE /api/v1/admin/instruction-categories/{id}
 DELETE /api/v1/admin/letterheads/{id}
 DELETE /api/v1/admin/panic-types/{id}
+DELETE /api/v1/admin/patrol-schedules/{id}
 DELETE /api/v1/admin/personnel/{personnel_id}/device-binding
 DELETE /api/v1/admin/projects/{code}
 DELETE /api/v1/admin/regions/{code}
@@ -39,6 +40,7 @@ GET /api/v1/admin/letterheads
 GET /api/v1/admin/letterheads/{id}
 GET /api/v1/admin/panic-types
 GET /api/v1/admin/panic-types/{id}
+GET /api/v1/admin/patrol-schedules
 GET /api/v1/admin/permission-categories
 GET /api/v1/admin/permission-categories/{code}
 GET /api/v1/admin/permissions
@@ -83,6 +85,8 @@ GET /api/v1/notifications
 GET /api/v1/notifications/count
 GET /api/v1/notifications/{id}
 GET /api/v1/panic-types
+GET /api/v1/patrol-schedules
+GET /api/v1/patrol-schedules/{id}
 GET /api/v1/patrol/pending-approvals
 GET /api/v1/patrols
 GET /api/v1/patrols/active
@@ -122,6 +126,7 @@ PATCH /api/v1/admin/clients/{code}
 PATCH /api/v1/admin/instruction-categories/{id}
 PATCH /api/v1/admin/letterheads/{id}
 PATCH /api/v1/admin/panic-types/{id}
+PATCH /api/v1/admin/patrol-schedules/{id}
 PATCH /api/v1/admin/permission-categories/{code}
 PATCH /api/v1/admin/projects/{code}
 PATCH /api/v1/admin/regions/{code}
@@ -141,6 +146,7 @@ POST /api/v1/admin/clients
 POST /api/v1/admin/instruction-categories
 POST /api/v1/admin/letterheads
 POST /api/v1/admin/panic-types
+POST /api/v1/admin/patrol-schedules
 POST /api/v1/admin/permission-categories
 POST /api/v1/admin/permissions/{id}/approve
 POST /api/v1/admin/permissions/{id}/decline

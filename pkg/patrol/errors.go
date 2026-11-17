@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"siapp/pkg/platform/apperr"
+	"siapp/pkg/platform/timeutil"
 )
 
 // Module reasons (details.reason). A reason that has shipped is never renamed. The plan's
@@ -199,3 +200,42 @@ var (
 	errAttachmentRequired = apperr.New(http.StatusUnprocessableEntity, apperr.CodeUnprocessable,
 		ReasonAttachmentRequired, "Foto atau catatan wajib dilampirkan.")
 )
+
+// Reasons of Phase 10.11 (patrol schedules).
+const (
+	ReasonSchedulePersonNotAllowed = "SCHEDULE_PERSON_NOT_ALLOWED"
+	ReasonScheduleOverlap          = "PATROL_SCHEDULE_OVERLAP"
+	ReasonScheduleLocked           = "PATROL_SCHEDULE_LOCKED"
+	ReasonScheduleTooMany          = "PATROL_SCHEDULE_TOO_MANY"
+	ReasonScheduleNotFound         = "PATROL_SCHEDULE_NOT_FOUND"
+)
+
+// ErrScheduleNotFound is returned for a schedule that does not exist, belongs to another organization (row-level
+// security makes that look the same), is another person's outside the caller's reach, or whose id is not a uuid.
+var ErrScheduleNotFound = apperr.New(http.StatusNotFound, apperr.CodeNotFound,
+	ReasonScheduleNotFound, "Jadwal patroli tidak ditemukan.")
+
+// ErrScheduleOverlap is returned when a person would have two live schedules at once. details.conflicts lists
+// every overlap: the person, the window, and the schedule already there (absent when it is another slot of the
+// same request).
+var ErrScheduleOverlap = apperr.New(http.StatusConflict, apperr.CodeConflict,
+	ReasonScheduleOverlap, "Jadwal bertabrakan dengan jadwal patroli lain milik orang yang sama.")
+
+// ErrScheduleLocked is returned for a change to a schedule that is no longer SCHEDULED: it was cancelled, its
+// window is over, or a patrol has been started from it.
+var ErrScheduleLocked = apperr.New(http.StatusConflict, apperr.CodeConflict,
+	ReasonScheduleLocked, "Jadwal ini tidak bisa diubah lagi.")
+
+// ErrScheduleTooMany is returned for a request of more than maxScheduleRows rows (people x slots).
+var ErrScheduleTooMany = apperr.New(http.StatusUnprocessableEntity, apperr.CodeUnprocessable,
+	ReasonScheduleTooMany, "Terlalu banyak jadwal dalam satu permintaan.")
+
+// errSchedulePersonNotAllowed is a 422 naming the person who may not patrol the zone on the day.
+func errSchedulePersonNotAllowed(personnelID int64, name string, day timeutil.Date) *apperr.Error {
+	msg := "Orang ini tidak boleh berpatroli di zona ini pada tanggal tersebut."
+	if name != "" {
+		msg = name + " tidak boleh berpatroli di zona ini pada " + day.String() + "."
+	}
+	return apperr.New(http.StatusUnprocessableEntity, apperr.CodeUnprocessable, ReasonSchedulePersonNotAllowed, msg).
+		WithDetails(map[string]any{"personnel_id": personnelID, "work_date": day.String()})
+}

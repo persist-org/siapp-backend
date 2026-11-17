@@ -108,11 +108,32 @@ func Render(t Type, v Vars) (title, body string) {
 	case TypeLeaveCancelled:
 		return "Pengajuan izin dibatalkan",
 			actor + " membatalkan pengajuan izin" + onDate(" untuk ", date) + "."
+	case TypePatrolScheduleChanged:
+		return "Jadwal " + strings.ToLower(l.patrol), scheduleChangedBody(l, v)
 	case TypeSwapAssigned:
 		return "Tukar jaga",
 			"Anda mendapat tukar jaga" + by(" dengan ", v.ActorName) + onDate(" pada ", date) + "."
 	}
 	return "Notifikasi baru", "Ada pembaruan untuk Anda."
+}
+
+// scheduleChangedBody says what happened to how many schedules, and for which zone when the notice is about one.
+func scheduleChangedBody(l labels, v Vars) string {
+	n := max(v.Count, 1)
+	what := "jadwal " + strings.ToLower(l.patrol)
+	if n > 1 {
+		what = strconv.Itoa(n) + " " + what
+	} else {
+		what = "satu " + what
+	}
+	zone := with(" di ", v.Subject)
+	switch v.Change {
+	case "CANCELLED":
+		return "Anda tidak lagi dijadwalkan: " + what + zone + " dibatalkan" + by(" oleh ", v.ActorName) + "."
+	case "UPDATED":
+		return "Anda mendapat perubahan " + what + zone + by(" dari ", v.ActorName) + "."
+	}
+	return "Anda dijadwalkan: " + what + zone + by(" oleh ", v.ActorName) + "."
 }
 
 // positionChangedBody is the one text that has two causes: a new team role in a regu (organization,

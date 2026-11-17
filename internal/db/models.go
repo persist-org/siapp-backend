@@ -596,6 +596,7 @@ const (
 	NotificationTypeSWAPASSIGNED          NotificationType = "SWAP_ASSIGNED"
 	NotificationTypePANICRESOLVED         NotificationType = "PANIC_RESOLVED"
 	NotificationTypeLEAVECANCELLED        NotificationType = "LEAVE_CANCELLED"
+	NotificationTypePATROLSCHEDULECHANGED NotificationType = "PATROL_SCHEDULE_CHANGED"
 )
 
 func (e *NotificationType) Scan(src interface{}) error {
@@ -1725,6 +1726,23 @@ type PatrolScanAction struct {
 	Snapshot        json.RawMessage
 	CreatedAt       pgtype.Timestamptz
 	DeviceCondition json.RawMessage
+}
+
+type PatrolSchedule struct {
+	ID             pgtype.UUID
+	OrganizationID int64
+	ProjectCode    string
+	ZoneID         int64
+	PersonnelID    int64
+	StartsAt       pgtype.Timestamptz
+	EndsAt         pgtype.Timestamptz
+	WorkDate       pgtype.Date
+	Notes          pgtype.Text
+	CreatedByID    int64
+	CancelledAt    pgtype.Timestamptz
+	CancelledByID  pgtype.Int8
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
 }
 
 type PatrolZone struct {

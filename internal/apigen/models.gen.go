@@ -994,6 +994,7 @@ const (
 	PANICRESOLVED         NotificationType = "PANIC_RESOLVED"
 	PANICTRIGGERED        NotificationType = "PANIC_TRIGGERED"
 	PATROLAPPROVED        NotificationType = "PATROL_APPROVED"
+	PATROLSCHEDULECHANGED NotificationType = "PATROL_SCHEDULE_CHANGED"
 	PATROLSUBMITTED       NotificationType = "PATROL_SUBMITTED"
 	POSITIONCHANGED       NotificationType = "POSITION_CHANGED"
 	REPORTSUBMITTED       NotificationType = "REPORT_SUBMITTED"
@@ -1027,6 +1028,8 @@ func (e NotificationType) Valid() bool {
 	case PANICTRIGGERED:
 		return true
 	case PATROLAPPROVED:
+		return true
+	case PATROLSCHEDULECHANGED:
 		return true
 	case PATROLSUBMITTED:
 		return true
@@ -1475,6 +1478,51 @@ func (e PatrolScanPhotoCaptureSource) Valid() bool {
 	case PatrolScanPhotoCaptureSourceGALLERY:
 		return true
 	case PatrolScanPhotoCaptureSourceUNKNOWN:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatrolScheduleZoneType.
+const (
+	PatrolScheduleZoneTypeGUARD  PatrolScheduleZoneType = "GUARD"
+	PatrolScheduleZoneTypePATROL PatrolScheduleZoneType = "PATROL"
+)
+
+// Valid indicates whether the value is a known member of the PatrolScheduleZoneType enum.
+func (e PatrolScheduleZoneType) Valid() bool {
+	switch e {
+	case PatrolScheduleZoneTypeGUARD:
+		return true
+	case PatrolScheduleZoneTypePATROL:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatrolScheduleStatus.
+const (
+	PatrolScheduleStatusCANCELLED  PatrolScheduleStatus = "CANCELLED"
+	PatrolScheduleStatusCOMPLETED  PatrolScheduleStatus = "COMPLETED"
+	PatrolScheduleStatusINPROGRESS PatrolScheduleStatus = "IN_PROGRESS"
+	PatrolScheduleStatusMISSED     PatrolScheduleStatus = "MISSED"
+	PatrolScheduleStatusSCHEDULED  PatrolScheduleStatus = "SCHEDULED"
+)
+
+// Valid indicates whether the value is a known member of the PatrolScheduleStatus enum.
+func (e PatrolScheduleStatus) Valid() bool {
+	switch e {
+	case PatrolScheduleStatusCANCELLED:
+		return true
+	case PatrolScheduleStatusCOMPLETED:
+		return true
+	case PatrolScheduleStatusINPROGRESS:
+		return true
+	case PatrolScheduleStatusMISSED:
+		return true
+	case PatrolScheduleStatusSCHEDULED:
 		return true
 	default:
 		return false
@@ -3260,6 +3308,51 @@ const (
 func (e PostAdminPanicsByIdResolve200JSONResponseBodySuccess) Valid() bool {
 	switch e {
 	case PostAdminPanicsByIdResolve200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetAdminPatrolSchedules200JSONResponseBodySuccess.
+const (
+	GetAdminPatrolSchedules200JSONResponseBodySuccessTrue GetAdminPatrolSchedules200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetAdminPatrolSchedules200JSONResponseBodySuccess enum.
+func (e GetAdminPatrolSchedules200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetAdminPatrolSchedules200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostAdminPatrolSchedules201JSONResponseBodySuccess.
+const (
+	PostAdminPatrolSchedules201JSONResponseBodySuccessTrue PostAdminPatrolSchedules201JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostAdminPatrolSchedules201JSONResponseBodySuccess enum.
+func (e PostAdminPatrolSchedules201JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostAdminPatrolSchedules201JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatchAdminPatrolSchedulesById200JSONResponseBodySuccess.
+const (
+	PatchAdminPatrolSchedulesById200JSONResponseBodySuccessTrue PatchAdminPatrolSchedulesById200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PatchAdminPatrolSchedulesById200JSONResponseBodySuccess enum.
+func (e PatchAdminPatrolSchedulesById200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PatchAdminPatrolSchedulesById200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
@@ -5855,6 +5948,36 @@ const (
 func (e PostPanicsByIdFinish200JSONResponseBodySuccess) Valid() bool {
 	switch e {
 	case PostPanicsByIdFinish200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetPatrolSchedules200JSONResponseBodySuccess.
+const (
+	GetPatrolSchedules200JSONResponseBodySuccessTrue GetPatrolSchedules200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetPatrolSchedules200JSONResponseBodySuccess enum.
+func (e GetPatrolSchedules200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetPatrolSchedules200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetPatrolSchedulesById200JSONResponseBodySuccess.
+const (
+	GetPatrolSchedulesById200JSONResponseBodySuccessTrue GetPatrolSchedulesById200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetPatrolSchedulesById200JSONResponseBodySuccess enum.
+func (e GetPatrolSchedulesById200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetPatrolSchedulesById200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
@@ -9591,6 +9714,68 @@ type PatrolScanPhoto struct {
 // PatrolScanPhotoCaptureSource defines model for PatrolScanPhoto.CaptureSource.
 type PatrolScanPhotoCaptureSource string
 
+// PatrolSchedule Jadwal patroli: satu orang, satu zona, satu jendela waktu. `notes` dan `cancelled_at` yang kosong tidak disertakan.
+type PatrolSchedule struct {
+	CancelledAt *time.Time         `json:"cancelled_at,omitempty"`
+	EndsAt      time.Time          `json:"ends_at"`
+	Id          openapi_types.UUID `json:"id"`
+	Notes       *string            `json:"notes,omitempty"`
+	Personnel   struct {
+		FullName string `json:"full_name"`
+		Id       int64  `json:"id"`
+	} `json:"personnel"`
+	ProjectCode string    `json:"project_code"`
+	StartsAt    time.Time `json:"starts_at"`
+
+	// Status Dihitung dari jam server, bukan disimpan: `CANCELLED` bila dibatalkan; `IN_PROGRESS` / `COMPLETED` bila ada patroli
+	// yang merealisasikannya (patroli `ACTIVE` / selesai, juga `AUTO_ENDED`); `MISSED` bila jendelanya lewat tanpa patroli;
+	// selain itu `SCHEDULED`. Sebelum Phase 10.12 belum ada patroli yang bisa ditautkan, jadi hanya `SCHEDULED`, `MISSED`
+	// dan `CANCELLED` yang muncul.
+	Status PatrolScheduleStatus `json:"status"`
+
+	// WorkDate Tanggal `starts_at` menurut zona waktu proyek; jendela yang melewati tengah malam tetap bertanggal mulai.
+	WorkDate openapi_types.Date `json:"work_date"`
+	Zone     struct {
+		Id   int64                  `json:"id"`
+		Name string                 `json:"name"`
+		Type PatrolScheduleZoneType `json:"type"`
+	} `json:"zone"`
+}
+
+// PatrolScheduleZoneType defines model for PatrolSchedule.Zone.Type.
+type PatrolScheduleZoneType string
+
+// PatrolScheduleInput defines model for PatrolScheduleInput.
+type PatrolScheduleInput struct {
+	Notes        *string              `json:"notes,omitempty"`
+	PersonnelIds []int64              `json:"personnel_ids"`
+	Slots        []PatrolScheduleSlot `json:"slots"`
+	ZoneId       int64                `json:"zone_id"`
+}
+
+// PatrolScheduleSlot defines model for PatrolScheduleSlot.
+type PatrolScheduleSlot struct {
+	// EndsAt Setelah `starts_at`, paling lama 24 jam darinya, dan belum lewat.
+	EndsAt time.Time `json:"ends_at"`
+
+	// StartsAt Harus memuat offset waktu (`+07:00` atau `Z`).
+	StartsAt time.Time `json:"starts_at"`
+}
+
+// PatrolScheduleStatus Dihitung dari jam server, bukan disimpan: `CANCELLED` bila dibatalkan; `IN_PROGRESS` / `COMPLETED` bila ada patroli
+// yang merealisasikannya (patroli `ACTIVE` / selesai, juga `AUTO_ENDED`); `MISSED` bila jendelanya lewat tanpa patroli;
+// selain itu `SCHEDULED`. Sebelum Phase 10.12 belum ada patroli yang bisa ditautkan, jadi hanya `SCHEDULED`, `MISSED`
+// dan `CANCELLED` yang muncul.
+type PatrolScheduleStatus string
+
+// PatrolScheduleUpdate Zona tidak bisa diganti (batalkan dan buat lagi). Field yang tidak dikirim tetap.
+type PatrolScheduleUpdate struct {
+	EndsAt      *time.Time `json:"ends_at,omitempty"`
+	Notes       *string    `json:"notes,omitempty"`
+	PersonnelId *int64     `json:"personnel_id,omitempty"`
+	StartsAt    *time.Time `json:"starts_at,omitempty"`
+}
+
 // PatrolZone Zona patroli (`PATROL`) atau pos jaga (`GUARD`) beserta checkpoint-nya (Phase 10.1, 10.8).
 // Checklist, QR dan aturan foto ada di checkpoint, bukan di zona (titik dan radius zona hanya untuk tampilan peta). Proyek dan regu dikenali dengan kode (D19), bukan id.
 // Rahasia QR TIDAK pernah ada di sini: isinya hanya ada di gambar QR yang dicetak admin
@@ -11329,6 +11514,9 @@ type OnDateQuery = openapi_types.Date
 // PageParam defines model for PageParam.
 type PageParam = int
 
+// PatrolScheduleIdPath defines model for PatrolScheduleIdPath.
+type PatrolScheduleIdPath = string
+
 // PersonnelIdOfMemberPath defines model for PersonnelIdOfMemberPath.
 type PersonnelIdOfMemberPath = int64
 
@@ -11974,6 +12162,30 @@ type GetAdminPanics200JSONResponseBodySuccess bool
 
 // PostAdminPanicsByIdResolve200JSONResponseBodySuccess defines parameters for PostAdminPanicsByIdResolve.
 type PostAdminPanicsByIdResolve200JSONResponseBodySuccess bool
+
+// GetAdminPatrolSchedulesParams defines parameters for GetAdminPatrolSchedules.
+type GetAdminPatrolSchedulesParams struct {
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
+	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
+
+	// Limit Item per halaman (maks 100).
+	Limit       *LimitParam           `form:"limit,omitempty" json:"limit,omitempty"`
+	ProjectCode *string               `form:"project_code,omitempty" json:"project_code,omitempty"`
+	ZoneId      *int64                `form:"zone_id,omitempty" json:"zone_id,omitempty"`
+	PersonnelId *int64                `form:"personnel_id,omitempty" json:"personnel_id,omitempty"`
+	DateFrom    *openapi_types.Date   `form:"date_from,omitempty" json:"date_from,omitempty"`
+	DateTo      *openapi_types.Date   `form:"date_to,omitempty" json:"date_to,omitempty"`
+	Status      *PatrolScheduleStatus `form:"status,omitempty" json:"status,omitempty"`
+}
+
+// GetAdminPatrolSchedules200JSONResponseBodySuccess defines parameters for GetAdminPatrolSchedules.
+type GetAdminPatrolSchedules200JSONResponseBodySuccess bool
+
+// PostAdminPatrolSchedules201JSONResponseBodySuccess defines parameters for PostAdminPatrolSchedules.
+type PostAdminPatrolSchedules201JSONResponseBodySuccess bool
+
+// PatchAdminPatrolSchedulesById200JSONResponseBodySuccess defines parameters for PatchAdminPatrolSchedulesById.
+type PatchAdminPatrolSchedulesById200JSONResponseBodySuccess bool
 
 // GetAdminPermissionCategoriesParams defines parameters for GetAdminPermissionCategories.
 type GetAdminPermissionCategoriesParams struct {
@@ -13531,6 +13743,27 @@ type PostPanics201JSONResponseBodySuccess bool
 // PostPanicsByIdFinish200JSONResponseBodySuccess defines parameters for PostPanicsByIdFinish.
 type PostPanicsByIdFinish200JSONResponseBodySuccess bool
 
+// GetPatrolSchedulesParams defines parameters for GetPatrolSchedules.
+type GetPatrolSchedulesParams struct {
+	DateFrom    *openapi_types.Date   `form:"date_from,omitempty" json:"date_from,omitempty"`
+	DateTo      *openapi_types.Date   `form:"date_to,omitempty" json:"date_to,omitempty"`
+	ZoneId      *int64                `form:"zone_id,omitempty" json:"zone_id,omitempty"`
+	PersonnelId *int64                `form:"personnel_id,omitempty" json:"personnel_id,omitempty"`
+	Status      *PatrolScheduleStatus `form:"status,omitempty" json:"status,omitempty"`
+
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
+	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
+
+	// Limit Item per halaman (maks 100).
+	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetPatrolSchedules200JSONResponseBodySuccess defines parameters for GetPatrolSchedules.
+type GetPatrolSchedules200JSONResponseBodySuccess bool
+
+// GetPatrolSchedulesById200JSONResponseBodySuccess defines parameters for GetPatrolSchedulesById.
+type GetPatrolSchedulesById200JSONResponseBodySuccess bool
+
 // GetPatrolPendingApprovalsParams defines parameters for GetPatrolPendingApprovals.
 type GetPatrolPendingApprovalsParams struct {
 	TeamCode *string `form:"team_code,omitempty" json:"team_code,omitempty"`
@@ -14441,6 +14674,12 @@ type PatchAdminPanicTypesByIdJSONRequestBody = PanicTypePatch
 
 // PostAdminPanicsByIdResolveJSONRequestBody defines body for PostAdminPanicsByIdResolve for application/json ContentType.
 type PostAdminPanicsByIdResolveJSONRequestBody = PanicResolve
+
+// PostAdminPatrolSchedulesJSONRequestBody defines body for PostAdminPatrolSchedules for application/json ContentType.
+type PostAdminPatrolSchedulesJSONRequestBody = PatrolScheduleInput
+
+// PatchAdminPatrolSchedulesByIdJSONRequestBody defines body for PatchAdminPatrolSchedulesById for application/json ContentType.
+type PatchAdminPatrolSchedulesByIdJSONRequestBody = PatrolScheduleUpdate
 
 // PostAdminPermissionCategoriesJSONRequestBody defines body for PostAdminPermissionCategories for application/json ContentType.
 type PostAdminPermissionCategoriesJSONRequestBody = LeaveCategoryInput

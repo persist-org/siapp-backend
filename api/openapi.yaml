@@ -340,6 +340,12 @@ components:
       required: true
       description: "Identitas checkpoint (uuid). Id yang bukan uuid dijawab 404 `CHECKPOINT_NOT_FOUND`, bukan 422."
       schema: { type: string }
+    PatrolScheduleIdPath:
+      name: id
+      in: path
+      required: true
+      description: "Identitas jadwal patroli (uuid). Id yang bukan uuid dijawab 404 `PATROL_SCHEDULE_NOT_FOUND`, bukan 422."
+      schema: { type: string }
     # Header parameters (correlation / idempotency)
     RegionCodePath:
       name: code
@@ -3233,6 +3239,62 @@ components:
         longitude: { type: number, format: double }
         status: { type: string, enum: [SUBMITTED, APPROVED, DECLINED] }
         subject: { type: string }
+    PatrolScheduleStatus:
+      type: string
+      enum: [SCHEDULED, IN_PROGRESS, COMPLETED, MISSED, CANCELLED]
+      description: |
+        Dihitung dari jam server, bukan disimpan: `CANCELLED` bila dibatalkan; `IN_PROGRESS` / `COMPLETED` bila ada patroli
+        yang merealisasikannya (patroli `ACTIVE` / selesai, juga `AUTO_ENDED`); `MISSED` bila jendelanya lewat tanpa patroli;
+        selain itu `SCHEDULED`. Sebelum Phase 10.12 belum ada patroli yang bisa ditautkan, jadi hanya `SCHEDULED`, `MISSED`
+        dan `CANCELLED` yang muncul.
+    PatrolSchedule:
+      type: object
+      description: "Jadwal patroli: satu orang, satu zona, satu jendela waktu. `notes` dan `cancelled_at` yang kosong tidak disertakan."
+      required: [id, project_code, zone, personnel, starts_at, ends_at, work_date, status]
+      properties:
+        id: { type: string, format: uuid }
+        project_code: { type: string }
+        zone:
+          type: object
+          required: [id, name, type]
+          properties:
+            id: { type: integer, format: int64 }
+            name: { type: string }
+            type: { type: string, enum: [PATROL, GUARD] }
+        personnel:
+          type: object
+          required: [id, full_name]
+          properties:
+            id: { type: integer, format: int64 }
+            full_name: { type: string }
+        starts_at: { type: string, format: date-time }
+        ends_at: { type: string, format: date-time }
+        work_date: { type: string, format: date, description: "Tanggal `starts_at` menurut zona waktu proyek; jendela yang melewati tengah malam tetap bertanggal mulai." }
+        notes: { type: string, nullable: true }
+        status: { $ref: '#/components/schemas/PatrolScheduleStatus' }
+        cancelled_at: { type: string, format: date-time, nullable: true }
+    PatrolScheduleSlot:
+      type: object
+      required: [starts_at, ends_at]
+      properties:
+        starts_at: { type: string, format: date-time, description: "Harus memuat offset waktu (`+07:00` atau `Z`)." }
+        ends_at: { type: string, format: date-time, description: "Setelah `starts_at`, paling lama 24 jam darinya, dan belum lewat." }
+    PatrolScheduleInput:
+      type: object
+      required: [zone_id, personnel_ids, slots]
+      properties:
+        zone_id: { type: integer, format: int64 }
+        personnel_ids: { type: array, minItems: 1, maxItems: 200, items: { type: integer, format: int64 } }
+        slots: { type: array, minItems: 1, maxItems: 200, items: { $ref: '#/components/schemas/PatrolScheduleSlot' } }
+        notes: { type: string, maxLength: 2000 }
+    PatrolScheduleUpdate:
+      type: object
+      description: Zona tidak bisa diganti (batalkan dan buat lagi). Field yang tidak dikirim tetap.
+      properties:
+        personnel_id: { type: integer, format: int64 }
+        starts_at: { type: string, format: date-time }
+        ends_at: { type: string, format: date-time }
+        notes: { type: string, nullable: true, maxLength: 2000 }
     GeoJsonLineString:
       type: object
       required: [type, coordinates]
@@ -3984,6 +4046,7 @@ components:
         - SWAP_ASSIGNED
         - PANIC_RESOLVED
         - LEAVE_CANCELLED
+        - PATROL_SCHEDULE_CHANGED
     NotificationPriority:
       type: string
       enum: [NORMAL, HIGH]
@@ -10359,6 +10422,127 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '422': { $ref: '#/components/responses/ValidationError' }
+  /admin/patrol-schedules:
+    get:
+      operationId: getAdminPatrolSchedules
+      tags: [Patrol]
+      summary: List PatrolSchedule
+      description: |
+        Jadwal patroli di wilayah admin, urut mulai. `date_from` / `date_to` menyaring `work_date`; `status` menyaring
+        status yang dihitung dari jam server.
+      security:
+        - bearerSession: []
+        - oauth2ClientCredentials: [patrol:read]
+        - apiKey: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - { name: project_code, in: query, schema: { type: string } }
+        - { name: zone_id, in: query, schema: { type: integer, format: int64 } }
+        - { name: personnel_id, in: query, schema: { type: integer, format: int64 } }
+        - { name: date_from, in: query, schema: { type: string, format: date } }
+        - { name: date_to, in: query, schema: { type: string, format: date } }
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/PatrolScheduleStatus' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/ListEnvelope' }
+                  - properties: { data: { type: array, items: { $ref: '#/components/schemas/PatrolSchedule' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    post:
+      operationId: postAdminPatrolSchedules
+      tags: [Patrol]
+      summary: Buat PatrolSchedule
+      description: |
+        Membuat satu jadwal untuk setiap orang x slot, semua atau tidak sama sekali (paling banyak 200 baris: lebih dari itu
+        422 `PATROL_SCHEDULE_TOO_MANY`). Zona harus aktif. Setiap orang harus boleh berpatroli di zona itu pada tanggal kerja
+        slotnya (izin `patrol.scan` / `guard.scan` menurut tipe zona, dan anggota proyek, serta regu bila zona untuk satu
+        regu): bila tidak, 422 `SCHEDULE_PERSON_NOT_ALLOWED` dengan `details.personnel_id`. Dua jadwal hidup satu orang tidak
+        boleh bertumpuk: 409 `PATROL_SCHEDULE_OVERLAP` dengan `details.conflicts` (semua tumpukan, termasuk antar slot permintaan
+        yang sama); tidak ada yang ditulis. Tiap orang diberi tahu sekali per permintaan (`PATROL_SCHEDULE_CHANGED`).
+      security:
+        - bearerSession: []
+        - oauth2ClientCredentials: [patrol:write]
+        - apiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PatrolScheduleInput' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { type: array, items: { $ref: '#/components/schemas/PatrolSchedule' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /admin/patrol-schedules/{id}:
+    parameters:
+      - $ref: '#/components/parameters/PatrolScheduleIdPath'
+    patch:
+      operationId: patchAdminPatrolSchedulesById
+      tags: [Patrol]
+      summary: Ubah PatrolSchedule
+      description: |
+        Mengubah orang, jendela atau catatan. Hanya selama statusnya `SCHEDULED`: selain itu 409 `PATROL_SCHEDULE_LOCKED`.
+        Aturan orang dan tumpukan sama dengan membuat. Memindahkan ke orang lain memberi tahu yang lama (dibatalkan) dan yang baru.
+      security:
+        - bearerSession: []
+        - oauth2ClientCredentials: [patrol:write]
+        - apiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PatrolScheduleUpdate' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { $ref: '#/components/schemas/PatrolSchedule' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      operationId: deleteAdminPatrolSchedulesById
+      tags: [Patrol]
+      summary: Batalkan PatrolSchedule
+      description: |
+        Membatalkan jadwal (diberi `cancelled_at`, tidak dihapus: sebuah patroli akan menunjuk ke sana). Hanya selama statusnya
+        `SCHEDULED`: selain itu 409 `PATROL_SCHEDULE_LOCKED`.
+      security:
+        - bearerSession: []
+        - oauth2ClientCredentials: [patrol:write]
+        - apiKey: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /admin/checkpoints:
     get:
       operationId: getAdminCheckpoints
@@ -12056,6 +12240,52 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '422': { $ref: '#/components/responses/ValidationError' }
+  /patrol-schedules:
+    get:
+      operationId: getPatrolSchedules
+      tags: [Patrol]
+      summary: Jadwal patroli
+      description: |
+        Anggota melihat jadwalnya sendiri; DANRU juga melihat jadwal orang-orang regu dalam jangkauan izin approve-nya (menurut
+        tipe zona). Tanpa `date_from` dan `date_to`: hari ini sampai 7 hari ke depan menurut zona waktu proyek pemanggil.
+      parameters:
+        - { name: date_from, in: query, schema: { type: string, format: date } }
+        - { name: date_to, in: query, schema: { type: string, format: date } }
+        - { name: zone_id, in: query, schema: { type: integer, format: int64 } }
+        - { name: personnel_id, in: query, schema: { type: integer, format: int64 } }
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/PatrolScheduleStatus' } }
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/ListEnvelope' }
+                  - properties: { data: { type: array, items: { $ref: '#/components/schemas/PatrolSchedule' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /patrol-schedules/{id}:
+    parameters:
+      - $ref: '#/components/parameters/PatrolScheduleIdPath'
+    get:
+      operationId: getPatrolSchedulesById
+      tags: [Patrol]
+      summary: Detail satu jadwal patroli
+      description: Milik pemanggil, atau milik orang regu yang diputuskan pemanggil. Yang lain dijawab 404 `PATROL_SCHEDULE_NOT_FOUND`.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { $ref: '#/components/schemas/PatrolSchedule' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /zones/{id}/check-in:
     parameters: [ { $ref: '#/components/parameters/IdPath' } ]
     post:

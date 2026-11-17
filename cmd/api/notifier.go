@@ -66,11 +66,26 @@ func (n notifier) NotifyAttendance(ctx context.Context, nt attendance.Notice) {
 	})
 }
 
-// NotifyPatrol sends PATROL_SUBMITTED or GUARD_SUBMITTED (by the zone's type) to who decides a scan,
+// NotifyPatrol sends PATROL_SCHEDULE_CHANGED to a person whose schedules changed, PATROL_SUBMITTED or GUARD_SUBMITTED (by the zone's type) to who decides a scan,
 // OFFLINE_SUBMISSION_SENT to the guard whose offline scan has arrived, and PATROL_APPROVED or
 // GUARD_APPROVED to the author of scans that were decided. A decline uses the same type with
 // data.decision = DECLINED (patrol.Notifier).
 func (n notifier) NotifyPatrol(ctx context.Context, nt patrol.Notice) {
+	if nt.Kind == patrol.NoticeScheduleChanged {
+		// A schedule is named by a uuid and an entity by a number, so the notice carries ids in its data only.
+		n.service.Notify(ctx, notifications.Input{
+			Type:         notifications.TypePatrolScheduleChanged,
+			RecipientIDs: nt.RecipientIDs,
+			Vars: notifications.Vars{
+				BusinessLine: notifications.BusinessLine(nt.BusinessLine), Subject: nt.Subject, Change: nt.ScheduleChange, Count: len(nt.ScheduleIDs),
+			},
+			Data: map[string]any{
+				"change": nt.ScheduleChange, "count": len(nt.ScheduleIDs), "schedule_ids": nt.ScheduleIDs,
+				"zone_id": nt.ZoneID, "project_code": nt.ProjectCode,
+			},
+		})
+		return
+	}
 	guard := nt.ZoneType == patrol.TypeGuard
 	typ := notifications.TypePatrolSubmitted
 	switch {

@@ -46,6 +46,8 @@ func (h *Handler) MountField(r chi.Router) {
 	r.Post("/api/v1/scans/{id}/decline", h.decline)
 	r.Post("/api/v1/scans/approve", h.approveMany)
 	r.Get("/api/v1/patrol/pending-approvals", h.pending)
+	r.Get("/api/v1/patrol-schedules", h.scheduleList)
+	r.Get("/api/v1/patrol-schedules/{id}", h.scheduleGet)
 	r.With(h.idempotent).Post("/api/v1/zones/{id}/scan", h.scan)
 	r.With(h.idempotent).Post("/api/v1/zones/{id}/check-in", h.checkIn)
 	r.With(h.idempotent).Post("/api/v1/zones/{id}/check-out", h.checkOut)
@@ -64,6 +66,7 @@ func (h *Handler) MountAdmin(r chi.Router) {
 	r.Delete("/zones/{id}", h.adminDelete)
 	r.Put("/zones/{id}/checkpoints", h.adminCheckpoints)
 	h.mountCheckpoints(r)
+	h.mountSchedules(r)
 }
 
 func admin(w http.ResponseWriter, r *http.Request) (auth.Principal, access.AdminScope, bool) {
