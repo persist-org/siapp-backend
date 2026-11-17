@@ -761,6 +761,48 @@ func (ns NullOutboxStatus) Value() (driver.Value, error) {
 	return string(ns.OutboxStatus), nil
 }
 
+type PatrolMetadataKind string
+
+const (
+	PatrolMetadataKindSTART PatrolMetadataKind = "START"
+	PatrolMetadataKindEND   PatrolMetadataKind = "END"
+)
+
+func (e *PatrolMetadataKind) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PatrolMetadataKind(s)
+	case string:
+		*e = PatrolMetadataKind(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PatrolMetadataKind: %T", src)
+	}
+	return nil
+}
+
+type NullPatrolMetadataKind struct {
+	PatrolMetadataKind PatrolMetadataKind
+	Valid              bool // Valid is true if PatrolMetadataKind is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPatrolMetadataKind) Scan(value interface{}) error {
+	if value == nil {
+		ns.PatrolMetadataKind, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PatrolMetadataKind.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPatrolMetadataKind) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PatrolMetadataKind), nil
+}
+
 type PatrolRouteStatus string
 
 const (
@@ -1673,6 +1715,18 @@ type PatrolRoute struct {
 	LastPointAt      pgtype.Timestamptz
 	CreatedAt        pgtype.Timestamptz
 	UpdatedAt        pgtype.Timestamptz
+	ZoneID           pgtype.Int8
+	ScheduleID       pgtype.UUID
+}
+
+type PatrolRouteMetadatum struct {
+	ID              pgtype.UUID
+	OrganizationID  int64
+	PatrolID        int64
+	Kind            PatrolMetadataKind
+	DeviceCondition json.RawMessage
+	RecordedAt      pgtype.Timestamptz
+	CreatedAt       pgtype.Timestamptz
 }
 
 type PatrolRoutePoint struct {

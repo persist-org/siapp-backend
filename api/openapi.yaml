@@ -3158,11 +3158,13 @@ components:
     PatrolRouteStart:
       type: object
       description: Badan `POST /patrols/start`. `local_id` harus sama dengan header Idempotency-Key.
-      required: [local_id, started_at, project_code, latitude, longitude, accuracy_meters]
+      required: [local_id, started_at, latitude, longitude, accuracy_meters]
       properties:
         local_id: { type: string, format: uuid }
         started_at: { type: string, format: date-time, description: "Saat patroli dimulai di perangkat. Maksimal 5 menit di depan dan 7 hari ke belakang." }
-        project_code: { type: string, example: 1K-IBMI-S }
+        project_code: { type: string, example: 1K-IBMI-S, description: "Wajib untuk patroli tanpa jadwal. Dengan `schedule_id` boleh dikosongkan (proyek jadwal); proyek lain: 422." }
+        schedule_id: { type: string, format: uuid, description: "Memulai patroli sebagai realisasi jadwal milik pemanggil (Phase 10.12)." }
+        device_condition: { $ref: '#/components/schemas/DeviceCondition' }
         latitude: { type: number, format: double }
         longitude: { type: number, format: double }
         accuracy_meters: { type: number, format: double, minimum: 0, maximum: 100000 }
@@ -3187,6 +3189,7 @@ components:
       properties:
         ended_at: { type: string, format: date-time, description: "Tidak boleh sebelum `started_at`; maksimal 5 menit di depan dan 7 hari ke belakang." }
         points: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/PatrolRoutePointInput' }, description: "Batch titik terakhir, boleh ikut dikirim." }
+        device_condition: { $ref: '#/components/schemas/DeviceCondition' }
     PatrolRoutePointsResult:
       type: object
       required: [accepted, duplicates]
@@ -3216,6 +3219,23 @@ components:
         scan_count: { type: integer }
         submitted_offline: { type: boolean }
         last_point_at: { type: string, format: date-time }
+        zone:
+          type: object
+          description: Zona jadwal, hanya untuk patroli yang dimulai dari jadwal.
+          required: [id, name, type]
+          properties:
+            id: { type: integer, format: int64 }
+            name: { type: string }
+            type: { type: string, enum: [PATROL, GUARD] }
+        schedule:
+          type: object
+          description: Jadwal tempat patroli dimulai, hanya untuk patroli yang dimulai dari jadwal.
+          required: [id, starts_at, ends_at]
+          properties:
+            id: { type: string, format: uuid }
+            starts_at: { type: string, format: date-time }
+            ends_at: { type: string, format: date-time }
+        start_delay_minutes: { type: integer, description: "Terlambat berapa menit dibanding `schedule.starts_at` (0 bila tepat waktu atau lebih awal). Hanya untuk patroli dari jadwal." }
     PatrolRoutePathPoint:
       type: object
       required: [latitude, longitude, at, accuracy_meters]
@@ -3245,12 +3265,11 @@ components:
       description: |
         Dihitung dari jam server, bukan disimpan: `CANCELLED` bila dibatalkan; `IN_PROGRESS` / `COMPLETED` bila ada patroli
         yang merealisasikannya (patroli `ACTIVE` / selesai, juga `AUTO_ENDED`); `MISSED` bila jendelanya lewat tanpa patroli;
-        selain itu `SCHEDULED`. Sebelum Phase 10.12 belum ada patroli yang bisa ditautkan, jadi hanya `SCHEDULED`, `MISSED`
-        dan `CANCELLED` yang muncul.
+        selain itu `SCHEDULED`. Patroli `AUTO_ENDED` juga `COMPLETED`; `patrol.status` memberi tahu DANRU bedanya.
     PatrolSchedule:
       type: object
       description: "Jadwal patroli: satu orang, satu zona, satu jendela waktu. `notes` dan `cancelled_at` yang kosong tidak disertakan."
-      required: [id, project_code, zone, personnel, starts_at, ends_at, work_date, status]
+      required: [id, project_code, zone, personnel, starts_at, ends_at, work_date, status, scan_count]
       properties:
         id: { type: string, format: uuid }
         project_code: { type: string }
@@ -3273,6 +3292,15 @@ components:
         notes: { type: string, nullable: true }
         status: { $ref: '#/components/schemas/PatrolScheduleStatus' }
         cancelled_at: { type: string, format: date-time, nullable: true }
+        patrol:
+          type: object
+          description: Patroli yang dimulai dari jadwal ini; tidak ada bila belum dimulai.
+          required: [id, status]
+          properties:
+            id: { type: integer, format: int64 }
+            status: { type: string, enum: [ACTIVE, ENDED, AUTO_ENDED] }
+        start_delay_minutes: { type: integer, description: "Terlambat berapa menit patroli dimulai (0 bila tepat waktu atau lebih awal). Hanya bila `patrol` ada." }
+        scan_count: { type: integer, description: "Scan patroli itu di zona jadwal (scan di zona lain tidak dihitung). 0 tanpa patroli." }
     PatrolScheduleSlot:
       type: object
       required: [starts_at, ends_at]
@@ -3314,6 +3342,12 @@ components:
             path: { type: array, items: { $ref: '#/components/schemas/PatrolRoutePathPoint' }, description: "Titik yang sama dengan `route`, lengkap dengan waktu dan akurasi." }
             scans: { type: array, items: { $ref: '#/components/schemas/PatrolRouteScan' } }
     # ---------- 29. panics ----------
+            device_condition:
+              type: object
+              description: Kondisi perangkat saat patroli dimulai dan diakhiri (bukti, bukan syarat). Hanya di detail, tidak di daftar; patroli `AUTO_ENDED` hanya punya `start`.
+              properties:
+                start: { type: object, additionalProperties: true }
+                end: { type: object, additionalProperties: true }
     Panic:
       type: object
       properties:
@@ -12451,6 +12485,10 @@ paths:
         sebelum mengakhiri dijawab 409 `PATROL_ALREADY_ACTIVE`. Kirim ulang dengan `local_id` yang sama
         mengembalikan patroli tersimpan (200). Titik awal tercatat sebagai titik `seq` 0. Perekaman tidak
         memerlukan `gps_tracking_enabled` proyek: izinnya adalah ketukan "mulai patroli".
+        Dengan `schedule_id` (jadwal milik pemanggil, tidak dibatalkan; yang lain 404 `PATROL_SCHEDULE_NOT_FOUND`) patroli menjadi realisasi jadwal itu:
+        `started_at` harus dalam `[starts_at - 15 menit, ends_at]` (422 `PATROL_OUTSIDE_SCHEDULE`, dinilai dari `started_at`, bukan jam server, jadi mulai offline di
+        dalam jendela tetap diterima saat sinkron; terlambat boleh, keterlambatannya dilaporkan), satu jadwal hanya satu patroli (409 `PATROL_SCHEDULE_ALREADY_STARTED`),
+        dan `project_code` boleh dikosongkan. `device_condition` dicatat sebagai baris `START`.
       parameters: [ { $ref: '#/components/parameters/IdempotencyKeyHeader' } ]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PatrolRouteStart' } } } }
       responses:
@@ -12458,6 +12496,7 @@ paths:
         '200': { description: Idempotent replay (local_id/key sama), content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/PatrolRoute' } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
   /patrols/active:
@@ -12485,6 +12524,8 @@ paths:
         - { name: personnel_id, in: query, schema: { type: integer, format: int64 } }
         - { name: work_date, in: query, schema: { type: string, format: date } }
         - { name: status, in: query, schema: { type: string, enum: [ACTIVE, ENDED, AUTO_ENDED] } }
+        - { name: zone_id, in: query, description: "Hanya patroli yang dimulai dari jadwal di zona ini.", schema: { type: integer, format: int64 } }
+        - { name: schedule_id, in: query, description: "Hanya patroli yang dimulai dari jadwal ini.", schema: { type: string, format: uuid } }
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/LimitParam'
       responses:
@@ -12539,6 +12580,7 @@ paths:
         yang sama (aplikasi kehilangan jawaban), mengembalikan patroli tersimpan. Patroli yang sudah berakhir
         (juga `AUTO_ENDED`) dengan `ended_at` lain: 409 `PATROL_NOT_ACTIVE`. Tidak ada notifikasi: scan-nya
         sudah memberi tahu DANRU.
+        `device_condition` dicatat sebagai baris `END` (yang pertama tetap: pengulangan akhir tidak mengubahnya); patroli `AUTO_ENDED` tidak punya baris `END`.
       parameters: [ { $ref: '#/components/parameters/IdempotencyKeyHeader' } ]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PatrolRouteEnd' } } } }
       responses:

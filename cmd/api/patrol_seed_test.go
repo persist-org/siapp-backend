@@ -161,6 +161,7 @@ func TestSeedPatrolScans(t *testing.T) {
 
 	// The demo's people: a DANRU and two members of the regu, scheduled on each of the last four days.
 	_, danruTok := f.addMember("1K-IBMI-S1", "DANRU", 900700, "KPIDANRU01", "Danru Seed")
+	f.addPerson(900703, "KPIADMIN01", "Admin Seed") // who the demo schedules are made by
 	f.addMember("1K-IBMI-S1", "MEMBER", 900701, "KPIANG0001", "Anggota Seed 1")
 	f.addMember("1K-IBMI-S1", "MEMBER", 900702, "KPIANG0002", "Anggota Seed 2")
 	var shiftID int64
@@ -206,6 +207,16 @@ func TestSeedPatrolScans(t *testing.T) {
 		f.exec(writes)
 		require.Equal(t, scans, count("SELECT count(*) FROM patrol_scans"))
 		require.Equal(t, actions, count("SELECT count(*) FROM patrol_scan_actions"))
+	})
+
+	t.Run("each member gets three schedules that do not overlap, and a re-run adds none", func(t *testing.T) {
+		require.Equal(t, 6, count("SELECT count(*) FROM patrol_schedules"))
+		require.Zero(t, count(`SELECT count(*) FROM patrol_schedules a JOIN patrol_schedules b
+		    ON a.personnel_id = b.personnel_id AND a.id < b.id AND a.starts_at < b.ends_at AND b.starts_at < a.ends_at`))
+		require.Equal(t, 2, count("SELECT count(*) FROM patrol_schedules WHERE ends_at < now()"), "yesterday's are over: MISSED")
+		require.Equal(t, 2, count("SELECT count(*) FROM patrol_schedules WHERE starts_at < now() AND ends_at > now()"), "today's is running")
+		require.Equal(t, 2, count(`SELECT count(*) FROM patrol_schedules WHERE ends_at - starts_at = interval '8 hours'
+		    AND work_date = (now() AT TIME ZONE 'Asia/Jakarta')::date + 1`), "tomorrow night's keeps tomorrow's date")
 	})
 
 	t.Run("the views show a seeded scan with its checkpoint and its actions", func(t *testing.T) {

@@ -6,6 +6,7 @@ package patrol
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"siapp/pkg/platform/apperr"
 	"siapp/pkg/platform/timeutil"
@@ -238,4 +239,25 @@ func errSchedulePersonNotAllowed(personnelID int64, name string, day timeutil.Da
 	}
 	return apperr.New(http.StatusUnprocessableEntity, apperr.CodeUnprocessable, ReasonSchedulePersonNotAllowed, msg).
 		WithDetails(map[string]any{"personnel_id": personnelID, "work_date": day.String()})
+}
+
+// Reasons of Phase 10.12 (a patrol started from a schedule).
+const (
+	ReasonPatrolOutsideSchedule      = "PATROL_OUTSIDE_SCHEDULE"
+	ReasonPatrolScheduleAlreadyStart = "PATROL_SCHEDULE_ALREADY_STARTED"
+)
+
+// ErrScheduleAlreadyStarted is returned for a start from a schedule that a patrol was already started from. The
+// partial unique index of patrol_routes is the backstop for two starts at once.
+var ErrScheduleAlreadyStarted = apperr.New(http.StatusConflict, apperr.CodeConflict,
+	ReasonPatrolScheduleAlreadyStart, "Patroli untuk jadwal ini sudah dimulai.")
+
+// errPatrolOutsideSchedule is a 422 for a start whose started_at is outside the window of the schedule (less the
+// early start allowed): details name the window.
+func errPatrolOutsideSchedule(startsAt, endsAt, earliest time.Time) *apperr.Error {
+	return apperr.New(http.StatusUnprocessableEntity, apperr.CodeUnprocessable, ReasonPatrolOutsideSchedule,
+		"Waktu mulai di luar jendela jadwal.").WithDetails(map[string]any{
+		"starts_at": startsAt.UTC().Format(time.RFC3339), "ends_at": endsAt.UTC().Format(time.RFC3339),
+		"earliest_start": earliest.UTC().Format(time.RFC3339),
+	})
 }

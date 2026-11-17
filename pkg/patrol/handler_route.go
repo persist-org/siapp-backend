@@ -1,6 +1,7 @@
 package patrol
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 
@@ -178,6 +179,20 @@ func (h *Handler) listPatrols(w http.ResponseWriter, r *http.Request) {
 		}
 		f.PersonnelID = n
 	}
+	if s := q.Get("zone_id"); s != "" {
+		n, err := strconv.ParseInt(s, 10, 64)
+		if err != nil || n < 1 {
+			problems = append(problems, apperr.FieldError{Field: "zone_id", Code: "INVALID", Message: "Harus berupa angka positif."})
+		}
+		f.ZoneID = n
+	}
+	if s := q.Get("schedule_id"); s != "" {
+		if id, ok := parseUUID(s); ok {
+			f.ScheduleID = id
+		} else {
+			problems = append(problems, apperr.FieldError{Field: "schedule_id", Code: "INVALID", Message: "Harus berupa uuid."})
+		}
+	}
 	if len(problems) > 0 {
 		httpx.Error(w, r, apperr.ErrValidation.WithFields(problems...))
 		return
@@ -206,7 +221,23 @@ func routeToAPI(r Route) apigen.PatrolRoute {
 		name := r.PersonnelName
 		out.PersonnelName = &name
 	}
+	out.StartDelayMinutes = r.StartDelayMinutes
+	if r.Zone != nil {
+		asJSON(map[string]any{"id": r.Zone.ID, "name": r.Zone.Name, "type": r.Zone.Type}, &out.Zone)
+	}
+	if r.Schedule != nil {
+		asJSON(map[string]any{"id": r.Schedule.ID, "starts_at": r.Schedule.StartsAt, "ends_at": r.Schedule.EndsAt}, &out.Schedule)
+	}
 	return out
+}
+
+// asJSON copies a value into a field of a generated type that has no name (an object written inline in the
+// contract) by way of its JSON, which both sides agree on.
+func asJSON(from, into any) {
+	raw, err := json.Marshal(from)
+	if err == nil {
+		_ = json.Unmarshal(raw, into)
+	}
 }
 
 func routeDetailToAPI(d RouteDetail) apigen.PatrolRouteDetail {
@@ -223,13 +254,32 @@ func routeDetailToAPI(d RouteDetail) apigen.PatrolRouteDetail {
 			Longitude: s.Longitude, Status: apigen.PatrolRouteScanStatus(s.Status), Subject: s.Subject,
 		})
 	}
-	return apigen.PatrolRouteDetail{
+	out := apigen.PatrolRouteDetail{
 		Id: base.Id, LocalId: base.LocalId, PersonnelId: base.PersonnelId, PersonnelName: base.PersonnelName,
 		TeamCode: base.TeamCode, ProjectCode: base.ProjectCode, Status: apigen.PatrolRouteDetailStatus(base.Status),
 		StartedAt: base.StartedAt, EndedAt: base.EndedAt, WorkDate: base.WorkDate, DistanceMeters: base.DistanceMeters,
 		PointCount: base.PointCount, ScanCount: base.ScanCount, SubmittedOffline: base.SubmittedOffline,
 		LastPointAt: base.LastPointAt, Route: lineString(d.Path), Path: path, Scans: scans,
+		StartDelayMinutes: base.StartDelayMinutes,
 	}
+	if d.Zone != nil {
+		asJSON(map[string]any{"id": d.Zone.ID, "name": d.Zone.Name, "type": d.Zone.Type}, &out.Zone)
+	}
+	if d.Schedule != nil {
+		asJSON(map[string]any{"id": d.Schedule.ID, "starts_at": d.Schedule.StartsAt, "ends_at": d.Schedule.EndsAt}, &out.Schedule)
+	}
+	// The phone's condition is returned as it was stored: keys this server does not know are kept.
+	dc := map[string]json.RawMessage{}
+	if len(d.DeviceCondition.Start) > 0 {
+		dc["start"] = d.DeviceCondition.Start
+	}
+	if len(d.DeviceCondition.End) > 0 {
+		dc["end"] = d.DeviceCondition.End
+	}
+	if len(dc) > 0 {
+		asJSON(dc, &out.DeviceCondition)
+	}
+	return out
 }
 
 // lineString is the path as a GeoJSON LineString, which a map library draws as a line directly.

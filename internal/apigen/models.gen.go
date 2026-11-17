@@ -1382,6 +1382,24 @@ func (e PatrolRouteStatus) Valid() bool {
 	}
 }
 
+// Defines values for PatrolRouteZoneType.
+const (
+	PatrolRouteZoneTypeGUARD  PatrolRouteZoneType = "GUARD"
+	PatrolRouteZoneTypePATROL PatrolRouteZoneType = "PATROL"
+)
+
+// Valid indicates whether the value is a known member of the PatrolRouteZoneType enum.
+func (e PatrolRouteZoneType) Valid() bool {
+	switch e {
+	case PatrolRouteZoneTypeGUARD:
+		return true
+	case PatrolRouteZoneTypePATROL:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PatrolRouteDetailStatus.
 const (
 	PatrolRouteDetailStatusACTIVE    PatrolRouteDetailStatus = "ACTIVE"
@@ -1397,6 +1415,24 @@ func (e PatrolRouteDetailStatus) Valid() bool {
 	case PatrolRouteDetailStatusAUTOENDED:
 		return true
 	case PatrolRouteDetailStatusENDED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatrolRouteDetailZoneType.
+const (
+	PatrolRouteDetailZoneTypeGUARD  PatrolRouteDetailZoneType = "GUARD"
+	PatrolRouteDetailZoneTypePATROL PatrolRouteDetailZoneType = "PATROL"
+)
+
+// Valid indicates whether the value is a known member of the PatrolRouteDetailZoneType enum.
+func (e PatrolRouteDetailZoneType) Valid() bool {
+	switch e {
+	case PatrolRouteDetailZoneTypeGUARD:
+		return true
+	case PatrolRouteDetailZoneTypePATROL:
 		return true
 	default:
 		return false
@@ -1478,6 +1514,27 @@ func (e PatrolScanPhotoCaptureSource) Valid() bool {
 	case PatrolScanPhotoCaptureSourceGALLERY:
 		return true
 	case PatrolScanPhotoCaptureSourceUNKNOWN:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatrolSchedulePatrolStatus.
+const (
+	PatrolSchedulePatrolStatusACTIVE    PatrolSchedulePatrolStatus = "ACTIVE"
+	PatrolSchedulePatrolStatusAUTOENDED PatrolSchedulePatrolStatus = "AUTO_ENDED"
+	PatrolSchedulePatrolStatusENDED     PatrolSchedulePatrolStatus = "ENDED"
+)
+
+// Valid indicates whether the value is a known member of the PatrolSchedulePatrolStatus enum.
+func (e PatrolSchedulePatrolStatus) Valid() bool {
+	switch e {
+	case PatrolSchedulePatrolStatusACTIVE:
+		return true
+	case PatrolSchedulePatrolStatusAUTOENDED:
+		return true
+	case PatrolSchedulePatrolStatusENDED:
 		return true
 	default:
 		return false
@@ -9466,22 +9523,47 @@ type PatrolRoute struct {
 	PersonnelId    int64              `json:"personnel_id"`
 
 	// PersonnelName Ada saat patroli dibaca (daftar dan detail).
-	PersonnelName    *string            `json:"personnel_name,omitempty"`
-	PointCount       int                `json:"point_count"`
-	ProjectCode      string             `json:"project_code"`
-	ScanCount        int                `json:"scan_count"`
-	StartedAt        time.Time          `json:"started_at"`
-	Status           PatrolRouteStatus  `json:"status"`
-	SubmittedOffline bool               `json:"submitted_offline"`
-	TeamCode         string             `json:"team_code"`
-	WorkDate         openapi_types.Date `json:"work_date"`
+	PersonnelName *string `json:"personnel_name,omitempty"`
+	PointCount    int     `json:"point_count"`
+	ProjectCode   string  `json:"project_code"`
+	ScanCount     int     `json:"scan_count"`
+
+	// Schedule Jadwal tempat patroli dimulai, hanya untuk patroli yang dimulai dari jadwal.
+	Schedule *struct {
+		EndsAt   time.Time          `json:"ends_at"`
+		Id       openapi_types.UUID `json:"id"`
+		StartsAt time.Time          `json:"starts_at"`
+	} `json:"schedule,omitempty"`
+
+	// StartDelayMinutes Terlambat berapa menit dibanding `schedule.starts_at` (0 bila tepat waktu atau lebih awal). Hanya untuk patroli dari jadwal.
+	StartDelayMinutes *int               `json:"start_delay_minutes,omitempty"`
+	StartedAt         time.Time          `json:"started_at"`
+	Status            PatrolRouteStatus  `json:"status"`
+	SubmittedOffline  bool               `json:"submitted_offline"`
+	TeamCode          string             `json:"team_code"`
+	WorkDate          openapi_types.Date `json:"work_date"`
+
+	// Zone Zona jadwal, hanya untuk patroli yang dimulai dari jadwal.
+	Zone *struct {
+		Id   int64               `json:"id"`
+		Name string              `json:"name"`
+		Type PatrolRouteZoneType `json:"type"`
+	} `json:"zone,omitempty"`
 }
 
 // PatrolRouteStatus defines model for PatrolRoute.Status.
 type PatrolRouteStatus string
 
+// PatrolRouteZoneType defines model for PatrolRoute.Zone.Type.
+type PatrolRouteZoneType string
+
 // PatrolRouteDetail defines model for PatrolRouteDetail.
 type PatrolRouteDetail struct {
+	// DeviceCondition Kondisi perangkat saat patroli dimulai dan diakhiri (bukti, bukan syarat). Hanya di detail, tidak di daftar; patroli `AUTO_ENDED` hanya punya `start`.
+	DeviceCondition *struct {
+		End   *map[string]interface{} `json:"end,omitempty"`
+		Start *map[string]interface{} `json:"start,omitempty"`
+	} `json:"device_condition,omitempty"`
 	DistanceMeters int                `json:"distance_meters"`
 	EndedAt        *time.Time         `json:"ended_at,omitempty"`
 	Id             int64              `json:"id"`
@@ -9493,24 +9575,50 @@ type PatrolRouteDetail struct {
 	PersonnelId int64                  `json:"personnel_id"`
 
 	// PersonnelName Ada saat patroli dibaca (daftar dan detail).
-	PersonnelName    *string                 `json:"personnel_name,omitempty"`
-	PointCount       int                     `json:"point_count"`
-	ProjectCode      string                  `json:"project_code"`
-	Route            GeoJsonLineString       `json:"route"`
-	ScanCount        int                     `json:"scan_count"`
-	Scans            []PatrolRouteScan       `json:"scans"`
-	StartedAt        time.Time               `json:"started_at"`
-	Status           PatrolRouteDetailStatus `json:"status"`
-	SubmittedOffline bool                    `json:"submitted_offline"`
-	TeamCode         string                  `json:"team_code"`
-	WorkDate         openapi_types.Date      `json:"work_date"`
+	PersonnelName *string           `json:"personnel_name,omitempty"`
+	PointCount    int               `json:"point_count"`
+	ProjectCode   string            `json:"project_code"`
+	Route         GeoJsonLineString `json:"route"`
+	ScanCount     int               `json:"scan_count"`
+	Scans         []PatrolRouteScan `json:"scans"`
+
+	// Schedule Jadwal tempat patroli dimulai, hanya untuk patroli yang dimulai dari jadwal.
+	Schedule *struct {
+		EndsAt   time.Time          `json:"ends_at"`
+		Id       openapi_types.UUID `json:"id"`
+		StartsAt time.Time          `json:"starts_at"`
+	} `json:"schedule,omitempty"`
+
+	// StartDelayMinutes Terlambat berapa menit dibanding `schedule.starts_at` (0 bila tepat waktu atau lebih awal). Hanya untuk patroli dari jadwal.
+	StartDelayMinutes *int                    `json:"start_delay_minutes,omitempty"`
+	StartedAt         time.Time               `json:"started_at"`
+	Status            PatrolRouteDetailStatus `json:"status"`
+	SubmittedOffline  bool                    `json:"submitted_offline"`
+	TeamCode          string                  `json:"team_code"`
+	WorkDate          openapi_types.Date      `json:"work_date"`
+
+	// Zone Zona jadwal, hanya untuk patroli yang dimulai dari jadwal.
+	Zone *struct {
+		Id   int64                     `json:"id"`
+		Name string                    `json:"name"`
+		Type PatrolRouteDetailZoneType `json:"type"`
+	} `json:"zone,omitempty"`
 }
 
 // PatrolRouteDetailStatus defines model for PatrolRouteDetail.Status.
 type PatrolRouteDetailStatus string
 
+// PatrolRouteDetailZoneType defines model for PatrolRouteDetail.Zone.Type.
+type PatrolRouteDetailZoneType string
+
 // PatrolRouteEnd defines model for PatrolRouteEnd.
 type PatrolRouteEnd struct {
+	// DeviceCondition Kondisi perangkat saat aksi dijawab. Bukti, bukan penghalang: server tidak pernah menolak scan karena
+	// isinya (`mock_location: true` tetap diterima dan disimpan) dan tidak memercayainya (aplikasi yang
+	// melaporkan). Harus objek JSON, paling besar 4096 byte; kunci yang dikenal diperiksa tipenya, kunci lain
+	// disimpan apa adanya. Yang salah: 422 `DEVICE_CONDITION_INVALID`.
+	DeviceCondition *DeviceCondition `json:"device_condition,omitempty"`
+
 	// EndedAt Tidak boleh sebelum `started_at`; maksimal 5 menit di depan dan 7 hari ke belakang.
 	EndedAt time.Time `json:"ended_at"`
 
@@ -9572,11 +9680,22 @@ type PatrolRouteScanStatus string
 
 // PatrolRouteStart Badan `POST /patrols/start`. `local_id` harus sama dengan header Idempotency-Key.
 type PatrolRouteStart struct {
-	AccuracyMeters float64            `json:"accuracy_meters"`
-	Latitude       float64            `json:"latitude"`
-	LocalId        openapi_types.UUID `json:"local_id"`
-	Longitude      float64            `json:"longitude"`
-	ProjectCode    string             `json:"project_code"`
+	AccuracyMeters float64 `json:"accuracy_meters"`
+
+	// DeviceCondition Kondisi perangkat saat aksi dijawab. Bukti, bukan penghalang: server tidak pernah menolak scan karena
+	// isinya (`mock_location: true` tetap diterima dan disimpan) dan tidak memercayainya (aplikasi yang
+	// melaporkan). Harus objek JSON, paling besar 4096 byte; kunci yang dikenal diperiksa tipenya, kunci lain
+	// disimpan apa adanya. Yang salah: 422 `DEVICE_CONDITION_INVALID`.
+	DeviceCondition *DeviceCondition   `json:"device_condition,omitempty"`
+	Latitude        float64            `json:"latitude"`
+	LocalId         openapi_types.UUID `json:"local_id"`
+	Longitude       float64            `json:"longitude"`
+
+	// ProjectCode Wajib untuk patroli tanpa jadwal. Dengan `schedule_id` boleh dikosongkan (proyek jadwal); proyek lain: 422.
+	ProjectCode *string `json:"project_code,omitempty"`
+
+	// ScheduleId Memulai patroli sebagai realisasi jadwal milik pemanggil (Phase 10.12).
+	ScheduleId *openapi_types.UUID `json:"schedule_id,omitempty"`
 
 	// StartedAt Saat patroli dimulai di perangkat. Maksimal 5 menit di depan dan 7 hari ke belakang.
 	StartedAt        time.Time `json:"started_at"`
@@ -9720,17 +9839,28 @@ type PatrolSchedule struct {
 	EndsAt      time.Time          `json:"ends_at"`
 	Id          openapi_types.UUID `json:"id"`
 	Notes       *string            `json:"notes,omitempty"`
-	Personnel   struct {
+
+	// Patrol Patroli yang dimulai dari jadwal ini; tidak ada bila belum dimulai.
+	Patrol *struct {
+		Id     int64                      `json:"id"`
+		Status PatrolSchedulePatrolStatus `json:"status"`
+	} `json:"patrol,omitempty"`
+	Personnel struct {
 		FullName string `json:"full_name"`
 		Id       int64  `json:"id"`
 	} `json:"personnel"`
-	ProjectCode string    `json:"project_code"`
-	StartsAt    time.Time `json:"starts_at"`
+	ProjectCode string `json:"project_code"`
+
+	// ScanCount Scan patroli itu di zona jadwal (scan di zona lain tidak dihitung). 0 tanpa patroli.
+	ScanCount int `json:"scan_count"`
+
+	// StartDelayMinutes Terlambat berapa menit patroli dimulai (0 bila tepat waktu atau lebih awal). Hanya bila `patrol` ada.
+	StartDelayMinutes *int      `json:"start_delay_minutes,omitempty"`
+	StartsAt          time.Time `json:"starts_at"`
 
 	// Status Dihitung dari jam server, bukan disimpan: `CANCELLED` bila dibatalkan; `IN_PROGRESS` / `COMPLETED` bila ada patroli
 	// yang merealisasikannya (patroli `ACTIVE` / selesai, juga `AUTO_ENDED`); `MISSED` bila jendelanya lewat tanpa patroli;
-	// selain itu `SCHEDULED`. Sebelum Phase 10.12 belum ada patroli yang bisa ditautkan, jadi hanya `SCHEDULED`, `MISSED`
-	// dan `CANCELLED` yang muncul.
+	// selain itu `SCHEDULED`. Patroli `AUTO_ENDED` juga `COMPLETED`; `patrol.status` memberi tahu DANRU bedanya.
 	Status PatrolScheduleStatus `json:"status"`
 
 	// WorkDate Tanggal `starts_at` menurut zona waktu proyek; jendela yang melewati tengah malam tetap bertanggal mulai.
@@ -9741,6 +9871,9 @@ type PatrolSchedule struct {
 		Type PatrolScheduleZoneType `json:"type"`
 	} `json:"zone"`
 }
+
+// PatrolSchedulePatrolStatus defines model for PatrolSchedule.Patrol.Status.
+type PatrolSchedulePatrolStatus string
 
 // PatrolScheduleZoneType defines model for PatrolSchedule.Zone.Type.
 type PatrolScheduleZoneType string
@@ -9764,8 +9897,7 @@ type PatrolScheduleSlot struct {
 
 // PatrolScheduleStatus Dihitung dari jam server, bukan disimpan: `CANCELLED` bila dibatalkan; `IN_PROGRESS` / `COMPLETED` bila ada patroli
 // yang merealisasikannya (patroli `ACTIVE` / selesai, juga `AUTO_ENDED`); `MISSED` bila jendelanya lewat tanpa patroli;
-// selain itu `SCHEDULED`. Sebelum Phase 10.12 belum ada patroli yang bisa ditautkan, jadi hanya `SCHEDULED`, `MISSED`
-// dan `CANCELLED` yang muncul.
+// selain itu `SCHEDULED`. Patroli `AUTO_ENDED` juga `COMPLETED`; `patrol.status` memberi tahu DANRU bedanya.
 type PatrolScheduleStatus string
 
 // PatrolScheduleUpdate Zona tidak bisa diganti (batalkan dan buat lagi). Field yang tidak dikirim tetap.
@@ -13785,6 +13917,12 @@ type GetPatrolsParams struct {
 	PersonnelId *int64                  `form:"personnel_id,omitempty" json:"personnel_id,omitempty"`
 	WorkDate    *openapi_types.Date     `form:"work_date,omitempty" json:"work_date,omitempty"`
 	Status      *GetPatrolsParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+
+	// ZoneId Hanya patroli yang dimulai dari jadwal di zona ini.
+	ZoneId *int64 `form:"zone_id,omitempty" json:"zone_id,omitempty"`
+
+	// ScheduleId Hanya patroli yang dimulai dari jadwal ini.
+	ScheduleId *openapi_types.UUID `form:"schedule_id,omitempty" json:"schedule_id,omitempty"`
 
 	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`

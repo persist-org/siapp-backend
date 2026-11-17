@@ -48,8 +48,8 @@ const (
 	defaultScheduleDays = 7
 )
 
-// PatrolRef is the patrol that realizes a schedule (Phase 10.12): only its status decides the schedule's.
-type PatrolRef struct {
+// LinkedPatrol is the patrol that realizes a schedule (Phase 10.12): only its status decides the schedule's.
+type LinkedPatrol struct {
 	Status string // ACTIVE, ENDED or AUTO_ENDED
 }
 
@@ -63,9 +63,8 @@ type scheduleTimes struct {
 // realizes it, IN_PROGRESS (the patrol is ACTIVE) or COMPLETED (it ENDED or was AUTO_ENDED); else MISSED when its
 // window is over, else SCHEDULED.
 //
-// ⚠ Until Phase 10.12 no patrol can be linked to a schedule, so the callers pass nil and only SCHEDULED,
-// MISSED and CANCELLED occur.
-func scheduleStatus(now time.Time, sc scheduleTimes, patrol *PatrolRef) string {
+// The patrol is the one started from the schedule (nil when none was).
+func scheduleStatus(now time.Time, sc scheduleTimes, patrol *LinkedPatrol) string {
 	switch {
 	case sc.CancelledAt != nil:
 		return ScheduleCancelled
@@ -129,20 +128,50 @@ type Schedule struct {
 	Notes         *string
 	Status        string
 	CancelledAt   *time.Time
+
+	// Patrol is the patrol started from the schedule, StartDelayMinutes how late it started (0 when on time or
+	// early), and ScanCount its scans in the schedule's zone (Phase 10.12).
+	Patrol            *SchedulePatrol
+	StartDelayMinutes *int
+	ScanCount         int
 }
 
-func scheduleOf(now time.Time, sc db.PatrolSchedule, zoneName string, zoneType db.PatrolZoneType, personnelName string) Schedule {
+// SchedulePatrol is the patrol started from a schedule.
+type SchedulePatrol struct {
+	ID        int64
+	Status    string // ACTIVE, ENDED or AUTO_ENDED
+	StartedAt time.Time
+}
+
+func scheduleOf(now time.Time, sc db.PatrolSchedule, zoneName string, zoneType db.PatrolZoneType, personnelName string,
+	patrol *SchedulePatrol, scanCount int,
+) Schedule {
 	var cancelled *time.Time
 	if sc.CancelledAt.Valid {
 		t := sc.CancelledAt.Time
 		cancelled = &t
 	}
-	return Schedule{
+	out := Schedule{
 		ID: uuidString(sc.ID), ProjectCode: sc.ProjectCode, ZoneID: sc.ZoneID, ZoneName: zoneName, ZoneType: string(zoneType),
 		PersonnelID: sc.PersonnelID, PersonnelName: personnelName, StartsAt: sc.StartsAt.Time, EndsAt: sc.EndsAt.Time,
-		WorkDate: dateOf(sc.WorkDate), Notes: textPtr(sc.Notes), CancelledAt: cancelled,
-		Status: scheduleStatus(now, scheduleTimes{EndsAt: sc.EndsAt.Time, CancelledAt: cancelled}, nil),
+		WorkDate: dateOf(sc.WorkDate), Notes: textPtr(sc.Notes), CancelledAt: cancelled, Patrol: patrol, ScanCount: scanCount,
 	}
+	var ref *LinkedPatrol
+	if patrol != nil {
+		ref = &LinkedPatrol{Status: patrol.Status}
+		delay := startDelayMinutes(patrol.StartedAt, sc.StartsAt.Time)
+		out.StartDelayMinutes = &delay
+	}
+	out.Status = scheduleStatus(now, scheduleTimes{EndsAt: sc.EndsAt.Time, CancelledAt: cancelled}, ref)
+	return out
+}
+
+// patrolOf is the patrol of a joined row, nil when the schedule has none.
+func patrolOf(id pgtype.Int8, status db.NullPatrolRouteStatus, startedAt pgtype.Timestamptz) *SchedulePatrol {
+	if !id.Valid {
+		return nil
+	}
+	return &SchedulePatrol{ID: id.Int64, Status: string(status.PatrolRouteStatus), StartedAt: startedAt.Time}
 }
 
 func scheduleOfRow(now time.Time, r db.ListPatrolSchedulesRow) Schedule {
@@ -151,7 +180,7 @@ func scheduleOfRow(now time.Time, r db.ListPatrolSchedulesRow) Schedule {
 		StartsAt: r.StartsAt, EndsAt: r.EndsAt, WorkDate: r.WorkDate, Notes: r.Notes, CreatedByID: r.CreatedByID,
 		CancelledAt: r.CancelledAt, CancelledByID: r.CancelledByID, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 	}
-	return scheduleOf(now, sc, r.ZoneName, r.ZoneType, r.PersonnelName)
+	return scheduleOf(now, sc, r.ZoneName, r.ZoneType, r.PersonnelName, patrolOf(r.PatrolID, r.PatrolStatus, r.PatrolStartedAt), int(r.ScanCount))
 }
 
 // lockSchedulingOf makes the schedule changes of some people take turns. Two admins scheduling the same person at
@@ -293,7 +322,7 @@ func (s *Service) CreateSchedules(ctx context.Context, actor auth.Principal, sco
 				if err != nil {
 					return fmt.Errorf("insert schedule: %w", err)
 				}
-				sc := scheduleOf(now, row, zone.Name, zone.Type, names[person])
+				sc := scheduleOf(now, row, zone.Name, zone.Type, names[person], nil, 0)
 				out = append(out, sc)
 				ids = append(ids, sc.ID)
 				if err := auditSchedule(ctx, q, actor, "patrol.schedule.create", sc, map[string]any{"after": scheduleMeta(sc)}); err != nil {
@@ -424,7 +453,15 @@ func (s *Service) loadSchedule(ctx context.Context, q *db.Queries, scope access.
 		t := row.CancelledAt.Time
 		cancelled = &t
 	}
-	if status := scheduleStatus(now, scheduleTimes{EndsAt: row.EndsAt.Time, CancelledAt: cancelled}, nil); status != ScheduleScheduled {
+	var patrol *LinkedPatrol
+	got, err := q.GetPatrolOfSchedule(ctx, row.ID)
+	switch {
+	case err == nil:
+		patrol = &LinkedPatrol{Status: string(got.Status)}
+	case !errors.Is(err, pgx.ErrNoRows):
+		return db.PatrolSchedule{}, fmt.Errorf("get patrol of schedule: %w", err)
+	}
+	if status := scheduleStatus(now, scheduleTimes{EndsAt: row.EndsAt.Time, CancelledAt: cancelled}, patrol); status != ScheduleScheduled {
 		return db.PatrolSchedule{}, ErrScheduleLocked.WithDetails(map[string]any{"status": status})
 	}
 	return row, nil
@@ -525,8 +562,8 @@ func (s *Service) UpdateSchedule(ctx context.Context, actor auth.Principal, scop
 		if err != nil {
 			return err
 		}
-		before := scheduleOf(now, row, zone.Name, zone.Type, names[row.PersonnelID])
-		out = scheduleOf(now, saved, zone.Name, zone.Type, names[saved.PersonnelID])
+		before := scheduleOf(now, row, zone.Name, zone.Type, names[row.PersonnelID], nil, 0)
+		out = scheduleOf(now, saved, zone.Name, zone.Type, names[saved.PersonnelID], nil, 0)
 		if err := auditSchedule(ctx, q, actor, "patrol.schedule.update", out, map[string]any{"before": scheduleMeta(before), "after": scheduleMeta(out)}); err != nil {
 			return err
 		}
@@ -586,7 +623,7 @@ func (s *Service) CancelSchedule(ctx context.Context, actor auth.Principal, scop
 		if err != nil {
 			return err
 		}
-		sc := scheduleOf(now, saved, zone.Name, zone.Type, names[saved.PersonnelID])
+		sc := scheduleOf(now, saved, zone.Name, zone.Type, names[saved.PersonnelID], nil, 0)
 		if err := auditSchedule(ctx, q, actor, "patrol.schedule.cancel", sc, map[string]any{"before": scheduleMeta(sc)}); err != nil {
 			return err
 		}
@@ -758,7 +795,7 @@ func (s *Service) GetSchedule(ctx context.Context, p auth.Principal, id string) 
 			ID: row.ID, OrganizationID: row.OrganizationID, ProjectCode: row.ProjectCode, ZoneID: row.ZoneID, PersonnelID: row.PersonnelID,
 			StartsAt: row.StartsAt, EndsAt: row.EndsAt, WorkDate: row.WorkDate, Notes: row.Notes, CreatedByID: row.CreatedByID,
 			CancelledAt: row.CancelledAt, CancelledByID: row.CancelledByID, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
-		}, row.ZoneName, row.ZoneType, row.PersonnelName)
+		}, row.ZoneName, row.ZoneType, row.PersonnelName, patrolOf(row.PatrolID, row.PatrolStatus, row.PatrolStartedAt), int(row.ScanCount))
 		return nil
 	})
 	return out, err

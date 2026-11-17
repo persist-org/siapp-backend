@@ -26,6 +26,8 @@
 #     for the danru, APPROVED, DECLINED), and zone check-ins (closed + one open). Each scan is of the
 #     FIRST checkpoint of its zone (so the order rule holds) and answers every action of that
 #     checkpoint's checklist (rows of patrol_scan_actions, with the snapshot an app-made scan keeps).
+#     Patrol schedules (10.11): per member, Pos Gerbang Utama today (whole day), Pos Belakang yesterday
+#     (MISSED) and tomorrow night (crosses midnight).
 #     Re-running adds nothing: scans are keyed by guard, day and zone.
 #   - leave requests in every state (PENDING, APPROVED, REJECTED, CANCELLED) with the ledger and counters,
 #     one shift swap, GPS points + last locations, the inbox notifications, and the master data
@@ -556,6 +558,31 @@ JOIN patrol_checkpoint_actions a ON a.checkpoint_id = s.checkpoint_id AND a.acti
 ON CONFLICT DO NOTHING;
 
 UPDATE patrol_routes r SET scan_count = (SELECT count(*) FROM patrol_scans s WHERE s.patrol_id = r.id);
+
+-- Patrol schedules (Phase 10.11), for each of the two members: Pos Gerbang Utama today for the whole Jakarta day (so a
+-- tester can always start a patrol from one), Pos Belakang yesterday 08:00-16:00 (over with no patrol: MISSED) and
+-- tomorrow 22:00-06:00 (crosses midnight, keeps tomorrow's work date). One person's live schedules may not overlap
+-- (the API refuses it), so the three are at different times. Keyed by person, zone and start: a re-run adds nothing.
+WITH me AS (SELECT (now() AT TIME ZONE 'Asia/Jakarta')::date AS today)
+INSERT INTO patrol_schedules (project_code, zone_id, personnel_id, starts_at, ends_at, work_date, notes, created_by_id)
+SELECT '1K-DEMO-S', z.id, p.id, t.s, t.s + v.len, (t.s AT TIME ZONE 'Asia/Jakarta')::date, v.note,
+       (SELECT id FROM personnels WHERE nik = 'KPIADMIN01')
+FROM me
+CROSS JOIN personnels p
+CROSS JOIN (VALUES
+  ('Pos Gerbang Utama', 0,  interval '0 hours',  interval '24 hours', 'Patroli seharian, bisa dimulai kapan saja'),
+  ('Pos Belakang',     -1,  interval '8 hours',  interval '8 hours',  'Kemarin: terlewat (tanpa patroli)'),
+  ('Pos Belakang',      1,  interval '22 hours', interval '8 hours',  'Besok malam: melewati tengah malam')
+) AS v(zone_name, day_offset, from_hour, len, note)
+JOIN patrol_zones z ON z.project_code = '1K-DEMO-S' AND z.name = v.zone_name AND z.deleted_at IS NULL
+CROSS JOIN LATERAL (SELECT (((me.today + v.day_offset)::timestamp + v.from_hour) AT TIME ZONE 'Asia/Jakarta') AS s) t
+WHERE p.nik IN ('KPIANG0001', 'KPIANG0002')
+  AND NOT EXISTS (SELECT 1 FROM patrol_schedules x WHERE x.personnel_id = p.id AND x.zone_id = z.id AND x.starts_at = t.s);
+
+\echo Patrol schedules
+SELECT p.nik, z.name AS zone, sc.starts_at AT TIME ZONE 'Asia/Jakarta' AS starts_jakarta, sc.ends_at AT TIME ZONE 'Asia/Jakarta' AS ends_jakarta, sc.work_date
+FROM patrol_schedules sc JOIN personnels p ON p.id = sc.personnel_id JOIN patrol_zones z ON z.id = sc.zone_id
+WHERE sc.project_code = '1K-DEMO-S' ORDER BY p.nik, sc.starts_at;
 
 -- Zone check-ins: anggota1 sat at the guard post on past scheduled days (closed); anggota2 is
 -- at the front gate right now (open: a guard is at one post at a time).

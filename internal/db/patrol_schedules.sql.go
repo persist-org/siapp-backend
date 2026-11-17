@@ -49,6 +49,7 @@ const countPatrolSchedules = `-- name: CountPatrolSchedules :one
 SELECT count(*)
 FROM patrol_schedules sc
 JOIN patrol_zones z ON z.organization_id = sc.organization_id AND z.id = sc.zone_id
+LEFT JOIN patrol_routes pr ON pr.organization_id = sc.organization_id AND pr.schedule_id = sc.id
 WHERE ($1::text IS NULL OR 'OS' || substring(sc.project_code from '^[0-9]+') = $1)
   AND ($2::bigint IS NULL OR sc.personnel_id = $2 OR EXISTS (
         SELECT 1 FROM team_members tm
@@ -63,8 +64,10 @@ WHERE ($1::text IS NULL OR 'OS' || substring(sc.project_code from '^[0-9]+') = $
   AND ($9::date IS NULL OR sc.work_date <= $9)
   AND ($10::text IS NULL
        OR ($10 = 'CANCELLED' AND sc.cancelled_at IS NOT NULL)
-       OR ($10 = 'MISSED' AND sc.cancelled_at IS NULL AND sc.ends_at < $11)
-       OR ($10 = 'SCHEDULED' AND sc.cancelled_at IS NULL AND sc.ends_at >= $11))
+       OR ($10 = 'IN_PROGRESS' AND sc.cancelled_at IS NULL AND pr.status = 'ACTIVE')
+       OR ($10 = 'COMPLETED' AND sc.cancelled_at IS NULL AND pr.status IN ('ENDED', 'AUTO_ENDED'))
+       OR ($10 = 'MISSED' AND sc.cancelled_at IS NULL AND pr.id IS NULL AND sc.ends_at < $11)
+       OR ($10 = 'SCHEDULED' AND sc.cancelled_at IS NULL AND pr.id IS NULL AND sc.ends_at >= $11))
 `
 
 type CountPatrolSchedulesParams struct {
@@ -153,31 +156,38 @@ func (q *Queries) GetPatrolScheduleForUpdate(ctx context.Context, id pgtype.UUID
 }
 
 const getPatrolScheduleView = `-- name: GetPatrolScheduleView :one
-SELECT sc.id, sc.organization_id, sc.project_code, sc.zone_id, sc.personnel_id, sc.starts_at, sc.ends_at, sc.work_date, sc.notes, sc.created_by_id, sc.cancelled_at, sc.cancelled_by_id, sc.created_at, sc.updated_at, z.name AS zone_name, z.type AS zone_type, p.full_name AS personnel_name
+SELECT sc.id, sc.organization_id, sc.project_code, sc.zone_id, sc.personnel_id, sc.starts_at, sc.ends_at, sc.work_date, sc.notes, sc.created_by_id, sc.cancelled_at, sc.cancelled_by_id, sc.created_at, sc.updated_at, z.name AS zone_name, z.type AS zone_type, p.full_name AS personnel_name,
+       pr.id AS patrol_id, pr.status AS patrol_status, pr.started_at AS patrol_started_at,
+       (SELECT count(*) FROM patrol_scans s WHERE s.patrol_id = pr.id AND s.zone_id = sc.zone_id)::int AS scan_count
 FROM patrol_schedules sc
 JOIN patrol_zones z ON z.organization_id = sc.organization_id AND z.id = sc.zone_id
 JOIN personnels p ON p.id = sc.personnel_id
+LEFT JOIN patrol_routes pr ON pr.organization_id = sc.organization_id AND pr.schedule_id = sc.id
 WHERE sc.id = $1
 `
 
 type GetPatrolScheduleViewRow struct {
-	ID             pgtype.UUID
-	OrganizationID int64
-	ProjectCode    string
-	ZoneID         int64
-	PersonnelID    int64
-	StartsAt       pgtype.Timestamptz
-	EndsAt         pgtype.Timestamptz
-	WorkDate       pgtype.Date
-	Notes          pgtype.Text
-	CreatedByID    int64
-	CancelledAt    pgtype.Timestamptz
-	CancelledByID  pgtype.Int8
-	CreatedAt      pgtype.Timestamptz
-	UpdatedAt      pgtype.Timestamptz
-	ZoneName       string
-	ZoneType       PatrolZoneType
-	PersonnelName  string
+	ID              pgtype.UUID
+	OrganizationID  int64
+	ProjectCode     string
+	ZoneID          int64
+	PersonnelID     int64
+	StartsAt        pgtype.Timestamptz
+	EndsAt          pgtype.Timestamptz
+	WorkDate        pgtype.Date
+	Notes           pgtype.Text
+	CreatedByID     int64
+	CancelledAt     pgtype.Timestamptz
+	CancelledByID   pgtype.Int8
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+	ZoneName        string
+	ZoneType        PatrolZoneType
+	PersonnelName   string
+	PatrolID        pgtype.Int8
+	PatrolStatus    NullPatrolRouteStatus
+	PatrolStartedAt pgtype.Timestamptz
+	ScanCount       int32
 }
 
 // One schedule with its zone and person, the same shape as the list.
@@ -202,6 +212,10 @@ func (q *Queries) GetPatrolScheduleView(ctx context.Context, id pgtype.UUID) (Ge
 		&i.ZoneName,
 		&i.ZoneType,
 		&i.PersonnelName,
+		&i.PatrolID,
+		&i.PatrolStatus,
+		&i.PatrolStartedAt,
+		&i.ScanCount,
 	)
 	return i, err
 }
@@ -316,10 +330,13 @@ func (q *Queries) ListOverlappingSchedules(ctx context.Context, arg ListOverlapp
 }
 
 const listPatrolSchedules = `-- name: ListPatrolSchedules :many
-SELECT sc.id, sc.organization_id, sc.project_code, sc.zone_id, sc.personnel_id, sc.starts_at, sc.ends_at, sc.work_date, sc.notes, sc.created_by_id, sc.cancelled_at, sc.cancelled_by_id, sc.created_at, sc.updated_at, z.name AS zone_name, z.type AS zone_type, p.full_name AS personnel_name
+SELECT sc.id, sc.organization_id, sc.project_code, sc.zone_id, sc.personnel_id, sc.starts_at, sc.ends_at, sc.work_date, sc.notes, sc.created_by_id, sc.cancelled_at, sc.cancelled_by_id, sc.created_at, sc.updated_at, z.name AS zone_name, z.type AS zone_type, p.full_name AS personnel_name,
+       pr.id AS patrol_id, pr.status AS patrol_status, pr.started_at AS patrol_started_at,
+       (SELECT count(*) FROM patrol_scans s WHERE s.patrol_id = pr.id AND s.zone_id = sc.zone_id)::int AS scan_count
 FROM patrol_schedules sc
 JOIN patrol_zones z ON z.organization_id = sc.organization_id AND z.id = sc.zone_id
 JOIN personnels p ON p.id = sc.personnel_id
+LEFT JOIN patrol_routes pr ON pr.organization_id = sc.organization_id AND pr.schedule_id = sc.id
 WHERE ($1::text IS NULL OR 'OS' || substring(sc.project_code from '^[0-9]+') = $1)
   AND ($2::bigint IS NULL OR sc.personnel_id = $2 OR EXISTS (
         SELECT 1 FROM team_members tm
@@ -334,8 +351,10 @@ WHERE ($1::text IS NULL OR 'OS' || substring(sc.project_code from '^[0-9]+') = $
   AND ($9::date IS NULL OR sc.work_date <= $9)
   AND ($10::text IS NULL
        OR ($10 = 'CANCELLED' AND sc.cancelled_at IS NOT NULL)
-       OR ($10 = 'MISSED' AND sc.cancelled_at IS NULL AND sc.ends_at < $11)
-       OR ($10 = 'SCHEDULED' AND sc.cancelled_at IS NULL AND sc.ends_at >= $11))
+       OR ($10 = 'IN_PROGRESS' AND sc.cancelled_at IS NULL AND pr.status = 'ACTIVE')
+       OR ($10 = 'COMPLETED' AND sc.cancelled_at IS NULL AND pr.status IN ('ENDED', 'AUTO_ENDED'))
+       OR ($10 = 'MISSED' AND sc.cancelled_at IS NULL AND pr.id IS NULL AND sc.ends_at < $11)
+       OR ($10 = 'SCHEDULED' AND sc.cancelled_at IS NULL AND pr.id IS NULL AND sc.ends_at >= $11))
 ORDER BY sc.starts_at, sc.id
 LIMIT $13 OFFSET $12
 `
@@ -357,23 +376,27 @@ type ListPatrolSchedulesParams struct {
 }
 
 type ListPatrolSchedulesRow struct {
-	ID             pgtype.UUID
-	OrganizationID int64
-	ProjectCode    string
-	ZoneID         int64
-	PersonnelID    int64
-	StartsAt       pgtype.Timestamptz
-	EndsAt         pgtype.Timestamptz
-	WorkDate       pgtype.Date
-	Notes          pgtype.Text
-	CreatedByID    int64
-	CancelledAt    pgtype.Timestamptz
-	CancelledByID  pgtype.Int8
-	CreatedAt      pgtype.Timestamptz
-	UpdatedAt      pgtype.Timestamptz
-	ZoneName       string
-	ZoneType       PatrolZoneType
-	PersonnelName  string
+	ID              pgtype.UUID
+	OrganizationID  int64
+	ProjectCode     string
+	ZoneID          int64
+	PersonnelID     int64
+	StartsAt        pgtype.Timestamptz
+	EndsAt          pgtype.Timestamptz
+	WorkDate        pgtype.Date
+	Notes           pgtype.Text
+	CreatedByID     int64
+	CancelledAt     pgtype.Timestamptz
+	CancelledByID   pgtype.Int8
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+	ZoneName        string
+	ZoneType        PatrolZoneType
+	PersonnelName   string
+	PatrolID        pgtype.Int8
+	PatrolStatus    NullPatrolRouteStatus
+	PatrolStartedAt pgtype.Timestamptz
+	ScanCount       int32
 }
 
 // The schedules a reader may see, with the zone and the person. One statement for the admin and the field:
@@ -382,8 +405,8 @@ type ListPatrolSchedulesRow struct {
 //     for a PATROL zone, guard_teams for a GUARD one: the teams of their approve permission) who belong to a
 //     regu of the schedule's project on the work date.
 //
-// The status is a function of the clock (see scheduleStatus), so the filter spells it out: CANCELLED, MISSED
-// (not cancelled, over) and SCHEDULED (not cancelled, not over) until a patrol can realize one (10.12).
+// The status is a function of the clock and of the patrol (see scheduleStatus), so the filter spells it out: CANCELLED, MISSED
+// (no patrol, over), SCHEDULED (no patrol, not over), and from 10.12 IN_PROGRESS and COMPLETED by the patrol started from it.
 func (q *Queries) ListPatrolSchedules(ctx context.Context, arg ListPatrolSchedulesParams) ([]ListPatrolSchedulesRow, error) {
 	rows, err := q.db.Query(ctx, listPatrolSchedules,
 		arg.ScopeRegion,
@@ -425,6 +448,10 @@ func (q *Queries) ListPatrolSchedules(ctx context.Context, arg ListPatrolSchedul
 			&i.ZoneName,
 			&i.ZoneType,
 			&i.PersonnelName,
+			&i.PatrolID,
+			&i.PatrolStatus,
+			&i.PatrolStartedAt,
+			&i.ScanCount,
 		); err != nil {
 			return nil, err
 		}

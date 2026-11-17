@@ -38,13 +38,16 @@ ORDER BY starts_at, id;
 --   * the field passes the viewer, who sees their own, and the people of the regu they decide for (patrol_teams
 --     for a PATROL zone, guard_teams for a GUARD one: the teams of their approve permission) who belong to a
 --     regu of the schedule's project on the work date.
--- The status is a function of the clock (see scheduleStatus), so the filter spells it out: CANCELLED, MISSED
--- (not cancelled, over) and SCHEDULED (not cancelled, not over) until a patrol can realize one (10.12).
+-- The status is a function of the clock and of the patrol (see scheduleStatus), so the filter spells it out: CANCELLED, MISSED
+-- (no patrol, over), SCHEDULED (no patrol, not over), and from 10.12 IN_PROGRESS and COMPLETED by the patrol started from it.
 -- name: ListPatrolSchedules :many
-SELECT sc.*, z.name AS zone_name, z.type AS zone_type, p.full_name AS personnel_name
+SELECT sc.*, z.name AS zone_name, z.type AS zone_type, p.full_name AS personnel_name,
+       pr.id AS patrol_id, pr.status AS patrol_status, pr.started_at AS patrol_started_at,
+       (SELECT count(*) FROM patrol_scans s WHERE s.patrol_id = pr.id AND s.zone_id = sc.zone_id)::int AS scan_count
 FROM patrol_schedules sc
 JOIN patrol_zones z ON z.organization_id = sc.organization_id AND z.id = sc.zone_id
 JOIN personnels p ON p.id = sc.personnel_id
+LEFT JOIN patrol_routes pr ON pr.organization_id = sc.organization_id AND pr.schedule_id = sc.id
 WHERE (sqlc.narg('scope_region')::text IS NULL OR 'OS' || substring(sc.project_code from '^[0-9]+') = sqlc.narg('scope_region'))
   AND (sqlc.narg('viewer_id')::bigint IS NULL OR sc.personnel_id = sqlc.narg('viewer_id') OR EXISTS (
         SELECT 1 FROM team_members tm
@@ -59,8 +62,10 @@ WHERE (sqlc.narg('scope_region')::text IS NULL OR 'OS' || substring(sc.project_c
   AND (sqlc.narg('date_to')::date IS NULL OR sc.work_date <= sqlc.narg('date_to'))
   AND (sqlc.narg('status')::text IS NULL
        OR (sqlc.narg('status') = 'CANCELLED' AND sc.cancelled_at IS NOT NULL)
-       OR (sqlc.narg('status') = 'MISSED' AND sc.cancelled_at IS NULL AND sc.ends_at < @now)
-       OR (sqlc.narg('status') = 'SCHEDULED' AND sc.cancelled_at IS NULL AND sc.ends_at >= @now))
+       OR (sqlc.narg('status') = 'IN_PROGRESS' AND sc.cancelled_at IS NULL AND pr.status = 'ACTIVE')
+       OR (sqlc.narg('status') = 'COMPLETED' AND sc.cancelled_at IS NULL AND pr.status IN ('ENDED', 'AUTO_ENDED'))
+       OR (sqlc.narg('status') = 'MISSED' AND sc.cancelled_at IS NULL AND pr.id IS NULL AND sc.ends_at < @now)
+       OR (sqlc.narg('status') = 'SCHEDULED' AND sc.cancelled_at IS NULL AND pr.id IS NULL AND sc.ends_at >= @now))
 ORDER BY sc.starts_at, sc.id
 LIMIT @page_limit OFFSET @page_offset;
 
@@ -68,6 +73,7 @@ LIMIT @page_limit OFFSET @page_offset;
 SELECT count(*)
 FROM patrol_schedules sc
 JOIN patrol_zones z ON z.organization_id = sc.organization_id AND z.id = sc.zone_id
+LEFT JOIN patrol_routes pr ON pr.organization_id = sc.organization_id AND pr.schedule_id = sc.id
 WHERE (sqlc.narg('scope_region')::text IS NULL OR 'OS' || substring(sc.project_code from '^[0-9]+') = sqlc.narg('scope_region'))
   AND (sqlc.narg('viewer_id')::bigint IS NULL OR sc.personnel_id = sqlc.narg('viewer_id') OR EXISTS (
         SELECT 1 FROM team_members tm
@@ -82,13 +88,18 @@ WHERE (sqlc.narg('scope_region')::text IS NULL OR 'OS' || substring(sc.project_c
   AND (sqlc.narg('date_to')::date IS NULL OR sc.work_date <= sqlc.narg('date_to'))
   AND (sqlc.narg('status')::text IS NULL
        OR (sqlc.narg('status') = 'CANCELLED' AND sc.cancelled_at IS NOT NULL)
-       OR (sqlc.narg('status') = 'MISSED' AND sc.cancelled_at IS NULL AND sc.ends_at < @now)
-       OR (sqlc.narg('status') = 'SCHEDULED' AND sc.cancelled_at IS NULL AND sc.ends_at >= @now));
+       OR (sqlc.narg('status') = 'IN_PROGRESS' AND sc.cancelled_at IS NULL AND pr.status = 'ACTIVE')
+       OR (sqlc.narg('status') = 'COMPLETED' AND sc.cancelled_at IS NULL AND pr.status IN ('ENDED', 'AUTO_ENDED'))
+       OR (sqlc.narg('status') = 'MISSED' AND sc.cancelled_at IS NULL AND pr.id IS NULL AND sc.ends_at < @now)
+       OR (sqlc.narg('status') = 'SCHEDULED' AND sc.cancelled_at IS NULL AND pr.id IS NULL AND sc.ends_at >= @now));
 
 -- One schedule with its zone and person, the same shape as the list.
 -- name: GetPatrolScheduleView :one
-SELECT sc.*, z.name AS zone_name, z.type AS zone_type, p.full_name AS personnel_name
+SELECT sc.*, z.name AS zone_name, z.type AS zone_type, p.full_name AS personnel_name,
+       pr.id AS patrol_id, pr.status AS patrol_status, pr.started_at AS patrol_started_at,
+       (SELECT count(*) FROM patrol_scans s WHERE s.patrol_id = pr.id AND s.zone_id = sc.zone_id)::int AS scan_count
 FROM patrol_schedules sc
 JOIN patrol_zones z ON z.organization_id = sc.organization_id AND z.id = sc.zone_id
 JOIN personnels p ON p.id = sc.personnel_id
+LEFT JOIN patrol_routes pr ON pr.organization_id = sc.organization_id AND pr.schedule_id = sc.id
 WHERE sc.id = @id;
