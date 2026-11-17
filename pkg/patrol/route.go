@@ -112,14 +112,16 @@ type Route struct {
 
 // RouteScan is a scan of a patrol as a pin on its line.
 type RouteScan struct {
-	ID         int64
-	ZoneID     int64
-	ZoneName   string
-	OccurredAt time.Time
-	Latitude   float64
-	Longitude  float64
-	Status     string
-	Subject    string
+	ID             int64
+	ZoneID         int64
+	ZoneName       string
+	CheckpointID   string // uuid
+	CheckpointName string
+	OccurredAt     time.Time
+	Latitude       float64
+	Longitude      float64
+	Status         string
+	Subject        string
 }
 
 // RouteDetail is one patrol with its line and the scans along it.
@@ -587,8 +589,9 @@ func (s *Service) detail(ctx context.Context, q *db.Queries, row db.PatrolRoute)
 	pins := make([]geo.Point, 0, len(scans))
 	for _, sc := range scans {
 		out.Scans = append(out.Scans, RouteScan{
-			ID: sc.ID, ZoneID: sc.ZoneID, ZoneName: sc.ZoneName, OccurredAt: sc.OccurredAt.Time,
-			Latitude: sc.Latitude, Longitude: sc.Longitude, Status: string(sc.Status), Subject: sc.Subject,
+			ID: sc.ID, ZoneID: sc.ZoneID, ZoneName: sc.ZoneName, CheckpointID: uuidString(sc.CheckpointID), CheckpointName: sc.CheckpointName,
+			OccurredAt: sc.OccurredAt.Time,
+			Latitude:   sc.Latitude, Longitude: sc.Longitude, Status: string(sc.Status), Subject: sc.Subject,
 		})
 		pins = append(pins, geo.Point{Lat: sc.Latitude, Lng: sc.Longitude})
 	}

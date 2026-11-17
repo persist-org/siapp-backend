@@ -19,30 +19,31 @@ import (
 const zoneLat, zoneLng = -6.2, 106.8
 
 type scanOut struct {
-	ID               int64      `json:"id"`
-	LocalID          string     `json:"local_id"`
-	ZoneID           int64      `json:"zone_id"`
-	ZoneType         string     `json:"zone_type"`
-	CheckpointID     *string    `json:"checkpoint_id"`
-	PersonnelID      int64      `json:"personnel_id"`
-	TeamCode         string     `json:"team_code"`
-	ProjectCode      string     `json:"project_code"`
-	WorkDate         string     `json:"work_date"`
-	DistanceMeters   *int       `json:"distance_meters"`
-	Subject          string     `json:"subject"`
-	Status           string     `json:"status"`
-	SubmittedOffline bool       `json:"submitted_offline"`
-	Answers          []answerIn `json:"answers"`
-}
-
-// answerIn is an answer of the old zone checklist, as a scan made before the checkpoints shows it. A scan
-// made now has none: its answers are rows of patrol_scan_actions (Phase 10.10 shows them).
-type answerIn struct {
-	ItemID   int64   `json:"item_id"`
-	Label    string  `json:"label"`
-	Value    any     `json:"value"`
-	Note     *string `json:"note"`
-	MediaIDs []int64 `json:"media_ids"`
+	ID               int64   `json:"id"`
+	LocalID          string  `json:"local_id"`
+	ZoneID           int64   `json:"zone_id"`
+	ZoneType         string  `json:"zone_type"`
+	CheckpointID     *string `json:"checkpoint_id"`
+	PersonnelID      int64   `json:"personnel_id"`
+	TeamCode         string  `json:"team_code"`
+	ProjectCode      string  `json:"project_code"`
+	WorkDate         string  `json:"work_date"`
+	DistanceMeters   *int    `json:"distance_meters"`
+	Subject          string  `json:"subject"`
+	Status           string  `json:"status"`
+	SubmittedOffline bool    `json:"submitted_offline"`
+	Checkpoint       struct {
+		ID        string `json:"id"`
+		Name      string `json:"name"`
+		SortOrder *int   `json:"sort_order"`
+	} `json:"checkpoint"`
+	Actions []struct {
+		ActionID        string         `json:"action_id"`
+		Action          string         `json:"action"`
+		Note            *string        `json:"note"`
+		DeviceCondition map[string]any `json:"device_condition"`
+		Photos          []photoOut     `json:"photos"`
+	} `json:"actions"`
 }
 
 // patrolCheckpoint is a checkpoint of the test world with the text its sticker holds (read from the
@@ -272,7 +273,11 @@ func TestPatrolScanHappyPath(t *testing.T) {
 		require.Zero(t, *s.DistanceMeters)
 		loc, _ := time.LoadLocation("Asia/Jakarta")
 		require.Equal(t, time.Now().In(loc).Format(time.DateOnly), s.WorkDate, "no shift: the business date in the project's timezone")
-		require.Empty(t, s.Answers, "the old answers column is an empty list: the answers are rows of patrol_scan_actions")
+		require.Equal(t, z.checkpoint.ID, s.Checkpoint.ID)
+		require.Equal(t, z.checkpoint.Name, s.Checkpoint.Name)
+		require.NotNil(t, s.Checkpoint.SortOrder)
+		require.Equal(t, 1, *s.Checkpoint.SortOrder)
+		require.Len(t, s.Actions, len(z.checkpoint.Actions), "one answer per action of the checkpoint")
 
 		require.Equal(t, 1, f.countInbox(danruTok, "PATROL_SUBMITTED"), "the DANRU is notified")
 		require.Zero(t, f.countInbox(f.personTok, "OFFLINE_SUBMISSION_SENT"), "an online scan has no offline notice")
@@ -661,11 +666,11 @@ func TestPatrolScanInterval(t *testing.T) {
 		reasonIs(t, code, raw, http.StatusUnprocessableEntity, "ZONE_INTERVAL_NOT_ELAPSED")
 	})
 
-	t.Run("the interval is per checkpoint: the next one of the zone is accepted a minute later", func(t *testing.T) {
+	t.Run("the interval is per checkpoint: the next one of the zone is accepted a minute later", func(_ *testing.T) {
 		f.mustScan(f.personTok, z, bodyAt(two, two.payload, ago(89*time.Minute)))
 	})
 
-	t.Run("after the interval the first is accepted again, and so is another zone", func(t *testing.T) {
+	t.Run("after the interval the first is accepted again, and so is another zone", func(_ *testing.T) {
 		f.mustScan(f.personTok, z, bodyAt(one, one.payload, ago(30*time.Minute)))
 		f.mustScan(f.personTok, other, scanBody(other))
 	})
@@ -686,7 +691,7 @@ func TestPatrolScanMinimumGap(t *testing.T) {
 		reasonIs(t, code, raw, http.StatusUnprocessableEntity, "ZONE_INTERVAL_NOT_ELAPSED")
 	})
 
-	t.Run("the next checkpoint seconds later, a scan past the gap and a scan of another zone are accepted", func(t *testing.T) {
+	t.Run("the next checkpoint seconds later, a scan past the gap and a scan of another zone are accepted", func(_ *testing.T) {
 		f.mustScan(f.personTok, z, bodyAt(two, two.payload, time.Now().Add(-10*time.Minute+5*time.Second)))
 		f.mustScan(f.personTok, z, bodyAt(one, one.payload, time.Now()))
 		f.mustScan(f.personTok, other, scanBody(other))
@@ -786,7 +791,7 @@ func TestPatrolScanOrder(t *testing.T) {
 		reasonIs(t, code, raw, http.StatusConflict, "CHECKPOINT_OUT_OF_ORDER")
 	})
 
-	t.Run("a declined scan still counts: a decline does not undo the walk", func(t *testing.T) {
+	t.Run("a declined scan still counts: a decline does not undo the walk", func(_ *testing.T) {
 		z := f.fencedRound(3, nil)
 		first := f.mustScan(f.personTok, z, bodyAt(z.all[0], z.all[0].payload, base))
 		f.exec(`UPDATE patrol_scans SET status = 'DECLINED', decided_by_id = $2, decided_at = now() WHERE id = $1`, first.ID, f.person)

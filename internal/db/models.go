@@ -1702,7 +1702,6 @@ type PatrolScan struct {
 	DistanceMeters   pgtype.Int4
 	Subject          string
 	Notes            pgtype.Text
-	Answers          json.RawMessage
 	Status           PatrolScanStatus
 	DecidedByID      pgtype.Int8
 	DecidedAt        pgtype.Timestamptz

@@ -2,6 +2,7 @@ package patrol
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -51,8 +52,12 @@ func dateOf(d pgtype.Date) timeutil.Date {
 	return timeutil.NewDate(d.Time.Year(), d.Time.Month(), d.Time.Day())
 }
 
-// present turns stored scans into what a reader is shown: the author's name, and every photo as a
-// signed URL, in the answer it belongs to or among the scan's general photos.
+// present turns stored scans into what a reader sees: each with the author's name, its checkpoint and its
+// actions (from the snapshots the scan kept, so a later edit of the checklist changes nothing), and each
+// action's photos as signed URLs.
+//
+// Everything is read for the whole page at once: the names, the checkpoints and the actions are one query
+// each, and a scan's photos are one call for all of its actions, however many scans or actions the page has.
 //
 // It runs inside the reader's tenant transaction and only after the caller has decided that the
 // reader may see these scans: the signed URL is the capability (media.Views asks nobody).
@@ -75,13 +80,26 @@ func (s *Service) present(ctx context.Context, q *db.Queries, rows []db.PatrolSc
 	for _, n := range names {
 		nameOf[n.ID] = n.FullName
 	}
-	photoRows, err := q.ListScanPhotos(ctx, ids)
+	checkpoints, err := q.ListCheckpointsOfScans(ctx, ids)
 	if err != nil {
-		return nil, fmt.Errorf("list scan photos: %w", err)
+		return nil, fmt.Errorf("list checkpoints of scans: %w", err)
 	}
-	attached := make(map[int64][]int64, len(rows))
-	for _, p := range photoRows {
-		attached[p.ScanID.Int64] = append(attached[p.ScanID.Int64], p.MediaID)
+	checkpointOf := make(map[int64]ScanCheckpoint, len(checkpoints))
+	for _, c := range checkpoints {
+		cp := ScanCheckpoint{ID: uuidString(c.CheckpointID), Name: c.Name}
+		if c.Position.Valid {
+			pos := int(c.Position.Int32)
+			cp.SortOrder = &pos
+		}
+		checkpointOf[c.ScanID] = cp
+	}
+	actionRows, err := q.ListScanActionsByScans(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("list scan actions: %w", err)
+	}
+	actionsOf := make(map[int64][]db.PatrolScanAction, len(rows))
+	for _, a := range actionRows {
+		actionsOf[a.ScanID] = append(actionsOf[a.ScanID], a)
 	}
 
 	for _, r := range rows {
@@ -90,32 +108,52 @@ func (s *Service) present(ctx context.Context, q *db.Queries, rows []db.PatrolSc
 			return nil, err
 		}
 		scan.PersonnelName = nameOf[r.PersonnelID]
-		scan.Photos = []Photo{}
-
-		// The photos of the answers first; what is left of the scan's photos is the general ones.
-		inAnswers := map[int64]bool{}
-		for i := range scan.Answers {
-			a := &scan.Answers[i]
-			a.Photos = []Photo{}
-			for _, id := range a.MediaIDs {
-				inAnswers[id] = true
-			}
-			photos, err := s.photos(ctx, q, scan.ID, a.MediaIDs)
-			if err != nil {
-				return nil, err
-			}
-			a.Photos = photos
-		}
-		var general []int64
-		for _, id := range attached[scan.ID] {
-			if !inAnswers[id] {
-				general = append(general, id)
-			}
-		}
-		if scan.Photos, err = s.photos(ctx, q, scan.ID, general); err != nil {
+		scan.Checkpoint = checkpointOf[r.ID]
+		if scan.Actions, err = s.actionsOfScan(ctx, q, r.ID, actionsOf[r.ID]); err != nil {
 			return nil, err
 		}
 		out = append(out, scan)
+	}
+	return out, nil
+}
+
+// actionsOfScan is the rows of a scan's answers as the views show them, each with its photos. The text of an
+// action is the snapshot's; the note and the photo ids are the columns the code reads (the snapshot holds the
+// same values, by construction).
+func (s *Service) actionsOfScan(ctx context.Context, q *db.Queries, scanID int64, rows []db.PatrolScanAction) ([]ScanAction, error) {
+	out := make([]ScanAction, 0, len(rows))
+	var all []int64
+	for _, r := range rows {
+		all = append(all, r.MediaIds...)
+	}
+	photoOf := map[int64]Photo{}
+	if len(all) > 0 {
+		photos, err := s.photos(ctx, q, scanID, all)
+		if err != nil {
+			return nil, err
+		}
+		for _, p := range photos {
+			photoOf[p.ID] = p
+		}
+	}
+	for _, r := range rows {
+		var snap struct {
+			Action      string  `json:"action"`
+			Instruction *string `json:"instruction"`
+		}
+		if err := json.Unmarshal(r.Snapshot, &snap); err != nil {
+			return nil, fmt.Errorf("scan action %s: decode snapshot: %w", uuidString(r.ID), err)
+		}
+		a := ScanAction{
+			ActionID: uuidString(r.ActionID), Action: snap.Action, Instruction: snap.Instruction, Note: textPtr(r.Note),
+			DeviceCondition: r.DeviceCondition, Photos: make([]Photo, 0, len(r.MediaIds)),
+		}
+		for _, id := range r.MediaIds {
+			if p, ok := photoOf[id]; ok {
+				a.Photos = append(a.Photos, p)
+			}
+		}
+		out = append(out, a)
 	}
 	return out, nil
 }
@@ -140,11 +178,12 @@ func (s *Service) photos(ctx context.Context, q *db.Queries, scanID int64, ids [
 
 // ScanFilter narrows a zone's scan list.
 type ScanFilter struct {
-	PersonnelID int64
-	WorkDate    *timeutil.Date
-	Status      string
-	Limit       int
-	Offset      int
+	PersonnelID  int64
+	CheckpointID pgtype.UUID // Valid when the list is narrowed to one checkpoint
+	WorkDate     *timeutil.Date
+	Status       string
+	Limit        int
+	Offset       int
 }
 
 // ListZoneScans returns one page of a zone's scans, newest first, and their total. A DANRU sees the
@@ -168,7 +207,7 @@ func (s *Service) ListZoneScans(ctx context.Context, p auth.Principal, zoneID in
 		}
 		params := db.ListZoneScansParams{
 			ZoneID: zoneID, TeamCodes: teams, ViewerID: p.PersonnelID, PersonnelID: int8Param(positive(f.PersonnelID)),
-			WorkDate: dateParam(f.WorkDate), Status: scanStatus(f.Status),
+			CheckpointID: f.CheckpointID, WorkDate: dateParam(f.WorkDate), Status: scanStatus(f.Status),
 			PageLimit: int32(f.Limit), PageOffset: int32(f.Offset), //nolint:gosec // bounded by ParseListQuery
 		}
 		rows, err := q.ListZoneScans(ctx, params)
@@ -177,7 +216,7 @@ func (s *Service) ListZoneScans(ctx context.Context, p auth.Principal, zoneID in
 		}
 		total, err = q.CountZoneScans(ctx, db.CountZoneScansParams{
 			ZoneID: zoneID, TeamCodes: teams, ViewerID: p.PersonnelID, PersonnelID: params.PersonnelID,
-			WorkDate: params.WorkDate, Status: params.Status,
+			CheckpointID: f.CheckpointID, WorkDate: params.WorkDate, Status: params.Status,
 		})
 		if err != nil {
 			return fmt.Errorf("count zone scans: %w", err)
@@ -317,12 +356,28 @@ type ZoneRef struct {
 // Progress is the three circles of one zone on one day: the red number of visits it needs
 // (Required), the blue ones scanned and not decided yet (Submitted), the green ones approved
 // (Approved), and the declined ones.
+//
+// A zone is walked checkpoint by checkpoint, so each of its active checkpoints has its own circles
+// (Checkpoints), and the zone's are their sums: it needs min_visit visits of every checkpoint, which is
+// min_visit times the number of checkpoints.
 type Progress struct {
-	Zone      ZoneRef
-	Required  int
-	Submitted int
-	Approved  int
-	Declined  int
+	Zone        ZoneRef
+	Required    int
+	Submitted   int
+	Approved    int
+	Declined    int
+	Checkpoints []CheckpointProgress
+}
+
+// CheckpointProgress is the three circles of one checkpoint of a zone: it needs min_visit visits.
+type CheckpointProgress struct {
+	CheckpointID string // uuid
+	Name         string
+	SortOrder    int
+	Required     int
+	Submitted    int
+	Approved     int
+	Declined     int
 }
 
 // ProgressFilter narrows the progress list. A zero WorkDate is today in each project's timezone.
@@ -409,15 +464,7 @@ func (s *Service) Progress(ctx context.Context, p auth.Principal, f ProgressFilt
 				if err != nil {
 					return fmt.Errorf("zone progress: %w", err)
 				}
-				for _, r := range rows {
-					out = append(out, Progress{
-						Zone: ZoneRef{
-							ID: r.ID, ProjectCode: r.ProjectCode, TeamCode: textPtr(r.TeamCode), Type: string(r.Type), Name: r.Name,
-							Alias: textPtr(r.Alias), MinVisit: int(r.MinVisit),
-						},
-						Required: int(r.MinVisit), Submitted: int(r.Submitted), Approved: int(r.Approved), Declined: int(r.Declined),
-					})
-				}
+				out = append(out, progressOf(rows)...)
 			}
 		}
 		if f.TeamCode != "" && !picked {
@@ -426,6 +473,36 @@ func (s *Service) Progress(ctx context.Context, p auth.Principal, f ProgressFilt
 		return nil
 	})
 	return out, err
+}
+
+// progressOf folds the rows of ZoneProgress (one per zone and active checkpoint, a zone with none having one
+// row with no checkpoint, the rows of a zone together) into one Progress per zone.
+func progressOf(rows []db.ZoneProgressRow) []Progress {
+	var out []Progress
+	for _, r := range rows {
+		if n := len(out); n == 0 || out[n-1].Zone.ID != r.ID {
+			out = append(out, Progress{
+				Zone: ZoneRef{
+					ID: r.ID, ProjectCode: r.ProjectCode, TeamCode: textPtr(r.TeamCode), Type: string(r.Type), Name: r.Name,
+					Alias: textPtr(r.Alias), MinVisit: int(r.MinVisit),
+				},
+				Checkpoints: []CheckpointProgress{},
+			})
+		}
+		z := &out[len(out)-1]
+		if !r.CheckpointID.Valid {
+			continue // a zone with no active checkpoint: nothing to count, nothing required
+		}
+		z.Checkpoints = append(z.Checkpoints, CheckpointProgress{
+			CheckpointID: uuidString(r.CheckpointID), Name: r.CheckpointName, SortOrder: int(r.Position),
+			Required: int(r.MinVisit), Submitted: int(r.Submitted), Approved: int(r.Approved), Declined: int(r.Declined),
+		})
+		z.Required += int(r.MinVisit)
+		z.Submitted += int(r.Submitted)
+		z.Approved += int(r.Approved)
+		z.Declined += int(r.Declined)
+	}
+	return out
 }
 
 // Scanner is one person who scanned a zone, with the number shown next to their name.
@@ -437,9 +514,9 @@ type Scanner struct {
 }
 
 // Scanners returns who scanned the zone on a day (zero is today in the project's timezone), with
-// their counts (§3.2.6.2). A DANRU sees everyone of the regu they decide for, or of the one they
+// their counts (§3.2.6.2); checkpointID, when set, counts only the scans of that checkpoint. A DANRU sees everyone of the regu they decide for, or of the one they
 // pick; anyone else sees only themselves.
-func (s *Service) Scanners(ctx context.Context, p auth.Principal, zoneID int64, teamCode string, workDate *timeutil.Date) ([]Scanner, error) {
+func (s *Service) Scanners(ctx context.Context, p auth.Principal, zoneID int64, teamCode string, workDate *timeutil.Date, checkpointID pgtype.UUID) ([]Scanner, error) {
 	out := []Scanner{}
 	err := database.WithTenant(ctx, s.pool, p.OrganizationID, func(q *db.Queries) error {
 		zone, project, err := loadZone(ctx, q, zoneID)
@@ -474,6 +551,7 @@ func (s *Service) Scanners(ctx context.Context, p auth.Principal, zoneID int64, 
 		}
 		rows, err := q.ZoneScanners(ctx, db.ZoneScannersParams{
 			ZoneID: zoneID, WorkDate: pgtype.Date{Time: day.Time(), Valid: true}, TeamCodes: teams, PersonnelID: personnel,
+			CheckpointID: checkpointID,
 		})
 		if err != nil {
 			return fmt.Errorf("zone scanners: %w", err)

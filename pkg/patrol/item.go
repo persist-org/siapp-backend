@@ -73,13 +73,6 @@ type ZoneCheckpoint struct {
 	Actions []CheckpointAction
 }
 
-// Option is one choice of a CHOICE question of the old zone checklist, as the old scans kept it
-// (AnswerEntry). Phase 10.10 removes it with them.
-type Option struct {
-	Value string `json:"value"`
-	Label string `json:"label"`
-}
-
 func zoneOf(z db.PatrolZone) Zone {
 	out := Zone{
 		ID: z.ID, ProjectCode: z.ProjectCode, TeamCode: textPtr(z.TeamCode), Type: string(z.Type), Name: z.Name,

@@ -2,6 +2,7 @@ package patrol
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strconv"
 
@@ -449,37 +450,39 @@ func photosToAPI(photos []Photo) *[]apigen.PatrolScanPhoto {
 }
 
 func scanToAPI(sc Scan) apigen.PatrolScan {
-	answers := make([]apigen.PatrolScanAnswer, 0, len(sc.Answers))
-	for _, a := range sc.Answers {
-		out := apigen.PatrolScanAnswer{
-			ItemId: a.ItemID, Label: a.Label, AnswerType: apigen.PatrolScanAnswerAnswerType(a.AnswerType), Required: a.Required,
-			PhotoMode: apigen.PatrolScanAnswerPhotoMode(a.PhotoMode), PhotoMax: a.PhotoMax,
-			NoteMode: apigen.PatrolScanAnswerNoteMode(a.NoteMode), AttachWhen: apigen.PatrolScanAnswerAttachWhen(a.AttachWhen),
-			Value: a.Value, Note: a.Note, MediaIds: a.MediaIDs, Media: photosToAPI(a.Photos),
+	actions := make([]apigen.PatrolScanAction, 0, len(sc.Actions))
+	for _, a := range sc.Actions {
+		out := apigen.PatrolScanAction{
+			ActionId: mustUUID(a.ActionID), Action: a.Action, Instruction: a.Instruction, Note: a.Note,
+			Photos: []apigen.PatrolScanPhoto{},
 		}
-		if len(a.Options) > 0 {
-			opts := make([]apigen.PatrolChecklistOption, 0, len(a.Options))
-			for _, o := range a.Options {
-				opts = append(opts, apigen.PatrolChecklistOption{Value: o.Value, Label: o.Label})
+		if p := photosToAPI(a.Photos); p != nil {
+			out.Photos = *p
+		}
+		if len(a.DeviceCondition) > 0 && string(a.DeviceCondition) != "null" {
+			var dc map[string]interface{}
+			if err := json.Unmarshal(a.DeviceCondition, &dc); err == nil {
+				out.DeviceCondition = &dc
 			}
-			out.Options = &opts
 		}
-		answers = append(answers, out)
+		actions = append(actions, out)
 	}
 	local, _ := uuid.Parse(sc.LocalID)
 	var name *string
 	if sc.PersonnelName != "" {
 		name = &sc.PersonnelName
 	}
+	checkpoint := apigen.PatrolScanCheckpoint{Id: mustUUID(sc.Checkpoint.ID), Name: sc.Checkpoint.Name, SortOrder: sc.Checkpoint.SortOrder}
 	return apigen.PatrolScan{
 		Id: sc.ID, LocalId: local, ZoneId: sc.ZoneID, ZoneType: apigen.PatrolScanZoneType(sc.ZoneType),
-		CheckpointId: uuidPtr(sc.CheckpointID), PersonnelId: sc.PersonnelID, TeamCode: sc.TeamCode, ProjectCode: sc.ProjectCode, OccurredAt: sc.OccurredAt,
+		CheckpointId: checkpoint.Id, Checkpoint: checkpoint,
+		PersonnelId: sc.PersonnelID, TeamCode: sc.TeamCode, ProjectCode: sc.ProjectCode, OccurredAt: sc.OccurredAt,
 		ReceivedAt: sc.ReceivedAt, WorkDate: openapi_types.Date{Time: sc.WorkDate.Time()}, Latitude: sc.Latitude,
 		Longitude: sc.Longitude, AccuracyMeters: sc.AccuracyMeters, DistanceMeters: sc.DistanceMeters, Subject: sc.Subject,
-		Notes: sc.Notes, Answers: answers, Status: apigen.PatrolScanStatus(sc.Status), PatrolId: sc.PatrolID,
+		Notes: sc.Notes, Actions: actions, Status: apigen.PatrolScanStatus(sc.Status), PatrolId: sc.PatrolID,
 		SubmittedOffline: sc.SubmittedOffline, CreatedAt: sc.CreatedAt,
 		DecidedById: sc.DecidedByID, DecidedAt: sc.DecidedAt, DecisionNote: sc.DecisionNote,
-		PersonnelName: name, Media: photosToAPI(sc.Photos),
+		PersonnelName: name,
 	}
 }
 

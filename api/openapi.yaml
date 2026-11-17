@@ -2799,12 +2799,6 @@ components:
         next_checkpoint_id: { type: string, format: uuid, description: "Checkpoint yang sebaiknya di-scan pemanggil berikutnya. Hanya di detail lapangan; tidak ada bila zona tanpa checkpoint aktif." }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
-    PatrolChecklistOption:
-      type: object
-      required: [value, label]
-      properties:
-        value: { type: string, minLength: 1, maxLength: 100, description: "Nilai yang dikirim aplikasi; unik dalam satu butir." }
-        label: { type: string, minLength: 1, maxLength: 200 }
     PatrolZoneInput:
       type: object
       required: [project_code, type, name]
@@ -2970,26 +2964,25 @@ components:
         is_active: { type: boolean }
 
     # ---------- 28. patrol_scans ----------
-    PatrolScanAnswer:
+    PatrolScanCheckpoint:
       type: object
-      description: |
-        Satu pertanyaan checklist beserta jawabannya, disalin seperti saat scan dibuat (judul,
-        tipe, opsi dan aturan lampiran), jadi mengubah checklist tidak menulis ulang riwayat.
-      required: [item_id, label, answer_type, required, photo_mode, photo_max, note_mode, attach_when, media_ids]
+      description: Checkpoint yang di-scan, dengan namanya sekarang dan urutannya sekarang di zona (tidak disertakan bila checkpoint sudah dilepas dari zona).
+      required: [id, name]
       properties:
-        item_id: { type: integer, format: int64 }
-        label: { type: string }
-        answer_type: { type: string, enum: [BOOLEAN, TEXT, NUMBER, CHOICE] }
-        options: { type: array, items: { $ref: '#/components/schemas/PatrolChecklistOption' } }
-        required: { type: boolean }
-        photo_mode: { type: string, enum: [NONE, OPTIONAL, REQUIRED] }
-        photo_max: { type: integer }
-        note_mode: { type: string, enum: [NONE, OPTIONAL, REQUIRED] }
-        attach_when: { type: string, enum: [ALWAYS, ON_NO] }
-        value: { nullable: true, description: "Boolean, teks, angka atau nilai opsi menurut `answer_type`; null bila pertanyaan opsional tidak dijawab." }
+        id: { type: string, format: uuid }
+        name: { type: string }
+        sort_order: { type: integer, nullable: true }
+    PatrolScanAction:
+      type: object
+      description: Satu aksi checklist yang dijawab pada scan. Teks aksi disalin saat scan dibuat, jadi mengubah checklist tidak menulis ulang riwayat.
+      required: [action_id, action, photos]
+      properties:
+        action_id: { type: string, format: uuid }
+        action: { type: string }
+        instruction: { type: string, nullable: true }
         note: { type: string, nullable: true }
-        media_ids: { type: array, items: { type: integer, format: int64 } }
-        media: { type: array, items: { $ref: '#/components/schemas/PatrolScanPhoto' }, description: "Foto jawaban ini sebagai URL bertanda tangan. Hanya ada saat scan dibaca (daftar dan detail)." }
+        device_condition: { type: object, nullable: true, additionalProperties: true, description: "Kondisi perangkat saat aksi dijawab (bukti, bukan syarat); null bila tidak dikirim." }
+        photos: { type: array, items: { $ref: '#/components/schemas/PatrolScanPhoto' }, description: "Foto aksi ini sebagai URL bertanda tangan. Kosong pada respons pembuatan scan; terisi saat scan dibaca." }
     PatrolScanPhoto:
       type: object
       description: Foto sebuah scan. URL-nya bertanda tangan dan berumur sekitar satu jam; jangan disimpan, muat ulang scan untuk URL baru.
@@ -3003,13 +2996,14 @@ components:
     PatrolScan:
       type: object
       description: Satu kunjungan ke satu checkpoint zona. `team_code` dan `work_date` ditentukan server dari shift pemindai, bukan dikirim aplikasi.
-      required: [id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, subject, answers, status, submitted_offline, created_at]
+      required: [id, local_id, zone_id, zone_type, checkpoint_id, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, subject, checkpoint, actions, status, submitted_offline, created_at]
       properties:
         id: { type: integer, format: int64 }
         local_id: { type: string, format: uuid }
         zone_id: { type: integer, format: int64 }
         zone_type: { type: string, enum: [PATROL, GUARD] }
-        checkpoint_id: { type: string, format: uuid, nullable: true, description: "Checkpoint yang di-scan (Phase 10.9); null pada scan lama sebelum checkpoint ada." }
+        checkpoint_id: { type: string, format: uuid, description: "Checkpoint yang di-scan." }
+        checkpoint: { $ref: '#/components/schemas/PatrolScanCheckpoint' }
         personnel_id: { type: integer, format: int64 }
         team_code: { type: string, example: 1K-IBMI-S1 }
         project_code: { type: string, example: 1K-IBMI-S }
@@ -3022,20 +3016,19 @@ components:
         distance_meters: { type: integer, nullable: true, description: "Jarak dari checkpoint; null bila checkpoint tanpa geofence." }
         subject: { type: string }
         notes: { type: string, nullable: true }
-        answers: { type: array, items: { $ref: '#/components/schemas/PatrolScanAnswer' } }
+        actions: { type: array, items: { $ref: '#/components/schemas/PatrolScanAction' } }
         status: { type: string, enum: [SUBMITTED, APPROVED, DECLINED] }
         patrol_id: { type: integer, format: int64, nullable: true, description: "Patroli yang sedang berjalan saat scan (Phase 10.4); diisi server." }
         submitted_offline: { type: boolean }
         created_at: { type: string, format: date-time }
         personnel_name: { type: string, description: "Nama pemindai. Ada saat scan dibaca (daftar dan detail)." }
-        media: { type: array, items: { $ref: '#/components/schemas/PatrolScanPhoto' }, description: "Foto umum scan (bukan foto jawaban) sebagai URL bertanda tangan. Ada saat scan dibaca." }
         decided_by_id: { type: integer, format: int64, nullable: true }
         decided_at: { type: string, format: date-time, nullable: true }
         decision_note: { type: string, nullable: true, description: "Catatan DANRU, wajib saat ditolak." }
     ZoneProgressItem:
       type: object
       description: Tiga lingkaran satu zona pada satu tanggal kerja (Gambar 10).
-      required: [zone, required, submitted, approved, declined]
+      required: [zone, required, submitted, approved, declined, checkpoints]
       properties:
         zone:
           type: object
@@ -3052,6 +3045,21 @@ components:
         submitted: { type: integer, description: "Lingkaran biru: sudah di-scan, belum diputuskan." }
         approved: { type: integer, description: "Lingkaran hijau: disetujui." }
         declined: { type: integer, description: Ditolak. }
+        checkpoints:
+          type: array
+          description: Tiga lingkaran tiap checkpoint aktif zona menurut urutannya. Angka zona di atas adalah jumlahnya; zona tanpa checkpoint aktif punya larik kosong dan `required` 0.
+          items: { $ref: '#/components/schemas/CheckpointProgressItem' }
+    CheckpointProgressItem:
+      type: object
+      required: [checkpoint_id, name, sort_order, required, submitted, approved, declined]
+      properties:
+        checkpoint_id: { type: string, format: uuid }
+        name: { type: string }
+        sort_order: { type: integer }
+        required: { type: integer, description: "`min_visit` zona: jumlah scan yang dibutuhkan checkpoint ini." }
+        submitted: { type: integer }
+        approved: { type: integer }
+        declined: { type: integer }
     ZoneScanner:
       type: object
       required: [personnel_id, full_name, submitted_count, approved_count]
@@ -3213,11 +3221,13 @@ components:
     PatrolRouteScan:
       type: object
       description: Scan di sepanjang patroli, untuk pin di garis peta.
-      required: [id, zone_id, zone_name, occurred_at, latitude, longitude, status, subject]
+      required: [id, zone_id, zone_name, checkpoint_id, checkpoint_name, occurred_at, latitude, longitude, status, subject]
       properties:
         id: { type: integer, format: int64 }
         zone_id: { type: integer, format: int64 }
         zone_name: { type: string }
+        checkpoint_id: { type: string, format: uuid }
+        checkpoint_name: { type: string }
         occurred_at: { type: string, format: date-time }
         latitude: { type: number, format: double }
         longitude: { type: number, format: double }
@@ -12010,11 +12020,12 @@ paths:
       tags: [Patrol]
       summary: Riwayat scan zona
       description: |
-        Scan zona, terbaru dulu, lengkap dengan jawaban dan foto (URL bertanda tangan). DANRU melihat
+        Scan zona, terbaru dulu, lengkap dengan checkpoint, aksi checklist dan fotonya (URL bertanda tangan). DANRU melihat
         scan regu dalam jangkauan izin approve-nya; anggota proyek lain hanya scan miliknya.
         Scan yang disetujui atau ditolak tetap tampil (§3.2.6.3).
       parameters:
         - { name: personnel_id, in: query, schema: { type: integer, format: int64 } }
+        - { name: checkpoint_id, in: query, description: "Hanya scan checkpoint ini.", schema: { type: string, format: uuid } }
         - { name: work_date, in: query, schema: { type: string, format: date } }
         - { name: status, in: query, schema: { type: string, enum: [SUBMITTED, APPROVED, DECLINED] } }
         - $ref: '#/components/parameters/PageParam'
@@ -12038,6 +12049,7 @@ paths:
       parameters:
         - { name: team_code, in: query, schema: { type: string } }
         - { name: work_date, in: query, schema: { type: string, format: date } }
+        - { name: checkpoint_id, in: query, description: "Hitung hanya scan checkpoint ini.", schema: { type: string, format: uuid } }
       responses:
         '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { type: array, items: { $ref: '#/components/schemas/ZoneScanner' } } } } ] } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
@@ -12122,8 +12134,8 @@ paths:
       tags: [Patrol]
       summary: Detail satu scan
       description: |
-        Scan dengan tiap jawaban (pertanyaan, jawaban, catatan, foto) agar DANRU menilai jawaban
-        beserta buktinya. Pemindai membaca miliknya; DANRU membaca scan regu yang ia putuskan. Scan
+        Scan dengan checkpoint-nya dan tiap aksi checklist (aksi, catatan, kondisi perangkat, foto) agar DANRU
+        menilai scan beserta buktinya. Pemindai membaca miliknya; DANRU membaca scan regu yang ia putuskan. Scan
         lain dijawab 404 `SCAN_NOT_FOUND`.
       responses:
         '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/SuccessEnvelope' }, { properties: { data: { $ref: '#/components/schemas/PatrolScan' } } } ] } } } }

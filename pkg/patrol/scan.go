@@ -146,8 +146,8 @@ type Scan struct {
 	ZoneID      int64
 	ZoneType    string
 	PersonnelID int64
-	// CheckpointID is the checkpoint scanned; nil for a scan made before the checkpoints existed.
-	CheckpointID   *string
+	// Checkpoint is the checkpoint scanned, as the zone shows it now; its name is the one it has today.
+	Checkpoint     ScanCheckpoint
 	TeamCode       string
 	ProjectCode    string
 	OccurredAt     time.Time
@@ -158,10 +158,12 @@ type Scan struct {
 	AccuracyMeters float64
 	// DistanceMeters is how far from the checkpoint the scan was made; nil for a checkpoint with no
 	// geofence.
-	DistanceMeters   *int
-	Subject          string
-	Notes            *string
-	Answers          []AnswerEntry
+	DistanceMeters *int
+	Subject        string
+	Notes          *string
+	// Actions are the answers, one per action of the checkpoint's checklist as it was when the guard scanned
+	// (from patrol_scan_actions, never from the live action). Photos are filled when a scan is read.
+	Actions          []ScanAction
 	Status           string
 	PatrolID         *int64
 	SubmittedOffline bool
@@ -172,10 +174,32 @@ type Scan struct {
 	DecidedAt    *time.Time
 	DecisionNote *string
 
-	// Filled when a scan is read, not when it is stored: the author's name and the photos as
-	// signed URLs (Service.present). Phase 10.10 gives each action its own.
+	// Filled when a scan is read, not when it is stored: the author's name (Service.present).
 	PersonnelName string
-	Photos        []Photo
+}
+
+// ScanCheckpoint is the checkpoint a scan was made at.
+type ScanCheckpoint struct {
+	ID   string // uuid
+	Name string
+	// SortOrder is its place in the scan's zone now; nil once it has left that zone (or the scan was just made
+	// and the place is not read again).
+	SortOrder *int
+}
+
+// ScanAction is one answered action of a scan, as the scan kept it: the action as it was (so renaming it
+// later changes nothing here) and what the guard gave.
+type ScanAction struct {
+	ActionID    string // uuid
+	Action      string
+	Instruction *string
+	Note        *string
+	// DeviceCondition is the phone's condition when it was answered, as the app sent it; nil when it sent none.
+	// Evidence for whoever reviews the scan, not a verdict (see devicecondition.go).
+	DeviceCondition json.RawMessage
+	// Photos are this action's photos as signed URLs that expire in about an hour, so they are never stored:
+	// a reader loads the scan again for fresh ones. Nil on the answer to the scan that was just made.
+	Photos []Photo
 }
 
 // Photo is a photo of a scan as a reader sees it: a signed URL that expires in about an hour, so it
@@ -203,10 +227,7 @@ func scanOf(r db.PatrolScan) (Scan, error) {
 		Latitude: r.Latitude, Longitude: r.Longitude, AccuracyMeters: r.AccuracyMeters, Subject: r.Subject,
 		Notes: textPtr(r.Notes), Status: string(r.Status), SubmittedOffline: r.SubmittedOffline, CreatedAt: r.CreatedAt.Time,
 	}
-	if r.CheckpointID.Valid {
-		id := uuidString(r.CheckpointID)
-		out.CheckpointID = &id
-	}
+	out.Checkpoint.ID = uuidString(r.CheckpointID)
 	if r.DistanceMeters.Valid {
 		d := int(r.DistanceMeters.Int32)
 		out.DistanceMeters = &d
@@ -221,12 +242,7 @@ func scanOf(r db.PatrolScan) (Scan, error) {
 		out.DecidedAt = &r.DecidedAt.Time
 	}
 	out.DecisionNote = textPtr(r.DecisionNote)
-	if err := json.Unmarshal(r.Answers, &out.Answers); err != nil {
-		return Scan{}, fmt.Errorf("scan %d: decode answers: %w", r.ID, err)
-	}
-	if out.Answers == nil {
-		out.Answers = []AnswerEntry{}
-	}
+	out.Actions = []ScanAction{}
 	return out, nil
 }
 
@@ -235,8 +251,10 @@ type visit struct {
 	zone       db.PatrolZone
 	project    db.Project
 	checkpoint db.PatrolCheckpoint
-	loc        *time.Location
-	distance   *int
+	// position is the checkpoint's place in the zone (from 1).
+	position int
+	loc      *time.Location
+	distance *int
 }
 
 // arrive runs the first two checks a scan, a check-in and a check-out have in common, in this order: the
@@ -254,11 +272,14 @@ func (s *Service) arrive(ctx context.Context, q *db.Queries, p auth.Principal, z
 	if !ok {
 		return v, ErrCheckpointNotInZone
 	}
-	if _, err := q.GetZoneCheckpointLink(ctx, db.GetZoneCheckpointLinkParams{ZoneID: zone.ID, CheckpointID: id}); errors.Is(err, pgx.ErrNoRows) {
+	position, err := q.GetZoneCheckpointLink(ctx, db.GetZoneCheckpointLinkParams{ZoneID: zone.ID, CheckpointID: id})
+	if errors.Is(err, pgx.ErrNoRows) {
 		return v, ErrCheckpointNotInZone
-	} else if err != nil {
+	}
+	if err != nil {
 		return v, fmt.Errorf("get zone checkpoint link: %w", err)
 	}
+	v.position = int(position)
 	cp, err := q.GetPatrolCheckpoint(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return v, ErrCheckpointNotInZone
@@ -550,15 +571,13 @@ func (s *Service) scan(ctx context.Context, p auth.Principal, zoneID int64, in S
 			return err
 		}
 
-		// A scan made now keeps its answers in patrol_scan_actions; the old answers column is an empty
-		// list (it is dropped in Phase 10.10).
 		row, err := q.InsertPatrolScan(ctx, db.InsertPatrolScanParams{
 			LocalID: pgtype.UUID{Bytes: localID, Valid: true}, ZoneID: zoneID, ZoneType: zone.Type,
 			PersonnelID: p.PersonnelID, TeamCode: pl.team, ProjectCode: zone.ProjectCode,
 			OccurredAt: ts(at), ReceivedAt: ts(now), WorkDate: pgtype.Date{Time: pl.workDate.Time(), Valid: true},
 			Latitude: *in.Latitude, Longitude: *in.Longitude, AccuracyMeters: *in.AccuracyMeters,
 			DistanceMeters: intParam(v.distance), Subject: subjectOf(in.Subject, v.checkpoint.Name), Notes: textOrNull(in.Notes),
-			Answers: json.RawMessage("[]"), PatrolID: patrolID, CheckpointID: v.checkpoint.ID, SubmittedOffline: in.SubmittedOffline,
+			PatrolID: patrolID, CheckpointID: v.checkpoint.ID, SubmittedOffline: in.SubmittedOffline,
 		})
 		if err != nil {
 			return fmt.Errorf("insert scan: %w", err)
@@ -600,6 +619,16 @@ func (s *Service) scan(ctx context.Context, p auth.Principal, zoneID int64, in S
 		scan, err := scanOf(row)
 		if err != nil {
 			return err
+		}
+		// What this answer shows of the checkpoint and the actions is what the guard just sent; the photo
+		// URLs are not made here (a reader asks for the scan to get them).
+		scan.Checkpoint = ScanCheckpoint{ID: uuidString(v.checkpoint.ID), Name: v.checkpoint.Name, SortOrder: &v.position}
+		scan.Actions = make([]ScanAction, 0, len(entries))
+		for _, e := range entries {
+			scan.Actions = append(scan.Actions, ScanAction{
+				ActionID: uuidString(e.action.ID), Action: e.action.Action, Instruction: textPtr(e.action.Instruction),
+				Note: e.note, DeviceCondition: e.deviceCondition,
+			})
 		}
 		out = ScanResult{Scan: scan}
 		notices, err = s.noticesFor(ctx, q, p, zone, project, v.checkpoint, scan)

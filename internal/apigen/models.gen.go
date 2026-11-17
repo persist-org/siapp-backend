@@ -1460,90 +1460,6 @@ func (e PatrolScanZoneType) Valid() bool {
 	}
 }
 
-// Defines values for PatrolScanAnswerAnswerType.
-const (
-	BOOLEAN PatrolScanAnswerAnswerType = "BOOLEAN"
-	CHOICE  PatrolScanAnswerAnswerType = "CHOICE"
-	NUMBER  PatrolScanAnswerAnswerType = "NUMBER"
-	TEXT    PatrolScanAnswerAnswerType = "TEXT"
-)
-
-// Valid indicates whether the value is a known member of the PatrolScanAnswerAnswerType enum.
-func (e PatrolScanAnswerAnswerType) Valid() bool {
-	switch e {
-	case BOOLEAN:
-		return true
-	case CHOICE:
-		return true
-	case NUMBER:
-		return true
-	case TEXT:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PatrolScanAnswerAttachWhen.
-const (
-	ALWAYS PatrolScanAnswerAttachWhen = "ALWAYS"
-	ONNO   PatrolScanAnswerAttachWhen = "ON_NO"
-)
-
-// Valid indicates whether the value is a known member of the PatrolScanAnswerAttachWhen enum.
-func (e PatrolScanAnswerAttachWhen) Valid() bool {
-	switch e {
-	case ALWAYS:
-		return true
-	case ONNO:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PatrolScanAnswerNoteMode.
-const (
-	PatrolScanAnswerNoteModeNONE     PatrolScanAnswerNoteMode = "NONE"
-	PatrolScanAnswerNoteModeOPTIONAL PatrolScanAnswerNoteMode = "OPTIONAL"
-	PatrolScanAnswerNoteModeREQUIRED PatrolScanAnswerNoteMode = "REQUIRED"
-)
-
-// Valid indicates whether the value is a known member of the PatrolScanAnswerNoteMode enum.
-func (e PatrolScanAnswerNoteMode) Valid() bool {
-	switch e {
-	case PatrolScanAnswerNoteModeNONE:
-		return true
-	case PatrolScanAnswerNoteModeOPTIONAL:
-		return true
-	case PatrolScanAnswerNoteModeREQUIRED:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PatrolScanAnswerPhotoMode.
-const (
-	PatrolScanAnswerPhotoModeNONE     PatrolScanAnswerPhotoMode = "NONE"
-	PatrolScanAnswerPhotoModeOPTIONAL PatrolScanAnswerPhotoMode = "OPTIONAL"
-	PatrolScanAnswerPhotoModeREQUIRED PatrolScanAnswerPhotoMode = "REQUIRED"
-)
-
-// Valid indicates whether the value is a known member of the PatrolScanAnswerPhotoMode enum.
-func (e PatrolScanAnswerPhotoMode) Valid() bool {
-	switch e {
-	case PatrolScanAnswerPhotoModeNONE:
-		return true
-	case PatrolScanAnswerPhotoModeOPTIONAL:
-		return true
-	case PatrolScanAnswerPhotoModeREQUIRED:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for PatrolScanPhotoCaptureSource.
 const (
 	PatrolScanPhotoCaptureSourceCAMERA  PatrolScanPhotoCaptureSource = "CAMERA"
@@ -8019,6 +7935,19 @@ type ChartSeries struct {
 	} `json:"points,omitempty"`
 }
 
+// CheckpointProgressItem defines model for CheckpointProgressItem.
+type CheckpointProgressItem struct {
+	Approved     int                `json:"approved"`
+	CheckpointId openapi_types.UUID `json:"checkpoint_id"`
+	Declined     int                `json:"declined"`
+	Name         string             `json:"name"`
+
+	// Required `min_visit` zona: jumlah scan yang dibutuhkan checkpoint ini.
+	Required  int `json:"required"`
+	SortOrder int `json:"sort_order"`
+	Submitted int `json:"submitted"`
+}
+
 // City Master global kota (cascading dari province).
 type City struct {
 	Code       *string `json:"code,omitempty"`
@@ -9288,14 +9217,6 @@ type PanicTypePatch struct {
 	StakeholderTypeId *int64  `json:"stakeholder_type_id,omitempty"`
 }
 
-// PatrolChecklistOption defines model for PatrolChecklistOption.
-type PatrolChecklistOption struct {
-	Label string `json:"label"`
-
-	// Value Nilai yang dikirim aplikasi; unik dalam satu butir.
-	Value string `json:"value"`
-}
-
 // PatrolCheckpoint Checkpoint: tempat yang di-scan petugas, dengan QR dan checklist sendiri. Satu checkpoint bisa
 // ada di banyak zona (`zones`, dengan urutannya di tiap zona). Rahasia QR TIDAK pernah ada di sini:
 // isinya hanya ada di gambar QR yang dicetak admin (`GET /admin/checkpoints/{id}/qr`).
@@ -9511,14 +9432,16 @@ type PatrolRoutePointsResult struct {
 
 // PatrolRouteScan Scan di sepanjang patroli, untuk pin di garis peta.
 type PatrolRouteScan struct {
-	Id         int64                 `json:"id"`
-	Latitude   float64               `json:"latitude"`
-	Longitude  float64               `json:"longitude"`
-	OccurredAt time.Time             `json:"occurred_at"`
-	Status     PatrolRouteScanStatus `json:"status"`
-	Subject    string                `json:"subject"`
-	ZoneId     int64                 `json:"zone_id"`
-	ZoneName   string                `json:"zone_name"`
+	CheckpointId   openapi_types.UUID    `json:"checkpoint_id"`
+	CheckpointName string                `json:"checkpoint_name"`
+	Id             int64                 `json:"id"`
+	Latitude       float64               `json:"latitude"`
+	Longitude      float64               `json:"longitude"`
+	OccurredAt     time.Time             `json:"occurred_at"`
+	Status         PatrolRouteScanStatus `json:"status"`
+	Subject        string                `json:"subject"`
+	ZoneId         int64                 `json:"zone_id"`
+	ZoneName       string                `json:"zone_name"`
 }
 
 // PatrolRouteScanStatus defines model for PatrolRouteScan.Status.
@@ -9540,13 +9463,16 @@ type PatrolRouteStart struct {
 // PatrolScan Satu kunjungan ke satu checkpoint zona. `team_code` dan `work_date` ditentukan server dari shift pemindai, bukan dikirim aplikasi.
 type PatrolScan struct {
 	AccuracyMeters float64            `json:"accuracy_meters"`
-	Answers        []PatrolScanAnswer `json:"answers"`
+	Actions        []PatrolScanAction `json:"actions"`
 
-	// CheckpointId Checkpoint yang di-scan (Phase 10.9); null pada scan lama sebelum checkpoint ada.
-	CheckpointId *openapi_types.UUID `json:"checkpoint_id,omitempty"`
-	CreatedAt    time.Time           `json:"created_at"`
-	DecidedAt    *time.Time          `json:"decided_at,omitempty"`
-	DecidedById  *int64              `json:"decided_by_id,omitempty"`
+	// Checkpoint Checkpoint yang di-scan, dengan namanya sekarang dan urutannya sekarang di zona (tidak disertakan bila checkpoint sudah dilepas dari zona).
+	Checkpoint PatrolScanCheckpoint `json:"checkpoint"`
+
+	// CheckpointId Checkpoint yang di-scan.
+	CheckpointId openapi_types.UUID `json:"checkpoint_id"`
+	CreatedAt    time.Time          `json:"created_at"`
+	DecidedAt    *time.Time         `json:"decided_at,omitempty"`
+	DecidedById  *int64             `json:"decided_by_id,omitempty"`
 
 	// DecisionNote Catatan DANRU, wajib saat ditolak.
 	DecisionNote *string `json:"decision_note,omitempty"`
@@ -9557,11 +9483,8 @@ type PatrolScan struct {
 	Latitude       float64            `json:"latitude"`
 	LocalId        openapi_types.UUID `json:"local_id"`
 	Longitude      float64            `json:"longitude"`
-
-	// Media Foto umum scan (bukan foto jawaban) sebagai URL bertanda tangan. Ada saat scan dibaca.
-	Media      *[]PatrolScanPhoto `json:"media,omitempty"`
-	Notes      *string            `json:"notes,omitempty"`
-	OccurredAt time.Time          `json:"occurred_at"`
+	Notes          *string            `json:"notes,omitempty"`
+	OccurredAt     time.Time          `json:"occurred_at"`
 
 	// PatrolId Patroli yang sedang berjalan saat scan (Phase 10.4); diisi server.
 	PatrolId    *int64 `json:"patrol_id,omitempty"`
@@ -9588,6 +9511,20 @@ type PatrolScanStatus string
 // PatrolScanZoneType defines model for PatrolScan.ZoneType.
 type PatrolScanZoneType string
 
+// PatrolScanAction Satu aksi checklist yang dijawab pada scan. Teks aksi disalin saat scan dibuat, jadi mengubah checklist tidak menulis ulang riwayat.
+type PatrolScanAction struct {
+	Action   string             `json:"action"`
+	ActionId openapi_types.UUID `json:"action_id"`
+
+	// DeviceCondition Kondisi perangkat saat aksi dijawab (bukti, bukan syarat); null bila tidak dikirim.
+	DeviceCondition *map[string]interface{} `json:"device_condition,omitempty"`
+	Instruction     *string                 `json:"instruction,omitempty"`
+	Note            *string                 `json:"note,omitempty"`
+
+	// Photos Foto aksi ini sebagai URL bertanda tangan. Kosong pada respons pembuatan scan; terisi saat scan dibaca.
+	Photos []PatrolScanPhoto `json:"photos"`
+}
+
 // PatrolScanActionInput Jawaban satu aksi checklist checkpoint. Melakukan dan menunjukkan aksi itulah jawabannya, tanpa nilai.
 type PatrolScanActionInput struct {
 	// ActionId Aksi aktif checkpoint yang di-scan; yang lain `CHECKLIST_ITEM_INVALID`.
@@ -9606,39 +9543,12 @@ type PatrolScanActionInput struct {
 	Note *string `json:"note,omitempty"`
 }
 
-// PatrolScanAnswer Satu pertanyaan checklist beserta jawabannya, disalin seperti saat scan dibuat (judul,
-// tipe, opsi dan aturan lampiran), jadi mengubah checklist tidak menulis ulang riwayat.
-type PatrolScanAnswer struct {
-	AnswerType PatrolScanAnswerAnswerType `json:"answer_type"`
-	AttachWhen PatrolScanAnswerAttachWhen `json:"attach_when"`
-	ItemId     int64                      `json:"item_id"`
-	Label      string                     `json:"label"`
-
-	// Media Foto jawaban ini sebagai URL bertanda tangan. Hanya ada saat scan dibaca (daftar dan detail).
-	Media     *[]PatrolScanPhoto        `json:"media,omitempty"`
-	MediaIds  []int64                   `json:"media_ids"`
-	Note      *string                   `json:"note,omitempty"`
-	NoteMode  PatrolScanAnswerNoteMode  `json:"note_mode"`
-	Options   *[]PatrolChecklistOption  `json:"options,omitempty"`
-	PhotoMax  int                       `json:"photo_max"`
-	PhotoMode PatrolScanAnswerPhotoMode `json:"photo_mode"`
-	Required  bool                      `json:"required"`
-
-	// Value Boolean, teks, angka atau nilai opsi menurut `answer_type`; null bila pertanyaan opsional tidak dijawab.
-	Value interface{} `json:"value,omitempty"`
+// PatrolScanCheckpoint Checkpoint yang di-scan, dengan namanya sekarang dan urutannya sekarang di zona (tidak disertakan bila checkpoint sudah dilepas dari zona).
+type PatrolScanCheckpoint struct {
+	Id        openapi_types.UUID `json:"id"`
+	Name      string             `json:"name"`
+	SortOrder *int               `json:"sort_order,omitempty"`
 }
-
-// PatrolScanAnswerAnswerType defines model for PatrolScanAnswer.AnswerType.
-type PatrolScanAnswerAnswerType string
-
-// PatrolScanAnswerAttachWhen defines model for PatrolScanAnswer.AttachWhen.
-type PatrolScanAnswerAttachWhen string
-
-// PatrolScanAnswerNoteMode defines model for PatrolScanAnswer.NoteMode.
-type PatrolScanAnswerNoteMode string
-
-// PatrolScanAnswerPhotoMode defines model for PatrolScanAnswer.PhotoMode.
-type PatrolScanAnswerPhotoMode string
 
 // PatrolScanCreate defines model for PatrolScanCreate.
 type PatrolScanCreate struct {
@@ -11317,6 +11227,9 @@ type ZoneCheckInInput struct {
 type ZoneProgressItem struct {
 	// Approved Lingkaran hijau: disetujui.
 	Approved int `json:"approved"`
+
+	// Checkpoints Tiga lingkaran tiap checkpoint aktif zona menurut urutannya. Angka zona di atas adalah jumlahnya; zona tanpa checkpoint aktif punya larik kosong dan `required` 0.
+	Checkpoints []CheckpointProgressItem `json:"checkpoints"`
 
 	// Declined Ditolak.
 	Declined int `json:"declined"`
@@ -14386,6 +14299,9 @@ type PostZonesByIdScan201JSONResponseBodySuccess bool
 type GetZonesByIdScannersParams struct {
 	TeamCode *string             `form:"team_code,omitempty" json:"team_code,omitempty"`
 	WorkDate *openapi_types.Date `form:"work_date,omitempty" json:"work_date,omitempty"`
+
+	// CheckpointId Hitung hanya scan checkpoint ini.
+	CheckpointId *openapi_types.UUID `form:"checkpoint_id,omitempty" json:"checkpoint_id,omitempty"`
 }
 
 // GetZonesByIdScanners200JSONResponseBodySuccess defines parameters for GetZonesByIdScanners.
@@ -14393,9 +14309,12 @@ type GetZonesByIdScanners200JSONResponseBodySuccess bool
 
 // GetZonesByIdScansParams defines parameters for GetZonesByIdScans.
 type GetZonesByIdScansParams struct {
-	PersonnelId *int64                         `form:"personnel_id,omitempty" json:"personnel_id,omitempty"`
-	WorkDate    *openapi_types.Date            `form:"work_date,omitempty" json:"work_date,omitempty"`
-	Status      *GetZonesByIdScansParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+	PersonnelId *int64 `form:"personnel_id,omitempty" json:"personnel_id,omitempty"`
+
+	// CheckpointId Hanya scan checkpoint ini.
+	CheckpointId *openapi_types.UUID            `form:"checkpoint_id,omitempty" json:"checkpoint_id,omitempty"`
+	WorkDate     *openapi_types.Date            `form:"work_date,omitempty" json:"work_date,omitempty"`
+	Status       *GetZonesByIdScansParamsStatus `form:"status,omitempty" json:"status,omitempty"`
 
 	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`

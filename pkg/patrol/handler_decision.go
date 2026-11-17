@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"siapp/internal/apigen"
 	"siapp/pkg/platform/apperr"
@@ -82,6 +83,13 @@ func (h *Handler) progress(w http.ResponseWriter, r *http.Request) {
 		item.Zone.Id, item.Zone.ProjectCode, item.Zone.TeamCode = g.Zone.ID, g.Zone.ProjectCode, g.Zone.TeamCode
 		item.Zone.Type, item.Zone.Name, item.Zone.Alias = apigen.ZoneProgressItemZoneType(g.Zone.Type), g.Zone.Name, g.Zone.Alias
 		item.Zone.MinVisit = g.Zone.MinVisit
+		item.Checkpoints = make([]apigen.CheckpointProgressItem, 0, len(g.Checkpoints))
+		for _, c := range g.Checkpoints {
+			item.Checkpoints = append(item.Checkpoints, apigen.CheckpointProgressItem{
+				CheckpointId: mustUUID(c.CheckpointID), Name: c.Name, SortOrder: c.SortOrder,
+				Required: c.Required, Submitted: c.Submitted, Approved: c.Approved, Declined: c.Declined,
+			})
+		}
 		out = append(out, item)
 	}
 	httpx.OK(w, r, http.StatusOK, out)
@@ -103,7 +111,12 @@ func (h *Handler) scanners(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, r, err)
 		return
 	}
-	got, err := h.service.Scanners(r.Context(), p, id, r.URL.Query().Get("team_code"), day)
+	checkpoint, err := checkpointQuery(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	got, err := h.service.Scanners(r.Context(), p, id, r.URL.Query().Get("team_code"), day, checkpoint)
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
@@ -151,6 +164,13 @@ func (h *Handler) zoneScans(w http.ResponseWriter, r *http.Request) {
 		}
 		f.PersonnelID = n
 	}
+	if s := r.URL.Query().Get("checkpoint_id"); s != "" {
+		if id, ok := parseUUID(s); ok {
+			f.CheckpointID = id
+		} else {
+			problems = append(problems, apperr.FieldError{Field: "checkpoint_id", Code: "INVALID", Message: "Harus berupa uuid."})
+		}
+	}
 	if len(problems) > 0 {
 		httpx.Error(w, r, apperr.ErrValidation.WithFields(problems...))
 		return
@@ -161,6 +181,19 @@ func (h *Handler) zoneScans(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.List(w, r, scansToAPI(got), query.WithTotal(total))
+}
+
+// checkpointQuery reads the optional checkpoint_id filter; one that is not a uuid is a 422.
+func checkpointQuery(r *http.Request) (pgtype.UUID, error) {
+	s := r.URL.Query().Get("checkpoint_id")
+	if s == "" {
+		return pgtype.UUID{}, nil
+	}
+	id, ok := parseUUID(s)
+	if !ok {
+		return pgtype.UUID{}, apperr.ErrValidation.WithFields(apperr.FieldError{Field: "checkpoint_id", Code: "INVALID", Message: "Harus berupa uuid."})
+	}
+	return id, nil
 }
 
 // getScan is GET /scans/{id}.

@@ -23,9 +23,10 @@
 #     of step 6 ("PERSIST-CP:..."): turn it into a QR code to scan. Filled only where empty, so an
 #     admin's edits survive a re-run.
 #   - patrol routes (2 ended + 1 running), scans of the last 3 days in every state (SUBMITTED waiting
-#     for the danru, APPROVED, DECLINED), and zone check-ins (closed + one open). These scans are of the
-#     old kind (a zone, no checkpoint, answers kept in the scan itself): they predate the checkpoints and
-#     Phase 10.10 removes them. A scan made through the API now is of a checkpoint, in order.
+#     for the danru, APPROVED, DECLINED), and zone check-ins (closed + one open). Each scan is of the
+#     FIRST checkpoint of its zone (so the order rule holds) and answers every action of that
+#     checkpoint's checklist (rows of patrol_scan_actions, with the snapshot an app-made scan keeps).
+#     Re-running adds nothing: scans are keyed by guard, day and zone.
 #   - leave requests in every state (PENDING, APPROVED, REJECTED, CANCELLED) with the ledger and counters,
 #     one shift swap, GPS points + last locations, the inbox notifications, and the master data
 #     (panic / stakeholder types, report + instruction categories, app links, a letterhead)
@@ -483,7 +484,8 @@ FROM patrol_routes r CROSS JOIN generate_series(0, 2) g
 ON CONFLICT DO NOTHING;
 
 -- Scans of the last 3 days (today included) for each scheduled day of the two members, one per
--- zone, at the zone's own point. anggota1 also scans the guard post. Outcome by age:
+-- zone, of the zone's first checkpoint at its point (the zone's own when the checkpoint has none), each
+-- answering every action of that checkpoint. anggota1 also scans the guard post. Outcome by age:
 --   today            SUBMITTED (waiting for the danru: shows in /patrol/pending-approvals)
 --   yesterday        anggota1 SUBMITTED, anggota2 APPROVED
 --   2 days ago       DECLINED (with a note)
@@ -493,7 +495,7 @@ danru AS (SELECT id FROM personnels WHERE nik = 'KPIDANRU01'),
 src AS (
   SELECT p.id AS pid, p.nik, sc.work_date, (me.today - sc.work_date) AS ago,
          z.id AS zone_id, z.type AS zone_type, z.name AS zone_name,
-         z.latitude AS zone_lat, z.longitude AS zone_lng
+         cp.id AS checkpoint_id, COALESCE(cp.latitude, z.latitude) AS zone_lat, COALESCE(cp.longitude, z.longitude) AS zone_lng
   FROM me
   CROSS JOIN team_members tm
   JOIN personnels p ON p.id = tm.personnel_id AND p.nik IN ('KPIANG0001', 'KPIANG0002')
@@ -502,6 +504,14 @@ src AS (
   JOIN shifts sh ON sh.id = sc.shift_id AND NOT sh.is_off
   JOIN patrol_zones z ON z.project_code = '1K-DEMO-S' AND z.deleted_at IS NULL
                      AND (z.type = 'PATROL' OR p.nik = 'KPIANG0001')
+  JOIN LATERAL (
+    SELECT c.id, c.latitude, c.longitude
+    FROM patrol_zone_checkpoints zc
+    JOIN patrol_checkpoints c ON c.organization_id = zc.organization_id AND c.id = zc.checkpoint_id
+    WHERE zc.zone_id = z.id AND c.active AND c.deleted_at IS NULL
+    ORDER BY zc.sort_order
+    LIMIT 1
+  ) cp ON true
   WHERE tm.team_code = '1K-DEMO-S1' AND tm.end_date IS NULL
 ), timed AS (
   SELECT src.*,
@@ -512,22 +522,37 @@ src AS (
               WHEN ago = 2 THEN 'DECLINED'
               ELSE 'APPROVED' END AS st
   FROM src
-)
-INSERT INTO patrol_scans (local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date,
-                          latitude, longitude, accuracy_meters, distance_meters, subject, notes, answers, status,
-                          decided_by_id, decided_at, decision_note, patrol_id, submitted_offline)
-SELECT md5('seed-scan-' || t.pid || '-' || t.work_date || '-' || t.zone_id)::uuid, t.zone_id, t.zone_type, t.pid,
+),
+scans AS (
+  INSERT INTO patrol_scans (local_id, zone_id, checkpoint_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at,
+                            work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, status,
+                            decided_by_id, decided_at, decision_note, patrol_id, submitted_offline)
+  SELECT md5('seed-scan-' || t.pid || '-' || t.work_date || '-' || t.zone_id)::uuid, t.zone_id, t.checkpoint_id, t.zone_type, t.pid,
        '1K-DEMO-S1', '1K-DEMO-S', t.occurred_at, t.occurred_at + interval '1 minute', t.work_date,
        t.zone_lat, t.zone_lng, 8, 12,
        CASE WHEN t.zone_type = 'PATROL' THEN 'Patroli ' ELSE 'Jaga ' END || t.zone_name,
        CASE WHEN t.st = 'DECLINED' THEN 'Foto kurang jelas' END,
-       '[]'::jsonb, t.st::patrol_scan_status,
+       t.st::patrol_scan_status,
        CASE WHEN t.st <> 'SUBMITTED' THEN (SELECT id FROM danru) END,
        CASE WHEN t.st <> 'SUBMITTED' THEN t.occurred_at + interval '1 hour' END,
        CASE t.st WHEN 'DECLINED' THEN 'Foto tidak jelas, ulangi patroli' WHEN 'APPROVED' THEN 'OK' END,
        (SELECT r.id FROM patrol_routes r WHERE r.personnel_id = t.pid AND r.work_date = t.work_date AND r.status <> 'ACTIVE' LIMIT 1),
        false
-FROM timed t
+  FROM timed t
+  ON CONFLICT DO NOTHING
+  RETURNING id, checkpoint_id, personnel_id
+)
+-- The answers of the scans just made (none for a scan that already existed: it was answered then). No photo
+-- is attached (media needs real files), so an action that asks for photos still shows an empty list.
+INSERT INTO patrol_scan_actions (scan_id, checkpoint_id, action_id, personnel_id, note, media_ids, snapshot)
+SELECT s.id, s.checkpoint_id, a.id, s.personnel_id,
+       CASE WHEN a.is_note_required THEN 'Aman, tidak ada kelainan' END,
+       '{}'::bigint[],
+       jsonb_build_object('action', a.action, 'instruction', a.instruction, 'min_photos', a.min_photos, 'max_photos', a.max_photos,
+                          'is_note_required', a.is_note_required, 'sort_order', a.sort_order,
+                          'note', CASE WHEN a.is_note_required THEN 'Aman, tidak ada kelainan' END, 'media_ids', '[]'::jsonb)
+FROM scans s
+JOIN patrol_checkpoint_actions a ON a.checkpoint_id = s.checkpoint_id AND a.active
 ON CONFLICT DO NOTHING;
 
 UPDATE patrol_routes r SET scan_count = (SELECT count(*) FROM patrol_scans s WHERE s.patrol_id = r.id);

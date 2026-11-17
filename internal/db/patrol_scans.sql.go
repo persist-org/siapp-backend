@@ -7,7 +7,6 @@ package db
 
 import (
 	"context"
-	"encoding/json"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -109,7 +108,7 @@ func (q *Queries) CountZoneTracking(ctx context.Context, arg CountZoneTrackingPa
 
 const getPatrolScanByLocalID = `-- name: GetPatrolScanByLocalID :one
 
-SELECT id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, answers, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at, checkpoint_id FROM patrol_scans WHERE local_id = $1
+SELECT id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at, checkpoint_id FROM patrol_scans WHERE local_id = $1
 `
 
 // Scans and zone check-ins (Phase 10.2). Everything runs inside database.WithTenant.
@@ -134,7 +133,6 @@ func (q *Queries) GetPatrolScanByLocalID(ctx context.Context, localID pgtype.UUI
 		&i.DistanceMeters,
 		&i.Subject,
 		&i.Notes,
-		&i.Answers,
 		&i.Status,
 		&i.DecidedByID,
 		&i.DecidedAt,
@@ -182,11 +180,11 @@ func (q *Queries) HasScanBetween(ctx context.Context, arg HasScanBetweenParams) 
 const insertPatrolScan = `-- name: InsertPatrolScan :one
 INSERT INTO patrol_scans (local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at,
                           received_at, work_date, latitude, longitude, accuracy_meters, distance_meters,
-                          subject, notes, answers, patrol_id, checkpoint_id, submitted_offline, created_at, updated_at)
+                          subject, notes, patrol_id, checkpoint_id, submitted_offline, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
         $9, $10, $11, $12, $13, $14,
-        $15, $16, $17, $18, $19, $8, $8)
-RETURNING id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, answers, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at, checkpoint_id
+        $15, $16, $17, $18, $8, $8)
+RETURNING id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at, checkpoint_id
 `
 
 type InsertPatrolScanParams struct {
@@ -205,7 +203,6 @@ type InsertPatrolScanParams struct {
 	DistanceMeters   pgtype.Int4
 	Subject          string
 	Notes            pgtype.Text
-	Answers          json.RawMessage
 	PatrolID         pgtype.Int8
 	CheckpointID     pgtype.UUID
 	SubmittedOffline bool
@@ -228,7 +225,6 @@ func (q *Queries) InsertPatrolScan(ctx context.Context, arg InsertPatrolScanPara
 		arg.DistanceMeters,
 		arg.Subject,
 		arg.Notes,
-		arg.Answers,
 		arg.PatrolID,
 		arg.CheckpointID,
 		arg.SubmittedOffline,
@@ -252,7 +248,6 @@ func (q *Queries) InsertPatrolScan(ctx context.Context, arg InsertPatrolScanPara
 		&i.DistanceMeters,
 		&i.Subject,
 		&i.Notes,
-		&i.Answers,
 		&i.Status,
 		&i.DecidedByID,
 		&i.DecidedAt,

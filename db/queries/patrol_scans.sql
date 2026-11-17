@@ -6,10 +6,10 @@ SELECT * FROM patrol_scans WHERE local_id = $1;
 -- name: InsertPatrolScan :one
 INSERT INTO patrol_scans (local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at,
                           received_at, work_date, latitude, longitude, accuracy_meters, distance_meters,
-                          subject, notes, answers, patrol_id, checkpoint_id, submitted_offline, created_at, updated_at)
+                          subject, notes, patrol_id, checkpoint_id, submitted_offline, created_at, updated_at)
 VALUES (@local_id, @zone_id, @zone_type, @personnel_id, @team_code, @project_code, @occurred_at, @received_at,
         @work_date, @latitude, @longitude, @accuracy_meters, sqlc.narg('distance_meters'), @subject,
-        sqlc.narg('notes'), @answers, sqlc.narg('patrol_id'), @checkpoint_id, @submitted_offline, @received_at, @received_at)
+        sqlc.narg('notes'), sqlc.narg('patrol_id'), @checkpoint_id, @submitted_offline, @received_at, @received_at)
 RETURNING *;
 
 -- A scan of this checkpoint in this zone by this person between two instants, a declined one not
