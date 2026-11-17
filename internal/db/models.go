@@ -1769,6 +1769,39 @@ type PatrolChecklistItem struct {
 	UpdatedAt      pgtype.Timestamptz
 }
 
+type PatrolCheckpoint struct {
+	ID             pgtype.UUID
+	OrganizationID int64
+	ProjectCode    string
+	Name           string
+	Description    pgtype.Text
+	Latitude       *float64
+	Longitude      *float64
+	RadiusMeters   pgtype.Int4
+	QrSecret       string
+	QrRotatedAt    pgtype.Timestamptz
+	Active         bool
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+	DeletedAt      pgtype.Timestamptz
+}
+
+type PatrolCheckpointAction struct {
+	ID             pgtype.UUID
+	OrganizationID int64
+	CheckpointID   pgtype.UUID
+	SortOrder      int32
+	Action         string
+	Instruction    pgtype.Text
+	MinPhotos      int16
+	MaxPhotos      int16
+	IsNoteRequired bool
+	Active         bool
+	DeactivatedAt  pgtype.Timestamptz
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
 type PatrolRoute struct {
 	ID               int64
 	OrganizationID   int64
@@ -1827,6 +1860,20 @@ type PatrolScan struct {
 	SubmittedOffline bool
 	CreatedAt        pgtype.Timestamptz
 	UpdatedAt        pgtype.Timestamptz
+	CheckpointID     pgtype.UUID
+}
+
+type PatrolScanAction struct {
+	ID             pgtype.UUID
+	OrganizationID int64
+	ScanID         int64
+	CheckpointID   pgtype.UUID
+	ActionID       pgtype.UUID
+	PersonnelID    int64
+	Note           pgtype.Text
+	MediaIds       []int64
+	Snapshot       json.RawMessage
+	CreatedAt      pgtype.Timestamptz
 }
 
 type PatrolZone struct {
@@ -1850,6 +1897,15 @@ type PatrolZone struct {
 	CreatedAt      pgtype.Timestamptz
 	UpdatedAt      pgtype.Timestamptz
 	DeletedAt      pgtype.Timestamptz
+}
+
+type PatrolZoneCheckpoint struct {
+	OrganizationID int64
+	ProjectCode    string
+	ZoneID         int64
+	CheckpointID   pgtype.UUID
+	SortOrder      int32
+	CreatedAt      pgtype.Timestamptz
 }
 
 type PersonelOutbox struct {
@@ -2112,4 +2168,5 @@ type ZoneCheckin struct {
 	CheckOutLng    *float64
 	CreatedAt      pgtype.Timestamptz
 	UpdatedAt      pgtype.Timestamptz
+	CheckpointID   pgtype.UUID
 }

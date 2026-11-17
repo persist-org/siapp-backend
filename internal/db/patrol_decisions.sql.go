@@ -73,7 +73,7 @@ const decideScans = `-- name: DecideScans :many
 UPDATE patrol_scans SET status = $1, decided_by_id = $2, decided_at = $3,
                         decision_note = $4, updated_at = $3
 WHERE id = ANY($5::bigint[]) AND status = 'SUBMITTED'
-RETURNING id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, answers, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at
+RETURNING id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, answers, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at, checkpoint_id
 `
 
 type DecideScansParams struct {
@@ -129,6 +129,7 @@ func (q *Queries) DecideScans(ctx context.Context, arg DecideScansParams) ([]Pat
 			&i.SubmittedOffline,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.CheckpointID,
 		); err != nil {
 			return nil, err
 		}
@@ -142,7 +143,7 @@ func (q *Queries) DecideScans(ctx context.Context, arg DecideScansParams) ([]Pat
 
 const getPatrolScan = `-- name: GetPatrolScan :one
 
-SELECT id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, answers, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at FROM patrol_scans WHERE id = $1
+SELECT id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, answers, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at, checkpoint_id FROM patrol_scans WHERE id = $1
 `
 
 // Progress, approval and decline of scans (Phase 10.3). Everything runs inside database.WithTenant.
@@ -176,12 +177,13 @@ func (q *Queries) GetPatrolScan(ctx context.Context, id int64) (PatrolScan, erro
 		&i.SubmittedOffline,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CheckpointID,
 	)
 	return i, err
 }
 
 const getPatrolScansByIDs = `-- name: GetPatrolScansByIDs :many
-SELECT id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, answers, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at FROM patrol_scans WHERE id = ANY($1::bigint[]) ORDER BY id
+SELECT id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, answers, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at, checkpoint_id FROM patrol_scans WHERE id = ANY($1::bigint[]) ORDER BY id
 `
 
 func (q *Queries) GetPatrolScansByIDs(ctx context.Context, ids []int64) ([]PatrolScan, error) {
@@ -220,6 +222,7 @@ func (q *Queries) GetPatrolScansByIDs(ctx context.Context, ids []int64) ([]Patro
 			&i.SubmittedOffline,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.CheckpointID,
 		); err != nil {
 			return nil, err
 		}
@@ -269,7 +272,7 @@ func (q *Queries) ListPendingKeys(ctx context.Context, teamCode pgtype.Text) ([]
 }
 
 const listPendingScans = `-- name: ListPendingScans :many
-SELECT id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, answers, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at FROM patrol_scans
+SELECT id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, answers, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at, checkpoint_id FROM patrol_scans
 WHERE status = 'SUBMITTED'
   AND (zone_type::text, team_code, work_date) IN (SELECT unnest($1::text[]), unnest($2::text[]), unnest($3::date[]))
   AND ($4::text IS NULL OR team_code = $4)
@@ -329,6 +332,7 @@ func (q *Queries) ListPendingScans(ctx context.Context, arg ListPendingScansPara
 			&i.SubmittedOffline,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.CheckpointID,
 		); err != nil {
 			return nil, err
 		}
@@ -402,7 +406,7 @@ func (q *Queries) ListScanPhotos(ctx context.Context, scanIds []int64) ([]ListSc
 }
 
 const listZoneScans = `-- name: ListZoneScans :many
-SELECT id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, answers, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at FROM patrol_scans
+SELECT id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, answers, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at, checkpoint_id FROM patrol_scans
 WHERE zone_id = $1
   AND (team_code = ANY($2::text[]) OR personnel_id = $3)
   AND ($4::bigint IS NULL OR personnel_id = $4)
@@ -470,6 +474,7 @@ func (q *Queries) ListZoneScans(ctx context.Context, arg ListZoneScansParams) ([
 			&i.SubmittedOffline,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.CheckpointID,
 		); err != nil {
 			return nil, err
 		}

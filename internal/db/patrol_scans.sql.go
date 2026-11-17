@@ -15,7 +15,7 @@ import (
 const closeZoneCheckin = `-- name: CloseZoneCheckin :one
 UPDATE zone_checkins SET check_out_at = $1, check_out_lat = $2, check_out_lng = $3, updated_at = $1
 WHERE zone_id = $4 AND personnel_id = $5 AND check_out_at IS NULL
-RETURNING id, organization_id, zone_id, personnel_id, team_code, shift_id, check_in_at, check_in_lat, check_in_lng, check_out_at, check_out_lat, check_out_lng, created_at, updated_at
+RETURNING id, organization_id, zone_id, personnel_id, team_code, shift_id, check_in_at, check_in_lat, check_in_lng, check_out_at, check_out_lat, check_out_lng, created_at, updated_at, checkpoint_id
 `
 
 type CloseZoneCheckinParams struct {
@@ -51,6 +51,7 @@ func (q *Queries) CloseZoneCheckin(ctx context.Context, arg CloseZoneCheckinPara
 		&i.CheckOutLng,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CheckpointID,
 	)
 	return i, err
 }
@@ -107,7 +108,7 @@ func (q *Queries) CountZoneTracking(ctx context.Context, arg CountZoneTrackingPa
 }
 
 const getPatrolScanByLocalID = `-- name: GetPatrolScanByLocalID :one
-SELECT id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, answers, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at FROM patrol_scans WHERE local_id = $1
+SELECT id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, answers, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at, checkpoint_id FROM patrol_scans WHERE local_id = $1
 `
 
 func (q *Queries) GetPatrolScanByLocalID(ctx context.Context, localID pgtype.UUID) (PatrolScan, error) {
@@ -140,6 +141,7 @@ func (q *Queries) GetPatrolScanByLocalID(ctx context.Context, localID pgtype.UUI
 		&i.SubmittedOffline,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CheckpointID,
 	)
 	return i, err
 }
@@ -180,7 +182,7 @@ INSERT INTO patrol_scans (local_id, zone_id, zone_type, personnel_id, team_code,
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
         $9, $10, $11, $12, $13, $14,
         $15, $16, $17, $18, $8, $8)
-RETURNING id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, answers, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at
+RETURNING id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, answers, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at, checkpoint_id
 `
 
 type InsertPatrolScanParams struct {
@@ -253,6 +255,7 @@ func (q *Queries) InsertPatrolScan(ctx context.Context, arg InsertPatrolScanPara
 		&i.SubmittedOffline,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CheckpointID,
 	)
 	return i, err
 }
@@ -261,7 +264,7 @@ const insertZoneCheckin = `-- name: InsertZoneCheckin :one
 INSERT INTO zone_checkins (zone_id, personnel_id, team_code, shift_id, check_in_at, check_in_lat, check_in_lng,
                            created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $5, $5)
-RETURNING id, organization_id, zone_id, personnel_id, team_code, shift_id, check_in_at, check_in_lat, check_in_lng, check_out_at, check_out_lat, check_out_lng, created_at, updated_at
+RETURNING id, organization_id, zone_id, personnel_id, team_code, shift_id, check_in_at, check_in_lat, check_in_lng, check_out_at, check_out_lat, check_out_lng, created_at, updated_at, checkpoint_id
 `
 
 type InsertZoneCheckinParams struct {
@@ -300,6 +303,7 @@ func (q *Queries) InsertZoneCheckin(ctx context.Context, arg InsertZoneCheckinPa
 		&i.CheckOutLng,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CheckpointID,
 	)
 	return i, err
 }
@@ -351,7 +355,7 @@ func (q *Queries) ListAllChecklistItems(ctx context.Context, zoneID int64) ([]Pa
 }
 
 const listZoneLive = `-- name: ListZoneLive :many
-SELECT c.id, c.organization_id, c.zone_id, c.personnel_id, c.team_code, c.shift_id, c.check_in_at, c.check_in_lat, c.check_in_lng, c.check_out_at, c.check_out_lat, c.check_out_lng, c.created_at, c.updated_at, p.full_name FROM zone_checkins c
+SELECT c.id, c.organization_id, c.zone_id, c.personnel_id, c.team_code, c.shift_id, c.check_in_at, c.check_in_lat, c.check_in_lng, c.check_out_at, c.check_out_lat, c.check_out_lng, c.created_at, c.updated_at, c.checkpoint_id, p.full_name FROM zone_checkins c
 JOIN personnels p ON p.id = c.personnel_id
 WHERE c.zone_id = $1 AND c.check_out_at IS NULL
   AND ($2::text[] IS NULL OR c.team_code = ANY($2::text[]))
@@ -380,6 +384,7 @@ type ListZoneLiveRow struct {
 	CheckOutLng    *float64
 	CreatedAt      pgtype.Timestamptz
 	UpdatedAt      pgtype.Timestamptz
+	CheckpointID   pgtype.UUID
 	FullName       string
 }
 
@@ -409,6 +414,7 @@ func (q *Queries) ListZoneLive(ctx context.Context, arg ListZoneLiveParams) ([]L
 			&i.CheckOutLng,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.CheckpointID,
 			&i.FullName,
 		); err != nil {
 			return nil, err
@@ -422,7 +428,7 @@ func (q *Queries) ListZoneLive(ctx context.Context, arg ListZoneLiveParams) ([]L
 }
 
 const listZoneTracking = `-- name: ListZoneTracking :many
-SELECT c.id, c.organization_id, c.zone_id, c.personnel_id, c.team_code, c.shift_id, c.check_in_at, c.check_in_lat, c.check_in_lng, c.check_out_at, c.check_out_lat, c.check_out_lng, c.created_at, c.updated_at, p.full_name FROM zone_checkins c
+SELECT c.id, c.organization_id, c.zone_id, c.personnel_id, c.team_code, c.shift_id, c.check_in_at, c.check_in_lat, c.check_in_lng, c.check_out_at, c.check_out_lat, c.check_out_lng, c.created_at, c.updated_at, c.checkpoint_id, p.full_name FROM zone_checkins c
 JOIN personnels p ON p.id = c.personnel_id
 WHERE c.zone_id = $1 AND c.check_in_at >= $2 AND c.check_in_at < $3
   AND ($4::text[] IS NULL OR c.team_code = ANY($4::text[]))
@@ -456,6 +462,7 @@ type ListZoneTrackingRow struct {
 	CheckOutLng    *float64
 	CreatedAt      pgtype.Timestamptz
 	UpdatedAt      pgtype.Timestamptz
+	CheckpointID   pgtype.UUID
 	FullName       string
 }
 
@@ -491,6 +498,7 @@ func (q *Queries) ListZoneTracking(ctx context.Context, arg ListZoneTrackingPara
 			&i.CheckOutLng,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.CheckpointID,
 			&i.FullName,
 		); err != nil {
 			return nil, err
