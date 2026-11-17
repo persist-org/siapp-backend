@@ -764,6 +764,81 @@ func (q *Queries) ListZoneCheckpoints(ctx context.Context, zoneID int64) ([]List
 	return items, nil
 }
 
+const listZoneLinks = `-- name: ListZoneLinks :many
+SELECT project_code, checkpoint_id, sort_order FROM patrol_zone_checkpoints WHERE zone_id = $1 ORDER BY sort_order
+`
+
+type ListZoneLinksRow struct {
+	ProjectCode  string
+	CheckpointID pgtype.UUID
+	SortOrder    int32
+}
+
+// Every link of a zone in order, the inactive checkpoints too: they keep their position. Used to
+// close the gap when a checkpoint leaves the zone.
+func (q *Queries) ListZoneLinks(ctx context.Context, zoneID int64) ([]ListZoneLinksRow, error) {
+	rows, err := q.db.Query(ctx, listZoneLinks, zoneID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListZoneLinksRow{}
+	for rows.Next() {
+		var i ListZoneLinksRow
+		if err := rows.Scan(&i.ProjectCode, &i.CheckpointID, &i.SortOrder); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listZonesOfCheckpoints = `-- name: ListZonesOfCheckpoints :many
+SELECT zc.checkpoint_id, z.id AS zone_id, z.name AS zone_name, z.type AS zone_type, zc.sort_order AS position
+FROM patrol_zone_checkpoints zc
+JOIN patrol_zones z ON z.organization_id = zc.organization_id AND z.id = zc.zone_id
+WHERE zc.checkpoint_id = ANY($1::uuid[]) AND z.deleted_at IS NULL
+ORDER BY zc.checkpoint_id, z.name, z.id
+`
+
+type ListZonesOfCheckpointsRow struct {
+	CheckpointID pgtype.UUID
+	ZoneID       int64
+	ZoneName     string
+	ZoneType     PatrolZoneType
+	Position     int32
+}
+
+// The zones of many checkpoints at once (a page of the admin list), with each position.
+func (q *Queries) ListZonesOfCheckpoints(ctx context.Context, checkpointIds []pgtype.UUID) ([]ListZonesOfCheckpointsRow, error) {
+	rows, err := q.db.Query(ctx, listZonesOfCheckpoints, checkpointIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListZonesOfCheckpointsRow{}
+	for rows.Next() {
+		var i ListZonesOfCheckpointsRow
+		if err := rows.Scan(
+			&i.CheckpointID,
+			&i.ZoneID,
+			&i.ZoneName,
+			&i.ZoneType,
+			&i.Position,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const rotateCheckpointSecret = `-- name: RotateCheckpointSecret :one
 UPDATE patrol_checkpoints SET qr_secret = $1, qr_rotated_at = $2, updated_at = $2
 WHERE id = $3 AND deleted_at IS NULL

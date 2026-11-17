@@ -82,6 +82,19 @@ JOIN patrol_zones z ON z.organization_id = zc.organization_id AND z.id = zc.zone
 WHERE zc.checkpoint_id = $1 AND z.deleted_at IS NULL
 ORDER BY z.project_code, z.name, z.id;
 
+-- The zones of many checkpoints at once (a page of the admin list), with each position.
+-- name: ListZonesOfCheckpoints :many
+SELECT zc.checkpoint_id, z.id AS zone_id, z.name AS zone_name, z.type AS zone_type, zc.sort_order AS position
+FROM patrol_zone_checkpoints zc
+JOIN patrol_zones z ON z.organization_id = zc.organization_id AND z.id = zc.zone_id
+WHERE zc.checkpoint_id = ANY(@checkpoint_ids::uuid[]) AND z.deleted_at IS NULL
+ORDER BY zc.checkpoint_id, z.name, z.id;
+
+-- Every link of a zone in order, the inactive checkpoints too: they keep their position. Used to
+-- close the gap when a checkpoint leaves the zone.
+-- name: ListZoneLinks :many
+SELECT project_code, checkpoint_id, sort_order FROM patrol_zone_checkpoints WHERE zone_id = $1 ORDER BY sort_order;
+
 -- name: DeleteZoneCheckpoints :exec
 DELETE FROM patrol_zone_checkpoints WHERE zone_id = $1;
 

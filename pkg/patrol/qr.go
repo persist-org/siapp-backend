@@ -39,6 +39,16 @@ func Payload(organizationID, zoneID int64, secret string) string {
 	return fmt.Sprintf("PERSIST-ZONE:%d:%d:%d:%s", qrPayloadVersion, organizationID, zoneID, secret)
 }
 
+// CheckpointPayload is what a checkpoint's QR code holds: PERSIST-CP:1:{organizationId}:{checkpointId}:{qrSecret},
+// where the checkpoint id is its uuid (Phase 10.7; the scan verifies it from 10.9).
+//
+// ⚠ Static for the same reason as Payload, and protected the same way: the checkpoint's own geofence
+// on the server, the organization id in the payload, and rotation when a sticker leaks. The prefix
+// differs from the zone's (PERSIST-ZONE) so the app and the server can tell the two stickers apart.
+func CheckpointPayload(organizationID int64, checkpointID, secret string) string {
+	return fmt.Sprintf("PERSIST-CP:%d:%d:%s:%s", qrPayloadVersion, organizationID, checkpointID, secret)
+}
+
 // parsePayload reads what Payload wrote. ok is false for anything else, including a payload of
 // another version: a code of a later layout is not one this server can verify.
 func parsePayload(s string) (organizationID, zoneID int64, secret string, ok bool) {
@@ -127,12 +137,20 @@ func svgOf(bitmap [][]bool) []byte {
 	return []byte(b.String())
 }
 
-// fileName is the download name of a zone's QR: "qr-zona-<name>.<ext>", with the name reduced to
-// lowercase letters, digits and hyphens so it is safe in a header and on any file system.
-func fileName(zoneName, format string) string {
+// fileName is the download name of a zone's QR: "qr-zona-<name>.<ext>".
+func fileName(zoneName, format string) string { return qrFileName("qr-zona", "zona", zoneName, format) }
+
+// checkpointFileName is the download name of a checkpoint's QR: "qr-checkpoint-<name>.<ext>".
+func checkpointFileName(name, format string) string {
+	return qrFileName("qr-checkpoint", "checkpoint", name, format)
+}
+
+// qrFileName is "<prefix>-<name>.<ext>", with the name reduced to lowercase letters, digits and
+// hyphens so it is safe in a header and on any file system, and `fallback` when nothing is left of it.
+func qrFileName(prefix, fallback, rawName, format string) string {
 	var slug strings.Builder
 	dash := true // no leading hyphen
-	for _, r := range strings.ToLower(zoneName) {
+	for _, r := range strings.ToLower(rawName) {
 		switch {
 		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
 			slug.WriteRune(r)
@@ -147,7 +165,7 @@ func fileName(zoneName, format string) string {
 		name = strings.TrimRight(name[:60], "-")
 	}
 	if name == "" {
-		name = "zona"
+		name = fallback
 	}
-	return "qr-zona-" + name + "." + format
+	return prefix + "-" + name + "." + format
 }

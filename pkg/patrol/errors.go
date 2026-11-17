@@ -120,6 +120,28 @@ var ErrPatrolLocalIDTaken = apperr.New(http.StatusConflict, apperr.CodeDuplicate
 var ErrLocalIDTaken = apperr.New(http.StatusConflict, apperr.CodeDuplicate,
 	ReasonLocalIDTaken, "local_id sudah dipakai untuk scan lain.")
 
+// Reasons of Phase 10.7 (checkpoints; docs/plan/10.1-patrol-update.md).
+const (
+	ReasonCheckpointNotFound      = "CHECKPOINT_NOT_FOUND"
+	ReasonCheckpointNameTaken     = "CHECKPOINT_NAME_TAKEN"
+	ReasonCheckpointActionInvalid = "CHECKPOINT_ACTION_INVALID"
+)
+
+// ErrCheckpointNotFound is returned for a checkpoint that does not exist, is deleted, belongs to
+// another organization (row-level security makes that look the same), or whose id is not a uuid.
+var ErrCheckpointNotFound = apperr.New(http.StatusNotFound, apperr.CodeNotFound,
+	ReasonCheckpointNotFound, "Checkpoint tidak ditemukan.")
+
+// ErrCheckpointNameTaken is returned when another live checkpoint of the same project has the name.
+var ErrCheckpointNameTaken = apperr.New(http.StatusConflict, apperr.CodeDuplicate,
+	ReasonCheckpointNameTaken, "Sudah ada checkpoint dengan nama ini di proyek yang sama.")
+
+// actionInvalid is a 422 for a bad checkpoint action: a validation error that also carries the
+// reason, so a client can tell a bad checklist from any other bad field.
+func actionInvalid(fields ...apperr.FieldError) *apperr.Error {
+	return apperr.ErrValidation.WithReason(ReasonCheckpointActionInvalid).WithFields(fields...)
+}
+
 // itemError builds the error of one checklist item: the reason says what is wrong, the details name
 // the item, and the message names it for a human.
 func itemError(base *apperr.Error, itemID int64, label, why string) *apperr.Error {

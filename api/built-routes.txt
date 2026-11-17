@@ -2,6 +2,7 @@
 # Made from chi.Walk over the real router (cmd/api newRouter). Update it when a phase adds routes.
 DELETE /api/v1/admin/app-links/{id}
 DELETE /api/v1/admin/branches/{code}
+DELETE /api/v1/admin/checkpoints/{id}
 DELETE /api/v1/admin/clients/{code}
 DELETE /api/v1/admin/instruction-categories/{id}
 DELETE /api/v1/admin/letterheads/{id}
@@ -26,6 +27,9 @@ GET /api/v1/admin/app-links/{id}
 GET /api/v1/admin/attendances
 GET /api/v1/admin/branches
 GET /api/v1/admin/branches/{code}
+GET /api/v1/admin/checkpoints
+GET /api/v1/admin/checkpoints/{id}
+GET /api/v1/admin/checkpoints/{id}/qr
 GET /api/v1/admin/clients
 GET /api/v1/admin/clients/{code}
 GET /api/v1/admin/field-permissions
@@ -114,6 +118,7 @@ GET /api/v1/zones/{id}/tracking
 PATCH /api/v1/admin/app-links/{id}
 PATCH /api/v1/admin/attendances/{id}
 PATCH /api/v1/admin/branches/{code}
+PATCH /api/v1/admin/checkpoints/{id}
 PATCH /api/v1/admin/clients/{code}
 PATCH /api/v1/admin/instruction-categories/{id}
 PATCH /api/v1/admin/letterheads/{id}
@@ -131,6 +136,8 @@ PATCH /api/v1/admin/zones/{id}
 PATCH /api/v1/attendances/{id}/check-out
 POST /api/v1/admin/app-links
 POST /api/v1/admin/branches
+POST /api/v1/admin/checkpoints
+POST /api/v1/admin/checkpoints/{id}/rotate-qr
 POST /api/v1/admin/clients
 POST /api/v1/admin/instruction-categories
 POST /api/v1/admin/letterheads
@@ -185,6 +192,7 @@ POST /api/v1/ws/ticket
 POST /api/v1/zones/{id}/check-in
 POST /api/v1/zones/{id}/check-out
 POST /api/v1/zones/{id}/scan
+PUT /api/v1/admin/checkpoints/{id}/actions
 PUT /api/v1/admin/field-permissions/{team_role}
 PUT /api/v1/admin/leave-client-settings/{client_code}
 PUT /api/v1/admin/permission-categories/{code}/quotas

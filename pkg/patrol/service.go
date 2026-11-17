@@ -667,6 +667,21 @@ type fence struct {
 // radius gets DefaultRadiusMeters, unless the caller said the radius should be empty
 // (radiusCleared), which then conflicts with the point.
 func geofence(lat, lng *float64, radius *int, radiusCleared bool) (fence, error) {
+	return geofenceWith(lat, lng, radius, radiusCleared, zoneFence)
+}
+
+// fenceRules are what differs between the geofence of a zone and of a checkpoint: the radius a
+// point gets when none is sent, the largest radius, and what the message calls the place.
+type fenceRules struct {
+	defaultRadius int
+	maxRadius     int
+	subject       string
+}
+
+var zoneFence = fenceRules{defaultRadius: DefaultRadiusMeters, maxRadius: MaxRadiusMeters, subject: "Zona"}
+
+// geofenceWith is geofence with the rules of the place it is for.
+func geofenceWith(lat, lng *float64, radius *int, radiusCleared bool, rules fenceRules) (fence, error) {
 	var problems []apperr.FieldError
 	fail := func(field, msg string) {
 		problems = append(problems, apperr.FieldError{Field: field, Code: "INVALID", Message: msg})
@@ -677,9 +692,9 @@ func geofence(lat, lng *float64, radius *int, radiusCleared bool) (fence, error)
 	case lat == nil && radius != nil:
 		fail("radius_meters", "Radius butuh titik (latitude dan longitude).")
 	case lat != nil && radius == nil && radiusCleared:
-		fail("radius_meters", "Zona dengan titik butuh radius.")
+		fail("radius_meters", rules.subject+" dengan titik butuh radius.")
 	case lat != nil && radius == nil:
-		r := DefaultRadiusMeters
+		r := rules.defaultRadius
 		radius = &r
 	}
 	// The same limits the create body declares: a PATCH has no validate tags (a field may be left
@@ -691,8 +706,8 @@ func geofence(lat, lng *float64, radius *int, radiusCleared bool) (fence, error)
 	if lng != nil && (*lng < -180 || *lng > 180) {
 		fail("longitude", "Harus antara -180 dan 180.")
 	}
-	if radius != nil && (*radius < 1 || *radius > MaxRadiusMeters) {
-		fail("radius_meters", fmt.Sprintf("Harus antara 1 dan %d.", MaxRadiusMeters))
+	if radius != nil && (*radius < 1 || *radius > rules.maxRadius) {
+		fail("radius_meters", fmt.Sprintf("Harus antara 1 dan %d.", rules.maxRadius))
 	}
 	if len(problems) > 0 {
 		return fence{}, apperr.ErrValidation.WithFields(problems...)

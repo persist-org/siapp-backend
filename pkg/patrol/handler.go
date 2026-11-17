@@ -66,6 +66,7 @@ func (h *Handler) MountAdmin(r chi.Router) {
 	r.Put("/zones/{id}/checklist", h.adminChecklist)
 	r.Post("/zones/{id}/rotate-qr", h.adminRotateQR)
 	r.Get("/zones/{id}/qr", h.adminQR)
+	h.mountCheckpoints(r)
 }
 
 func admin(w http.ResponseWriter, r *http.Request) (auth.Principal, access.AdminScope, bool) {

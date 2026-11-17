@@ -334,6 +334,12 @@ components:
       required: true
       description: Identitas resource.
       schema: { type: integer, format: int64 }
+    CheckpointIdPath:
+      name: id
+      in: path
+      required: true
+      description: "Identitas checkpoint (uuid). Id yang bukan uuid dijawab 404 `CHECKPOINT_NOT_FOUND`, bukan 422."
+      schema: { type: string }
     # Header parameters (correlation / idempotency)
     RegionCodePath:
       name: code
@@ -2875,6 +2881,104 @@ components:
         photo_required: { type: boolean }
         is_active: { type: boolean }
         checklist: { type: array, maxItems: 100, items: { $ref: '#/components/schemas/PatrolChecklistItemInput' } }
+
+    # ---------- 27b. patrol_checkpoints (Phase 10.7) ----------
+    PatrolCheckpoint:
+      type: object
+      description: |
+        Checkpoint: tempat yang di-scan petugas, dengan QR dan checklist sendiri. Satu checkpoint bisa
+        ada di banyak zona (`zones`, dengan urutannya di tiap zona). Rahasia QR TIDAK pernah ada di sini:
+        isinya hanya ada di gambar QR yang dicetak admin (`GET /admin/checkpoints/{id}/qr`).
+        Proyek dikenali dengan kode (D19).
+      required: [id, project_code, name, is_active, qr_rotated_at, actions, zones, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        project_code: { type: string, example: 1K-IBMI-S }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        latitude: { type: number, format: double, nullable: true, example: -6.2, description: "Titik checkpoint. latitude, longitude dan radius_meters terisi bersama atau kosong bersama." }
+        longitude: { type: number, format: double, nullable: true, example: 106.8 }
+        radius_meters: { type: integer, nullable: true, minimum: 1, maximum: 1000, description: "Checkpoint tanpa geofence (semua null) hanya mengandalkan QR." }
+        is_active: { type: boolean }
+        qr_rotated_at: { type: string, format: date-time, description: "Kapan rahasia QR terakhir dibuat; stiker yang dicetak sebelumnya sudah tidak berlaku." }
+        actions:
+          type: array
+          description: Aksi checklist yang aktif, urut menurut `sort_order`.
+          items: { $ref: '#/components/schemas/PatrolCheckpointAction' }
+        zones:
+          type: array
+          description: Zona tempat checkpoint ini berada.
+          items: { $ref: '#/components/schemas/PatrolCheckpointZone' }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    PatrolCheckpointZone:
+      type: object
+      required: [id, name, type, sort_order]
+      properties:
+        id: { type: integer, format: int64 }
+        name: { type: string }
+        type: { type: string, enum: [PATROL, GUARD] }
+        sort_order: { type: integer, minimum: 1, description: "Urutan checkpoint di zona itu, mulai dari 1." }
+    PatrolCheckpointAction:
+      type: object
+      required: [id, sort_order, action, min_photos, max_photos, photo_required, is_note_required]
+      properties:
+        id: { type: string, format: uuid }
+        sort_order: { type: integer }
+        action: { type: string, description: "Nama aksi, mis. Periksa gembok." }
+        instruction: { type: string, nullable: true, description: "Petunjuk dari admin yang ditampilkan ke petugas." }
+        min_photos: { type: integer, minimum: 0, maximum: 5, description: "Foto yang wajib diambil; 0 = foto opsional." }
+        max_photos: { type: integer, minimum: 0, maximum: 5, description: "Foto yang boleh diambil; 0 = aksi ini tanpa foto." }
+        photo_required: { type: boolean, description: "`min_photos` > 0." }
+        is_note_required: { type: boolean, description: "Petugas wajib mengisi catatan." }
+    PatrolCheckpointActionInput:
+      type: object
+      description: |
+        Aksi yang punya `id` diubah, yang tanpa `id` dibuat, dan yang tidak ada di badan permintaan
+        dinonaktifkan (tidak pernah dihapus). Urutan array menentukan `sort_order`. Kombinasi yang salah
+        (`min_photos` lebih besar dari `max_photos`, foto di luar 0 sampai 5, nama kosong, `id` yang bukan
+        milik checkpoint ini) ditolak 422 `CHECKPOINT_ACTION_INVALID` dengan nama field-nya, mis.
+        `actions[2].max_photos`.
+      required: [action]
+      properties:
+        id: { type: string, format: uuid }
+        action: { type: string, minLength: 1, maxLength: 300 }
+        instruction: { type: string, nullable: true, maxLength: 1000 }
+        min_photos: { type: integer, minimum: 0, maximum: 5, default: 0 }
+        max_photos: { type: integer, minimum: 0, maximum: 5, description: "Bawaan 1, atau `min_photos` bila lebih besar." }
+        is_note_required: { type: boolean, default: false }
+    PatrolCheckpointActionsReplace:
+      type: object
+      required: [actions]
+      properties:
+        actions: { type: array, maxItems: 30, items: { $ref: '#/components/schemas/PatrolCheckpointActionInput' } }
+    PatrolCheckpointInput:
+      type: object
+      required: [project_code, name]
+      properties:
+        project_code: { type: string, example: 1K-IBMI-S }
+        name: { type: string, minLength: 1, maxLength: 200 }
+        description: { type: string, nullable: true, maxLength: 2000 }
+        latitude: { type: number, format: double, nullable: true, minimum: -90, maximum: 90 }
+        longitude: { type: number, format: double, nullable: true, minimum: -180, maximum: 180 }
+        radius_meters: { type: integer, nullable: true, minimum: 1, maximum: 1000, description: "Bawaan 30 bila titik dikirim tanpa radius." }
+        is_active: { type: boolean, default: true }
+        actions: { type: array, maxItems: 30, items: { $ref: '#/components/schemas/PatrolCheckpointActionInput' } }
+    PatrolCheckpointUpdate:
+      type: object
+      description: |
+        Hanya field yang dikirim yang berubah; `null` mengosongkan field yang boleh kosong.
+        `project_code` hanya diterima bila sama dengan yang sekarang (proyek checkpoint tidak bisa
+        diubah; selain itu 422). Checklist diganti lewat `PUT /admin/checkpoints/{id}/actions`.
+        Titik dan radius harus tetap terisi bersama atau kosong bersama setelah perubahan.
+      properties:
+        project_code: { type: string }
+        name: { type: string, minLength: 1, maxLength: 200 }
+        description: { type: string, nullable: true, maxLength: 2000 }
+        latitude: { type: number, format: double, nullable: true, minimum: -90, maximum: 90 }
+        longitude: { type: number, format: double, nullable: true, minimum: -180, maximum: 180 }
+        radius_meters: { type: integer, nullable: true, minimum: 1, maximum: 1000 }
+        is_active: { type: boolean }
 
     # ---------- 28. patrol_scans ----------
     PatrolScanAnswer:
@@ -10282,6 +10386,228 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '422': { $ref: '#/components/responses/ValidationError' }
+  /admin/checkpoints:
+    get:
+      operationId: getAdminCheckpoints
+      tags: [Patrol]
+      summary: List PatrolCheckpoint
+      description: |
+        Checkpoint di wilayah admin, dengan checklist dan zona tempatnya berada. REGION_ADMIN hanya melihat
+        checkpoint proyek di wilayahnya. `q` mencari pada nama. `zone_id` menyisakan checkpoint satu zona.
+      security:
+        - bearerSession: []
+        - oauth2ClientCredentials: [patrol:read]
+        - apiKey: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/QParam'
+        - $ref: '#/components/parameters/IsActiveParam'
+        - { name: project_code, in: query, schema: { type: string } }
+        - { name: zone_id, in: query, schema: { type: integer, format: int64 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/ListEnvelope' }
+                  - properties: { data: { type: array, items: { $ref: '#/components/schemas/PatrolCheckpoint' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    post:
+      operationId: postAdminCheckpoints
+      tags: [Patrol]
+      summary: Buat PatrolCheckpoint
+      description: |
+        Membuat checkpoint dan rahasia QR-nya. Checklist boleh ikut dikirim (`actions`). Nama harus unik di
+        proyek yang sama (tanpa membedakan huruf besar-kecil): bentrok dijawab 409 `CHECKPOINT_NAME_TAKEN`.
+      security:
+        - bearerSession: []
+        - oauth2ClientCredentials: [patrol:write]
+        - apiKey: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PatrolCheckpointInput' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { $ref: '#/components/schemas/PatrolCheckpoint' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /admin/checkpoints/{id}:
+    parameters:
+      - $ref: '#/components/parameters/CheckpointIdPath'
+    get:
+      operationId: getAdminCheckpointsById
+      tags: [Patrol]
+      summary: Detail PatrolCheckpoint
+      security:
+        - bearerSession: []
+        - oauth2ClientCredentials: [patrol:read]
+        - apiKey: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { $ref: '#/components/schemas/PatrolCheckpoint' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      operationId: patchAdminCheckpointsById
+      tags: [Patrol]
+      summary: Ubah PatrolCheckpoint
+      security:
+        - bearerSession: []
+        - oauth2ClientCredentials: [patrol:write]
+        - apiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PatrolCheckpointUpdate' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { $ref: '#/components/schemas/PatrolCheckpoint' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      operationId: deleteAdminCheckpointsById
+      tags: [Patrol]
+      summary: Hapus/non-aktifkan PatrolCheckpoint
+      description: |
+        Checkpoint tetap ada di tabel (scan menunjuk ke sana) tetapi nonaktif, namanya bebas dipakai lagi, dan
+        ia keluar dari semua zona. Urutan checkpoint lain di zona-zona itu dirapatkan kembali (tanpa celah).
+      security:
+        - bearerSession: []
+        - oauth2ClientCredentials: [patrol:write]
+        - apiKey: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessEnvelope' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/checkpoints/{id}/actions:
+    parameters:
+      - $ref: '#/components/parameters/CheckpointIdPath'
+    put:
+      operationId: putAdminCheckpointsByIdActions
+      tags: [Patrol]
+      summary: Ganti checklist checkpoint
+      description: |
+        Mengganti checklist saja. Aksi ber-`id` diubah, tanpa `id` dibuat, yang tidak dikirim dinonaktifkan.
+        Mengubah aksi tidak mengubah scan yang sudah dikirim (scan menyimpan salinan aksi). Kombinasi yang
+        salah ditolak 422 `CHECKPOINT_ACTION_INVALID` dengan nama field-nya.
+      security:
+        - bearerSession: []
+        - oauth2ClientCredentials: [patrol:write]
+        - apiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PatrolCheckpointActionsReplace' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { $ref: '#/components/schemas/PatrolCheckpoint' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /admin/checkpoints/{id}/qr:
+    parameters:
+      - $ref: '#/components/parameters/CheckpointIdPath'
+    get:
+      operationId: getAdminCheckpointsByIdQr
+      tags: [Patrol]
+      summary: Generate/print QR checkpoint
+      description: |
+        Gambar QR berisi `PERSIST-CP:1:{organizationId}:{checkpointId}:{qrSecret}`. QR ini statis karena
+        dicetak jadi stiker; keamanannya dari geofence checkpoint di server, id organisasi di isinya, dan
+        `POST /admin/checkpoints/{id}/rotate-qr` bila stiker bocor. Header `Content-Disposition` memuat nama
+        berkas dari nama checkpoint.
+      security:
+        - bearerSession: []
+        - oauth2ClientCredentials: [patrol:read]
+        - apiKey: []
+      parameters:
+        - { name: format, in: query, schema: { type: string, enum: [png, svg], default: png } }
+      responses:
+        '200':
+          description: Gambar QR
+          headers:
+            Content-Disposition: { schema: { type: string }, description: 'attachment; filename=qr-checkpoint-nama.png' }
+          content:
+            image/png: { schema: { type: string, format: binary } }
+            image/svg+xml: { schema: { type: string, format: binary } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /admin/checkpoints/{id}/rotate-qr:
+    parameters:
+      - $ref: '#/components/parameters/CheckpointIdPath'
+    post:
+      operationId: postAdminCheckpointsByIdRotateQr
+      tags: [Patrol]
+      summary: Ganti rahasia QR checkpoint
+      description: |
+        Membuat rahasia QR baru. Semua stiker yang sudah dicetak berhenti berlaku; cetak ulang lewat
+        `GET /admin/checkpoints/{id}/qr`.
+      security:
+        - bearerSession: []
+        - oauth2ClientCredentials: [patrol:write]
+        - apiKey: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - properties: { data: { $ref: '#/components/schemas/PatrolCheckpoint' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /admin/cctvs/{id}/access:
     parameters:
       - $ref: '#/components/parameters/IdPath'

@@ -1482,6 +1482,24 @@ func (e PatrolChecklistItemInputPhotoMode) Valid() bool {
 	}
 }
 
+// Defines values for PatrolCheckpointZoneType.
+const (
+	PatrolCheckpointZoneTypeGUARD  PatrolCheckpointZoneType = "GUARD"
+	PatrolCheckpointZoneTypePATROL PatrolCheckpointZoneType = "PATROL"
+)
+
+// Valid indicates whether the value is a known member of the PatrolCheckpointZoneType enum.
+func (e PatrolCheckpointZoneType) Valid() bool {
+	switch e {
+	case PatrolCheckpointZoneTypeGUARD:
+		return true
+	case PatrolCheckpointZoneTypePATROL:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PatrolRouteStatus.
 const (
 	PatrolRouteStatusACTIVE    PatrolRouteStatus = "ACTIVE"
@@ -2847,6 +2865,114 @@ const (
 func (e PatchAdminCctvsByIdAccess200JSONResponseBodySuccess) Valid() bool {
 	switch e {
 	case PatchAdminCctvsByIdAccess200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetAdminCheckpoints200JSONResponseBodySuccess.
+const (
+	GetAdminCheckpoints200JSONResponseBodySuccessTrue GetAdminCheckpoints200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetAdminCheckpoints200JSONResponseBodySuccess enum.
+func (e GetAdminCheckpoints200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetAdminCheckpoints200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostAdminCheckpoints201JSONResponseBodySuccess.
+const (
+	PostAdminCheckpoints201JSONResponseBodySuccessTrue PostAdminCheckpoints201JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostAdminCheckpoints201JSONResponseBodySuccess enum.
+func (e PostAdminCheckpoints201JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostAdminCheckpoints201JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetAdminCheckpointsById200JSONResponseBodySuccess.
+const (
+	GetAdminCheckpointsById200JSONResponseBodySuccessTrue GetAdminCheckpointsById200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetAdminCheckpointsById200JSONResponseBodySuccess enum.
+func (e GetAdminCheckpointsById200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetAdminCheckpointsById200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatchAdminCheckpointsById200JSONResponseBodySuccess.
+const (
+	PatchAdminCheckpointsById200JSONResponseBodySuccessTrue PatchAdminCheckpointsById200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PatchAdminCheckpointsById200JSONResponseBodySuccess enum.
+func (e PatchAdminCheckpointsById200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PatchAdminCheckpointsById200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PutAdminCheckpointsByIdActions200JSONResponseBodySuccess.
+const (
+	PutAdminCheckpointsByIdActions200JSONResponseBodySuccessTrue PutAdminCheckpointsByIdActions200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PutAdminCheckpointsByIdActions200JSONResponseBodySuccess enum.
+func (e PutAdminCheckpointsByIdActions200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PutAdminCheckpointsByIdActions200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetAdminCheckpointsByIdQrParamsFormat.
+const (
+	GetAdminCheckpointsByIdQrParamsFormatPng GetAdminCheckpointsByIdQrParamsFormat = "png"
+	GetAdminCheckpointsByIdQrParamsFormatSvg GetAdminCheckpointsByIdQrParamsFormat = "svg"
+)
+
+// Valid indicates whether the value is a known member of the GetAdminCheckpointsByIdQrParamsFormat enum.
+func (e GetAdminCheckpointsByIdQrParamsFormat) Valid() bool {
+	switch e {
+	case GetAdminCheckpointsByIdQrParamsFormatPng:
+		return true
+	case GetAdminCheckpointsByIdQrParamsFormatSvg:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostAdminCheckpointsByIdRotateQr200JSONResponseBodySuccess.
+const (
+	PostAdminCheckpointsByIdRotateQr200JSONResponseBodySuccessTrue PostAdminCheckpointsByIdRotateQr200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostAdminCheckpointsByIdRotateQr200JSONResponseBodySuccess enum.
+func (e PostAdminCheckpointsByIdRotateQr200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostAdminCheckpointsByIdRotateQr200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
@@ -9397,6 +9523,120 @@ type PatrolChecklistReplace struct {
 	Checklist []PatrolChecklistItemInput `json:"checklist"`
 }
 
+// PatrolCheckpoint Checkpoint: tempat yang di-scan petugas, dengan QR dan checklist sendiri. Satu checkpoint bisa
+// ada di banyak zona (`zones`, dengan urutannya di tiap zona). Rahasia QR TIDAK pernah ada di sini:
+// isinya hanya ada di gambar QR yang dicetak admin (`GET /admin/checkpoints/{id}/qr`).
+// Proyek dikenali dengan kode (D19).
+type PatrolCheckpoint struct {
+	// Actions Aksi checklist yang aktif, urut menurut `sort_order`.
+	Actions     []PatrolCheckpointAction `json:"actions"`
+	CreatedAt   time.Time                `json:"created_at"`
+	Description *string                  `json:"description,omitempty"`
+	Id          openapi_types.UUID       `json:"id"`
+	IsActive    bool                     `json:"is_active"`
+
+	// Latitude Titik checkpoint. latitude, longitude dan radius_meters terisi bersama atau kosong bersama.
+	Latitude    *float64 `json:"latitude,omitempty"`
+	Longitude   *float64 `json:"longitude,omitempty"`
+	Name        string   `json:"name"`
+	ProjectCode string   `json:"project_code"`
+
+	// QrRotatedAt Kapan rahasia QR terakhir dibuat; stiker yang dicetak sebelumnya sudah tidak berlaku.
+	QrRotatedAt time.Time `json:"qr_rotated_at"`
+
+	// RadiusMeters Checkpoint tanpa geofence (semua null) hanya mengandalkan QR.
+	RadiusMeters *int      `json:"radius_meters,omitempty"`
+	UpdatedAt    time.Time `json:"updated_at"`
+
+	// Zones Zona tempat checkpoint ini berada.
+	Zones []PatrolCheckpointZone `json:"zones"`
+}
+
+// PatrolCheckpointAction defines model for PatrolCheckpointAction.
+type PatrolCheckpointAction struct {
+	// Action Nama aksi, mis. Periksa gembok.
+	Action string             `json:"action"`
+	Id     openapi_types.UUID `json:"id"`
+
+	// Instruction Petunjuk dari admin yang ditampilkan ke petugas.
+	Instruction *string `json:"instruction,omitempty"`
+
+	// IsNoteRequired Petugas wajib mengisi catatan.
+	IsNoteRequired bool `json:"is_note_required"`
+
+	// MaxPhotos Foto yang boleh diambil; 0 = aksi ini tanpa foto.
+	MaxPhotos int `json:"max_photos"`
+
+	// MinPhotos Foto yang wajib diambil; 0 = foto opsional.
+	MinPhotos int `json:"min_photos"`
+
+	// PhotoRequired `min_photos` > 0.
+	PhotoRequired bool `json:"photo_required"`
+	SortOrder     int  `json:"sort_order"`
+}
+
+// PatrolCheckpointActionInput Aksi yang punya `id` diubah, yang tanpa `id` dibuat, dan yang tidak ada di badan permintaan
+// dinonaktifkan (tidak pernah dihapus). Urutan array menentukan `sort_order`. Kombinasi yang salah
+// (`min_photos` lebih besar dari `max_photos`, foto di luar 0 sampai 5, nama kosong, `id` yang bukan
+// milik checkpoint ini) ditolak 422 `CHECKPOINT_ACTION_INVALID` dengan nama field-nya, mis.
+// `actions[2].max_photos`.
+type PatrolCheckpointActionInput struct {
+	Action         string              `json:"action"`
+	Id             *openapi_types.UUID `json:"id,omitempty"`
+	Instruction    *string             `json:"instruction,omitempty"`
+	IsNoteRequired *bool               `json:"is_note_required,omitempty"`
+
+	// MaxPhotos Bawaan 1, atau `min_photos` bila lebih besar.
+	MaxPhotos *int `json:"max_photos,omitempty"`
+	MinPhotos *int `json:"min_photos,omitempty"`
+}
+
+// PatrolCheckpointActionsReplace defines model for PatrolCheckpointActionsReplace.
+type PatrolCheckpointActionsReplace struct {
+	Actions []PatrolCheckpointActionInput `json:"actions"`
+}
+
+// PatrolCheckpointInput defines model for PatrolCheckpointInput.
+type PatrolCheckpointInput struct {
+	Actions     *[]PatrolCheckpointActionInput `json:"actions,omitempty"`
+	Description *string                        `json:"description,omitempty"`
+	IsActive    *bool                          `json:"is_active,omitempty"`
+	Latitude    *float64                       `json:"latitude,omitempty"`
+	Longitude   *float64                       `json:"longitude,omitempty"`
+	Name        string                         `json:"name"`
+	ProjectCode string                         `json:"project_code"`
+
+	// RadiusMeters Bawaan 30 bila titik dikirim tanpa radius.
+	RadiusMeters *int `json:"radius_meters,omitempty"`
+}
+
+// PatrolCheckpointUpdate Hanya field yang dikirim yang berubah; `null` mengosongkan field yang boleh kosong.
+// `project_code` hanya diterima bila sama dengan yang sekarang (proyek checkpoint tidak bisa
+// diubah; selain itu 422). Checklist diganti lewat `PUT /admin/checkpoints/{id}/actions`.
+// Titik dan radius harus tetap terisi bersama atau kosong bersama setelah perubahan.
+type PatrolCheckpointUpdate struct {
+	Description  *string  `json:"description,omitempty"`
+	IsActive     *bool    `json:"is_active,omitempty"`
+	Latitude     *float64 `json:"latitude,omitempty"`
+	Longitude    *float64 `json:"longitude,omitempty"`
+	Name         *string  `json:"name,omitempty"`
+	ProjectCode  *string  `json:"project_code,omitempty"`
+	RadiusMeters *int     `json:"radius_meters,omitempty"`
+}
+
+// PatrolCheckpointZone defines model for PatrolCheckpointZone.
+type PatrolCheckpointZone struct {
+	Id   int64  `json:"id"`
+	Name string `json:"name"`
+
+	// SortOrder Urutan checkpoint di zona itu, mulai dari 1.
+	SortOrder int                      `json:"sort_order"`
+	Type      PatrolCheckpointZoneType `json:"type"`
+}
+
+// PatrolCheckpointZoneType defines model for PatrolCheckpointZone.Type.
+type PatrolCheckpointZoneType string
+
 // PatrolRoute Satu patroli. `team_code` dan `work_date` ditentukan server dari shift penjaga. `point_count` adalah
 // titik mentah yang diterima, `distance_meters` panjang garis yang disimpan, `scan_count` scan yang
 // terjadi selama patroli.
@@ -11293,6 +11533,9 @@ type BusinessLineParam string
 // BusinessLineQuery Bidang usaha proyek (DL-20). security membentuk kode berakhiran S, cleaning berakhiran C; satu klien paling banyak satu proyek per bidang.
 type BusinessLineQuery = BusinessLine
 
+// CheckpointIdPath defines model for CheckpointIdPath.
+type CheckpointIdPath = string
+
 // ClientCodePath defines model for ClientCodePath.
 type ClientCodePath = string
 
@@ -11669,6 +11912,57 @@ type PatchAdminCctvsById200JSONResponseBodySuccess bool
 
 // PatchAdminCctvsByIdAccess200JSONResponseBodySuccess defines parameters for PatchAdminCctvsByIdAccess.
 type PatchAdminCctvsByIdAccess200JSONResponseBodySuccess bool
+
+// GetAdminCheckpointsParams defines parameters for GetAdminCheckpoints.
+type GetAdminCheckpointsParams struct {
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
+	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
+
+	// Limit Item per halaman (maks 100).
+	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
+	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
+
+	// IsActive Filter status aktif.
+	IsActive    *IsActiveParam `form:"is_active,omitempty" json:"is_active,omitempty"`
+	ProjectCode *string        `form:"project_code,omitempty" json:"project_code,omitempty"`
+	ZoneId      *int64         `form:"zone_id,omitempty" json:"zone_id,omitempty"`
+}
+
+// GetAdminCheckpoints200JSONResponseBodySuccess defines parameters for GetAdminCheckpoints.
+type GetAdminCheckpoints200JSONResponseBodySuccess bool
+
+// PostAdminCheckpointsParams defines parameters for PostAdminCheckpoints.
+type PostAdminCheckpointsParams struct {
+	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
+	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
+	// 409 CONFLICT.
+	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
+}
+
+// PostAdminCheckpoints201JSONResponseBodySuccess defines parameters for PostAdminCheckpoints.
+type PostAdminCheckpoints201JSONResponseBodySuccess bool
+
+// GetAdminCheckpointsById200JSONResponseBodySuccess defines parameters for GetAdminCheckpointsById.
+type GetAdminCheckpointsById200JSONResponseBodySuccess bool
+
+// PatchAdminCheckpointsById200JSONResponseBodySuccess defines parameters for PatchAdminCheckpointsById.
+type PatchAdminCheckpointsById200JSONResponseBodySuccess bool
+
+// PutAdminCheckpointsByIdActions200JSONResponseBodySuccess defines parameters for PutAdminCheckpointsByIdActions.
+type PutAdminCheckpointsByIdActions200JSONResponseBodySuccess bool
+
+// GetAdminCheckpointsByIdQrParams defines parameters for GetAdminCheckpointsByIdQr.
+type GetAdminCheckpointsByIdQrParams struct {
+	Format *GetAdminCheckpointsByIdQrParamsFormat `form:"format,omitempty" json:"format,omitempty"`
+}
+
+// GetAdminCheckpointsByIdQrParamsFormat defines parameters for GetAdminCheckpointsByIdQr.
+type GetAdminCheckpointsByIdQrParamsFormat string
+
+// PostAdminCheckpointsByIdRotateQr200JSONResponseBodySuccess defines parameters for PostAdminCheckpointsByIdRotateQr.
+type PostAdminCheckpointsByIdRotateQr200JSONResponseBodySuccess bool
 
 // GetAdminClientGroupsParams defines parameters for GetAdminClientGroups.
 type GetAdminClientGroupsParams struct {
@@ -14347,6 +14641,15 @@ type PatchAdminCctvsByIdJSONRequestBody = CctvInput
 
 // PatchAdminCctvsByIdAccessJSONRequestBody defines body for PatchAdminCctvsByIdAccess for application/json ContentType.
 type PatchAdminCctvsByIdAccessJSONRequestBody = CctvAccessInput
+
+// PostAdminCheckpointsJSONRequestBody defines body for PostAdminCheckpoints for application/json ContentType.
+type PostAdminCheckpointsJSONRequestBody = PatrolCheckpointInput
+
+// PatchAdminCheckpointsByIdJSONRequestBody defines body for PatchAdminCheckpointsById for application/json ContentType.
+type PatchAdminCheckpointsByIdJSONRequestBody = PatrolCheckpointUpdate
+
+// PutAdminCheckpointsByIdActionsJSONRequestBody defines body for PutAdminCheckpointsByIdActions for application/json ContentType.
+type PutAdminCheckpointsByIdActionsJSONRequestBody = PatrolCheckpointActionsReplace
 
 // PostAdminClientGroupsJSONRequestBody defines body for PostAdminClientGroups for application/json ContentType.
 type PostAdminClientGroupsJSONRequestBody = CodedMasterInput
