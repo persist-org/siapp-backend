@@ -41,10 +41,12 @@ type answerIn struct {
 	MediaIDs []int64 `json:"media_ids"`
 }
 
-// patrolZone is a zone of the test world and what a scan of it needs.
+// patrolZone is a zone of the test world and what a scan of it needs. Its Checklist is the old zone
+// checklist the scan still reads (Phase 10.9 replaces it), put into the table by legacyChecklist.
 type patrolZone struct {
 	zoneOut
-	payload string
+	payload   string
+	Checklist []checklistOut
 }
 
 // newZone creates a zone through the admin API and reads its QR payload the way a printed sticker
@@ -60,9 +62,12 @@ func (f *flow) newZone(body map[string]any) patrolZone {
 	if body["name"] == nil {
 		body["name"] = "Pos " + uuid.NewString()[:8]
 	}
+	// The API has no checklist for a zone any more: the items go straight into the table.
+	checklist, _ := body["checklist"].([]map[string]any)
+	delete(body, "checklist")
 	code, z, raw := f.zoneCall(http.MethodPost, "/api/v1/admin/zones", f.adminTok, body)
 	require.Equal(f.t, http.StatusCreated, code, string(raw))
-	return patrolZone{zoneOut: z, payload: f.payload(z.ID)}
+	return patrolZone{zoneOut: z, payload: f.payload(z.ID), Checklist: f.legacyChecklist(z.ID, checklist)}
 }
 
 func (f *flow) payload(zoneID int64) string {

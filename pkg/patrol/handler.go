@@ -63,7 +63,7 @@ func (h *Handler) MountAdmin(r chi.Router) {
 	r.Get("/zones/{id}", h.adminGet)
 	r.Patch("/zones/{id}", h.adminUpdate)
 	r.Delete("/zones/{id}", h.adminDelete)
-	r.Put("/zones/{id}/checklist", h.adminChecklist)
+	r.Put("/zones/{id}/checkpoints", h.adminCheckpoints)
 	r.Post("/zones/{id}/rotate-qr", h.adminRotateQR)
 	r.Get("/zones/{id}/qr", h.adminQR)
 	h.mountCheckpoints(r)
@@ -215,7 +215,7 @@ func (h *Handler) adminDelete(w http.ResponseWriter, r *http.Request) {
 	httpx.OK(w, r, http.StatusOK, nil)
 }
 
-func (h *Handler) adminChecklist(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) adminCheckpoints(w http.ResponseWriter, r *http.Request) {
 	p, scope, ok := admin(w, r)
 	if !ok {
 		return
@@ -225,12 +225,12 @@ func (h *Handler) adminChecklist(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, r, err)
 		return
 	}
-	var in ChecklistReplace
+	var in CheckpointsReplace
 	if err := httpx.Decode(r, &in); err != nil {
 		httpx.Error(w, r, err)
 		return
 	}
-	zone, err := h.service.ReplaceChecklist(r.Context(), p, scope, id, in)
+	zone, err := h.service.AssignCheckpoints(r.Context(), p, scope, id, in)
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
@@ -572,35 +572,38 @@ func zonesToAPI(zones []Zone) []apigen.PatrolZone {
 }
 
 func zoneToAPI(z Zone) apigen.PatrolZone {
-	items := make([]apigen.PatrolChecklistItem, 0, len(z.Checklist))
-	for _, it := range z.Checklist {
-		items = append(items, itemToAPI(it))
-	}
 	out := apigen.PatrolZone{
 		Id: z.ID, ProjectCode: z.ProjectCode, TeamCode: z.TeamCode, Type: apigen.PatrolZoneType(z.Type), Name: z.Name,
 		Alias: z.Alias, Description: z.Description, PopupText: z.PopupText, Latitude: z.Latitude, Longitude: z.Longitude,
 		RadiusMeters: z.RadiusMeters, MinVisit: z.MinVisit, PhotoRequired: z.PhotoRequired, IsActive: z.Active,
-		Checklist: items, CreatedAt: z.CreatedAt, UpdatedAt: z.UpdatedAt,
+		CheckpointCount: z.CheckpointCount, CreatedAt: z.CreatedAt, UpdatedAt: z.UpdatedAt,
 	}
 	if z.StartDate != nil {
 		out.StartDate = &openapi_types.Date{Time: z.StartDate.Time()}
 	}
+	// A list leaves checkpoints out (nil); a detail has them, possibly none (an empty array).
+	if z.Checkpoints != nil {
+		cps := make([]apigen.PatrolZoneCheckpoint, 0, len(z.Checkpoints))
+		for _, c := range z.Checkpoints {
+			cps = append(cps, zoneCheckpointToAPI(c))
+		}
+		out.Checkpoints = &cps
+	}
+	if z.NextCheckpointID != nil {
+		next := mustUUID(*z.NextCheckpointID)
+		out.NextCheckpointId = &next
+	}
 	return out
 }
 
-func itemToAPI(it ChecklistItem) apigen.PatrolChecklistItem {
-	out := apigen.PatrolChecklistItem{
-		Id: it.ID, SortOrder: it.SortOrder, Label: it.Label, HelpText: it.HelpText,
-		AnswerType: apigen.PatrolChecklistItemAnswerType(it.AnswerType), Required: it.Required,
-		PhotoMode: apigen.PatrolChecklistItemPhotoMode(it.PhotoMode), PhotoMax: it.PhotoMax,
-		NoteMode: apigen.PatrolChecklistItemNoteMode(it.NoteMode), AttachWhen: apigen.PatrolChecklistItemAttachWhen(it.AttachWhen),
+func zoneCheckpointToAPI(c ZoneCheckpoint) apigen.PatrolZoneCheckpoint {
+	out := apigen.PatrolZoneCheckpoint{
+		Id: mustUUID(c.ID), Name: c.Name, SortOrder: c.SortOrder, IsActive: c.Active,
+		Latitude: c.Latitude, Longitude: c.Longitude, RadiusMeters: c.RadiusMeters, MyScans: c.MyScans, Scannable: c.Scannable,
 	}
-	if len(it.Options) > 0 {
-		opts := make([]apigen.PatrolChecklistOption, 0, len(it.Options))
-		for _, o := range it.Options {
-			opts = append(opts, apigen.PatrolChecklistOption{Value: o.Value, Label: o.Label})
-		}
-		out.Options = &opts
+	if c.Actions != nil {
+		actions := actionsToAPI(c.Actions)
+		out.Actions = &actions
 	}
 	return out
 }

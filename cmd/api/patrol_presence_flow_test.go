@@ -110,10 +110,7 @@ func TestPatrolScanHistoryIsNotRewrittenByChecklistEdits(t *testing.T) {
 	scan := f.mustScan(f.personTok, z, b)
 
 	// The admin rewrites the form: a new wording, one question gone, a new required one.
-	put := func(items []map[string]any) {
-		code, _, raw := f.zoneCall(http.MethodPut, zonePath(z.ID)+"/checklist", f.adminTok, map[string]any{"checklist": items})
-		require.Equal(t, http.StatusOK, code, string(raw))
-	}
+	put := func(items []map[string]any) { f.legacyReplaceChecklist(z.ID, items) }
 	put([]map[string]any{
 		{"id": pagar, "label": "Pagar utama terkunci dan utuh?", "answer_type": "BOOLEAN"},
 		{"label": "Alarm aktif?", "answer_type": "BOOLEAN"},

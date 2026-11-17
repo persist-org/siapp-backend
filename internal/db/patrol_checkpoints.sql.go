@@ -12,6 +12,40 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countCheckpointsOfZones = `-- name: CountCheckpointsOfZones :many
+SELECT zc.zone_id, count(*)::int AS checkpoints
+FROM patrol_zone_checkpoints zc
+JOIN patrol_checkpoints c ON c.organization_id = zc.organization_id AND c.id = zc.checkpoint_id
+WHERE zc.zone_id = ANY($1::bigint[]) AND c.active AND c.deleted_at IS NULL
+GROUP BY zc.zone_id
+`
+
+type CountCheckpointsOfZonesRow struct {
+	ZoneID      int64
+	Checkpoints int32
+}
+
+// How many active checkpoints each zone has: what a guard can scan, for the zone lists.
+func (q *Queries) CountCheckpointsOfZones(ctx context.Context, zoneIds []int64) ([]CountCheckpointsOfZonesRow, error) {
+	rows, err := q.db.Query(ctx, countCheckpointsOfZones, zoneIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CountCheckpointsOfZonesRow{}
+	for rows.Next() {
+		var i CountCheckpointsOfZonesRow
+		if err := rows.Scan(&i.ZoneID, &i.Checkpoints); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const countPatrolCheckpoints = `-- name: CountPatrolCheckpoints :one
 SELECT count(*) FROM patrol_checkpoints c
 WHERE c.deleted_at IS NULL
@@ -764,6 +798,70 @@ func (q *Queries) ListZoneCheckpoints(ctx context.Context, zoneID int64) ([]List
 	return items, nil
 }
 
+const listZoneCheckpointsAdmin = `-- name: ListZoneCheckpointsAdmin :many
+SELECT c.id, c.organization_id, c.project_code, c.name, c.description, c.latitude, c.longitude, c.radius_meters, c.qr_secret, c.qr_rotated_at, c.active, c.created_at, c.updated_at, c.deleted_at, zc.sort_order AS position
+FROM patrol_zone_checkpoints zc
+JOIN patrol_checkpoints c ON c.organization_id = zc.organization_id AND c.id = zc.checkpoint_id
+WHERE zc.zone_id = $1 AND c.deleted_at IS NULL
+ORDER BY zc.sort_order
+`
+
+type ListZoneCheckpointsAdminRow struct {
+	ID             pgtype.UUID
+	OrganizationID int64
+	ProjectCode    string
+	Name           string
+	Description    pgtype.Text
+	Latitude       *float64
+	Longitude      *float64
+	RadiusMeters   pgtype.Int4
+	QrSecret       string
+	QrRotatedAt    pgtype.Timestamptz
+	Active         bool
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+	DeletedAt      pgtype.Timestamptz
+	Position       int32
+}
+
+// Every checkpoint a zone holds, in order, the inactive ones too (an admin sees them and they keep
+// their place); only a deleted one is gone. is_active tells them apart.
+func (q *Queries) ListZoneCheckpointsAdmin(ctx context.Context, zoneID int64) ([]ListZoneCheckpointsAdminRow, error) {
+	rows, err := q.db.Query(ctx, listZoneCheckpointsAdmin, zoneID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListZoneCheckpointsAdminRow{}
+	for rows.Next() {
+		var i ListZoneCheckpointsAdminRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrganizationID,
+			&i.ProjectCode,
+			&i.Name,
+			&i.Description,
+			&i.Latitude,
+			&i.Longitude,
+			&i.RadiusMeters,
+			&i.QrSecret,
+			&i.QrRotatedAt,
+			&i.Active,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.Position,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listZoneLinks = `-- name: ListZoneLinks :many
 SELECT project_code, checkpoint_id, sort_order FROM patrol_zone_checkpoints WHERE zone_id = $1 ORDER BY sort_order
 `
@@ -837,6 +935,71 @@ func (q *Queries) ListZonesOfCheckpoints(ctx context.Context, checkpointIds []pg
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockCheckpointsByIDs = `-- name: LockCheckpointsByIDs :many
+SELECT id, organization_id, project_code, name, description, latitude, longitude, radius_meters, qr_secret, qr_rotated_at, active, created_at, updated_at, deleted_at FROM patrol_checkpoints
+WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL
+ORDER BY id
+FOR UPDATE
+`
+
+// Locks the checkpoints a zone is about to link, in id order, and returns them. ⚠ The order of locks
+// is checkpoint first, then zone, everywhere (deleting a checkpoint does the same): a link insert takes
+// a share lock on its checkpoint, so locking the zone first and the checkpoint second would deadlock
+// against a deletion that holds the checkpoint and waits for the zone.
+func (q *Queries) LockCheckpointsByIDs(ctx context.Context, ids []pgtype.UUID) ([]PatrolCheckpoint, error) {
+	rows, err := q.db.Query(ctx, lockCheckpointsByIDs, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []PatrolCheckpoint{}
+	for rows.Next() {
+		var i PatrolCheckpoint
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrganizationID,
+			&i.ProjectCode,
+			&i.Name,
+			&i.Description,
+			&i.Latitude,
+			&i.Longitude,
+			&i.RadiusMeters,
+			&i.QrSecret,
+			&i.QrRotatedAt,
+			&i.Active,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const renumberZoneLinks = `-- name: RenumberZoneLinks :exec
+UPDATE patrol_zone_checkpoints t SET sort_order = r.n
+FROM (SELECT checkpoint_id, row_number() OVER (ORDER BY sort_order)::int AS n
+      FROM patrol_zone_checkpoints WHERE zone_id = $1) r
+WHERE t.zone_id = $1 AND t.checkpoint_id = r.checkpoint_id
+`
+
+// Closing the gap a deleted checkpoint leaves: every link of the zone gets its rank, 1..n, in one UPDATE.
+// ⚠ One UPDATE of rows this transaction has not written, and never a delete and re-insert: an insert
+// checks its foreign key by taking a share lock on the checkpoint it points at, which for the zone's
+// OTHER checkpoints is a lock the deleting request does not hold and may have to wait for while the request
+// that holds it waits for this one (a deadlock). An UPDATE that leaves the key columns alone checks no
+// foreign key, unless the row was already written by this very transaction. Several rows change position
+// at once, which is why the position's unique is deferred (migration 00039).
+func (q *Queries) RenumberZoneLinks(ctx context.Context, zoneID int64) error {
+	_, err := q.db.Exec(ctx, renumberZoneLinks, zoneID)
+	return err
 }
 
 const rotateCheckpointSecret = `-- name: RotateCheckpointSecret :one

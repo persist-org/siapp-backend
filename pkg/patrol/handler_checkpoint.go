@@ -204,13 +204,7 @@ func checkpointsToAPI(list []Checkpoint) []apigen.PatrolCheckpoint {
 }
 
 func checkpointToAPI(c Checkpoint) apigen.PatrolCheckpoint {
-	actions := make([]apigen.PatrolCheckpointAction, 0, len(c.Actions))
-	for _, a := range c.Actions {
-		actions = append(actions, apigen.PatrolCheckpointAction{
-			Id: mustUUID(a.ID), SortOrder: a.SortOrder, Action: a.Action, Instruction: a.Instruction,
-			MinPhotos: a.MinPhotos, MaxPhotos: a.MaxPhotos, PhotoRequired: a.PhotoRequired(), IsNoteRequired: a.IsNoteRequired,
-		})
-	}
+	actions := actionsToAPI(c.Actions)
 	zones := make([]apigen.PatrolCheckpointZone, 0, len(c.Zones))
 	for _, z := range c.Zones {
 		zones = append(zones, apigen.PatrolCheckpointZone{
@@ -229,4 +223,16 @@ func checkpointToAPI(c Checkpoint) apigen.PatrolCheckpoint {
 func mustUUID(s string) uuid.UUID {
 	u, _ := uuid.Parse(s)
 	return u
+}
+
+// actionsToAPI maps a checklist; an empty one is an empty array, never null.
+func actionsToAPI(list []CheckpointAction) []apigen.PatrolCheckpointAction {
+	out := make([]apigen.PatrolCheckpointAction, 0, len(list))
+	for _, a := range list {
+		out = append(out, apigen.PatrolCheckpointAction{
+			Id: mustUUID(a.ID), SortOrder: a.SortOrder, Action: a.Action, Instruction: a.Instruction,
+			MinPhotos: a.MinPhotos, MaxPhotos: a.MaxPhotos, PhotoRequired: a.PhotoRequired(), IsNoteRequired: a.IsNoteRequired,
+		})
+	}
+	return out
 }

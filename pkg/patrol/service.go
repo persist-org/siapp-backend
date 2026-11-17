@@ -66,41 +66,43 @@ func (s *Service) Now() time.Time { return s.clock.Now() }
 
 // ZoneInput is a request to create a zone.
 type ZoneInput struct {
-	ProjectCode   string               `json:"project_code" validate:"required,notblank,max=100"`
-	TeamCode      *string              `json:"team_code" validate:"omitempty,max=100"`
-	Type          string               `json:"type" validate:"required,oneof=PATROL GUARD"`
-	Name          string               `json:"name" validate:"required,notblank,max=200"`
-	Alias         *string              `json:"alias" validate:"omitempty,max=200"`
-	Description   *string              `json:"description" validate:"omitempty,max=2000"`
-	PopupText     *string              `json:"popup_text" validate:"omitempty,max=2000"`
-	Latitude      *float64             `json:"latitude" validate:"omitempty,gte=-90,lte=90"`
-	Longitude     *float64             `json:"longitude" validate:"omitempty,gte=-180,lte=180"`
-	RadiusMeters  *int                 `json:"radius_meters" validate:"omitempty,min=1,max=5000"`
-	MinVisit      *int                 `json:"min_visit" validate:"omitempty,min=1,max=100"`
-	StartDate     *timeutil.Date       `json:"start_date"`
-	PhotoRequired *bool                `json:"photo_required"`
-	Active        *bool                `json:"is_active"`
-	Checklist     []ChecklistItemInput `json:"checklist" validate:"omitempty,max=100,dive"`
+	ProjectCode   string         `json:"project_code" validate:"required,notblank,max=100"`
+	TeamCode      *string        `json:"team_code" validate:"omitempty,max=100"`
+	Type          string         `json:"type" validate:"required,oneof=PATROL GUARD"`
+	Name          string         `json:"name" validate:"required,notblank,max=200"`
+	Alias         *string        `json:"alias" validate:"omitempty,max=200"`
+	Description   *string        `json:"description" validate:"omitempty,max=2000"`
+	PopupText     *string        `json:"popup_text" validate:"omitempty,max=2000"`
+	Latitude      *float64       `json:"latitude" validate:"omitempty,gte=-90,lte=90"`
+	Longitude     *float64       `json:"longitude" validate:"omitempty,gte=-180,lte=180"`
+	RadiusMeters  *int           `json:"radius_meters" validate:"omitempty,min=1,max=5000"`
+	MinVisit      *int           `json:"min_visit" validate:"omitempty,min=1,max=100"`
+	StartDate     *timeutil.Date `json:"start_date"`
+	PhotoRequired *bool          `json:"photo_required"`
+	Active        *bool          `json:"is_active"`
+	// CheckpointIDs are the zone's checkpoints, in order (positions 1..n).
+	CheckpointIDs []string `json:"checkpoint_ids" validate:"omitempty,max=100"`
 }
 
 // ZoneUpdate is a request to change a zone. A field that is left out keeps its value; null
 // empties the ones that may be empty. The project is not here: a zone does not move, because
 // the scans it holds belong to that project's people.
 type ZoneUpdate struct {
-	TeamCode      optional[string]      `json:"team_code"`
-	Type          *string               `json:"type" validate:"omitempty,oneof=PATROL GUARD"`
-	Name          *string               `json:"name" validate:"omitempty,notblank,max=200"`
-	Alias         optional[string]      `json:"alias"`
-	Description   optional[string]      `json:"description"`
-	PopupText     optional[string]      `json:"popup_text"`
-	Latitude      optional[float64]     `json:"latitude"`
-	Longitude     optional[float64]     `json:"longitude"`
-	RadiusMeters  optional[int]         `json:"radius_meters"`
-	MinVisit      *int                  `json:"min_visit" validate:"omitempty,min=1,max=100"`
-	StartDate     optional[string]      `json:"start_date"`
-	PhotoRequired *bool                 `json:"photo_required"`
-	Active        *bool                 `json:"is_active"`
-	Checklist     *[]ChecklistItemInput `json:"checklist" validate:"omitempty,max=100,dive"`
+	TeamCode      optional[string]  `json:"team_code"`
+	Type          *string           `json:"type" validate:"omitempty,oneof=PATROL GUARD"`
+	Name          *string           `json:"name" validate:"omitempty,notblank,max=200"`
+	Alias         optional[string]  `json:"alias"`
+	Description   optional[string]  `json:"description"`
+	PopupText     optional[string]  `json:"popup_text"`
+	Latitude      optional[float64] `json:"latitude"`
+	Longitude     optional[float64] `json:"longitude"`
+	RadiusMeters  optional[int]     `json:"radius_meters"`
+	MinVisit      *int              `json:"min_visit" validate:"omitempty,min=1,max=100"`
+	StartDate     optional[string]  `json:"start_date"`
+	PhotoRequired *bool             `json:"photo_required"`
+	Active        *bool             `json:"is_active"`
+	// CheckpointIDs, when sent, replaces the zone's checkpoints and their order; left out, they stay.
+	CheckpointIDs *[]string `json:"checkpoint_ids" validate:"omitempty,max=100"`
 }
 
 // optional is a field of a patch that can be left out, set, or set to null. encoding/json does
@@ -166,8 +168,8 @@ func assertRegion(scope access.AdminScope, projectCode string) error {
 	return nil
 }
 
-// ListAdmin returns one page of the zones the admin's region holds, with their checklists, and
-// the total.
+// ListAdmin returns one page of the zones the admin's region holds, with how many checkpoints each
+// has, and the total.
 func (s *Service) ListAdmin(ctx context.Context, actor auth.Principal, scope access.AdminScope, f ListFilter) ([]Zone, int, error) {
 	if f.ProjectCode != "" {
 		if err := assertRegion(scope, f.ProjectCode); err != nil {
@@ -194,13 +196,13 @@ func (s *Service) ListAdmin(ctx context.Context, actor auth.Principal, scope acc
 		if err != nil {
 			return fmt.Errorf("count zones: %w", err)
 		}
-		out, err = withChecklists(ctx, q, rows)
+		out, err = withCounts(ctx, q, rows)
 		return err
 	})
 	return out, int(total), err
 }
 
-// GetAdmin returns one zone with its checklist.
+// GetAdmin returns one zone with its checkpoints, in order.
 func (s *Service) GetAdmin(ctx context.Context, actor auth.Principal, scope access.AdminScope, id int64) (Zone, error) {
 	var out Zone
 	err := database.WithTenant(ctx, s.pool, actor.OrganizationID, func(q *db.Queries) error {
@@ -214,13 +216,13 @@ func (s *Service) GetAdmin(ctx context.Context, actor auth.Principal, scope acce
 		if err := assertRegion(scope, row.ProjectCode); err != nil {
 			return err
 		}
-		out, err = withChecklist(ctx, q, row)
+		out, err = withCheckpoints(ctx, q, row)
 		return err
 	})
 	return out, err
 }
 
-// Create adds a zone, with its checklist, and gives it a QR secret.
+// Create adds a zone, with its checkpoints when they are sent, and gives it a QR secret.
 func (s *Service) Create(ctx context.Context, actor auth.Principal, scope access.AdminScope, in ZoneInput) (Zone, error) {
 	if err := assertRegion(scope, in.ProjectCode); err != nil {
 		return Zone{}, err
@@ -229,7 +231,7 @@ func (s *Service) Create(ctx context.Context, actor auth.Principal, scope access
 	if err != nil {
 		return Zone{}, err
 	}
-	specs, err := parseChecklist(in.Checklist)
+	ids, err := parseCheckpointIDs(in.CheckpointIDs)
 	if err != nil {
 		return Zone{}, err
 	}
@@ -261,10 +263,16 @@ func (s *Service) Create(ctx context.Context, actor auth.Principal, scope access
 		if err != nil {
 			return fmt.Errorf("insert zone: %w", err)
 		}
-		if _, _, _, err := replaceChecklist(ctx, q, s.clock, row.ID, specs); err != nil {
+		// A zone nobody can see yet has no deletion to wait for, so locking its checkpoints after
+		// inserting it keeps the order of locks (checkpoints first) for everyone else.
+		found, err := lockCheckpoints(ctx, q, ids)
+		if err != nil {
 			return err
 		}
-		out, err = withChecklist(ctx, q, row)
+		if err := linkCheckpoints(ctx, q, row, ids, found); err != nil {
+			return err
+		}
+		out, err = withCheckpoints(ctx, q, row)
 		if err != nil {
 			return err
 		}
@@ -293,16 +301,25 @@ func (s *Service) Update(ctx context.Context, actor auth.Principal, scope access
 	if fields := collect(problems); len(fields) > 0 {
 		return Zone{}, apperr.ErrValidation.WithFields(fields...)
 	}
-	var specs []itemSpec
-	if in.Checklist != nil {
+	var ids []pgtype.UUID
+	if in.CheckpointIDs != nil {
 		var err error
-		if specs, err = parseChecklist(*in.Checklist); err != nil {
+		if ids, err = parseCheckpointIDs(*in.CheckpointIDs); err != nil {
 			return Zone{}, err
 		}
 	}
 
 	var out Zone
 	err := database.WithTenant(ctx, s.pool, actor.OrganizationID, func(q *db.Queries) error {
+		// ⚠ Checkpoints are locked before the zone, as everywhere (see LockCheckpointsByIDs). Locking
+		// only reads nothing a caller could learn: the zone's own checks come right after.
+		var found map[string]db.PatrolCheckpoint
+		if in.CheckpointIDs != nil {
+			var err error
+			if found, err = lockCheckpoints(ctx, q, ids); err != nil {
+				return err
+			}
+		}
 		row, err := q.GetPatrolZoneForUpdate(ctx, id)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrZoneNotFound
@@ -313,7 +330,7 @@ func (s *Service) Update(ctx context.Context, actor auth.Principal, scope access
 		if err := assertRegion(scope, row.ProjectCode); err != nil {
 			return err
 		}
-		before, err := withChecklist(ctx, q, row)
+		before, err := withCheckpoints(ctx, q, row)
 		if err != nil {
 			return err
 		}
@@ -387,12 +404,12 @@ func (s *Service) Update(ctx context.Context, actor auth.Principal, scope access
 		if err != nil {
 			return fmt.Errorf("update zone: %w", err)
 		}
-		if in.Checklist != nil {
-			if _, _, _, err := replaceChecklist(ctx, q, s.clock, id, specs); err != nil {
+		if in.CheckpointIDs != nil {
+			if err := linkCheckpoints(ctx, q, row, ids, found); err != nil {
 				return err
 			}
 		}
-		out, err = withChecklist(ctx, q, row)
+		out, err = withCheckpoints(ctx, q, row)
 		if err != nil {
 			return err
 		}
@@ -401,14 +418,20 @@ func (s *Service) Update(ctx context.Context, actor auth.Principal, scope access
 	return out, err
 }
 
-// ReplaceChecklist replaces the checklist and nothing else of the zone.
-func (s *Service) ReplaceChecklist(ctx context.Context, actor auth.Principal, scope access.AdminScope, id int64, in ChecklistReplace) (Zone, error) {
-	specs, err := parseChecklist(in.Checklist)
+// AssignCheckpoints replaces the checkpoints of the zone and their order, and nothing else of the zone.
+// ids are in the order the guard walks them: they become positions 1..n. An empty list takes them all out.
+func (s *Service) AssignCheckpoints(ctx context.Context, actor auth.Principal, scope access.AdminScope, id int64, in CheckpointsReplace) (Zone, error) {
+	ids, err := parseCheckpointIDs(in.CheckpointIDs)
 	if err != nil {
 		return Zone{}, err
 	}
 	var out Zone
 	err = database.WithTenant(ctx, s.pool, actor.OrganizationID, func(q *db.Queries) error {
+		// Checkpoints first, then the zone: the order every writer of the links uses (see LockCheckpointsByIDs).
+		found, err := lockCheckpoints(ctx, q, ids)
+		if err != nil {
+			return err
+		}
 		row, err := q.GetPatrolZoneForUpdate(ctx, id)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrZoneNotFound
@@ -419,12 +442,14 @@ func (s *Service) ReplaceChecklist(ctx context.Context, actor auth.Principal, sc
 		if err := assertRegion(scope, row.ProjectCode); err != nil {
 			return err
 		}
-		created, updated, deactivated, err := replaceChecklist(ctx, q, s.clock, id, specs)
+		before, err := q.ListZoneLinks(ctx, id)
 		if err != nil {
+			return fmt.Errorf("list zone links: %w", err)
+		}
+		if err := linkCheckpoints(ctx, q, row, ids, found); err != nil {
 			return err
 		}
-		// The checklist is part of what the zone looks like to the app, so its change moves
-		// updated_at.
+		// The checkpoints are part of what the zone looks like to the app, so their change moves updated_at.
 		if err := q.TouchPatrolZone(ctx, db.TouchPatrolZoneParams{ID: id, Now: ts(s.clock.Now())}); err != nil {
 			return fmt.Errorf("touch zone: %w", err)
 		}
@@ -432,12 +457,12 @@ func (s *Service) ReplaceChecklist(ctx context.Context, actor auth.Principal, sc
 		if err != nil {
 			return fmt.Errorf("get zone: %w", err)
 		}
-		out, err = withChecklist(ctx, q, row)
+		out, err = withCheckpoints(ctx, q, row)
 		if err != nil {
 			return err
 		}
-		return auditZone(ctx, q, actor, "patrol.zone.checklist", out, map[string]any{
-			"created": created, "updated": updated, "deactivated": deactivated,
+		return auditZone(ctx, q, actor, "patrol.zone.checkpoints", out, map[string]any{
+			"before": len(before), "after": len(ids),
 		})
 	})
 	return out, err
@@ -464,10 +489,7 @@ func (s *Service) Delete(ctx context.Context, actor auth.Principal, scope access
 		if _, err := q.CloseZoneCheckinsOfZone(ctx, db.CloseZoneCheckinsOfZoneParams{ZoneID: id, At: ts(s.clock.Now())}); err != nil {
 			return fmt.Errorf("close check-ins of deleted zone: %w", err)
 		}
-		zone, err := zoneOf(row, nil)
-		if err != nil {
-			return err
-		}
+		zone := zoneOf(row)
 		return auditZone(ctx, q, actor, "patrol.zone.delete", zone, map[string]any{"before": zoneMeta(zone)})
 	})
 }
@@ -495,7 +517,7 @@ func (s *Service) RotateQR(ctx context.Context, actor auth.Principal, scope acce
 		if err != nil {
 			return fmt.Errorf("rotate zone secret: %w", err)
 		}
-		out, err = withChecklist(ctx, q, row)
+		out, err = withCheckpoints(ctx, q, row)
 		if err != nil {
 			return err
 		}
@@ -544,8 +566,8 @@ type FieldFilter struct {
 }
 
 // ListForField returns the active zones the caller can work: those of the projects they serve in
-// today that are for the whole project or for one of their own regu, with the checklists the app
-// draws the form from.
+// today that are for the whole project or for one of their own regu, each with how many checkpoints
+// it has (the checkpoints themselves are in the zone's own read).
 //
 // A project_code that is not one of the caller's is PERMISSION_DENIED, not an empty list: the
 // caller asked about something they have no part in.
@@ -570,14 +592,16 @@ func (s *Service) ListForField(ctx context.Context, actor auth.Principal, f Fiel
 		if err != nil {
 			return fmt.Errorf("list zones for field: %w", err)
 		}
-		out, err = withChecklists(ctx, q, rows)
+		out, err = withCounts(ctx, q, rows)
 		return err
 	})
 	return out, err
 }
 
 // GetForField returns one zone to a person who serves in its project (and regu, when the zone has
-// one). An inactive zone is still readable, so an app that holds it can see it was switched off.
+// one), with its active checkpoints, their checklists, what the caller has done today and which
+// checkpoint comes next. An inactive zone is still readable, so an app that holds it can see it was
+// switched off.
 func (s *Service) GetForField(ctx context.Context, actor auth.Principal, id int64) (Zone, error) {
 	var out Zone
 	err := database.WithTenant(ctx, s.pool, actor.OrganizationID, func(q *db.Queries) error {
@@ -598,7 +622,7 @@ func (s *Service) GetForField(ctx context.Context, actor auth.Principal, id int6
 		if !slices.Contains(m.projects(), row.ProjectCode) || (row.TeamCode.Valid && !slices.Contains(m.teams(), row.TeamCode.String)) {
 			return access.ErrPermissionDenied
 		}
-		out, err = withChecklist(ctx, q, row)
+		out, err = s.withFieldCheckpoints(ctx, q, actor, row)
 		return err
 	})
 	return out, err
@@ -715,37 +739,137 @@ func geofenceWith(lat, lng *float64, radius *int, radiusCleared bool, rules fenc
 	return fence{lat: lat, lng: lng, radius: radius}, nil
 }
 
-func withChecklist(ctx context.Context, q *db.Queries, row db.PatrolZone) (Zone, error) {
-	items, err := q.ListChecklistItems(ctx, row.ID)
-	if err != nil {
-		return Zone{}, fmt.Errorf("list checklist: %w", err)
-	}
-	return zoneOf(row, items)
-}
-
-// withChecklists reads the checklists of all the zones in one query.
-func withChecklists(ctx context.Context, q *db.Queries, rows []db.PatrolZone) ([]Zone, error) {
+// withCounts is a zone row as a list shows it: with how many checkpoints it has, from one query for all.
+func withCounts(ctx context.Context, q *db.Queries, rows []db.PatrolZone) ([]Zone, error) {
 	ids := make([]int64, 0, len(rows))
 	for _, r := range rows {
 		ids = append(ids, r.ID)
 	}
-	items, err := q.ListChecklistItemsOfZones(ctx, ids)
+	counts, err := q.CountCheckpointsOfZones(ctx, ids)
 	if err != nil {
-		return nil, fmt.Errorf("list checklists: %w", err)
+		return nil, fmt.Errorf("count checkpoints of zones: %w", err)
 	}
-	byZone := make(map[int64][]db.PatrolChecklistItem, len(rows))
-	for _, it := range items {
-		byZone[it.ZoneID] = append(byZone[it.ZoneID], it)
+	byZone := make(map[int64]int, len(counts))
+	for _, c := range counts {
+		byZone[c.ZoneID] = int(c.Checkpoints)
 	}
 	out := make([]Zone, 0, len(rows))
 	for _, r := range rows {
-		z, err := zoneOf(r, byZone[r.ID])
-		if err != nil {
-			return nil, err
-		}
+		z := zoneOf(r)
+		z.CheckpointCount = byZone[r.ID]
 		out = append(out, z)
 	}
 	return out, nil
+}
+
+// withCheckpoints is a zone row as the admin's detail shows it: its checkpoints in order, the inactive
+// ones too, without their checklists.
+func withCheckpoints(ctx context.Context, q *db.Queries, row db.PatrolZone) (Zone, error) {
+	rows, err := q.ListZoneCheckpointsAdmin(ctx, row.ID)
+	if err != nil {
+		return Zone{}, fmt.Errorf("list zone checkpoints: %w", err)
+	}
+	z := zoneOf(row)
+	z.Checkpoints = make([]ZoneCheckpoint, 0, len(rows))
+	for _, r := range rows {
+		cp := zoneCheckpointOf(adminLinkRow(r), r.Position)
+		z.Checkpoints = append(z.Checkpoints, cp)
+		if cp.Active {
+			z.CheckpointCount++
+		}
+	}
+	return z, nil
+}
+
+// checkpointRowOf is the checkpoint columns of a zone-link row.
+func adminLinkRow(r db.ListZoneCheckpointsAdminRow) db.PatrolCheckpoint {
+	return db.PatrolCheckpoint{
+		ID: r.ID, OrganizationID: r.OrganizationID, ProjectCode: r.ProjectCode, Name: r.Name, Description: r.Description,
+		Latitude: r.Latitude, Longitude: r.Longitude, RadiusMeters: r.RadiusMeters, QrSecret: r.QrSecret,
+		QrRotatedAt: r.QrRotatedAt, Active: r.Active, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, DeletedAt: r.DeletedAt,
+	}
+}
+
+// withFieldCheckpoints is a zone row as the field's detail shows it.
+//
+// The caller's own progress is read for the work date their next scan would get: the date of their
+// shift, or the business date in the project's timezone when they have none (the same rule the scan
+// uses, so a night-shift guard after midnight reads yesterday's walk). my_scans, scannable and
+// next_checkpoint_id all come from loadOrder, the function the scan checks with, so the app and the
+// server cannot disagree about what is next.
+func (s *Service) withFieldCheckpoints(ctx context.Context, q *db.Queries, actor auth.Principal, row db.PatrolZone) (Zone, error) {
+	z := zoneOf(row)
+	z.Checkpoints = []ZoneCheckpoint{}
+	rows, err := q.ListZoneCheckpoints(ctx, row.ID)
+	if err != nil {
+		return Zone{}, fmt.Errorf("list zone checkpoints: %w", err)
+	}
+	z.CheckpointCount = len(rows)
+	if len(rows) == 0 {
+		return z, nil
+	}
+
+	project, err := q.GetProject(ctx, row.ProjectCode)
+	if err != nil {
+		return Zone{}, fmt.Errorf("get project: %w", err)
+	}
+	loc, err := time.LoadLocation(project.Timezone)
+	if err != nil {
+		return Zone{}, fmt.Errorf("project %s: timezone %q: %w", project.Code, project.Timezone, err)
+	}
+	where, err := s.placeIn(ctx, q, actor, row.ProjectCode, row.TeamCode, loc, s.clock.Now())
+	if err != nil {
+		return Zone{}, err
+	}
+	order, err := loadOrder(ctx, q, actor.PersonnelID, row.ID, where.workDate, endOfTime)
+	if err != nil {
+		return Zone{}, err
+	}
+	stepOf := make(map[string]orderStep, len(order.Steps))
+	for _, st := range order.Steps {
+		stepOf[uuidString(st.CheckpointID)] = st
+	}
+
+	ids := make([]pgtype.UUID, 0, len(rows))
+	for _, r := range rows {
+		ids = append(ids, r.ID)
+	}
+	// One query for the checklists of every checkpoint of the zone, not one per checkpoint.
+	actions, err := q.ListActionsOfCheckpoints(ctx, ids)
+	if err != nil {
+		return Zone{}, fmt.Errorf("list checkpoint actions: %w", err)
+	}
+	actionsOf := make(map[string][]CheckpointAction, len(rows))
+	for _, a := range actions {
+		key := uuidString(a.CheckpointID)
+		actionsOf[key] = append(actionsOf[key], actionOf(a))
+	}
+
+	for _, r := range rows {
+		cp := zoneCheckpointOf(activeLinkRow(r), r.Position)
+		st := stepOf[cp.ID]
+		scans, scannable := st.Scans, st.Scannable
+		cp.MyScans, cp.Scannable = &scans, &scannable
+		cp.Actions = actionsOf[cp.ID]
+		if cp.Actions == nil {
+			cp.Actions = []CheckpointAction{}
+		}
+		z.Checkpoints = append(z.Checkpoints, cp)
+	}
+	if order.Next >= 0 {
+		next := uuidString(order.Steps[order.Next].CheckpointID)
+		z.NextCheckpointID = &next
+	}
+	return z, nil
+}
+
+// activeLinkRow is the checkpoint columns of an active zone-link row.
+func activeLinkRow(r db.ListZoneCheckpointsRow) db.PatrolCheckpoint {
+	return db.PatrolCheckpoint{
+		ID: r.ID, OrganizationID: r.OrganizationID, ProjectCode: r.ProjectCode, Name: r.Name, Description: r.Description,
+		Latitude: r.Latitude, Longitude: r.Longitude, RadiusMeters: r.RadiusMeters, QrSecret: r.QrSecret,
+		QrRotatedAt: r.QrRotatedAt, Active: r.Active, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, DeletedAt: r.DeletedAt,
+	}
 }
 
 func auditZone(ctx context.Context, q *db.Queries, actor auth.Principal, action string, z Zone, meta map[string]any) error {
@@ -759,13 +883,12 @@ func auditZone(ctx context.Context, q *db.Queries, actor auth.Principal, action 
 	})
 }
 
-// zoneMeta is what the audit log keeps of a zone: its settings and how many questions it asks,
-// not the questions themselves.
+// zoneMeta is what the audit log keeps of a zone: its settings and how many checkpoints it has.
 func zoneMeta(z Zone) map[string]any {
 	return map[string]any{
 		"type": z.Type, "name": z.Name, "team_code": z.TeamCode, "latitude": z.Latitude, "longitude": z.Longitude,
 		"radius_meters": z.RadiusMeters, "min_visit": z.MinVisit, "photo_required": z.PhotoRequired,
-		"active": z.Active, "checklist_items": len(z.Checklist),
+		"active": z.Active, "checkpoints": z.CheckpointCount,
 	}
 }
 

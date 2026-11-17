@@ -198,5 +198,5 @@ PUT /api/v1/admin/leave-client-settings/{client_code}
 PUT /api/v1/admin/permission-categories/{code}/quotas
 PUT /api/v1/admin/personnel/{personnel_id}/shift-assignment
 PUT /api/v1/admin/web-roles/{personnel_id}
-PUT /api/v1/admin/zones/{id}/checklist
+PUT /api/v1/admin/zones/{id}/checkpoints
 PUT /api/v1/media/blobs/{token}

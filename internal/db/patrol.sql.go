@@ -7,7 +7,6 @@ package db
 
 import (
 	"context"
-	"encoding/json"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -45,39 +44,6 @@ func (q *Queries) CountPatrolZones(ctx context.Context, arg CountPatrolZonesPara
 	var count int64
 	err := row.Scan(&count)
 	return count, err
-}
-
-const deactivateChecklistItemsExcept = `-- name: DeactivateChecklistItemsExcept :many
-UPDATE patrol_checklist_items SET active = false, deactivated_at = $1, updated_at = $1
-WHERE zone_id = $2 AND active AND NOT (id = ANY($3::bigint[]))
-RETURNING id
-`
-
-type DeactivateChecklistItemsExceptParams struct {
-	Now     pgtype.Timestamptz
-	ZoneID  int64
-	KeepIds []int64
-}
-
-// Deactivates what the admin left out of the checklist they sent. Returns the ids, for the audit.
-func (q *Queries) DeactivateChecklistItemsExcept(ctx context.Context, arg DeactivateChecklistItemsExceptParams) ([]int64, error) {
-	rows, err := q.db.Query(ctx, deactivateChecklistItemsExcept, arg.Now, arg.ZoneID, arg.KeepIds)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []int64{}
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		items = append(items, id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const getPatrolZone = `-- name: GetPatrolZone :one
@@ -140,67 +106,6 @@ func (q *Queries) GetPatrolZoneForUpdate(ctx context.Context, id int64) (PatrolZ
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
-	)
-	return i, err
-}
-
-const insertChecklistItem = `-- name: InsertChecklistItem :one
-INSERT INTO patrol_checklist_items (zone_id, sort_order, label, help_text, answer_type, options, required,
-                                    photo_mode, photo_max, note_mode, attach_when, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7,
-        $8, $9, $10, $11, $12, $12)
-RETURNING id, organization_id, zone_id, sort_order, label, help_text, answer_type, options, required, photo_mode, photo_max, note_mode, attach_when, active, deactivated_at, created_at, updated_at
-`
-
-type InsertChecklistItemParams struct {
-	ZoneID     int64
-	SortOrder  int32
-	Label      string
-	HelpText   pgtype.Text
-	AnswerType ChecklistAnswerType
-	Options    json.RawMessage
-	Required   bool
-	PhotoMode  ChecklistAttachMode
-	PhotoMax   int16
-	NoteMode   ChecklistAttachMode
-	AttachWhen ChecklistAttachWhen
-	Now        pgtype.Timestamptz
-}
-
-func (q *Queries) InsertChecklistItem(ctx context.Context, arg InsertChecklistItemParams) (PatrolChecklistItem, error) {
-	row := q.db.QueryRow(ctx, insertChecklistItem,
-		arg.ZoneID,
-		arg.SortOrder,
-		arg.Label,
-		arg.HelpText,
-		arg.AnswerType,
-		arg.Options,
-		arg.Required,
-		arg.PhotoMode,
-		arg.PhotoMax,
-		arg.NoteMode,
-		arg.AttachWhen,
-		arg.Now,
-	)
-	var i PatrolChecklistItem
-	err := row.Scan(
-		&i.ID,
-		&i.OrganizationID,
-		&i.ZoneID,
-		&i.SortOrder,
-		&i.Label,
-		&i.HelpText,
-		&i.AnswerType,
-		&i.Options,
-		&i.Required,
-		&i.PhotoMode,
-		&i.PhotoMax,
-		&i.NoteMode,
-		&i.AttachWhen,
-		&i.Active,
-		&i.DeactivatedAt,
-		&i.CreatedAt,
-		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -279,91 +184,6 @@ func (q *Queries) InsertPatrolZone(ctx context.Context, arg InsertPatrolZonePara
 		&i.DeletedAt,
 	)
 	return i, err
-}
-
-const listChecklistItems = `-- name: ListChecklistItems :many
-SELECT id, organization_id, zone_id, sort_order, label, help_text, answer_type, options, required, photo_mode, photo_max, note_mode, attach_when, active, deactivated_at, created_at, updated_at FROM patrol_checklist_items WHERE zone_id = $1 AND active ORDER BY sort_order, id
-`
-
-func (q *Queries) ListChecklistItems(ctx context.Context, zoneID int64) ([]PatrolChecklistItem, error) {
-	rows, err := q.db.Query(ctx, listChecklistItems, zoneID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []PatrolChecklistItem{}
-	for rows.Next() {
-		var i PatrolChecklistItem
-		if err := rows.Scan(
-			&i.ID,
-			&i.OrganizationID,
-			&i.ZoneID,
-			&i.SortOrder,
-			&i.Label,
-			&i.HelpText,
-			&i.AnswerType,
-			&i.Options,
-			&i.Required,
-			&i.PhotoMode,
-			&i.PhotoMax,
-			&i.NoteMode,
-			&i.AttachWhen,
-			&i.Active,
-			&i.DeactivatedAt,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listChecklistItemsOfZones = `-- name: ListChecklistItemsOfZones :many
-SELECT id, organization_id, zone_id, sort_order, label, help_text, answer_type, options, required, photo_mode, photo_max, note_mode, attach_when, active, deactivated_at, created_at, updated_at FROM patrol_checklist_items WHERE zone_id = ANY($1::bigint[]) AND active
-ORDER BY zone_id, sort_order, id
-`
-
-func (q *Queries) ListChecklistItemsOfZones(ctx context.Context, zoneIds []int64) ([]PatrolChecklistItem, error) {
-	rows, err := q.db.Query(ctx, listChecklistItemsOfZones, zoneIds)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []PatrolChecklistItem{}
-	for rows.Next() {
-		var i PatrolChecklistItem
-		if err := rows.Scan(
-			&i.ID,
-			&i.OrganizationID,
-			&i.ZoneID,
-			&i.SortOrder,
-			&i.Label,
-			&i.HelpText,
-			&i.AnswerType,
-			&i.Options,
-			&i.Required,
-			&i.PhotoMode,
-			&i.PhotoMax,
-			&i.NoteMode,
-			&i.AttachWhen,
-			&i.Active,
-			&i.DeactivatedAt,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const listPatrolZones = `-- name: ListPatrolZones :many
@@ -579,70 +399,6 @@ type TouchPatrolZoneParams struct {
 func (q *Queries) TouchPatrolZone(ctx context.Context, arg TouchPatrolZoneParams) error {
 	_, err := q.db.Exec(ctx, touchPatrolZone, arg.Now, arg.ID)
 	return err
-}
-
-const updateChecklistItem = `-- name: UpdateChecklistItem :one
-UPDATE patrol_checklist_items SET
-    sort_order = $1, label = $2, help_text = $3, answer_type = $4,
-    options = $5, required = $6, photo_mode = $7, photo_max = $8,
-    note_mode = $9, attach_when = $10, updated_at = $11
-WHERE id = $12 AND zone_id = $13 AND active
-RETURNING id, organization_id, zone_id, sort_order, label, help_text, answer_type, options, required, photo_mode, photo_max, note_mode, attach_when, active, deactivated_at, created_at, updated_at
-`
-
-type UpdateChecklistItemParams struct {
-	SortOrder  int32
-	Label      string
-	HelpText   pgtype.Text
-	AnswerType ChecklistAnswerType
-	Options    json.RawMessage
-	Required   bool
-	PhotoMode  ChecklistAttachMode
-	PhotoMax   int16
-	NoteMode   ChecklistAttachMode
-	AttachWhen ChecklistAttachWhen
-	Now        pgtype.Timestamptz
-	ID         int64
-	ZoneID     int64
-}
-
-func (q *Queries) UpdateChecklistItem(ctx context.Context, arg UpdateChecklistItemParams) (PatrolChecklistItem, error) {
-	row := q.db.QueryRow(ctx, updateChecklistItem,
-		arg.SortOrder,
-		arg.Label,
-		arg.HelpText,
-		arg.AnswerType,
-		arg.Options,
-		arg.Required,
-		arg.PhotoMode,
-		arg.PhotoMax,
-		arg.NoteMode,
-		arg.AttachWhen,
-		arg.Now,
-		arg.ID,
-		arg.ZoneID,
-	)
-	var i PatrolChecklistItem
-	err := row.Scan(
-		&i.ID,
-		&i.OrganizationID,
-		&i.ZoneID,
-		&i.SortOrder,
-		&i.Label,
-		&i.HelpText,
-		&i.AnswerType,
-		&i.Options,
-		&i.Required,
-		&i.PhotoMode,
-		&i.PhotoMax,
-		&i.NoteMode,
-		&i.AttachWhen,
-		&i.Active,
-		&i.DeactivatedAt,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
 }
 
 const updatePatrolZone = `-- name: UpdatePatrolZone :one

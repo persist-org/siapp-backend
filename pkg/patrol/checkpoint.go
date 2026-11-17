@@ -352,23 +352,14 @@ func (s *Service) DeleteCheckpoint(ctx context.Context, actor auth.Principal, sc
 
 // closeGaps renumbers a zone's checkpoints 1..n in their current order, after one has left.
 //
-// It rewrites the links instead of updating sort_order in place: UNIQUE (zone, sort_order) is checked
-// row by row, and an UPDATE that shifts 3 to 2 and 4 to 3 can hit the old 3 before it moves, in an
-// order Postgres does not promise.
+// ⚠ It is one UPDATE of the existing links, never a re-insert: re-inserting the zone's other
+// checkpoints (or updating a row this transaction already wrote) checks the foreign key, which takes a
+// share lock on each of them. This request holds only the one it is deleting, so a request that holds one
+// of the others and waits for this one would deadlock with it. The queries and migration 00039 say why
+// a single UPDATE is allowed to move several positions at once.
 func closeGaps(ctx context.Context, q *db.Queries, zoneID int64) error {
-	links, err := q.ListZoneLinks(ctx, zoneID)
-	if err != nil {
-		return fmt.Errorf("list zone links: %w", err)
-	}
-	if err := q.DeleteZoneCheckpoints(ctx, zoneID); err != nil {
-		return fmt.Errorf("clear zone links: %w", err)
-	}
-	for i, l := range links {
-		if err := q.InsertZoneCheckpoint(ctx, db.InsertZoneCheckpointParams{
-			ProjectCode: l.ProjectCode, ZoneID: zoneID, CheckpointID: l.CheckpointID, SortOrder: int32(i + 1), //nolint:gosec // a zone has a handful of checkpoints
-		}); err != nil {
-			return fmt.Errorf("renumber zone links: %w", err)
-		}
+	if err := q.RenumberZoneLinks(ctx, zoneID); err != nil {
+		return fmt.Errorf("renumber zone links: %w", err)
 	}
 	return nil
 }

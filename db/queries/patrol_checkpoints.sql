@@ -95,6 +95,46 @@ ORDER BY zc.checkpoint_id, z.name, z.id;
 -- name: ListZoneLinks :many
 SELECT project_code, checkpoint_id, sort_order FROM patrol_zone_checkpoints WHERE zone_id = $1 ORDER BY sort_order;
 
+-- Every checkpoint a zone holds, in order, the inactive ones too (an admin sees them and they keep
+-- their place); only a deleted one is gone. is_active tells them apart.
+-- name: ListZoneCheckpointsAdmin :many
+SELECT c.*, zc.sort_order AS position
+FROM patrol_zone_checkpoints zc
+JOIN patrol_checkpoints c ON c.organization_id = zc.organization_id AND c.id = zc.checkpoint_id
+WHERE zc.zone_id = $1 AND c.deleted_at IS NULL
+ORDER BY zc.sort_order;
+
+-- How many active checkpoints each zone has: what a guard can scan, for the zone lists.
+-- name: CountCheckpointsOfZones :many
+SELECT zc.zone_id, count(*)::int AS checkpoints
+FROM patrol_zone_checkpoints zc
+JOIN patrol_checkpoints c ON c.organization_id = zc.organization_id AND c.id = zc.checkpoint_id
+WHERE zc.zone_id = ANY(@zone_ids::bigint[]) AND c.active AND c.deleted_at IS NULL
+GROUP BY zc.zone_id;
+
+-- Locks the checkpoints a zone is about to link, in id order, and returns them. ⚠ The order of locks
+-- is checkpoint first, then zone, everywhere (deleting a checkpoint does the same): a link insert takes
+-- a share lock on its checkpoint, so locking the zone first and the checkpoint second would deadlock
+-- against a deletion that holds the checkpoint and waits for the zone.
+-- name: LockCheckpointsByIDs :many
+SELECT * FROM patrol_checkpoints
+WHERE id = ANY(@ids::uuid[]) AND deleted_at IS NULL
+ORDER BY id
+FOR UPDATE;
+
+-- Closing the gap a deleted checkpoint leaves: every link of the zone gets its rank, 1..n, in one UPDATE.
+-- ⚠ One UPDATE of rows this transaction has not written, and never a delete and re-insert: an insert
+-- checks its foreign key by taking a share lock on the checkpoint it points at, which for the zone's
+-- OTHER checkpoints is a lock the deleting request does not hold and may have to wait for while the request
+-- that holds it waits for this one (a deadlock). An UPDATE that leaves the key columns alone checks no
+-- foreign key, unless the row was already written by this very transaction. Several rows change position
+-- at once, which is why the position's unique is deferred (migration 00039).
+-- name: RenumberZoneLinks :exec
+UPDATE patrol_zone_checkpoints t SET sort_order = r.n
+FROM (SELECT checkpoint_id, row_number() OVER (ORDER BY sort_order)::int AS n
+      FROM patrol_zone_checkpoints WHERE zone_id = $1) r
+WHERE t.zone_id = $1 AND t.checkpoint_id = r.checkpoint_id;
+
 -- name: DeleteZoneCheckpoints :exec
 DELETE FROM patrol_zone_checkpoints WHERE zone_id = $1;
 

@@ -1,8 +1,6 @@
 package patrol
 
 import (
-	"encoding/json"
-	"fmt"
 	"strings"
 	"time"
 
@@ -24,10 +22,14 @@ const DefaultRadiusMeters = 50
 // MaxRadiusMeters is the largest geofence radius of a zone.
 const MaxRadiusMeters = 5000
 
-// Zone is a patrol route zone or a guard post, with its active checklist.
+// Zone is a patrol route zone or a guard post, with the checkpoints it holds.
 //
 // ⚠ There is no field for the QR secret on purpose: nothing that serializes a Zone can leak it.
 // Only the QR renderer reads it, from the row.
+//
+// What is filled depends on the read: a list has only CheckpointCount; the admin's detail has the
+// ordered Checkpoints (inactive ones too, without their checklists); the field's detail has the active
+// Checkpoints with their checklists and what the caller has done today, and NextCheckpointID.
 type Zone struct {
 	ID            int64
 	ProjectCode   string
@@ -44,40 +46,47 @@ type Zone struct {
 	StartDate     *timeutil.Date
 	PhotoRequired bool
 	Active        bool
-	Checklist     []ChecklistItem
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	// CheckpointCount is how many active checkpoints the zone has: what a guard can scan.
+	CheckpointCount int
+	Checkpoints     []ZoneCheckpoint
+	// NextCheckpointID is the checkpoint the caller should scan next (field detail only).
+	NextCheckpointID *string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
-// ChecklistItem is one question of a zone.
-type ChecklistItem struct {
-	ID         int64
-	SortOrder  int
-	Label      string
-	HelpText   *string
-	AnswerType string
-	// Options is set for CHOICE and nil for every other type.
-	Options    []Option
-	Required   bool
-	PhotoMode  string
-	PhotoMax   int
-	NoteMode   string
-	AttachWhen string
+// ZoneCheckpoint is a checkpoint as a zone shows it: where it stands in the zone's order.
+type ZoneCheckpoint struct {
+	ID           string // uuid
+	Name         string
+	SortOrder    int // the position in this zone, from 1
+	Active       bool
+	Latitude     *float64
+	Longitude    *float64
+	RadiusMeters *int
+
+	// The rest is the field's detail only.
+	// MyScans is how many times the caller scanned it in this zone on today's work date.
+	MyScans *int
+	// Scannable is whether the order rule lets the caller scan it now.
+	Scannable *bool
+	// Actions is its active checklist, in order. Nil means the read does not carry checklists.
+	Actions []CheckpointAction
 }
 
-// Option is one choice of a CHOICE question: Value is what the app sends back.
+// Option is one choice of a CHOICE question: Value is what the app sends back. Only the old zone
+// checklist still read by the scan has them (Phase 10.9 deletes it).
 type Option struct {
 	Value string `json:"value" validate:"required,notblank,max=100"`
 	Label string `json:"label" validate:"required,notblank,max=200"`
 }
 
-func zoneOf(z db.PatrolZone, items []db.PatrolChecklistItem) (Zone, error) {
+func zoneOf(z db.PatrolZone) Zone {
 	out := Zone{
 		ID: z.ID, ProjectCode: z.ProjectCode, TeamCode: textPtr(z.TeamCode), Type: string(z.Type), Name: z.Name,
 		Alias: textPtr(z.Alias), Description: textPtr(z.Description), PopupText: textPtr(z.PopupText),
 		Latitude: z.Latitude, Longitude: z.Longitude, MinVisit: int(z.MinVisit), PhotoRequired: z.PhotoRequired,
-		Active: z.Active, Checklist: make([]ChecklistItem, 0, len(items)),
-		CreatedAt: z.CreatedAt.Time, UpdatedAt: z.UpdatedAt.Time,
+		Active: z.Active, CreatedAt: z.CreatedAt.Time, UpdatedAt: z.UpdatedAt.Time,
 	}
 	if z.RadiusMeters.Valid {
 		r := int(z.RadiusMeters.Int32)
@@ -87,28 +96,15 @@ func zoneOf(z db.PatrolZone, items []db.PatrolChecklistItem) (Zone, error) {
 		d := timeutil.NewDate(z.StartDate.Time.Year(), z.StartDate.Time.Month(), z.StartDate.Time.Day())
 		out.StartDate = &d
 	}
-	for _, it := range items {
-		item, err := itemOf(it)
-		if err != nil {
-			return Zone{}, err
-		}
-		out.Checklist = append(out.Checklist, item)
-	}
-	return out, nil
+	return out
 }
 
-func itemOf(it db.PatrolChecklistItem) (ChecklistItem, error) {
-	out := ChecklistItem{
-		ID: it.ID, SortOrder: int(it.SortOrder), Label: it.Label, HelpText: textPtr(it.HelpText),
-		AnswerType: string(it.AnswerType), Required: it.Required, PhotoMode: string(it.PhotoMode),
-		PhotoMax: int(it.PhotoMax), NoteMode: string(it.NoteMode), AttachWhen: string(it.AttachWhen),
+// zoneCheckpointOf is a checkpoint row with its position in the zone.
+func zoneCheckpointOf(c db.PatrolCheckpoint, position int32) ZoneCheckpoint {
+	return ZoneCheckpoint{
+		ID: uuidString(c.ID), Name: c.Name, SortOrder: int(position), Active: c.Active,
+		Latitude: c.Latitude, Longitude: c.Longitude, RadiusMeters: intOf(c.RadiusMeters),
 	}
-	if len(it.Options) > 0 {
-		if err := json.Unmarshal(it.Options, &out.Options); err != nil {
-			return ChecklistItem{}, fmt.Errorf("checklist item %d: decode options: %w", it.ID, err)
-		}
-	}
-	return out, nil
 }
 
 func ts(t time.Time) pgtype.Timestamptz { return pgtype.Timestamptz{Time: t, Valid: true} }

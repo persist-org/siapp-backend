@@ -1314,174 +1314,6 @@ func (e PanicStatus) Valid() bool {
 	}
 }
 
-// Defines values for PatrolChecklistItemAnswerType.
-const (
-	PatrolChecklistItemAnswerTypeBOOLEAN PatrolChecklistItemAnswerType = "BOOLEAN"
-	PatrolChecklistItemAnswerTypeCHOICE  PatrolChecklistItemAnswerType = "CHOICE"
-	PatrolChecklistItemAnswerTypeNUMBER  PatrolChecklistItemAnswerType = "NUMBER"
-	PatrolChecklistItemAnswerTypeTEXT    PatrolChecklistItemAnswerType = "TEXT"
-)
-
-// Valid indicates whether the value is a known member of the PatrolChecklistItemAnswerType enum.
-func (e PatrolChecklistItemAnswerType) Valid() bool {
-	switch e {
-	case PatrolChecklistItemAnswerTypeBOOLEAN:
-		return true
-	case PatrolChecklistItemAnswerTypeCHOICE:
-		return true
-	case PatrolChecklistItemAnswerTypeNUMBER:
-		return true
-	case PatrolChecklistItemAnswerTypeTEXT:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PatrolChecklistItemAttachWhen.
-const (
-	PatrolChecklistItemAttachWhenALWAYS PatrolChecklistItemAttachWhen = "ALWAYS"
-	PatrolChecklistItemAttachWhenONNO   PatrolChecklistItemAttachWhen = "ON_NO"
-)
-
-// Valid indicates whether the value is a known member of the PatrolChecklistItemAttachWhen enum.
-func (e PatrolChecklistItemAttachWhen) Valid() bool {
-	switch e {
-	case PatrolChecklistItemAttachWhenALWAYS:
-		return true
-	case PatrolChecklistItemAttachWhenONNO:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PatrolChecklistItemNoteMode.
-const (
-	PatrolChecklistItemNoteModeNONE     PatrolChecklistItemNoteMode = "NONE"
-	PatrolChecklistItemNoteModeOPTIONAL PatrolChecklistItemNoteMode = "OPTIONAL"
-	PatrolChecklistItemNoteModeREQUIRED PatrolChecklistItemNoteMode = "REQUIRED"
-)
-
-// Valid indicates whether the value is a known member of the PatrolChecklistItemNoteMode enum.
-func (e PatrolChecklistItemNoteMode) Valid() bool {
-	switch e {
-	case PatrolChecklistItemNoteModeNONE:
-		return true
-	case PatrolChecklistItemNoteModeOPTIONAL:
-		return true
-	case PatrolChecklistItemNoteModeREQUIRED:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PatrolChecklistItemPhotoMode.
-const (
-	PatrolChecklistItemPhotoModeNONE     PatrolChecklistItemPhotoMode = "NONE"
-	PatrolChecklistItemPhotoModeOPTIONAL PatrolChecklistItemPhotoMode = "OPTIONAL"
-	PatrolChecklistItemPhotoModeREQUIRED PatrolChecklistItemPhotoMode = "REQUIRED"
-)
-
-// Valid indicates whether the value is a known member of the PatrolChecklistItemPhotoMode enum.
-func (e PatrolChecklistItemPhotoMode) Valid() bool {
-	switch e {
-	case PatrolChecklistItemPhotoModeNONE:
-		return true
-	case PatrolChecklistItemPhotoModeOPTIONAL:
-		return true
-	case PatrolChecklistItemPhotoModeREQUIRED:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PatrolChecklistItemInputAnswerType.
-const (
-	PatrolChecklistItemInputAnswerTypeBOOLEAN PatrolChecklistItemInputAnswerType = "BOOLEAN"
-	PatrolChecklistItemInputAnswerTypeCHOICE  PatrolChecklistItemInputAnswerType = "CHOICE"
-	PatrolChecklistItemInputAnswerTypeNUMBER  PatrolChecklistItemInputAnswerType = "NUMBER"
-	PatrolChecklistItemInputAnswerTypeTEXT    PatrolChecklistItemInputAnswerType = "TEXT"
-)
-
-// Valid indicates whether the value is a known member of the PatrolChecklistItemInputAnswerType enum.
-func (e PatrolChecklistItemInputAnswerType) Valid() bool {
-	switch e {
-	case PatrolChecklistItemInputAnswerTypeBOOLEAN:
-		return true
-	case PatrolChecklistItemInputAnswerTypeCHOICE:
-		return true
-	case PatrolChecklistItemInputAnswerTypeNUMBER:
-		return true
-	case PatrolChecklistItemInputAnswerTypeTEXT:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PatrolChecklistItemInputAttachWhen.
-const (
-	PatrolChecklistItemInputAttachWhenALWAYS PatrolChecklistItemInputAttachWhen = "ALWAYS"
-	PatrolChecklistItemInputAttachWhenONNO   PatrolChecklistItemInputAttachWhen = "ON_NO"
-)
-
-// Valid indicates whether the value is a known member of the PatrolChecklistItemInputAttachWhen enum.
-func (e PatrolChecklistItemInputAttachWhen) Valid() bool {
-	switch e {
-	case PatrolChecklistItemInputAttachWhenALWAYS:
-		return true
-	case PatrolChecklistItemInputAttachWhenONNO:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PatrolChecklistItemInputNoteMode.
-const (
-	PatrolChecklistItemInputNoteModeNONE     PatrolChecklistItemInputNoteMode = "NONE"
-	PatrolChecklistItemInputNoteModeOPTIONAL PatrolChecklistItemInputNoteMode = "OPTIONAL"
-	PatrolChecklistItemInputNoteModeREQUIRED PatrolChecklistItemInputNoteMode = "REQUIRED"
-)
-
-// Valid indicates whether the value is a known member of the PatrolChecklistItemInputNoteMode enum.
-func (e PatrolChecklistItemInputNoteMode) Valid() bool {
-	switch e {
-	case PatrolChecklistItemInputNoteModeNONE:
-		return true
-	case PatrolChecklistItemInputNoteModeOPTIONAL:
-		return true
-	case PatrolChecklistItemInputNoteModeREQUIRED:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PatrolChecklistItemInputPhotoMode.
-const (
-	PatrolChecklistItemInputPhotoModeNONE     PatrolChecklistItemInputPhotoMode = "NONE"
-	PatrolChecklistItemInputPhotoModeOPTIONAL PatrolChecklistItemInputPhotoMode = "OPTIONAL"
-	PatrolChecklistItemInputPhotoModeREQUIRED PatrolChecklistItemInputPhotoMode = "REQUIRED"
-)
-
-// Valid indicates whether the value is a known member of the PatrolChecklistItemInputPhotoMode enum.
-func (e PatrolChecklistItemInputPhotoMode) Valid() bool {
-	switch e {
-	case PatrolChecklistItemInputPhotoModeNONE:
-		return true
-	case PatrolChecklistItemInputPhotoModeOPTIONAL:
-		return true
-	case PatrolChecklistItemInputPhotoModeREQUIRED:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for PatrolCheckpointZoneType.
 const (
 	PatrolCheckpointZoneTypeGUARD  PatrolCheckpointZoneType = "GUARD"
@@ -1604,22 +1436,22 @@ func (e PatrolScanZoneType) Valid() bool {
 
 // Defines values for PatrolScanAnswerAnswerType.
 const (
-	PatrolScanAnswerAnswerTypeBOOLEAN PatrolScanAnswerAnswerType = "BOOLEAN"
-	PatrolScanAnswerAnswerTypeCHOICE  PatrolScanAnswerAnswerType = "CHOICE"
-	PatrolScanAnswerAnswerTypeNUMBER  PatrolScanAnswerAnswerType = "NUMBER"
-	PatrolScanAnswerAnswerTypeTEXT    PatrolScanAnswerAnswerType = "TEXT"
+	BOOLEAN PatrolScanAnswerAnswerType = "BOOLEAN"
+	CHOICE  PatrolScanAnswerAnswerType = "CHOICE"
+	NUMBER  PatrolScanAnswerAnswerType = "NUMBER"
+	TEXT    PatrolScanAnswerAnswerType = "TEXT"
 )
 
 // Valid indicates whether the value is a known member of the PatrolScanAnswerAnswerType enum.
 func (e PatrolScanAnswerAnswerType) Valid() bool {
 	switch e {
-	case PatrolScanAnswerAnswerTypeBOOLEAN:
+	case BOOLEAN:
 		return true
-	case PatrolScanAnswerAnswerTypeCHOICE:
+	case CHOICE:
 		return true
-	case PatrolScanAnswerAnswerTypeNUMBER:
+	case NUMBER:
 		return true
-	case PatrolScanAnswerAnswerTypeTEXT:
+	case TEXT:
 		return true
 	default:
 		return false
@@ -1628,16 +1460,16 @@ func (e PatrolScanAnswerAnswerType) Valid() bool {
 
 // Defines values for PatrolScanAnswerAttachWhen.
 const (
-	PatrolScanAnswerAttachWhenALWAYS PatrolScanAnswerAttachWhen = "ALWAYS"
-	PatrolScanAnswerAttachWhenONNO   PatrolScanAnswerAttachWhen = "ON_NO"
+	ALWAYS PatrolScanAnswerAttachWhen = "ALWAYS"
+	ONNO   PatrolScanAnswerAttachWhen = "ON_NO"
 )
 
 // Valid indicates whether the value is a known member of the PatrolScanAnswerAttachWhen enum.
 func (e PatrolScanAnswerAttachWhen) Valid() bool {
 	switch e {
-	case PatrolScanAnswerAttachWhenALWAYS:
+	case ALWAYS:
 		return true
-	case PatrolScanAnswerAttachWhenONNO:
+	case ONNO:
 		return true
 	default:
 		return false
@@ -4764,15 +4596,15 @@ func (e PatchAdminZonesById200JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
-// Defines values for PutAdminZonesByIdChecklist200JSONResponseBodySuccess.
+// Defines values for PutAdminZonesByIdCheckpoints200JSONResponseBodySuccess.
 const (
-	PutAdminZonesByIdChecklist200JSONResponseBodySuccessTrue PutAdminZonesByIdChecklist200JSONResponseBodySuccess = true
+	PutAdminZonesByIdCheckpoints200JSONResponseBodySuccessTrue PutAdminZonesByIdCheckpoints200JSONResponseBodySuccess = true
 )
 
-// Valid indicates whether the value is a known member of the PutAdminZonesByIdChecklist200JSONResponseBodySuccess enum.
-func (e PutAdminZonesByIdChecklist200JSONResponseBodySuccess) Valid() bool {
+// Valid indicates whether the value is a known member of the PutAdminZonesByIdCheckpoints200JSONResponseBodySuccess enum.
+func (e PutAdminZonesByIdCheckpoints200JSONResponseBodySuccess) Valid() bool {
 	switch e {
-	case PutAdminZonesByIdChecklist200JSONResponseBodySuccessTrue:
+	case PutAdminZonesByIdCheckpoints200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
@@ -9443,84 +9275,12 @@ type PanicTypePatch struct {
 	StakeholderTypeId *int64  `json:"stakeholder_type_id,omitempty"`
 }
 
-// PatrolChecklistItem defines model for PatrolChecklistItem.
-type PatrolChecklistItem struct {
-	// AnswerType `BOOLEAN` = centang ya/tidak; `CHOICE` = pilih satu dari `options`.
-	AnswerType PatrolChecklistItemAnswerType `json:"answer_type"`
-
-	// AttachWhen `ON_NO` (hanya `BOOLEAN`): foto atau catatan `REQUIRED` hanya diminta bila jawabannya "tidak".
-	AttachWhen PatrolChecklistItemAttachWhen `json:"attach_when"`
-
-	// HelpText Petunjuk di bawah pertanyaan.
-	HelpText *string `json:"help_text,omitempty"`
-	Id       int64   `json:"id"`
-
-	// Label Pertanyaan.
-	Label    string                      `json:"label"`
-	NoteMode PatrolChecklistItemNoteMode `json:"note_mode"`
-
-	// Options Hanya untuk `CHOICE`; null untuk tipe lain.
-	Options   *[]PatrolChecklistOption     `json:"options,omitempty"`
-	PhotoMax  int                          `json:"photo_max"`
-	PhotoMode PatrolChecklistItemPhotoMode `json:"photo_mode"`
-
-	// Required Wajib dijawab.
-	Required  bool `json:"required"`
-	SortOrder int  `json:"sort_order"`
-}
-
-// PatrolChecklistItemAnswerType `BOOLEAN` = centang ya/tidak; `CHOICE` = pilih satu dari `options`.
-type PatrolChecklistItemAnswerType string
-
-// PatrolChecklistItemAttachWhen `ON_NO` (hanya `BOOLEAN`): foto atau catatan `REQUIRED` hanya diminta bila jawabannya "tidak".
-type PatrolChecklistItemAttachWhen string
-
-// PatrolChecklistItemNoteMode defines model for PatrolChecklistItem.NoteMode.
-type PatrolChecklistItemNoteMode string
-
-// PatrolChecklistItemPhotoMode defines model for PatrolChecklistItem.PhotoMode.
-type PatrolChecklistItemPhotoMode string
-
-// PatrolChecklistItemInput Butir yang punya `id` diubah, yang tanpa `id` dibuat, dan yang tidak ada di badan permintaan
-// dinonaktifkan (tidak pernah dihapus). Urutan array menentukan `sort_order`.
-// Kombinasi yang salah (`CHOICE` tanpa opsi, `photo_max` di luar 1 sampai 5, `ON_NO` pada
-// tipe selain `BOOLEAN`) ditolak 422 dengan nama field-nya, mis. `checklist[2].options`.
-type PatrolChecklistItemInput struct {
-	AnswerType PatrolChecklistItemInputAnswerType  `json:"answer_type"`
-	AttachWhen *PatrolChecklistItemInputAttachWhen `json:"attach_when,omitempty"`
-	HelpText   *string                             `json:"help_text,omitempty"`
-	Id         *int64                              `json:"id,omitempty"`
-	Label      string                              `json:"label"`
-	NoteMode   *PatrolChecklistItemInputNoteMode   `json:"note_mode,omitempty"`
-	Options    *[]PatrolChecklistOption            `json:"options,omitempty"`
-	PhotoMax   *int                                `json:"photo_max,omitempty"`
-	PhotoMode  *PatrolChecklistItemInputPhotoMode  `json:"photo_mode,omitempty"`
-	Required   *bool                               `json:"required,omitempty"`
-}
-
-// PatrolChecklistItemInputAnswerType defines model for PatrolChecklistItemInput.AnswerType.
-type PatrolChecklistItemInputAnswerType string
-
-// PatrolChecklistItemInputAttachWhen defines model for PatrolChecklistItemInput.AttachWhen.
-type PatrolChecklistItemInputAttachWhen string
-
-// PatrolChecklistItemInputNoteMode defines model for PatrolChecklistItemInput.NoteMode.
-type PatrolChecklistItemInputNoteMode string
-
-// PatrolChecklistItemInputPhotoMode defines model for PatrolChecklistItemInput.PhotoMode.
-type PatrolChecklistItemInputPhotoMode string
-
 // PatrolChecklistOption defines model for PatrolChecklistOption.
 type PatrolChecklistOption struct {
 	Label string `json:"label"`
 
 	// Value Nilai yang dikirim aplikasi; unik dalam satu butir.
 	Value string `json:"value"`
-}
-
-// PatrolChecklistReplace defines model for PatrolChecklistReplace.
-type PatrolChecklistReplace struct {
-	Checklist []PatrolChecklistItemInput `json:"checklist"`
 }
 
 // PatrolCheckpoint Checkpoint: tempat yang di-scan petugas, dengan QR dan checklist sendiri. Satu checkpoint bisa
@@ -9891,18 +9651,24 @@ type PatrolScanPhoto struct {
 // PatrolScanPhotoCaptureSource defines model for PatrolScanPhoto.CaptureSource.
 type PatrolScanPhotoCaptureSource string
 
-// PatrolZone Zona patroli (`PATROL`) atau pos jaga (`GUARD`) beserta checklist aktifnya (Phase 10.1).
-// Proyek dan regu dikenali dengan kode (D19), bukan id. Rahasia QR TIDAK pernah ada di sini:
-// isinya hanya ada di gambar QR yang dicetak admin (`GET /admin/zones/{id}/qr`).
+// PatrolZone Zona patroli (`PATROL`) atau pos jaga (`GUARD`) beserta checkpoint-nya (Phase 10.1, 10.8).
+// Checklist dan QR scan ada di checkpoint, bukan di zona. Proyek dan regu dikenali dengan kode (D19), bukan id.
+// Rahasia QR TIDAK pernah ada di sini: isinya hanya ada di gambar QR yang dicetak admin
+// (`GET /admin/zones/{id}/qr`; dan QR checkpoint di `GET /admin/checkpoints/{id}/qr`).
+// Daftar hanya memuat `checkpoint_count`; `checkpoints` ada di detail (admin: semua, berurutan, tanpa checklist;
+// lapangan: yang aktif, dengan checklist dan kemajuan pemanggil hari ini, dan `next_checkpoint_id`).
 type PatrolZone struct {
 	Alias *string `json:"alias,omitempty"`
 
-	// Checklist Butir checklist yang aktif, urut menurut `sort_order`.
-	Checklist   []PatrolChecklistItem `json:"checklist"`
-	CreatedAt   time.Time             `json:"created_at"`
-	Description *string               `json:"description,omitempty"`
-	Id          int64                 `json:"id"`
-	IsActive    bool                  `json:"is_active"`
+	// CheckpointCount Jumlah checkpoint aktif zona ini: yang bisa di-scan petugas.
+	CheckpointCount int `json:"checkpoint_count"`
+
+	// Checkpoints Checkpoint zona menurut urutannya. Hanya ada di detail (bukan di daftar).
+	Checkpoints *[]PatrolZoneCheckpoint `json:"checkpoints,omitempty"`
+	CreatedAt   time.Time               `json:"created_at"`
+	Description *string                 `json:"description,omitempty"`
+	Id          int64                   `json:"id"`
+	IsActive    bool                    `json:"is_active"`
 
 	// Latitude Pusat zona. latitude, longitude dan radius_meters terisi bersama atau kosong bersama.
 	Latitude  *float64 `json:"latitude,omitempty"`
@@ -9911,6 +9677,9 @@ type PatrolZone struct {
 	// MinVisit Jumlah scan yang dibutuhkan (lingkaran merah).
 	MinVisit int    `json:"min_visit"`
 	Name     string `json:"name"`
+
+	// NextCheckpointId Checkpoint yang sebaiknya di-scan pemanggil berikutnya. Hanya di detail lapangan; tidak ada bila zona tanpa checkpoint aktif.
+	NextCheckpointId *openapi_types.UUID `json:"next_checkpoint_id,omitempty"`
 
 	// PhotoRequired Scan butuh minimal satu foto, walau tidak ada butir checklist yang meminta (SQD §4.3).
 	PhotoRequired bool `json:"photo_required"`
@@ -9934,19 +9703,51 @@ type PatrolZone struct {
 // PatrolZoneType Jaga = GUARD (DL-11).
 type PatrolZoneType string
 
+// PatrolZoneCheckpoint Checkpoint sebagaimana zona menampilkannya, dengan urutannya di zona itu. `my_scans`, `scannable` dan
+// `actions` hanya ada di bacaan lapangan (`GET /zones/{id}`), tidak di bacaan admin.
+type PatrolZoneCheckpoint struct {
+	// Actions Checklist aktif checkpoint, berurutan.
+	Actions *[]PatrolCheckpointAction `json:"actions,omitempty"`
+	Id      openapi_types.UUID        `json:"id"`
+
+	// IsActive Checkpoint nonaktif tetap memegang urutannya tetapi tidak bisa di-scan; bacaan lapangan hanya memuat yang aktif.
+	IsActive  bool     `json:"is_active"`
+	Latitude  *float64 `json:"latitude,omitempty"`
+	Longitude *float64 `json:"longitude,omitempty"`
+
+	// MyScans Berapa kali pemanggil men-scan checkpoint ini di zona ini pada tanggal kerja hari ini (status apa pun).
+	MyScans      *int   `json:"my_scans,omitempty"`
+	Name         string `json:"name"`
+	RadiusMeters *int   `json:"radius_meters,omitempty"`
+
+	// Scannable Apakah aturan urutan mengizinkan pemanggil men-scan checkpoint ini sekarang (checkpoint pertama selalu boleh; yang lain hanya bila sebelumnya sudah lebih sering di-scan).
+	Scannable *bool `json:"scannable,omitempty"`
+
+	// SortOrder Urutan di zona ini, mulai dari 1 (bisa melompat bila checkpoint nonaktif memegang satu nomor).
+	SortOrder int `json:"sort_order"`
+}
+
+// PatrolZoneCheckpointsReplace defines model for PatrolZoneCheckpointsReplace.
+type PatrolZoneCheckpointsReplace struct {
+	// CheckpointIds Daftar kosong mengeluarkan semua checkpoint dari zona.
+	CheckpointIds []openapi_types.UUID `json:"checkpoint_ids"`
+}
+
 // PatrolZoneInput defines model for PatrolZoneInput.
 type PatrolZoneInput struct {
-	Alias         *string                     `json:"alias,omitempty"`
-	Checklist     *[]PatrolChecklistItemInput `json:"checklist,omitempty"`
-	Description   *string                     `json:"description,omitempty"`
-	IsActive      *bool                       `json:"is_active,omitempty"`
-	Latitude      *float64                    `json:"latitude,omitempty"`
-	Longitude     *float64                    `json:"longitude,omitempty"`
-	MinVisit      *int                        `json:"min_visit,omitempty"`
-	Name          string                      `json:"name"`
-	PhotoRequired *bool                       `json:"photo_required,omitempty"`
-	PopupText     *string                     `json:"popup_text,omitempty"`
-	ProjectCode   string                      `json:"project_code"`
+	Alias *string `json:"alias,omitempty"`
+
+	// CheckpointIds Checkpoint zona menurut urutannya (posisi 1..n). Di PATCH, bila dikirim menggantikan semuanya; bila tidak, tidak berubah.
+	CheckpointIds *[]openapi_types.UUID `json:"checkpoint_ids,omitempty"`
+	Description   *string               `json:"description,omitempty"`
+	IsActive      *bool                 `json:"is_active,omitempty"`
+	Latitude      *float64              `json:"latitude,omitempty"`
+	Longitude     *float64              `json:"longitude,omitempty"`
+	MinVisit      *int                  `json:"min_visit,omitempty"`
+	Name          string                `json:"name"`
+	PhotoRequired *bool                 `json:"photo_required,omitempty"`
+	PopupText     *string               `json:"popup_text,omitempty"`
+	ProjectCode   string                `json:"project_code"`
 
 	// RadiusMeters Bawaan 50 bila titik dikirim tanpa radius.
 	RadiusMeters *int                `json:"radius_meters,omitempty"`
@@ -9961,24 +9762,26 @@ type PatrolZoneInput struct {
 type PatrolZoneInputType string
 
 // PatrolZoneUpdate Hanya field yang dikirim yang berubah; `null` mengosongkan field yang boleh kosong.
-// `project_code` tidak bisa diubah. `checklist`, bila dikirim, menggantikan checklist
-// (aturannya sama dengan `PUT /admin/zones/{id}/checklist`). Titik dan radius harus tetap
-// terisi bersama atau kosong bersama setelah perubahan.
+// `project_code` tidak bisa diubah. `checkpoint_ids`, bila dikirim, menggantikan checkpoint zona dan
+// urutannya (aturannya sama dengan `PUT /admin/zones/{id}/checkpoints`); bila tidak dikirim, checkpoint
+// tidak berubah. Titik dan radius harus tetap terisi bersama atau kosong bersama setelah perubahan.
 type PatrolZoneUpdate struct {
-	Alias         *string                     `json:"alias,omitempty"`
-	Checklist     *[]PatrolChecklistItemInput `json:"checklist,omitempty"`
-	Description   *string                     `json:"description,omitempty"`
-	IsActive      *bool                       `json:"is_active,omitempty"`
-	Latitude      *float64                    `json:"latitude,omitempty"`
-	Longitude     *float64                    `json:"longitude,omitempty"`
-	MinVisit      *int                        `json:"min_visit,omitempty"`
-	Name          *string                     `json:"name,omitempty"`
-	PhotoRequired *bool                       `json:"photo_required,omitempty"`
-	PopupText     *string                     `json:"popup_text,omitempty"`
-	RadiusMeters  *int                        `json:"radius_meters,omitempty"`
-	StartDate     *openapi_types.Date         `json:"start_date,omitempty"`
-	TeamCode      *string                     `json:"team_code,omitempty"`
-	Type          *PatrolZoneUpdateType       `json:"type,omitempty"`
+	Alias *string `json:"alias,omitempty"`
+
+	// CheckpointIds Checkpoint zona menurut urutannya (posisi 1..n). Di PATCH, bila dikirim menggantikan semuanya; bila tidak, tidak berubah.
+	CheckpointIds *[]openapi_types.UUID `json:"checkpoint_ids,omitempty"`
+	Description   *string               `json:"description,omitempty"`
+	IsActive      *bool                 `json:"is_active,omitempty"`
+	Latitude      *float64              `json:"latitude,omitempty"`
+	Longitude     *float64              `json:"longitude,omitempty"`
+	MinVisit      *int                  `json:"min_visit,omitempty"`
+	Name          *string               `json:"name,omitempty"`
+	PhotoRequired *bool                 `json:"photo_required,omitempty"`
+	PopupText     *string               `json:"popup_text,omitempty"`
+	RadiusMeters  *int                  `json:"radius_meters,omitempty"`
+	StartDate     *openapi_types.Date   `json:"start_date,omitempty"`
+	TeamCode      *string               `json:"team_code,omitempty"`
+	Type          *PatrolZoneUpdateType `json:"type,omitempty"`
 }
 
 // PatrolZoneUpdateType defines model for PatrolZoneUpdate.Type.
@@ -12944,8 +12747,8 @@ type GetAdminZonesById200JSONResponseBodySuccess bool
 // PatchAdminZonesById200JSONResponseBodySuccess defines parameters for PatchAdminZonesById.
 type PatchAdminZonesById200JSONResponseBodySuccess bool
 
-// PutAdminZonesByIdChecklist200JSONResponseBodySuccess defines parameters for PutAdminZonesByIdChecklist.
-type PutAdminZonesByIdChecklist200JSONResponseBodySuccess bool
+// PutAdminZonesByIdCheckpoints200JSONResponseBodySuccess defines parameters for PutAdminZonesByIdCheckpoints.
+type PutAdminZonesByIdCheckpoints200JSONResponseBodySuccess bool
 
 // GetAdminZonesByIdQrParams defines parameters for GetAdminZonesByIdQr.
 type GetAdminZonesByIdQrParams struct {
@@ -14828,8 +14631,8 @@ type PostAdminZonesJSONRequestBody = PatrolZoneInput
 // PatchAdminZonesByIdJSONRequestBody defines body for PatchAdminZonesById for application/json ContentType.
 type PatchAdminZonesByIdJSONRequestBody = PatrolZoneUpdate
 
-// PutAdminZonesByIdChecklistJSONRequestBody defines body for PutAdminZonesByIdChecklist for application/json ContentType.
-type PutAdminZonesByIdChecklistJSONRequestBody = PatrolChecklistReplace
+// PutAdminZonesByIdCheckpointsJSONRequestBody defines body for PutAdminZonesByIdCheckpoints for application/json ContentType.
+type PutAdminZonesByIdCheckpointsJSONRequestBody = PatrolZoneCheckpointsReplace
 
 // PostAssetReportsJSONRequestBody defines body for PostAssetReports for application/json ContentType.
 type PostAssetReportsJSONRequestBody = AssetReportCreate

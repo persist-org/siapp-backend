@@ -4,6 +4,7 @@
 package patrol
 
 import (
+	"fmt"
 	"net/http"
 
 	"siapp/pkg/platform/apperr"
@@ -135,6 +136,21 @@ var ErrCheckpointNotFound = apperr.New(http.StatusNotFound, apperr.CodeNotFound,
 // ErrCheckpointNameTaken is returned when another live checkpoint of the same project has the name.
 var ErrCheckpointNameTaken = apperr.New(http.StatusConflict, apperr.CodeDuplicate,
 	ReasonCheckpointNameTaken, "Sudah ada checkpoint dengan nama ini di proyek yang sama.")
+
+// ReasonCheckpointNotInProject is returned by Phase 10.8 for a checkpoint that cannot go into a zone.
+const ReasonCheckpointNotInProject = "CHECKPOINT_NOT_IN_PROJECT"
+
+// checkpointNotInProject is a 422 for the i-th id of checkpoint_ids that cannot be put in the zone: it
+// does not exist, is deleted, belongs to another organization (the same answer, so an id says nothing
+// about other tenants), is in another project than the zone, or is inactive and not already in the zone.
+func checkpointNotInProject(i int, id string) *apperr.Error {
+	return apperr.ErrValidation.WithReason(ReasonCheckpointNotInProject).
+		WithFields(apperr.FieldError{
+			Field: fmt.Sprintf("checkpoint_ids[%d]", i), Code: "INVALID",
+			Message: "Bukan checkpoint aktif di proyek zona ini.",
+		}).
+		WithDetails(map[string]any{"checkpoint_id": id})
+}
 
 // actionInvalid is a 422 for a bad checkpoint action: a validation error that also carries the
 // reason, so a client can tell a bad checklist from any other bad field.

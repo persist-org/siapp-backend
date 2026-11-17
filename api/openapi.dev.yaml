@@ -5045,6 +5045,66 @@ components:
         created_at:
           type: string
           format: date-time
+    PatrolZoneCheckpoint:
+      type: object
+      description: |
+        Checkpoint sebagaimana zona menampilkannya, dengan urutannya di zona itu. `my_scans`, `scannable` dan
+        `actions` hanya ada di bacaan lapangan (`GET /zones/{id}`), tidak di bacaan admin. Field opsional yang
+        kosong (titik, `radius_meters`) tidak disertakan dalam respons, bukan `null`.
+      required:
+      - id
+      - name
+      - sort_order
+      - is_active
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        sort_order:
+          type: integer
+          minimum: 1
+          description: Urutan di zona ini, mulai dari 1 (bisa melompat bila checkpoint nonaktif memegang satu nomor).
+        is_active:
+          type: boolean
+          description: Checkpoint nonaktif tetap memegang urutannya tetapi tidak bisa di-scan; bacaan lapangan hanya memuat yang aktif.
+        latitude:
+          type: number
+          format: double
+          nullable: true
+        longitude:
+          type: number
+          format: double
+          nullable: true
+        radius_meters:
+          type: integer
+          nullable: true
+          minimum: 1
+        my_scans:
+          type: integer
+          minimum: 0
+          description: Berapa kali pemanggil men-scan checkpoint ini di zona ini pada tanggal kerja hari ini (status apa pun).
+        scannable:
+          type: boolean
+          description: Apakah aturan urutan mengizinkan pemanggil men-scan checkpoint ini sekarang (checkpoint pertama selalu boleh; yang lain hanya bila sebelumnya sudah lebih sering di-scan).
+        actions:
+          type: array
+          description: Checklist aktif checkpoint, berurutan.
+          items:
+            $ref: '#/components/schemas/PatrolCheckpointAction'
+    PatrolZoneCheckpointsReplace:
+      type: object
+      required:
+      - checkpoint_ids
+      properties:
+        checkpoint_ids:
+          type: array
+          maxItems: 100
+          description: Daftar kosong mengeluarkan semua checkpoint dari zona.
+          items:
+            type: string
+            format: uuid
     PatrolCheckpoint:
       type: object
       description: |
@@ -5306,11 +5366,15 @@ components:
     PatrolZone:
       type: object
       description: |
-        Zona patroli (`PATROL`) atau pos jaga (`GUARD`) beserta checklist aktifnya (Phase 10.1).
-        Proyek dan regu dikenali dengan kode (D19), bukan id. Rahasia QR TIDAK pernah ada di sini:
-        isinya hanya ada di gambar QR yang dicetak admin (`GET /admin/zones/{id}/qr`).
+        Zona patroli (`PATROL`) atau pos jaga (`GUARD`) beserta checkpoint-nya (Phase 10.1, 10.8).
+        Checklist dan QR scan ada di checkpoint, bukan di zona. Proyek dan regu dikenali dengan kode (D19), bukan
+        id. Rahasia QR TIDAK pernah ada di sini: isinya hanya ada di gambar QR yang dicetak admin
+        (`GET /admin/zones/{id}/qr`; QR checkpoint di `GET /admin/checkpoints/{id}/qr`).
         Field opsional yang kosong (`team_code`, `alias`, `description`, `popup_text`, titik, `radius_meters`,
-        `start_date`) tidak disertakan dalam respons, bukan `null`.
+        `start_date`, `next_checkpoint_id`) tidak disertakan dalam respons, bukan `null`.
+        Daftar hanya memuat `checkpoint_count`; `checkpoints` ada di detail (admin: semua, berurutan, tanpa
+        checklist; lapangan: yang aktif, dengan checklist dan kemajuan pemanggil hari ini, serta
+        `next_checkpoint_id`).
       required:
       - id
       - project_code
@@ -5319,7 +5383,7 @@ components:
       - min_visit
       - photo_required
       - is_active
-      - checklist
+      - checkpoint_count
       - created_at
       - updated_at
       properties:
@@ -5381,11 +5445,19 @@ components:
           description: Scan butuh minimal satu foto, walau tidak ada butir checklist yang meminta (SQD §4.3).
         is_active:
           type: boolean
-        checklist:
+        checkpoint_count:
+          type: integer
+          minimum: 0
+          description: 'Jumlah checkpoint aktif zona ini: yang bisa di-scan petugas.'
+        checkpoints:
           type: array
-          description: Butir checklist yang aktif, urut menurut `sort_order`.
+          description: Checkpoint zona menurut urutannya. Hanya ada di detail (bukan di daftar).
           items:
-            $ref: '#/components/schemas/PatrolChecklistItem'
+            $ref: '#/components/schemas/PatrolZoneCheckpoint'
+        next_checkpoint_id:
+          type: string
+          format: uuid
+          description: Checkpoint yang sebaiknya di-scan pemanggil berikutnya. Hanya di detail lapangan; tidak ada bila zona tanpa checkpoint aktif.
         created_at:
           type: string
           format: date-time
@@ -5407,147 +5479,6 @@ components:
           type: string
           minLength: 1
           maxLength: 200
-    PatrolChecklistItem:
-      type: object
-      description: Butir checklist aktif. `help_text` dan `options` yang kosong tidak disertakan dalam respons, bukan `null`.
-      required:
-      - id
-      - sort_order
-      - label
-      - answer_type
-      - required
-      - photo_mode
-      - photo_max
-      - note_mode
-      - attach_when
-      properties:
-        id:
-          type: integer
-          format: int64
-        sort_order:
-          type: integer
-        label:
-          type: string
-          description: Pertanyaan.
-        help_text:
-          type: string
-          nullable: true
-          description: Petunjuk di bawah pertanyaan.
-        answer_type:
-          type: string
-          enum:
-          - BOOLEAN
-          - TEXT
-          - NUMBER
-          - CHOICE
-          description: '`BOOLEAN` = centang ya/tidak; `CHOICE` = pilih satu dari `options`.'
-        options:
-          type: array
-          nullable: true
-          items:
-            $ref: '#/components/schemas/PatrolChecklistOption'
-          description: Hanya untuk `CHOICE`; null untuk tipe lain.
-        required:
-          type: boolean
-          description: Wajib dijawab.
-        photo_mode:
-          type: string
-          enum:
-          - NONE
-          - OPTIONAL
-          - REQUIRED
-        photo_max:
-          type: integer
-          minimum: 1
-          maximum: 5
-        note_mode:
-          type: string
-          enum:
-          - NONE
-          - OPTIONAL
-          - REQUIRED
-        attach_when:
-          type: string
-          enum:
-          - ALWAYS
-          - ON_NO
-          description: '`ON_NO` (hanya `BOOLEAN`): foto atau catatan `REQUIRED` hanya diminta bila jawabannya "tidak".'
-    PatrolChecklistItemInput:
-      type: object
-      description: |
-        Butir yang punya `id` diubah, yang tanpa `id` dibuat, dan yang tidak ada di badan permintaan
-        dinonaktifkan (tidak pernah dihapus). Urutan array menentukan `sort_order`.
-        Kombinasi yang salah (`CHOICE` tanpa opsi, `photo_max` di luar 1 sampai 5, `ON_NO` pada
-        tipe selain `BOOLEAN`) ditolak 422 dengan nama field-nya, mis. `checklist[2].options`.
-      required:
-      - label
-      - answer_type
-      properties:
-        id:
-          type: integer
-          format: int64
-          minimum: 1
-          description: Butir aktif zona ini; id lain atau ganda 422 pada `checklist[i].id`.
-        label:
-          type: string
-          minLength: 1
-          maxLength: 500
-        help_text:
-          type: string
-          nullable: true
-          maxLength: 1000
-        answer_type:
-          type: string
-          enum:
-          - BOOLEAN
-          - TEXT
-          - NUMBER
-          - CHOICE
-        options:
-          type: array
-          nullable: true
-          maxItems: 50
-          description: '`CHOICE` wajib 2 sampai 50 opsi dengan `value` unik; tipe lain tidak boleh punya opsi (422 pada `checklist[i].options`).'
-          items:
-            $ref: '#/components/schemas/PatrolChecklistOption'
-        required:
-          type: boolean
-          default: true
-        photo_mode:
-          type: string
-          enum:
-          - NONE
-          - OPTIONAL
-          - REQUIRED
-          default: NONE
-        photo_max:
-          type: integer
-          minimum: 1
-          maximum: 5
-          default: 1
-        note_mode:
-          type: string
-          enum:
-          - NONE
-          - OPTIONAL
-          - REQUIRED
-          default: NONE
-        attach_when:
-          type: string
-          enum:
-          - ALWAYS
-          - ON_NO
-          default: ALWAYS
-    PatrolChecklistReplace:
-      type: object
-      required:
-      - checklist
-      properties:
-        checklist:
-          type: array
-          maxItems: 100
-          items:
-            $ref: '#/components/schemas/PatrolChecklistItemInput'
     PatrolZoneInput:
       type: object
       required:
@@ -5619,18 +5550,20 @@ components:
         is_active:
           type: boolean
           default: true
-        checklist:
+        checkpoint_ids:
           type: array
           maxItems: 100
+          description: Checkpoint zona menurut urutannya (posisi 1..n). Di PATCH, bila dikirim menggantikan semuanya; bila tidak, tidak berubah.
           items:
-            $ref: '#/components/schemas/PatrolChecklistItemInput'
+            type: string
+            format: uuid
     PatrolZoneUpdate:
       type: object
       description: |
         Hanya field yang dikirim yang berubah; `null` mengosongkan field yang boleh kosong.
-        `project_code` tidak bisa diubah. `checklist`, bila dikirim, menggantikan checklist
-        (aturannya sama dengan `PUT /admin/zones/{id}/checklist`). Titik dan radius harus tetap
-        terisi bersama atau kosong bersama setelah perubahan.
+        `project_code` tidak bisa diubah. `checkpoint_ids`, bila dikirim, menggantikan checkpoint zona dan
+        urutannya (aturannya sama dengan `PUT /admin/zones/{id}/checkpoints`); bila tidak dikirim, checkpoint
+        tidak berubah. Titik dan radius harus tetap terisi bersama atau kosong bersama setelah perubahan.
       properties:
         team_code:
           type: string
@@ -5685,11 +5618,13 @@ components:
           type: boolean
         is_active:
           type: boolean
-        checklist:
+        checkpoint_ids:
           type: array
           maxItems: 100
+          description: Checkpoint zona menurut urutannya (posisi 1..n). Di PATCH, bila dikirim menggantikan semuanya; bila tidak, tidak berubah.
           items:
-            $ref: '#/components/schemas/PatrolChecklistItemInput'
+            type: string
+            format: uuid
     PatrolScanAnswer:
       type: object
       description: |
@@ -14294,7 +14229,7 @@ paths:
       summary: List PatrolZone
       description: |
         Zona di wilayah admin (aktif maupun nonaktif; yang dihapus tidak), urut menurut proyek, tipe, nama, dengan
-        checklist aktifnya. REGION_ADMIN hanya melihat zona proyek di wilayahnya; `project_code` di luar wilayahnya:
+        `checkpoint_count` (checkpoint-nya ada di detail zona). REGION_ADMIN hanya melihat zona proyek di wilayahnya; `project_code` di luar wilayahnya:
         403 `SCOPE_DENIED`. `q` mencari pada nama dan alias.
       parameters:
       - $ref: '#/components/parameters/PageParam'
@@ -14342,7 +14277,7 @@ paths:
       - Patrol
       summary: Buat PatrolZone
       description: |
-        Membuat zona beserta checklist-nya dan rahasia QR baru (tanpa header `Idempotency-Key`). Titik
+        Membuat zona, checkpoint-nya bila `checkpoint_ids` dikirim, dan rahasia QR baru (tanpa header `Idempotency-Key`). Titik
         (`latitude` + `longitude`) dan `radius_meters` harus terisi bersama; titik tanpa radius mendapat radius 50 m.
         Nama harus unik per proyek dan tipe di antara zona yang belum dihapus. Proyek di luar wilayah REGION_ADMIN:
         403 `SCOPE_DENIED`.
@@ -14378,7 +14313,7 @@ paths:
         '413':
           $ref: '#/components/responses/PayloadTooLarge'
         '422':
-          description: 'VALIDATION_ERROR: field wajib hilang atau di luar batas, field tidak dikenal, titik tanpa pasangan atau radius tanpa titik, `team_code` bukan regu proyek itu (`INVALID`), `checklist[i].*` tidak valid (mis. `options`, `attach_when`).'
+          description: 'VALIDATION_ERROR: field wajib hilang atau di luar batas, field tidak dikenal, titik tanpa pasangan atau radius tanpa titik, `team_code` bukan regu proyek itu (`INVALID`), `checkpoint_ids[i]` ganda atau bukan uuid; `details.reason` = `CHECKPOINT_NOT_IN_PROJECT`: checkpoint bukan checkpoint aktif di proyek zona.'
           content: {application/json: {schema: {$ref: '#/components/schemas/ErrorEnvelope'}}}
   /admin/zones/{id}:
     parameters:
@@ -14388,7 +14323,7 @@ paths:
       tags:
       - Patrol
       summary: Detail PatrolZone
-      description: 'Zona beserta checklist aktifnya. Zona di luar wilayah REGION_ADMIN: 403 `SCOPE_DENIED`.'
+      description: 'Zona beserta checkpoint-nya menurut urutan (yang nonaktif juga, `is_active`, tanpa checklist). Zona di luar wilayah REGION_ADMIN: 403 `SCOPE_DENIED`.'
       responses:
         '200':
           description: OK
@@ -14413,7 +14348,7 @@ paths:
       summary: Ubah PatrolZone
       description: |
         Hanya field yang dikirim yang berubah (`null` pada `name`, `type`, `min_visit`, `photo_required`,
-        `is_active`, `checklist` sama dengan tidak dikirim); `project_code` tidak bisa diubah. Titik dan radius
+        `is_active`, `checkpoint_ids` sama dengan tidak dikirim); `project_code` tidak bisa diubah. Titik dan radius
         dicek sebagai satu kesatuan: mengosongkan titik ikut mengosongkan radius, radius tanpa titik 422.
         Zona di luar wilayah REGION_ADMIN: 403 `SCOPE_DENIED`. Tanpa header `Idempotency-Key`.
       requestBody:
@@ -14448,7 +14383,7 @@ paths:
         '413':
           $ref: '#/components/responses/PayloadTooLarge'
         '422':
-          description: 'VALIDATION_ERROR: field di luar batas, bertipe salah atau tidak dikenal, `start_date` bukan YYYY-MM-DD, titik/radius tidak konsisten, `team_code` bukan regu proyek zona (`INVALID`), `checklist[i].*` tidak valid.'
+          description: 'VALIDATION_ERROR: field di luar batas, bertipe salah atau tidak dikenal, `start_date` bukan YYYY-MM-DD, titik/radius tidak konsisten, `team_code` bukan regu proyek zona (`INVALID`), `checkpoint_ids[i]` ganda atau bukan uuid; `details.reason` = `CHECKPOINT_NOT_IN_PROJECT`.'
           content: {application/json: {schema: {$ref: '#/components/schemas/ErrorEnvelope'}}}
     delete:
       operationId: deleteAdminZonesById
@@ -18065,29 +18000,31 @@ paths:
           $ref: '#/components/responses/PatrolAdminForbidden'
         '404':
           $ref: '#/components/responses/PatrolZoneNotFound'
-  /admin/zones/{id}/checklist:
+  /admin/zones/{id}/checkpoints:
     parameters:
     - $ref: '#/components/parameters/IdPath'
     put:
-      operationId: putAdminZonesByIdChecklist
+      operationId: putAdminZonesByIdCheckpoints
       tags:
       - Patrol
-      summary: Ganti checklist zona
+      summary: Atur checkpoint zona
       description: |
-        Mengganti checklist saja, tanpa mengirim ulang zonanya (`updated_at` zona ikut berubah). Aturannya sama
-        dengan `checklist` pada badan zona: butir ber-`id` diubah, tanpa `id` dibuat, yang tidak dikirim
-        dinonaktifkan. Urutan larik menentukan `sort_order`. Mengubah butir tidak mengubah scan yang sudah dikirim
-        (scan menyimpan salinan pertanyaan). `id` harus butir aktif zona ini dan tidak boleh ganda. Zona di luar
-        wilayah REGION_ADMIN: 403 `SCOPE_DENIED`.
+        Mengganti checkpoint zona dan urutannya: `checkpoint_ids` berurutan menjadi posisi 1..n. Satu checkpoint
+        boleh ada di banyak zona. Tiap id harus checkpoint aktif di proyek yang sama dengan zona (kecuali yang
+        sudah ada di zona ini: checkpoint yang dinonaktifkan tetap bisa ikut diurutkan); selain itu 422
+        `CHECKPOINT_NOT_IN_PROJECT` dengan `details.checkpoint_id` (id yang tidak ada, sudah dihapus atau milik
+        organisasi lain dijawab sama). Id ganda atau bukan uuid: 422 pada `checkpoint_ids[i]`. Lebih dari 100
+        id: 422 pada `checkpoint_ids`. Daftar kosong mengeluarkan semua checkpoint. `updated_at` zona ikut
+        berubah. Zona di luar wilayah REGION_ADMIN: 403 `SCOPE_DENIED`.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PatrolChecklistReplace'
+              $ref: '#/components/schemas/PatrolZoneCheckpointsReplace'
       responses:
         '200':
-          description: OK
+          description: OK (zona dengan `checkpoints` berurutan)
           content:
             application/json:
               schema:
@@ -18107,7 +18044,7 @@ paths:
         '413':
           $ref: '#/components/responses/PayloadTooLarge'
         '422':
-          description: 'VALIDATION_ERROR: `checklist` hilang atau lebih dari 100 butir, butir salah/tidak dikenal, `checklist[i].id` tidak ditemukan di zona ini atau ganda, `checklist[i].options` (CHOICE butuh minimal 2 opsi dengan nilai unik; tipe lain tanpa opsi), `checklist[i].attach_when` (`ON_NO` hanya BOOLEAN).'
+          description: '`VALIDATION_ERROR`: `checkpoint_ids` hilang atau lebih dari 100, id ganda atau bukan uuid; dengan `details.reason` = `CHECKPOINT_NOT_IN_PROJECT`: checkpoint bukan checkpoint aktif di proyek zona ini.'
           content: {application/json: {schema: {$ref: '#/components/schemas/ErrorEnvelope'}}}
   /admin/checkpoints:
     get:
@@ -20752,8 +20689,8 @@ paths:
       summary: List zona (filter Patroli/Jaga)
       description: |
         Zona aktif dari proyek tempat pemanggil bertugas hari ini, yang untuk seluruh proyek atau
-        untuk regu pemanggil sendiri, beserta checklist aktifnya (aplikasi menggambar formulir
-        dari sini). Urut menurut proyek, tipe, nama. `project_code` yang bukan proyek pemanggil dijawab
+        untuk regu pemanggil sendiri, masing-masing dengan `checkpoint_count` (checkpoint dan checklist-nya ada
+        di detail zona). Urut menurut proyek, tipe, nama. `project_code` yang bukan proyek pemanggil dijawab
         403 `PERMISSION_DENIED`. Daftar ini satu halaman penuh tanpa query `page`/`limit`:
         `pagination` = {page 1, limit jumlah item (minimal 1), total jumlah item}.
         Rahasia QR tidak pernah dikembalikan.
@@ -20863,9 +20800,13 @@ paths:
       - Patrol
       summary: Detail zona
       description: |
-        Zona beserta checklist aktifnya untuk anggota proyek zona (dan regu, bila zona khusus satu regu). Zona
-        yang sudah dinonaktifkan tetap terbaca (`is_active` false); yang dihapus 404. Zona di organisasi ini yang
-        bukan bagian pemanggil: 403 `PERMISSION_DENIED`.
+        Zona beserta checkpoint aktifnya untuk anggota proyek zona (dan regu, bila zona khusus satu regu), tiap
+        checkpoint dengan checklist aktifnya (aplikasi menggambar formulir dari sini), `my_scans` dan `scannable`
+        untuk pemanggil pada tanggal kerjanya hari ini, dan `next_checkpoint_id`. Tanggal kerja diambil dari shift
+        pemanggil, atau tanggal di zona waktu proyek bila tanpa shift (sama seperti scan). `scannable` dan
+        `next_checkpoint_id` dihitung dengan fungsi yang sama dengan pemeriksaan urutan saat scan. Zona yang sudah
+        dinonaktifkan tetap terbaca (`is_active` false); yang dihapus 404. Zona di organisasi ini yang bukan bagian
+        pemanggil: 403 `PERMISSION_DENIED`. Rahasia QR tidak pernah dikembalikan.
       responses:
         '200':
           description: OK
