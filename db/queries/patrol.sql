@@ -2,11 +2,11 @@
 
 -- name: InsertPatrolZone :one
 INSERT INTO patrol_zones (project_code, team_code, type, name, alias, description, popup_text,
-                          latitude, longitude, radius_meters, min_visit, start_date, photo_required,
-                          qr_secret, active, created_at, updated_at)
+                          latitude, longitude, radius_meters, min_visit, start_date,
+                          active, created_at, updated_at)
 VALUES (@project_code, sqlc.narg('team_code'), @type, @name, sqlc.narg('alias'), sqlc.narg('description'),
         sqlc.narg('popup_text'), sqlc.narg('latitude'), sqlc.narg('longitude'), sqlc.narg('radius_meters'),
-        @min_visit, sqlc.narg('start_date'), @photo_required, @qr_secret, @active, @now, @now)
+        @min_visit, sqlc.narg('start_date'), @active, @now, @now)
 RETURNING *;
 
 -- name: GetPatrolZone :one
@@ -60,13 +60,8 @@ UPDATE patrol_zones SET
     team_code = sqlc.narg('team_code'), type = @type, name = @name, alias = sqlc.narg('alias'),
     description = sqlc.narg('description'), popup_text = sqlc.narg('popup_text'),
     latitude = sqlc.narg('latitude'), longitude = sqlc.narg('longitude'), radius_meters = sqlc.narg('radius_meters'),
-    min_visit = @min_visit, start_date = sqlc.narg('start_date'), photo_required = @photo_required,
+    min_visit = @min_visit, start_date = sqlc.narg('start_date'),
     active = @active, updated_at = @now
-WHERE id = @id AND deleted_at IS NULL
-RETURNING *;
-
--- name: RotatePatrolZoneSecret :one
-UPDATE patrol_zones SET qr_secret = @qr_secret, updated_at = @now
 WHERE id = @id AND deleted_at IS NULL
 RETURNING *;
 

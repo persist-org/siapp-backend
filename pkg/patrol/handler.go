@@ -2,10 +2,8 @@ package patrol
 
 import (
 	"context"
-	"mime"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -64,8 +62,6 @@ func (h *Handler) MountAdmin(r chi.Router) {
 	r.Patch("/zones/{id}", h.adminUpdate)
 	r.Delete("/zones/{id}", h.adminDelete)
 	r.Put("/zones/{id}/checkpoints", h.adminCheckpoints)
-	r.Post("/zones/{id}/rotate-qr", h.adminRotateQR)
-	r.Get("/zones/{id}/qr", h.adminQR)
 	h.mountCheckpoints(r)
 }
 
@@ -236,61 +232,6 @@ func (h *Handler) adminCheckpoints(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.OK(w, r, http.StatusOK, zoneToAPI(zone))
-}
-
-func (h *Handler) adminRotateQR(w http.ResponseWriter, r *http.Request) {
-	p, scope, ok := admin(w, r)
-	if !ok {
-		return
-	}
-	id, err := idParam(r)
-	if err != nil {
-		httpx.Error(w, r, err)
-		return
-	}
-	zone, err := h.service.RotateQR(r.Context(), p, scope, id)
-	if err != nil {
-		httpx.Error(w, r, err)
-		return
-	}
-	httpx.OK(w, r, http.StatusOK, zoneToAPI(zone))
-}
-
-// adminQR is GET /admin/zones/{id}/qr: the image itself, not an envelope.
-func (h *Handler) adminQR(w http.ResponseWriter, r *http.Request) {
-	p, scope, ok := admin(w, r)
-	if !ok {
-		return
-	}
-	id, err := idParam(r)
-	if err != nil {
-		httpx.Error(w, r, err)
-		return
-	}
-	format := strings.ToLower(r.URL.Query().Get("format"))
-	switch format {
-	case "":
-		format = FormatPNG
-	case FormatPNG, FormatSVG:
-	default:
-		httpx.Error(w, r, apperr.ErrValidation.WithFields(apperr.FieldError{
-			Field: "format", Code: "INVALID", Message: "Harus salah satu dari: png, svg.",
-		}))
-		return
-	}
-	qr, err := h.service.QRImage(r.Context(), p, scope, id, format)
-	if err != nil {
-		httpx.Error(w, r, err)
-		return
-	}
-	w.Header().Set("Content-Type", qr.ContentType)
-	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": qr.FileName}))
-	// The image holds the zone's secret: nothing between the server and the admin's screen should
-	// keep a copy of it.
-	w.Header().Set("Cache-Control", "private, no-store")
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(qr.Body)
 }
 
 // ---------- field ----------
@@ -532,7 +473,7 @@ func scanToAPI(sc Scan) apigen.PatrolScan {
 	}
 	return apigen.PatrolScan{
 		Id: sc.ID, LocalId: local, ZoneId: sc.ZoneID, ZoneType: apigen.PatrolScanZoneType(sc.ZoneType),
-		PersonnelId: sc.PersonnelID, TeamCode: sc.TeamCode, ProjectCode: sc.ProjectCode, OccurredAt: sc.OccurredAt,
+		CheckpointId: uuidPtr(sc.CheckpointID), PersonnelId: sc.PersonnelID, TeamCode: sc.TeamCode, ProjectCode: sc.ProjectCode, OccurredAt: sc.OccurredAt,
 		ReceivedAt: sc.ReceivedAt, WorkDate: openapi_types.Date{Time: sc.WorkDate.Time()}, Latitude: sc.Latitude,
 		Longitude: sc.Longitude, AccuracyMeters: sc.AccuracyMeters, DistanceMeters: sc.DistanceMeters, Subject: sc.Subject,
 		Notes: sc.Notes, Answers: answers, Status: apigen.PatrolScanStatus(sc.Status), PatrolId: sc.PatrolID,
@@ -544,7 +485,7 @@ func scanToAPI(sc Scan) apigen.PatrolScan {
 
 func checkInToAPI(c CheckIn) apigen.ZoneCheckIn {
 	out := apigen.ZoneCheckIn{
-		Id: c.ID, ZoneId: c.ZoneID, PersonnelId: c.PersonnelID, TeamCode: c.TeamCode, ShiftId: c.ShiftID,
+		Id: c.ID, ZoneId: c.ZoneID, CheckpointId: uuidPtr(c.CheckpointID), PersonnelId: c.PersonnelID, TeamCode: c.TeamCode, ShiftId: c.ShiftID,
 		CheckInAt: c.CheckInAt, CheckInLatitude: c.CheckInLat, CheckInLongitude: c.CheckInLng,
 		CheckOutAt: c.CheckOutAt, CheckOutLatitude: c.CheckOutLat, CheckOutLongitude: c.CheckOutLng,
 	}
@@ -553,6 +494,15 @@ func checkInToAPI(c CheckIn) apigen.ZoneCheckIn {
 		out.FullName = &name
 	}
 	return out
+}
+
+// uuidPtr is the uuid of an optional id kept as text (the service's), for a nullable field of the API.
+func uuidPtr(s *string) *uuid.UUID {
+	if s == nil {
+		return nil
+	}
+	u := mustUUID(*s)
+	return &u
 }
 
 func checkInsToAPI(list []CheckIn) []apigen.ZoneCheckIn {
@@ -575,7 +525,7 @@ func zoneToAPI(z Zone) apigen.PatrolZone {
 	out := apigen.PatrolZone{
 		Id: z.ID, ProjectCode: z.ProjectCode, TeamCode: z.TeamCode, Type: apigen.PatrolZoneType(z.Type), Name: z.Name,
 		Alias: z.Alias, Description: z.Description, PopupText: z.PopupText, Latitude: z.Latitude, Longitude: z.Longitude,
-		RadiusMeters: z.RadiusMeters, MinVisit: z.MinVisit, PhotoRequired: z.PhotoRequired, IsActive: z.Active,
+		RadiusMeters: z.RadiusMeters, MinVisit: z.MinVisit, IsActive: z.Active,
 		CheckpointCount: z.CheckpointCount, CreatedAt: z.CreatedAt, UpdatedAt: z.UpdatedAt,
 	}
 	if z.StartDate != nil {

@@ -4,6 +4,8 @@
 package apigen
 
 import (
+	"encoding/json"
+	"fmt"
 	"time"
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -489,6 +491,30 @@ func (e CompanyLetter) Valid() bool {
 	case K:
 		return true
 	case P:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DeviceConditionNetworkType.
+const (
+	Cellular DeviceConditionNetworkType = "cellular"
+	None     DeviceConditionNetworkType = "none"
+	Unknown  DeviceConditionNetworkType = "unknown"
+	Wifi     DeviceConditionNetworkType = "wifi"
+)
+
+// Valid indicates whether the value is a known member of the DeviceConditionNetworkType enum.
+func (e DeviceConditionNetworkType) Valid() bool {
+	switch e {
+	case Cellular:
+		return true
+	case None:
+		return true
+	case Unknown:
+		return true
+	case Wifi:
 		return true
 	default:
 		return false
@@ -4611,39 +4637,6 @@ func (e PutAdminZonesByIdCheckpoints200JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
-// Defines values for GetAdminZonesByIdQrParamsFormat.
-const (
-	GetAdminZonesByIdQrParamsFormatPng GetAdminZonesByIdQrParamsFormat = "png"
-	GetAdminZonesByIdQrParamsFormatSvg GetAdminZonesByIdQrParamsFormat = "svg"
-)
-
-// Valid indicates whether the value is a known member of the GetAdminZonesByIdQrParamsFormat enum.
-func (e GetAdminZonesByIdQrParamsFormat) Valid() bool {
-	switch e {
-	case GetAdminZonesByIdQrParamsFormatPng:
-		return true
-	case GetAdminZonesByIdQrParamsFormatSvg:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PostAdminZonesByIdRotateQr200JSONResponseBodySuccess.
-const (
-	PostAdminZonesByIdRotateQr200JSONResponseBodySuccessTrue PostAdminZonesByIdRotateQr200JSONResponseBodySuccess = true
-)
-
-// Valid indicates whether the value is a known member of the PostAdminZonesByIdRotateQr200JSONResponseBodySuccess enum.
-func (e PostAdminZonesByIdRotateQr200JSONResponseBodySuccess) Valid() bool {
-	switch e {
-	case PostAdminZonesByIdRotateQr200JSONResponseBodySuccessTrue:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for GetAppLinks200JSONResponseBodySuccess.
 const (
 	GetAppLinks200JSONResponseBodySuccessTrue GetAppLinks200JSONResponseBodySuccess = true
@@ -8168,6 +8161,26 @@ type DeltaMeta struct {
 	ServerTime time.Time `json:"server_time"`
 }
 
+// DeviceCondition Kondisi perangkat saat aksi dijawab. Bukti, bukan penghalang: server tidak pernah menolak scan karena
+// isinya (`mock_location: true` tetap diterima dan disimpan) dan tidak memercayainya (aplikasi yang
+// melaporkan). Harus objek JSON, paling besar 4096 byte; kunci yang dikenal diperiksa tipenya, kunci lain
+// disimpan apa adanya. Yang salah: 422 `DEVICE_CONDITION_INVALID`.
+type DeviceCondition struct {
+	AppVersion           *string                     `json:"app_version,omitempty"`
+	BatteryLevel         *float32                    `json:"battery_level,omitempty"`
+	DeviceModel          *string                     `json:"device_model,omitempty"`
+	GpsEnabled           *bool                       `json:"gps_enabled,omitempty"`
+	IsCharging           *bool                       `json:"is_charging,omitempty"`
+	MockLocation         *bool                       `json:"mock_location,omitempty"`
+	NetworkType          *DeviceConditionNetworkType `json:"network_type,omitempty"`
+	Os                   *string                     `json:"os,omitempty"`
+	OsVersion            *string                     `json:"os_version,omitempty"`
+	AdditionalProperties map[string]interface{}      `json:"-"`
+}
+
+// DeviceConditionNetworkType defines model for DeviceCondition.NetworkType.
+type DeviceConditionNetworkType string
+
 // DirectoryPerson Kartu singkat seorang personil (DANRU, relationship officer).
 type DirectoryPerson struct {
 	FullName    *string `json:"full_name,omitempty"`
@@ -9524,18 +9537,21 @@ type PatrolRouteStart struct {
 	SubmittedOffline *bool     `json:"submitted_offline,omitempty"`
 }
 
-// PatrolScan Satu kunjungan ke zona. `team_code` dan `work_date` ditentukan server dari shift pemindai, bukan dikirim aplikasi.
+// PatrolScan Satu kunjungan ke satu checkpoint zona. `team_code` dan `work_date` ditentukan server dari shift pemindai, bukan dikirim aplikasi.
 type PatrolScan struct {
 	AccuracyMeters float64            `json:"accuracy_meters"`
 	Answers        []PatrolScanAnswer `json:"answers"`
-	CreatedAt      time.Time          `json:"created_at"`
-	DecidedAt      *time.Time         `json:"decided_at,omitempty"`
-	DecidedById    *int64             `json:"decided_by_id,omitempty"`
+
+	// CheckpointId Checkpoint yang di-scan (Phase 10.9); null pada scan lama sebelum checkpoint ada.
+	CheckpointId *openapi_types.UUID `json:"checkpoint_id,omitempty"`
+	CreatedAt    time.Time           `json:"created_at"`
+	DecidedAt    *time.Time          `json:"decided_at,omitempty"`
+	DecidedById  *int64              `json:"decided_by_id,omitempty"`
 
 	// DecisionNote Catatan DANRU, wajib saat ditolak.
 	DecisionNote *string `json:"decision_note,omitempty"`
 
-	// DistanceMeters Jarak dari pusat zona; null bila zona tanpa geofence.
+	// DistanceMeters Jarak dari checkpoint; null bila checkpoint tanpa geofence.
 	DistanceMeters *int               `json:"distance_meters,omitempty"`
 	Id             int64              `json:"id"`
 	Latitude       float64            `json:"latitude"`
@@ -9572,6 +9588,24 @@ type PatrolScanStatus string
 // PatrolScanZoneType defines model for PatrolScan.ZoneType.
 type PatrolScanZoneType string
 
+// PatrolScanActionInput Jawaban satu aksi checklist checkpoint. Melakukan dan menunjukkan aksi itulah jawabannya, tanpa nilai.
+type PatrolScanActionInput struct {
+	// ActionId Aksi aktif checkpoint yang di-scan; yang lain `CHECKLIST_ITEM_INVALID`.
+	ActionId openapi_types.UUID `json:"action_id"`
+
+	// DeviceCondition Kondisi perangkat saat aksi dijawab. Bukti, bukan penghalang: server tidak pernah menolak scan karena
+	// isinya (`mock_location: true` tetap diterima dan disimpan) dan tidak memercayainya (aplikasi yang
+	// melaporkan). Harus objek JSON, paling besar 4096 byte; kunci yang dikenal diperiksa tipenya, kunci lain
+	// disimpan apa adanya. Yang salah: 422 `DEVICE_CONDITION_INVALID`.
+	DeviceCondition *DeviceCondition `json:"device_condition,omitempty"`
+
+	// MediaIds Foto aksi ini (`POST /media` dengan tujuan `PATROL_SCAN`): paling sedikit `min_photos`, paling banyak `max_photos`. Tiap id hanya sekali di seluruh scan.
+	MediaIds *[]int64 `json:"media_ids,omitempty"`
+
+	// Note Wajib bila `is_note_required`.
+	Note *string `json:"note,omitempty"`
+}
+
 // PatrolScanAnswer Satu pertanyaan checklist beserta jawabannya, disalin seperti saat scan dibuat (judul,
 // tipe, opsi dan aturan lampiran), jadi mengubah checklist tidak menulis ulang riwayat.
 type PatrolScanAnswer struct {
@@ -9606,37 +9640,33 @@ type PatrolScanAnswerNoteMode string
 // PatrolScanAnswerPhotoMode defines model for PatrolScanAnswer.PhotoMode.
 type PatrolScanAnswerPhotoMode string
 
-// PatrolScanAnswerInput defines model for PatrolScanAnswerInput.
-type PatrolScanAnswerInput struct {
-	ItemId int64 `json:"item_id"`
-
-	// MediaIds Foto jawaban ini (`POST /media` dengan tujuan `PATROL_SCAN`).
-	MediaIds *[]int64 `json:"media_ids,omitempty"`
-	Note     *string  `json:"note,omitempty"`
-
-	// Value Boolean, teks, angka atau nilai opsi menurut `answer_type` butirnya.
-	Value interface{} `json:"value,omitempty"`
-}
-
 // PatrolScanCreate defines model for PatrolScanCreate.
 type PatrolScanCreate struct {
-	AccuracyMeters float64                  `json:"accuracy_meters"`
-	Answers        *[]PatrolScanAnswerInput `json:"answers,omitempty"`
-	Latitude       float64                  `json:"latitude"`
+	AccuracyMeters float64 `json:"accuracy_meters"`
+
+	// Actions Satu jawaban untuk setiap aksi aktif checkpoint. `device_condition` di sini menjadi bawaan aksi yang tidak membawa sendiri.
+	Actions      *[]PatrolScanActionInput `json:"actions,omitempty"`
+	CheckpointId openapi_types.UUID       `json:"checkpoint_id"`
+
+	// DeviceCondition Kondisi perangkat saat aksi dijawab. Bukti, bukan penghalang: server tidak pernah menolak scan karena
+	// isinya (`mock_location: true` tetap diterima dan disimpan) dan tidak memercayainya (aplikasi yang
+	// melaporkan). Harus objek JSON, paling besar 4096 byte; kunci yang dikenal diperiksa tipenya, kunci lain
+	// disimpan apa adanya. Yang salah: 422 `DEVICE_CONDITION_INVALID`.
+	DeviceCondition *DeviceCondition `json:"device_condition,omitempty"`
+	Latitude        float64          `json:"latitude"`
 
 	// LocalId Harus sama dengan header Idempotency-Key.
 	LocalId   openapi_types.UUID `json:"local_id"`
 	Longitude float64            `json:"longitude"`
-
-	// MediaIds Foto umum scan. Tiap id hanya sekali di seluruh scan (juga terhadap foto jawaban).
-	MediaIds *[]int64 `json:"media_ids,omitempty"`
-	Notes    *string  `json:"notes,omitempty"`
+	Notes     *string            `json:"notes,omitempty"`
 
 	// OccurredAt Saat scan terjadi di perangkat. Maksimal 5 menit di depan dan 7 hari ke belakang.
-	OccurredAt       time.Time `json:"occurred_at"`
-	QrPayload        string    `json:"qr_payload"`
-	Subject          string    `json:"subject"`
-	SubmittedOffline *bool     `json:"submitted_offline,omitempty"`
+	OccurredAt time.Time `json:"occurred_at"`
+	QrPayload  string    `json:"qr_payload"`
+
+	// Subject Boleh dikosongkan: bawaannya nama checkpoint.
+	Subject          *string `json:"subject,omitempty"`
+	SubmittedOffline *bool   `json:"submitted_offline,omitempty"`
 }
 
 // PatrolScanPhoto Foto sebuah scan. URL-nya bertanda tangan dan berumur sekitar satu jam; jangan disimpan, muat ulang scan untuk URL baru.
@@ -9652,7 +9682,7 @@ type PatrolScanPhoto struct {
 type PatrolScanPhotoCaptureSource string
 
 // PatrolZone Zona patroli (`PATROL`) atau pos jaga (`GUARD`) beserta checkpoint-nya (Phase 10.1, 10.8).
-// Checklist dan QR scan ada di checkpoint, bukan di zona. Proyek dan regu dikenali dengan kode (D19), bukan id.
+// Checklist, QR dan aturan foto ada di checkpoint, bukan di zona (titik dan radius zona hanya untuk tampilan peta). Proyek dan regu dikenali dengan kode (D19), bukan id.
 // Rahasia QR TIDAK pernah ada di sini: isinya hanya ada di gambar QR yang dicetak admin
 // (`GET /admin/zones/{id}/qr`; dan QR checkpoint di `GET /admin/checkpoints/{id}/qr`).
 // Daftar hanya memuat `checkpoint_count`; `checkpoints` ada di detail (admin: semua, berurutan, tanpa checklist;
@@ -9680,9 +9710,6 @@ type PatrolZone struct {
 
 	// NextCheckpointId Checkpoint yang sebaiknya di-scan pemanggil berikutnya. Hanya di detail lapangan; tidak ada bila zona tanpa checkpoint aktif.
 	NextCheckpointId *openapi_types.UUID `json:"next_checkpoint_id,omitempty"`
-
-	// PhotoRequired Scan butuh minimal satu foto, walau tidak ada butir checklist yang meminta (SQD §4.3).
-	PhotoRequired bool `json:"photo_required"`
 
 	// PopupText Ditampilkan saat zona dibuka.
 	PopupText   *string `json:"popup_text,omitempty"`
@@ -9745,7 +9772,6 @@ type PatrolZoneInput struct {
 	Longitude     *float64              `json:"longitude,omitempty"`
 	MinVisit      *int                  `json:"min_visit,omitempty"`
 	Name          string                `json:"name"`
-	PhotoRequired *bool                 `json:"photo_required,omitempty"`
 	PopupText     *string               `json:"popup_text,omitempty"`
 	ProjectCode   string                `json:"project_code"`
 
@@ -9776,7 +9802,6 @@ type PatrolZoneUpdate struct {
 	Longitude     *float64              `json:"longitude,omitempty"`
 	MinVisit      *int                  `json:"min_visit,omitempty"`
 	Name          *string               `json:"name,omitempty"`
-	PhotoRequired *bool                 `json:"photo_required,omitempty"`
 	PopupText     *string               `json:"popup_text,omitempty"`
 	RadiusMeters  *int                  `json:"radius_meters,omitempty"`
 	StartDate     *openapi_types.Date   `json:"start_date,omitempty"`
@@ -11267,6 +11292,9 @@ type ZoneCheckIn struct {
 	CheckOutLatitude  *float64   `json:"check_out_latitude,omitempty"`
 	CheckOutLongitude *float64   `json:"check_out_longitude,omitempty"`
 
+	// CheckpointId Checkpoint yang QR-nya di-scan saat check-in; null pada check-in lama.
+	CheckpointId *openapi_types.UUID `json:"checkpoint_id,omitempty"`
+
 	// FullName Terisi di `live` dan `tracking`.
 	FullName    *string `json:"full_name,omitempty"`
 	Id          int64   `json:"id"`
@@ -11276,12 +11304,13 @@ type ZoneCheckIn struct {
 	ZoneId      int64   `json:"zone_id"`
 }
 
-// ZoneCheckInInput Check-in dan check-out memakai badan yang sama. Waktunya waktu server.
+// ZoneCheckInInput Check-in dan check-out memakai badan yang sama. Waktunya waktu server. QR-nya QR salah satu checkpoint zona.
 type ZoneCheckInInput struct {
-	AccuracyMeters float64 `json:"accuracy_meters"`
-	Latitude       float64 `json:"latitude"`
-	Longitude      float64 `json:"longitude"`
-	QrPayload      string  `json:"qr_payload"`
+	AccuracyMeters float64            `json:"accuracy_meters"`
+	CheckpointId   openapi_types.UUID `json:"checkpoint_id"`
+	Latitude       float64            `json:"latitude"`
+	Longitude      float64            `json:"longitude"`
+	QrPayload      string             `json:"qr_payload"`
 }
 
 // ZoneProgressItem Tiga lingkaran satu zona pada satu tanggal kerja (Gambar 10).
@@ -12749,17 +12778,6 @@ type PatchAdminZonesById200JSONResponseBodySuccess bool
 
 // PutAdminZonesByIdCheckpoints200JSONResponseBodySuccess defines parameters for PutAdminZonesByIdCheckpoints.
 type PutAdminZonesByIdCheckpoints200JSONResponseBodySuccess bool
-
-// GetAdminZonesByIdQrParams defines parameters for GetAdminZonesByIdQr.
-type GetAdminZonesByIdQrParams struct {
-	Format *GetAdminZonesByIdQrParamsFormat `form:"format,omitempty" json:"format,omitempty"`
-}
-
-// GetAdminZonesByIdQrParamsFormat defines parameters for GetAdminZonesByIdQr.
-type GetAdminZonesByIdQrParamsFormat string
-
-// PostAdminZonesByIdRotateQr200JSONResponseBodySuccess defines parameters for PostAdminZonesByIdRotateQr.
-type PostAdminZonesByIdRotateQr200JSONResponseBodySuccess bool
 
 // GetAppLinksParams defines parameters for GetAppLinks.
 type GetAppLinksParams struct {
@@ -14813,3 +14831,191 @@ type PostZonesByIdCheckOutJSONRequestBody = ZoneCheckInInput
 
 // PostZonesByIdScanJSONRequestBody defines body for PostZonesByIdScan for application/json ContentType.
 type PostZonesByIdScanJSONRequestBody = PatrolScanCreate
+
+// Getter for additional properties for DeviceCondition. Returns the specified
+// element and whether it was found
+func (a DeviceCondition) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for DeviceCondition
+func (a *DeviceCondition) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for DeviceCondition to handle AdditionalProperties
+func (a *DeviceCondition) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["app_version"]; found {
+		err = json.Unmarshal(raw, &a.AppVersion)
+		if err != nil {
+			return fmt.Errorf("error reading 'app_version': %w", err)
+		}
+		delete(object, "app_version")
+	}
+
+	if raw, found := object["battery_level"]; found {
+		err = json.Unmarshal(raw, &a.BatteryLevel)
+		if err != nil {
+			return fmt.Errorf("error reading 'battery_level': %w", err)
+		}
+		delete(object, "battery_level")
+	}
+
+	if raw, found := object["device_model"]; found {
+		err = json.Unmarshal(raw, &a.DeviceModel)
+		if err != nil {
+			return fmt.Errorf("error reading 'device_model': %w", err)
+		}
+		delete(object, "device_model")
+	}
+
+	if raw, found := object["gps_enabled"]; found {
+		err = json.Unmarshal(raw, &a.GpsEnabled)
+		if err != nil {
+			return fmt.Errorf("error reading 'gps_enabled': %w", err)
+		}
+		delete(object, "gps_enabled")
+	}
+
+	if raw, found := object["is_charging"]; found {
+		err = json.Unmarshal(raw, &a.IsCharging)
+		if err != nil {
+			return fmt.Errorf("error reading 'is_charging': %w", err)
+		}
+		delete(object, "is_charging")
+	}
+
+	if raw, found := object["mock_location"]; found {
+		err = json.Unmarshal(raw, &a.MockLocation)
+		if err != nil {
+			return fmt.Errorf("error reading 'mock_location': %w", err)
+		}
+		delete(object, "mock_location")
+	}
+
+	if raw, found := object["network_type"]; found {
+		err = json.Unmarshal(raw, &a.NetworkType)
+		if err != nil {
+			return fmt.Errorf("error reading 'network_type': %w", err)
+		}
+		delete(object, "network_type")
+	}
+
+	if raw, found := object["os"]; found {
+		err = json.Unmarshal(raw, &a.Os)
+		if err != nil {
+			return fmt.Errorf("error reading 'os': %w", err)
+		}
+		delete(object, "os")
+	}
+
+	if raw, found := object["os_version"]; found {
+		err = json.Unmarshal(raw, &a.OsVersion)
+		if err != nil {
+			return fmt.Errorf("error reading 'os_version': %w", err)
+		}
+		delete(object, "os_version")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for DeviceCondition to handle AdditionalProperties
+func (a DeviceCondition) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.AppVersion != nil {
+		object["app_version"], err = json.Marshal(a.AppVersion)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'app_version': %w", err)
+		}
+	}
+
+	if a.BatteryLevel != nil {
+		object["battery_level"], err = json.Marshal(a.BatteryLevel)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'battery_level': %w", err)
+		}
+	}
+
+	if a.DeviceModel != nil {
+		object["device_model"], err = json.Marshal(a.DeviceModel)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'device_model': %w", err)
+		}
+	}
+
+	if a.GpsEnabled != nil {
+		object["gps_enabled"], err = json.Marshal(a.GpsEnabled)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'gps_enabled': %w", err)
+		}
+	}
+
+	if a.IsCharging != nil {
+		object["is_charging"], err = json.Marshal(a.IsCharging)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'is_charging': %w", err)
+		}
+	}
+
+	if a.MockLocation != nil {
+		object["mock_location"], err = json.Marshal(a.MockLocation)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'mock_location': %w", err)
+		}
+	}
+
+	if a.NetworkType != nil {
+		object["network_type"], err = json.Marshal(a.NetworkType)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'network_type': %w", err)
+		}
+	}
+
+	if a.Os != nil {
+		object["os"], err = json.Marshal(a.Os)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'os': %w", err)
+		}
+	}
+
+	if a.OsVersion != nil {
+		object["os_version"], err = json.Marshal(a.OsVersion)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'os_version': %w", err)
+		}
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}

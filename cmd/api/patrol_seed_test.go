@@ -55,13 +55,12 @@ func TestSeedPatrolCheckpoints(t *testing.T) {
 		return n
 	}
 	snapshot := func() []int {
-		return []int{count("patrol_zones"), count("patrol_checklist_items"), count("patrol_checkpoints"),
-			count("patrol_zone_checkpoints"), count("patrol_checkpoint_actions")}
+		return []int{count("patrol_zones"), count("patrol_checkpoints"), count("patrol_zone_checkpoints"), count("patrol_checkpoint_actions")}
 	}
 
 	f.exec(writes)
 	first := snapshot()
-	require.Equal(t, []int{3, 5, 5, 7, 7}, first, "three zones, their old questions, five checkpoints, seven links, seven actions")
+	require.Equal(t, []int{3, 5, 7, 7}, first, "three zones, five checkpoints, seven links, seven actions")
 
 	t.Run("running it again changes nothing", func(t *testing.T) {
 		var secrets string

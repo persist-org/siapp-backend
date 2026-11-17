@@ -27,8 +27,8 @@ func (f *flow) addProject(code, line string) {
 
 func (f *flow) addZone(project, name string) (id int64) {
 	f.t.Helper()
-	f.query([]any{&id}, `INSERT INTO patrol_zones (project_code, type, name, qr_secret) VALUES ($1, 'PATROL', $2, $3) RETURNING id`,
-		project, name, checkpointSecret)
+	f.query([]any{&id}, `INSERT INTO patrol_zones (project_code, type, name) VALUES ($1, 'PATROL', $2) RETURNING id`,
+		project, name)
 	return id
 }
 

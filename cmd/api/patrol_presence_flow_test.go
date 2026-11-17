@@ -14,12 +14,11 @@ import (
 func TestPatrolOfflineScan(t *testing.T) {
 	f := newFlow(t)
 	_, danruTok := f.danru()
-	z := f.fencedZone([]map[string]any{{"label": "Aman?", "answer_type": "BOOLEAN"}}, nil)
+	z := f.fencedZone([]map[string]any{{"action": "Aman?"}}, nil)
 
 	b := scanBody(z)
 	b["occurred_at"] = time.Now().Add(-30 * time.Minute).UTC().Format(time.RFC3339Nano)
 	b["submitted_offline"] = true
-	b["answers"] = []map[string]any{{"item_id": z.Checklist[0].ID, "value": true}}
 	first := f.mustScan(f.personTok, z, b)
 	require.True(t, first.SubmittedOffline)
 
@@ -33,6 +32,7 @@ func TestPatrolOfflineScan(t *testing.T) {
 		require.Less(t, code, 300, string(raw))
 		require.Equal(t, first.ID, again.ID)
 		require.Equal(t, 1, countOf(t, f, "SELECT count(*) FROM patrol_scans"))
+		require.Equal(t, 1, countOf(t, f, "SELECT count(*) FROM patrol_scan_actions"), "and does not answer the action twice")
 		require.Equal(t, 1, f.countInbox(f.personTok, "OFFLINE_SUBMISSION_SENT"))
 		require.Equal(t, 1, f.countInbox(danruTok, "PATROL_SUBMITTED"))
 	})
@@ -79,8 +79,8 @@ func TestPatrolOfflineScan(t *testing.T) {
 		for field, mutate := range map[string]func(map[string]any){
 			"latitude":        func(m map[string]any) { m["latitude"] = 95 },
 			"accuracy_meters": func(m map[string]any) { m["accuracy_meters"] = -1 },
-			"subject":         func(m map[string]any) { m["subject"] = "  " },
 			"qr_payload":      func(m map[string]any) { delete(m, "qr_payload") },
+			"checkpoint_id":   func(m map[string]any) { delete(m, "checkpoint_id") },
 			"local_id":        func(m map[string]any) { m["local_id"] = "not-a-uuid" },
 		} {
 			m := scanBody(z)
@@ -94,63 +94,55 @@ func TestPatrolOfflineScan(t *testing.T) {
 	})
 }
 
+// Editing a checkpoint's checklist never rewrites a scan that was made: the scan keeps each action as it
+// was (patrol_scan_actions.snapshot), and an offline scan made before the edit is still judged by the
+// checklist as it was then.
 func TestPatrolScanHistoryIsNotRewrittenByChecklistEdits(t *testing.T) {
 	f := newFlow(t)
-	z := f.fencedZone([]map[string]any{
-		{"label": "Pagar terkunci?", "answer_type": "BOOLEAN"},
-		{"label": "Lampu menyala?", "answer_type": "BOOLEAN"},
-	}, nil)
-	pagar, lampu := z.Checklist[0].ID, z.Checklist[1].ID
+	z := f.fencedZone([]map[string]any{{"action": "Pagar terkunci?"}, {"action": "Lampu menyala?"}}, nil)
+	pagar, lampu := z.checkpoint.Actions[0].ID, z.checkpoint.Actions[1].ID
 
 	b := scanBody(z)
-	// Ten minutes ago: the scans below that are made "now" must be after the edit and still more
-	// than the minimum gap away from this one.
+	// Ten minutes ago: the scans below that are made "now" must be after the edit and still more than the
+	// minimum gap away from this one.
 	b["occurred_at"] = time.Now().Add(-10 * time.Minute).UTC().Format(time.RFC3339Nano)
-	b["answers"] = []map[string]any{{"item_id": pagar, "value": true}, {"item_id": lampu, "value": false}}
 	scan := f.mustScan(f.personTok, z, b)
 
-	// The admin rewrites the form: a new wording, one question gone, a new required one.
-	put := func(items []map[string]any) { f.legacyReplaceChecklist(z.ID, items) }
-	put([]map[string]any{
-		{"id": pagar, "label": "Pagar utama terkunci dan utuh?", "answer_type": "BOOLEAN"},
-		{"label": "Alarm aktif?", "answer_type": "BOOLEAN"},
-	})
+	// The admin rewrites the checklist: a new wording, one action gone, a new one.
+	code, _, raw := f.cpCall(http.MethodPut, checkpointPath(z.checkpoint.ID)+"/actions", f.adminTok, map[string]any{"actions": []map[string]any{
+		{"id": pagar, "action": "Pagar utama terkunci dan utuh?"},
+		{"action": "Alarm aktif?"},
+	}})
+	require.Equal(t, http.StatusOK, code, string(raw))
 
-	t.Run("the stored scan still holds the questions as they were", func(t *testing.T) {
-		var answers string
-		f.query([]any{&answers}, "SELECT answers::text FROM patrol_scans WHERE id = $1", scan.ID)
-		var got []answerIn
-		require.NoError(t, json.Unmarshal([]byte(answers), &got))
-		require.Len(t, got, 2)
-		require.Equal(t, "Pagar terkunci?", got[0].Label)
-		require.Equal(t, "Lampu menyala?", got[1].Label, "a question that was removed since is still there")
-		require.Equal(t, false, got[1].Value)
+	t.Run("the stored scan still holds the actions as they were", func(t *testing.T) {
+		rows := countOf(t, f, "SELECT count(*) FROM patrol_scan_actions WHERE scan_id = $1", scan.ID)
+		require.Equal(t, 2, rows)
+		require.Equal(t, 1, countOf(t, f, "SELECT count(*) FROM patrol_scan_actions WHERE scan_id = $1 AND snapshot->>'action' = 'Pagar terkunci?'", scan.ID))
+		require.Equal(t, 1, countOf(t, f, "SELECT count(*) FROM patrol_scan_actions WHERE scan_id = $1 AND snapshot->>'action' = 'Lampu menyala?'", scan.ID),
+			"an action that was removed since is still there")
 	})
 
 	t.Run("an offline scan made before the edit is still accepted after it", func(t *testing.T) {
-		// Made 30 minutes ago, before the edit: it answers the old questions. The removed one is
-		// ignored, the new required one was not there to answer.
-		old := scanBody(z)
-		old["occurred_at"] = time.Now().Add(-30 * time.Minute).UTC().Format(time.RFC3339Nano)
+		// Made 30 minutes ago, before the edit: it answers the old actions. The removed one is ignored, the
+		// new one was not there to answer.
+		old := bodyAt(z.checkpoint, z.payload, time.Now().Add(-30*time.Minute))
 		old["submitted_offline"] = true
-		old["answers"] = []map[string]any{{"item_id": pagar, "value": true}, {"item_id": lampu, "value": true}}
 		s := f.mustScan(f.personTok, z, old)
-		require.Len(t, s.Answers, 1, "only the question that is still on the form is kept")
-		require.Equal(t, pagar, s.Answers[0].ItemID)
+		require.Equal(t, 1, countOf(t, f, "SELECT count(*) FROM patrol_scan_actions WHERE scan_id = $1", s.ID), "only the action still on the checklist is kept")
+		require.Equal(t, 1, countOf(t, f, "SELECT count(*) FROM patrol_scan_actions WHERE scan_id = $1 AND action_id = $2", s.ID, pagar))
 	})
 
-	t.Run("a scan made after the edit has to answer the new question", func(t *testing.T) {
-		live := scanBody(z)
-		live["occurred_at"] = time.Now().UTC().Format(time.RFC3339Nano)
-		live["answers"] = []map[string]any{{"item_id": pagar, "value": true}}
+	t.Run("a scan made after the edit has to answer the new action", func(t *testing.T) {
+		live := bodyAt(z.checkpoint, z.payload, time.Now())
+		live["actions"] = []map[string]any{{"action_id": pagar}}
 		code, _, raw := f.scan(f.personTok, z.ID, live)
 		reasonIs(t, code, raw, http.StatusUnprocessableEntity, "CHECKLIST_ANSWER_REQUIRED")
 	})
 
-	t.Run("answering a question that was removed before the scan is refused", func(t *testing.T) {
-		now := scanBody(z)
-		now["occurred_at"] = time.Now().UTC().Format(time.RFC3339Nano)
-		now["answers"] = []map[string]any{{"item_id": lampu, "value": true}}
+	t.Run("answering an action that was removed before the scan is refused", func(t *testing.T) {
+		now := bodyAt(z.checkpoint, z.payload, time.Now())
+		now["actions"] = []map[string]any{{"action_id": lampu}}
 		code, _, raw := f.scan(f.personTok, z.ID, now)
 		reasonIs(t, code, raw, http.StatusUnprocessableEntity, "CHECKLIST_ITEM_INVALID")
 	})
@@ -190,18 +182,26 @@ func zoneURL(zoneID int64, suffix string) string {
 }
 
 type checkInOut struct {
-	ID          int64   `json:"id"`
-	PersonnelID int64   `json:"personnel_id"`
-	FullName    *string `json:"full_name"`
-	TeamCode    string  `json:"team_code"`
-	CheckInAt   string  `json:"check_in_at"`
-	CheckOutAt  *string `json:"check_out_at"`
+	ID           int64   `json:"id"`
+	CheckpointID *string `json:"checkpoint_id"`
+	PersonnelID  int64   `json:"personnel_id"`
+	FullName     *string `json:"full_name"`
+	TeamCode     string  `json:"team_code"`
+	CheckInAt    string  `json:"check_in_at"`
+	CheckOutAt   *string `json:"check_out_at"`
 }
 
+// presence checks in or out at the zone's first checkpoint, with the QR text the zone holds in payload.
 func (f *flow) presence(token string, zone patrolZone, action string, lat float64) (int, checkInOut, []byte) {
 	f.t.Helper()
+	return f.presenceAt(token, zone, zone.checkpoint.ID, zone.payload, action, lat)
+}
+
+// presenceAt checks in or out with any checkpoint and any QR text.
+func (f *flow) presenceAt(token string, zone patrolZone, checkpointID, payload, action string, lat float64) (int, checkInOut, []byte) {
+	f.t.Helper()
 	code, raw := f.do(http.MethodPost, zoneURL(zone.ID, "/"+action), token, jsonBody(f.t, map[string]any{
-		"qr_payload": zone.payload, "latitude": lat, "longitude": zoneLng, "accuracy_meters": 5,
+		"checkpoint_id": checkpointID, "qr_payload": payload, "latitude": lat, "longitude": zoneLng, "accuracy_meters": 5,
 	}), map[string]string{"Idempotency-Key": uuid.NewString()})
 	var env struct {
 		Data checkInOut `json:"data"`
@@ -235,13 +235,21 @@ func TestPatrolZoneCheckInOut(t *testing.T) {
 		reasonIs(t, code, raw, http.StatusConflict, "ZONE_NOT_CHECKED_IN")
 	})
 
-	t.Run("the QR and the geofence are checked like a scan", func(t *testing.T) {
+	t.Run("the checkpoint, the QR and the geofence are checked like a scan", func(t *testing.T) {
 		code, _, raw := f.presence(f.personTok, z, "check-in", zoneLat+0.001)
-		reasonIs(t, code, raw, http.StatusUnprocessableEntity, "ZONE_OUTSIDE_RADIUS")
+		reasonIs(t, code, raw, http.StatusUnprocessableEntity, "CHECKPOINT_OUTSIDE_RADIUS")
 		bad := z
 		bad.payload = other.payload
 		code, _, raw = f.presence(f.personTok, bad, "check-in", zoneLat)
-		reasonIs(t, code, raw, http.StatusUnprocessableEntity, "ZONE_QR_INVALID")
+		reasonIs(t, code, raw, http.StatusUnprocessableEntity, "CHECKPOINT_QR_INVALID")
+		code, _, raw = f.presenceAt(f.personTok, z, other.checkpoint.ID, other.payload, "check-in", zoneLat)
+		reasonIs(t, code, raw, http.StatusUnprocessableEntity, "CHECKPOINT_NOT_IN_ZONE")
+		code, raw = f.do(http.MethodPost, zoneURL(z.ID, "/check-in"), f.personTok, jsonBody(t, map[string]any{
+			"qr_payload": z.payload, "latitude": zoneLat, "longitude": zoneLng, "accuracy_meters": 5,
+		}), map[string]string{"Idempotency-Key": uuid.NewString()})
+		require.Equal(t, http.StatusUnprocessableEntity, code, "a check-in without a checkpoint: "+string(raw))
+		_, fields := problem(t, raw)
+		require.Contains(t, fields, "checkpoint_id")
 		require.Zero(t, countOf(t, f, "SELECT count(*) FROM zone_checkins"))
 	})
 
@@ -251,6 +259,7 @@ func TestPatrolZoneCheckInOut(t *testing.T) {
 		require.Equal(t, http.StatusCreated, code, string(raw))
 		require.Equal(t, f.person, got.PersonnelID)
 		require.Equal(t, "1K-IBMI-S1", got.TeamCode)
+		require.Equal(t, z.checkpoint.ID, *got.CheckpointID, "it keeps the checkpoint whose sticker was scanned")
 		require.Nil(t, got.CheckOutAt)
 		checkIn = got
 	})
@@ -363,7 +372,7 @@ func TestPatrolZoneCheckInOut(t *testing.T) {
 
 	t.Run("a retried check-in with the same key returns the same answer", func(t *testing.T) {
 		key := uuid.NewString()
-		body := jsonBody(t, map[string]any{"qr_payload": z.payload, "latitude": zoneLat, "longitude": zoneLng, "accuracy_meters": 5})
+		body := jsonBody(t, map[string]any{"checkpoint_id": z.checkpoint.ID, "qr_payload": z.payload, "latitude": zoneLat, "longitude": zoneLng, "accuracy_meters": 5})
 		headers := map[string]string{"Idempotency-Key": key}
 		code1, raw1 := f.do(http.MethodPost, zoneURL(z.ID, "/check-in"), f.personTok, body, headers)
 		code2, raw2 := f.do(http.MethodPost, zoneURL(z.ID, "/check-in"), f.personTok, body, headers)
@@ -418,10 +427,71 @@ func TestPatrolCheckOutIsAlwaysPossible(t *testing.T) {
 		require.Equal(t, http.StatusCreated, code, string(raw))
 
 		code, _, raw = f.presence(f.personTok, z, "check-out", zoneLat+1)
-		reasonIs(t, code, raw, http.StatusUnprocessableEntity, "ZONE_OUTSIDE_RADIUS")
+		reasonIs(t, code, raw, http.StatusUnprocessableEntity, "CHECKPOINT_OUTSIDE_RADIUS")
 		bad := z
-		bad.payload = "PERSIST-ZONE:1:1:1:wrong"
+		bad.payload = "PERSIST-CP:1:1:" + z.checkpoint.ID + ":wrong"
 		code, _, raw = f.presence(f.personTok, bad, "check-out", zoneLat)
-		reasonIs(t, code, raw, http.StatusUnprocessableEntity, "ZONE_QR_INVALID")
+		reasonIs(t, code, raw, http.StatusUnprocessableEntity, "CHECKPOINT_QR_INVALID")
+
+		// Leave properly: an open check-in would block the check-ins of what follows.
+		code, _, raw = f.presence(f.personTok, z, "check-out", zoneLat)
+		require.Equal(t, http.StatusOK, code, string(raw))
+	})
+
+	t.Run("a guard may check out at another checkpoint of the zone than the one they checked in at", func(t *testing.T) {
+		z := f.fencedRound(2, map[string]any{"type": "GUARD"})
+		code, _, raw := f.presenceAt(f.personTok, z, z.all[0].ID, z.all[0].payload, "check-in", zoneLat)
+		require.Equal(t, http.StatusCreated, code, string(raw))
+		code, got, raw := f.presenceAt(f.personTok, z, z.all[1].ID, z.all[1].payload, "check-out", zoneLat)
+		require.Equal(t, http.StatusOK, code, string(raw))
+		require.NotNil(t, got.CheckOutAt)
+	})
+
+	// A guard checks in and out with a checkpoint's QR, so a zone with no checkpoint left to scan would hold
+	// its guards for ever, and one open check-in blocks a check-in anywhere.
+	t.Run("a zone that loses its last checkpoint lets its guards go", func(t *testing.T) {
+		for name, lose := range map[string]func(z patrolZone){
+			"the checkpoint is deleted": func(z patrolZone) {
+				code, raw := f.do(http.MethodDelete, checkpointPath(z.checkpoint.ID), f.adminTok, nil, nil)
+				require.Equal(t, http.StatusOK, code, string(raw))
+			},
+			"the checkpoint is switched off": func(z patrolZone) {
+				code, _, raw := f.cpCall(http.MethodPatch, checkpointPath(z.checkpoint.ID), f.adminTok, map[string]any{"is_active": false})
+				require.Equal(t, http.StatusOK, code, string(raw))
+			},
+			"the zone's checkpoints are emptied": func(z patrolZone) {
+				code, _, raw := f.assign(z.ID)
+				require.Equal(t, http.StatusOK, code, string(raw))
+			},
+			"the zone is patched with none": func(z patrolZone) {
+				code, _, raw := f.zoneCall(http.MethodPatch, zonePath(z.ID), f.adminTok, map[string]any{"checkpoint_ids": []string{}})
+				require.Equal(t, http.StatusOK, code, string(raw))
+			},
+		} {
+			z := f.fencedZone(nil, map[string]any{"type": "GUARD"})
+			other := f.fencedZone(nil, map[string]any{"type": "GUARD"})
+			code, _, raw := f.presence(f.personTok, z, "check-in", zoneLat)
+			require.Equal(t, http.StatusCreated, code, name+": "+string(raw))
+
+			lose(z)
+			require.Zero(t, countOf(t, f, "SELECT count(*) FROM zone_checkins WHERE zone_id = $1 AND check_out_at IS NULL", z.ID), name)
+			code, _, raw = f.presence(f.personTok, other, "check-in", zoneLat)
+			require.Equal(t, http.StatusCreated, code, name+": the guard is free to check in elsewhere: "+string(raw))
+			code, _, raw = f.presence(f.personTok, other, "check-out", zoneLat)
+			require.Equal(t, http.StatusOK, code, name+": "+string(raw))
+		}
+	})
+
+	t.Run("a zone that still has a checkpoint keeps its guards checked in", func(t *testing.T) {
+		z := f.fencedRound(2, map[string]any{"type": "GUARD"})
+		code, _, raw := f.presenceAt(f.personTok, z, z.all[0].ID, z.all[0].payload, "check-in", zoneLat)
+		require.Equal(t, http.StatusCreated, code, string(raw))
+
+		code, raw = f.do(http.MethodDelete, checkpointPath(z.all[0].ID), f.adminTok, nil, nil)
+		require.Equal(t, http.StatusOK, code, string(raw))
+		require.Equal(t, 1, countOf(t, f, "SELECT count(*) FROM zone_checkins WHERE zone_id = $1 AND check_out_at IS NULL", z.ID))
+
+		code, _, raw = f.presenceAt(f.personTok, z, z.all[1].ID, z.all[1].payload, "check-out", zoneLat)
+		require.Equal(t, http.StatusOK, code, "the guard checks out at the one that is left: "+string(raw))
 	})
 }

@@ -253,6 +253,25 @@ func (q *Queries) GetPatrolCheckpointForUpdate(ctx context.Context, id pgtype.UU
 	return i, err
 }
 
+const getZoneCheckpointLink = `-- name: GetZoneCheckpointLink :one
+SELECT zc.sort_order FROM patrol_zone_checkpoints zc
+JOIN patrol_checkpoints c ON c.organization_id = zc.organization_id AND c.id = zc.checkpoint_id
+WHERE zc.zone_id = $1 AND zc.checkpoint_id = $2 AND c.active AND c.deleted_at IS NULL
+`
+
+type GetZoneCheckpointLinkParams struct {
+	ZoneID       int64
+	CheckpointID pgtype.UUID
+}
+
+// Is this checkpoint one a guard can scan in this zone now: linked to it, and active? Its position when it is.
+func (q *Queries) GetZoneCheckpointLink(ctx context.Context, arg GetZoneCheckpointLinkParams) (int32, error) {
+	row := q.db.QueryRow(ctx, getZoneCheckpointLink, arg.ZoneID, arg.CheckpointID)
+	var sort_order int32
+	err := row.Scan(&sort_order)
+	return sort_order, err
+}
+
 const insertCheckpointAction = `-- name: InsertCheckpointAction :one
 INSERT INTO patrol_checkpoint_actions (checkpoint_id, sort_order, action, instruction, min_photos, max_photos,
                                        is_note_required, created_at, updated_at)
@@ -362,20 +381,21 @@ func (q *Queries) InsertPatrolCheckpoint(ctx context.Context, arg InsertPatrolCh
 
 const insertScanAction = `-- name: InsertScanAction :one
 
-INSERT INTO patrol_scan_actions (scan_id, checkpoint_id, action_id, personnel_id, note, media_ids, snapshot, created_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, organization_id, scan_id, checkpoint_id, action_id, personnel_id, note, media_ids, snapshot, created_at
+INSERT INTO patrol_scan_actions (scan_id, checkpoint_id, action_id, personnel_id, note, media_ids, snapshot, device_condition, created_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+RETURNING id, organization_id, scan_id, checkpoint_id, action_id, personnel_id, note, media_ids, snapshot, created_at, device_condition
 `
 
 type InsertScanActionParams struct {
-	ScanID       int64
-	CheckpointID pgtype.UUID
-	ActionID     pgtype.UUID
-	PersonnelID  int64
-	Note         pgtype.Text
-	MediaIds     []int64
-	Snapshot     json.RawMessage
-	Now          pgtype.Timestamptz
+	ScanID          int64
+	CheckpointID    pgtype.UUID
+	ActionID        pgtype.UUID
+	PersonnelID     int64
+	Note            pgtype.Text
+	MediaIds        []int64
+	Snapshot        json.RawMessage
+	DeviceCondition json.RawMessage
+	Now             pgtype.Timestamptz
 }
 
 // Answers (the detail of a scan)
@@ -389,6 +409,7 @@ func (q *Queries) InsertScanAction(ctx context.Context, arg InsertScanActionPara
 		arg.Note,
 		arg.MediaIds,
 		arg.Snapshot,
+		arg.DeviceCondition,
 		arg.Now,
 	)
 	var i PatrolScanAction
@@ -403,6 +424,7 @@ func (q *Queries) InsertScanAction(ctx context.Context, arg InsertScanActionPara
 		&i.MediaIds,
 		&i.Snapshot,
 		&i.CreatedAt,
+		&i.DeviceCondition,
 	)
 	return i, err
 }
@@ -553,7 +575,7 @@ func (q *Queries) ListCheckpointActions(ctx context.Context, checkpointID pgtype
 }
 
 const listCheckpointZones = `-- name: ListCheckpointZones :many
-SELECT z.id, z.organization_id, z.project_code, z.team_code, z.type, z.name, z.alias, z.description, z.popup_text, z.latitude, z.longitude, z.radius_meters, z.min_visit, z.start_date, z.photo_required, z.qr_secret, z.active, z.created_at, z.updated_at, z.deleted_at, zc.sort_order AS position
+SELECT z.id, z.organization_id, z.project_code, z.team_code, z.type, z.name, z.alias, z.description, z.popup_text, z.latitude, z.longitude, z.radius_meters, z.min_visit, z.start_date, z.active, z.created_at, z.updated_at, z.deleted_at, zc.sort_order AS position
 FROM patrol_zone_checkpoints zc
 JOIN patrol_zones z ON z.organization_id = zc.organization_id AND z.id = zc.zone_id
 WHERE zc.checkpoint_id = $1 AND z.deleted_at IS NULL
@@ -575,8 +597,6 @@ type ListCheckpointZonesRow struct {
 	RadiusMeters   pgtype.Int4
 	MinVisit       int32
 	StartDate      pgtype.Date
-	PhotoRequired  bool
-	QrSecret       string
 	Active         bool
 	CreatedAt      pgtype.Timestamptz
 	UpdatedAt      pgtype.Timestamptz
@@ -609,8 +629,6 @@ func (q *Queries) ListCheckpointZones(ctx context.Context, checkpointID pgtype.U
 			&i.RadiusMeters,
 			&i.MinVisit,
 			&i.StartDate,
-			&i.PhotoRequired,
-			&i.QrSecret,
 			&i.Active,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -696,7 +714,7 @@ func (q *Queries) ListPatrolCheckpoints(ctx context.Context, arg ListPatrolCheck
 }
 
 const listScanActionsByScans = `-- name: ListScanActionsByScans :many
-SELECT id, organization_id, scan_id, checkpoint_id, action_id, personnel_id, note, media_ids, snapshot, created_at FROM patrol_scan_actions WHERE scan_id = ANY($1::bigint[])
+SELECT id, organization_id, scan_id, checkpoint_id, action_id, personnel_id, note, media_ids, snapshot, created_at, device_condition FROM patrol_scan_actions WHERE scan_id = ANY($1::bigint[])
 ORDER BY scan_id, (snapshot->>'sort_order')::int, id
 `
 
@@ -721,6 +739,7 @@ func (q *Queries) ListScanActionsByScans(ctx context.Context, scanIds []int64) (
 			&i.MediaIds,
 			&i.Snapshot,
 			&i.CreatedAt,
+			&i.DeviceCondition,
 		); err != nil {
 			return nil, err
 		}

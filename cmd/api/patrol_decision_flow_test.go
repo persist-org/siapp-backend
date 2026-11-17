@@ -555,44 +555,39 @@ func TestPatrolScanViews(t *testing.T) {
 	danruID, danruTok := f.danru()
 	_ = danruID
 	z := f.fencedZone([]map[string]any{
-		{"label": "Pagar utuh?", "answer_type": "BOOLEAN", "photo_mode": "OPTIONAL", "photo_max": 2},
-		{"label": "Catatan", "answer_type": "TEXT", "required": false},
+		{"action": "Pagar utuh?", "max_photos": 2},
+		{"action": "Catatan"},
 	}, nil)
-	pagar := z.Checklist[0].ID
+	pagar, catatan := z.checkpoint.Actions[0].ID, z.checkpoint.Actions[1].ID
 
-	general, answerA, answerB := f.photo(f.person), f.photo(f.person), f.photo(f.person)
+	photoA, photoB := f.photo(f.person), f.photo(f.person)
 	body := scanBody(z)
-	body["media_ids"] = []int64{general}
-	body["answers"] = []map[string]any{{"item_id": pagar, "value": false, "media_ids": []int64{answerA, answerB}}}
+	body["actions"] = []map[string]any{{"action_id": pagar, "media_ids": []int64{photoA, photoB}}, {"action_id": catatan}}
 	scan := f.mustScan(f.personTok, z, body)
-	plain := f.mustScan(f.personTok, z, func() map[string]any {
-		b := scanBody(z)
-		b["answers"] = []map[string]any{{"item_id": pagar, "value": true}}
-		return b
-	}())
+	plain := f.mustScan(f.personTok, z, scanBody(z))
 
-	t.Run("a DANRU reads each answer with its own proof, and the general photos apart", func(t *testing.T) {
+	// ⚠ Until Phase 10.10 a reader sees the scan's photos together, as `media`: a scan made now has no
+	// per-answer breakdown (its answers are rows of patrol_scan_actions, which the views do not read yet).
+	t.Run("a DANRU reads the scan with its photos and the author's name", func(t *testing.T) {
 		code, got, raw := f.getScan(danruTok, scan.ID)
 		require.Equal(t, http.StatusOK, code, string(raw))
 		require.Equal(t, "Anggota Satu A", got.PersonnelName)
 		require.NotNil(t, got.Media)
-		require.Len(t, *got.Media, 1)
-		require.Equal(t, general, (*got.Media)[0].ID)
+		require.Len(t, *got.Media, 2)
+		require.Equal(t, []int64{photoA, photoB}, []int64{(*got.Media)[0].ID, (*got.Media)[1].ID})
 		require.NotEmpty(t, (*got.Media)[0].URL)
 		require.Equal(t, "image/jpeg", (*got.Media)[0].ContentType)
+		require.Empty(t, got.Answers, "no old-style answers on a scan made at a checkpoint")
 
-		require.Len(t, got.Answers, 2)
-		require.Equal(t, pagar, got.Answers[0].ItemID)
-		require.NotNil(t, got.Answers[0].Media)
-		require.Len(t, *got.Answers[0].Media, 2)
-		require.Equal(t, []int64{answerA, answerB}, []int64{(*got.Answers[0].Media)[0].ID, (*got.Answers[0].Media)[1].ID})
-		require.Empty(t, *got.Answers[1].Media, "an unanswered question has no photos, and an empty list")
+		_, bare, _ := f.getScan(danruTok, plain.ID)
+		require.NotNil(t, bare.Media)
+		require.Empty(t, *bare.Media, "a scan with no photo has an empty list")
 	})
 
 	t.Run("the author reads their own scan, a colleague cannot", func(t *testing.T) {
 		code, got, raw := f.getScan(f.personTok, scan.ID)
 		require.Equal(t, http.StatusOK, code, string(raw))
-		require.Len(t, *got.Media, 1)
+		require.Len(t, *got.Media, 2)
 
 		_, colleagueTok := f.addMember("1K-IBMI-S1", "MEMBER", 900550, "KOLEGA0007", "Kolega Tujuh")
 		code, _, raw = f.getScan(colleagueTok, scan.ID)
@@ -610,7 +605,6 @@ func TestPatrolScanViews(t *testing.T) {
 		_, colleagueTok := f.addMember("1K-IBMI-S1", "MEMBER", 900551, "KOLEGA0008", "Kolega Delapan")
 		theirBody := scanBody(z)
 		theirBody["occurred_at"] = time.Now().UTC().Format(time.RFC3339Nano) // the newest of the zone's scans
-		theirBody["answers"] = []map[string]any{{"item_id": pagar, "value": true}}
 		theirs := f.mustScan(colleagueTok, z, theirBody)
 
 		code, list, raw := f.getScans(danruTok, zoneURL(z.ID, "/scans"))

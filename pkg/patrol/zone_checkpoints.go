@@ -2,8 +2,12 @@ package patrol
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"slices"
+	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"siapp/internal/db"
@@ -72,6 +76,47 @@ func lockCheckpoints(ctx context.Context, q *db.Queries, ids []pgtype.UUID) (map
 		found[uuidString(r.ID)] = r
 	}
 	return found, nil
+}
+
+// lockZones locks the live zones among ids, in id order, and returns the ones it locked. A deleted zone is
+// skipped: it has no order to keep and no guard to release.
+//
+// ⚠ The order of locks is checkpoint first, then zones in id order, for every writer of a zone's links
+// (see lockCheckpoints), so two requests that share zones cannot deadlock. The caller already holds the
+// lock of the checkpoint it is changing.
+func lockZones(ctx context.Context, q *db.Queries, ids []int64) ([]int64, error) {
+	ids = slices.Clone(ids)
+	slices.Sort(ids)
+	locked := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if _, err := q.GetPatrolZoneForUpdate(ctx, id); errors.Is(err, pgx.ErrNoRows) {
+			continue
+		} else if err != nil {
+			return nil, fmt.Errorf("lock zone: %w", err)
+		}
+		locked = append(locked, id)
+	}
+	return locked, nil
+}
+
+// releaseIfEmpty closes the open check-ins of a zone that has no active checkpoint left, at the given moment.
+//
+// ⚠ A guard checks in and out by scanning a checkpoint's QR (Phase 10.9), so a zone with no checkpoint to
+// scan would hold its guards for ever, and one open check-in blocks a check-in in every zone. This is what
+// deleting a zone does too (Delete). A zone that still has an active checkpoint needs nothing: the guard
+// checks out at any of them. Callers hold the zone's lock.
+func releaseIfEmpty(ctx context.Context, q *db.Queries, zoneID int64, at time.Time) error {
+	counts, err := q.CountCheckpointsOfZones(ctx, []int64{zoneID})
+	if err != nil {
+		return fmt.Errorf("count checkpoints of zone: %w", err)
+	}
+	if len(counts) > 0 && counts[0].Checkpoints > 0 {
+		return nil
+	}
+	if _, err := q.CloseZoneCheckinsOfZone(ctx, db.CloseZoneCheckinsOfZoneParams{ZoneID: zoneID, At: ts(at)}); err != nil {
+		return fmt.Errorf("close check-ins of an empty zone: %w", err)
+	}
+	return nil
 }
 
 // linkCheckpoints makes the zone's checkpoints exactly ids, in that order: positions 1..n. The caller

@@ -21,9 +21,12 @@ import (
 // report, more is an export.
 const maxTrackingDays = 31
 
-// PresenceInput is the body of a check-in and of a check-out: the same QR and position checks as a
-// scan. A check-in is a live act of the app, so the time is the server's, not the phone's.
+// PresenceInput is the body of a check-in and of a check-out: the same checkpoint, QR and position checks as
+// a scan, with any checkpoint of the zone (the zone has no QR of its own; Phase 10.9). The order of the
+// round does not apply: a guard checks in where they arrive. A check-in is a live act of the app, so the time
+// is the server's, not the phone's.
 type PresenceInput struct {
+	CheckpointID   string   `json:"checkpoint_id" validate:"required,uuid"`
 	QRPayload      string   `json:"qr_payload" validate:"required,max=200"`
 	Latitude       *float64 `json:"latitude" validate:"required,gte=-90,lte=90"`
 	Longitude      *float64 `json:"longitude" validate:"required,gte=-180,lte=180"`
@@ -32,9 +35,12 @@ type PresenceInput struct {
 
 // CheckIn is a guard's stay in a zone, from check-in to check-out.
 type CheckIn struct {
-	ID          int64
-	ZoneID      int64
-	PersonnelID int64
+	ID     int64
+	ZoneID int64
+	// CheckpointID is the checkpoint whose QR the guard scanned to check in; nil for a check-in made before
+	// the checkpoints existed.
+	CheckpointID *string
+	PersonnelID  int64
 	// FullName is set where the reader needs to know who it is (live, tracking).
 	FullName   string
 	TeamCode   string
@@ -53,6 +59,10 @@ func checkInOf(r db.ZoneCheckin, name string) CheckIn {
 		ID: r.ID, ZoneID: r.ZoneID, PersonnelID: r.PersonnelID, FullName: name, TeamCode: r.TeamCode,
 		CheckInAt: r.CheckInAt.Time, CheckInLat: r.CheckInLat, CheckInLng: r.CheckInLng,
 		CheckOutLat: r.CheckOutLat, CheckOutLng: r.CheckOutLng,
+	}
+	if r.CheckpointID.Valid {
+		id := uuidString(r.CheckpointID)
+		out.CheckpointID = &id
 	}
 	if r.ShiftID.Valid {
 		out.ShiftID = &r.ShiftID.Int64
@@ -83,9 +93,9 @@ func loadZone(ctx context.Context, q *db.Queries, zoneID int64) (db.PatrolZone, 
 	return zone, project, nil
 }
 
-// CheckIn marks the person present in the zone. They need the zone's QR and to be inside its
-// geofence, like a scan, and they can be in one zone at a time: a check-in while another is open is
-// ZONE_ALREADY_CHECKED_IN.
+// CheckIn marks the person present in the zone. They need the QR of one of its checkpoints and to be inside
+// that checkpoint's geofence, like a scan, and they can be in one zone at a time: a check-in while another is
+// open is ZONE_ALREADY_CHECKED_IN.
 func (s *Service) CheckIn(ctx context.Context, p auth.Principal, zoneID int64, in PresenceInput) (CheckIn, error) {
 	var out CheckIn
 	now := s.clock.Now()
@@ -97,8 +107,14 @@ func (s *Service) CheckIn(ctx context.Context, p auth.Principal, zoneID int64, i
 		if !zone.Active {
 			return ErrZoneNotFound
 		}
-		v, err := s.admit(ctx, q, p, zone, project, in.QRPayload, *in.Latitude, *in.Longitude, *in.AccuracyMeters, now)
+		v, err := s.arrive(ctx, q, p, zone, project, in.CheckpointID, in.QRPayload)
 		if err != nil {
+			return err
+		}
+		if err := s.authorize(ctx, q, p, v, now); err != nil {
+			return err
+		}
+		if v, err = checkGeofence(v, *in.Latitude, *in.Longitude, *in.AccuracyMeters); err != nil {
 			return err
 		}
 		pl, err := s.place(ctx, q, p, v, now)
@@ -106,7 +122,7 @@ func (s *Service) CheckIn(ctx context.Context, p auth.Principal, zoneID int64, i
 			return err
 		}
 		row, err := q.InsertZoneCheckin(ctx, db.InsertZoneCheckinParams{
-			ZoneID: zoneID, PersonnelID: p.PersonnelID, TeamCode: pl.team, ShiftID: int8Param(pl.shiftID),
+			ZoneID: zoneID, CheckpointID: v.checkpoint.ID, PersonnelID: p.PersonnelID, TeamCode: pl.team, ShiftID: int8Param(pl.shiftID),
 			At: ts(now), Latitude: *in.Latitude, Longitude: *in.Longitude,
 		})
 		if database.IsUniqueViolation(err) && database.ConstraintName(err) == "zone_checkins_open_uq" {
@@ -122,8 +138,8 @@ func (s *Service) CheckIn(ctx context.Context, p auth.Principal, zoneID int64, i
 }
 
 // CheckOut ends the person's stay in the zone. Without an open check-in of this zone it is
-// ZONE_NOT_CHECKED_IN. The same QR and geofence checks apply as at check-in, so a check-out is
-// proof that the guard was still there.
+// ZONE_NOT_CHECKED_IN. The same checkpoint, QR and geofence checks apply as at check-in, and any checkpoint of
+// the zone will do (not the one used to check in), so a check-out is proof that the guard was still there.
 func (s *Service) CheckOut(ctx context.Context, p auth.Principal, zoneID int64, in PresenceInput) (CheckIn, error) {
 	var out CheckIn
 	now := s.clock.Now()
@@ -133,10 +149,15 @@ func (s *Service) CheckOut(ctx context.Context, p auth.Principal, zoneID int64, 
 			return err
 		}
 		// A zone switched off while someone is in it can still be checked out of, and so can one whose
-		// regu or permission the guard has left since (admitRelease): an open check-in blocks every
-		// check-in, so a guard must always be able to leave. A deleted zone closes its check-ins
-		// itself (Delete).
-		if _, err := s.admitRelease(p, zone, project, in.QRPayload, *in.Latitude, *in.Longitude, *in.AccuracyMeters); err != nil {
+		// regu or permission the guard has left since (no authorize here): an open check-in blocks every
+		// check-in, so a guard must always be able to leave. A deleted zone closes its check-ins itself
+		// (Delete), and so does a zone that loses its last checkpoint (releaseIfEmpty): with no sticker left
+		// nobody could check out.
+		v, err := s.arrive(ctx, q, p, zone, project, in.CheckpointID, in.QRPayload)
+		if err != nil {
+			return err
+		}
+		if _, err := checkGeofence(v, *in.Latitude, *in.Longitude, *in.AccuracyMeters); err != nil {
 			return err
 		}
 		row, err := q.CloseZoneCheckin(ctx, db.CloseZoneCheckinParams{
@@ -337,7 +358,7 @@ func containsString(list []string, s string) bool {
 
 func zoneCheckinOf(r db.ListZoneLiveRow) db.ZoneCheckin {
 	return db.ZoneCheckin{
-		ID: r.ID, OrganizationID: r.OrganizationID, ZoneID: r.ZoneID, PersonnelID: r.PersonnelID, TeamCode: r.TeamCode,
+		ID: r.ID, OrganizationID: r.OrganizationID, ZoneID: r.ZoneID, CheckpointID: r.CheckpointID, PersonnelID: r.PersonnelID, TeamCode: r.TeamCode,
 		ShiftID: r.ShiftID, CheckInAt: r.CheckInAt, CheckInLat: r.CheckInLat, CheckInLng: r.CheckInLng,
 		CheckOutAt: r.CheckOutAt, CheckOutLat: r.CheckOutLat, CheckOutLng: r.CheckOutLng,
 		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
@@ -346,7 +367,7 @@ func zoneCheckinOf(r db.ListZoneLiveRow) db.ZoneCheckin {
 
 func trackingRowOf(r db.ListZoneTrackingRow) db.ZoneCheckin {
 	return db.ZoneCheckin{
-		ID: r.ID, OrganizationID: r.OrganizationID, ZoneID: r.ZoneID, PersonnelID: r.PersonnelID, TeamCode: r.TeamCode,
+		ID: r.ID, OrganizationID: r.OrganizationID, ZoneID: r.ZoneID, CheckpointID: r.CheckpointID, PersonnelID: r.PersonnelID, TeamCode: r.TeamCode,
 		ShiftID: r.ShiftID, CheckInAt: r.CheckInAt, CheckInLat: r.CheckInLat, CheckInLng: r.CheckInLng,
 		CheckOutAt: r.CheckOutAt, CheckOutLat: r.CheckOutLat, CheckOutLng: r.CheckOutLng,
 		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,

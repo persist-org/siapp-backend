@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -234,6 +233,18 @@ func (s *Service) UpdateCheckpoint(ctx context.Context, actor auth.Principal, sc
 		if err != nil {
 			return fmt.Errorf("update checkpoint: %w", err)
 		}
+		// Switching the checkpoint off can leave a zone with nothing to scan: its guards are let go.
+		if before.Active && !row.Active {
+			zones, err := lockZones(ctx, q, zoneIDsOf(before))
+			if err != nil {
+				return err
+			}
+			for _, zoneID := range zones {
+				if err := releaseIfEmpty(ctx, q, zoneID, s.clock.Now()); err != nil {
+					return err
+				}
+			}
+		}
 		out, err = withActionsAndZone(ctx, q, row)
 		if err != nil {
 			return err
@@ -318,19 +329,10 @@ func (s *Service) DeleteCheckpoint(ctx context.Context, actor auth.Principal, sc
 		// rewritten as a whole, and two requests that rewrite it (this one and an admin assigning
 		// checkpoints to the zone, Phase 10.8) must take turns. A fixed order keeps two deletions
 		// that share zones from deadlocking.
-		zoneIDs := make([]int64, 0, len(before.Zones))
-		for _, z := range before.Zones {
-			zoneIDs = append(zoneIDs, z.ID)
-		}
-		slices.Sort(zoneIDs)
-		var locked []int64
-		for _, zoneID := range zoneIDs {
-			if _, err := q.GetPatrolZoneForUpdate(ctx, zoneID); errors.Is(err, pgx.ErrNoRows) {
-				continue // a deleted zone has no order to keep
-			} else if err != nil {
-				return fmt.Errorf("lock zone: %w", err)
-			}
-			locked = append(locked, zoneID)
+		zoneIDs := zoneIDsOf(before)
+		locked, err := lockZones(ctx, q, zoneIDs)
+		if err != nil {
+			return err
 		}
 
 		if _, err := q.DeleteCheckpointLinks(ctx, uid); err != nil {
@@ -344,10 +346,25 @@ func (s *Service) DeleteCheckpoint(ctx context.Context, actor auth.Principal, sc
 		if _, err := q.SoftDeletePatrolCheckpoint(ctx, db.SoftDeletePatrolCheckpointParams{ID: uid, Now: ts(s.clock.Now())}); err != nil {
 			return fmt.Errorf("delete checkpoint: %w", err)
 		}
+		// A zone this was the last checkpoint of lets its guards go (see releaseIfEmpty).
+		for _, zoneID := range locked {
+			if err := releaseIfEmpty(ctx, q, zoneID, s.clock.Now()); err != nil {
+				return err
+			}
+		}
 		return auditCheckpoint(ctx, q, actor, "patrol.checkpoint.delete", before, map[string]any{
 			"before": checkpointMeta(before), "zones_left": len(zoneIDs),
 		})
 	})
+}
+
+// zoneIDsOf is the ids of the zones a checkpoint is in.
+func zoneIDsOf(c Checkpoint) []int64 {
+	ids := make([]int64, 0, len(c.Zones))
+	for _, z := range c.Zones {
+		ids = append(ids, z.ID)
+	}
+	return ids
 }
 
 // closeGaps renumbers a zone's checkpoints 1..n in their current order, after one has left.

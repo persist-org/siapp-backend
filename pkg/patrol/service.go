@@ -66,20 +66,19 @@ func (s *Service) Now() time.Time { return s.clock.Now() }
 
 // ZoneInput is a request to create a zone.
 type ZoneInput struct {
-	ProjectCode   string         `json:"project_code" validate:"required,notblank,max=100"`
-	TeamCode      *string        `json:"team_code" validate:"omitempty,max=100"`
-	Type          string         `json:"type" validate:"required,oneof=PATROL GUARD"`
-	Name          string         `json:"name" validate:"required,notblank,max=200"`
-	Alias         *string        `json:"alias" validate:"omitempty,max=200"`
-	Description   *string        `json:"description" validate:"omitempty,max=2000"`
-	PopupText     *string        `json:"popup_text" validate:"omitempty,max=2000"`
-	Latitude      *float64       `json:"latitude" validate:"omitempty,gte=-90,lte=90"`
-	Longitude     *float64       `json:"longitude" validate:"omitempty,gte=-180,lte=180"`
-	RadiusMeters  *int           `json:"radius_meters" validate:"omitempty,min=1,max=5000"`
-	MinVisit      *int           `json:"min_visit" validate:"omitempty,min=1,max=100"`
-	StartDate     *timeutil.Date `json:"start_date"`
-	PhotoRequired *bool          `json:"photo_required"`
-	Active        *bool          `json:"is_active"`
+	ProjectCode  string         `json:"project_code" validate:"required,notblank,max=100"`
+	TeamCode     *string        `json:"team_code" validate:"omitempty,max=100"`
+	Type         string         `json:"type" validate:"required,oneof=PATROL GUARD"`
+	Name         string         `json:"name" validate:"required,notblank,max=200"`
+	Alias        *string        `json:"alias" validate:"omitempty,max=200"`
+	Description  *string        `json:"description" validate:"omitempty,max=2000"`
+	PopupText    *string        `json:"popup_text" validate:"omitempty,max=2000"`
+	Latitude     *float64       `json:"latitude" validate:"omitempty,gte=-90,lte=90"`
+	Longitude    *float64       `json:"longitude" validate:"omitempty,gte=-180,lte=180"`
+	RadiusMeters *int           `json:"radius_meters" validate:"omitempty,min=1,max=5000"`
+	MinVisit     *int           `json:"min_visit" validate:"omitempty,min=1,max=100"`
+	StartDate    *timeutil.Date `json:"start_date"`
+	Active       *bool          `json:"is_active"`
 	// CheckpointIDs are the zone's checkpoints, in order (positions 1..n).
 	CheckpointIDs []string `json:"checkpoint_ids" validate:"omitempty,max=100"`
 }
@@ -88,19 +87,18 @@ type ZoneInput struct {
 // empties the ones that may be empty. The project is not here: a zone does not move, because
 // the scans it holds belong to that project's people.
 type ZoneUpdate struct {
-	TeamCode      optional[string]  `json:"team_code"`
-	Type          *string           `json:"type" validate:"omitempty,oneof=PATROL GUARD"`
-	Name          *string           `json:"name" validate:"omitempty,notblank,max=200"`
-	Alias         optional[string]  `json:"alias"`
-	Description   optional[string]  `json:"description"`
-	PopupText     optional[string]  `json:"popup_text"`
-	Latitude      optional[float64] `json:"latitude"`
-	Longitude     optional[float64] `json:"longitude"`
-	RadiusMeters  optional[int]     `json:"radius_meters"`
-	MinVisit      *int              `json:"min_visit" validate:"omitempty,min=1,max=100"`
-	StartDate     optional[string]  `json:"start_date"`
-	PhotoRequired *bool             `json:"photo_required"`
-	Active        *bool             `json:"is_active"`
+	TeamCode     optional[string]  `json:"team_code"`
+	Type         *string           `json:"type" validate:"omitempty,oneof=PATROL GUARD"`
+	Name         *string           `json:"name" validate:"omitempty,notblank,max=200"`
+	Alias        optional[string]  `json:"alias"`
+	Description  optional[string]  `json:"description"`
+	PopupText    optional[string]  `json:"popup_text"`
+	Latitude     optional[float64] `json:"latitude"`
+	Longitude    optional[float64] `json:"longitude"`
+	RadiusMeters optional[int]     `json:"radius_meters"`
+	MinVisit     *int              `json:"min_visit" validate:"omitempty,min=1,max=100"`
+	StartDate    optional[string]  `json:"start_date"`
+	Active       *bool             `json:"is_active"`
 	// CheckpointIDs, when sent, replaces the zone's checkpoints and their order; left out, they stay.
 	CheckpointIDs *[]string `json:"checkpoint_ids" validate:"omitempty,max=100"`
 }
@@ -235,10 +233,6 @@ func (s *Service) Create(ctx context.Context, actor auth.Principal, scope access
 	if err != nil {
 		return Zone{}, err
 	}
-	secret, err := newSecret()
-	if err != nil {
-		return Zone{}, err
-	}
 	team := nonBlank(in.TeamCode)
 	minVisit := 1
 	if in.MinVisit != nil {
@@ -254,8 +248,7 @@ func (s *Service) Create(ctx context.Context, actor auth.Principal, scope access
 			ProjectCode: in.ProjectCode, TeamCode: textOrNull(team), Type: db.PatrolZoneType(in.Type), Name: strings.TrimSpace(in.Name),
 			Alias: textOrNull(in.Alias), Description: textOrNull(in.Description), PopupText: textOrNull(in.PopupText),
 			Latitude: geo.lat, Longitude: geo.lng, RadiusMeters: intParam(geo.radius), MinVisit: int32(minVisit), //nolint:gosec // 1..100
-			StartDate: dateParam(in.StartDate), PhotoRequired: in.PhotoRequired == nil || *in.PhotoRequired,
-			QrSecret: secret, Active: in.Active == nil || *in.Active, Now: ts(s.clock.Now()),
+			StartDate: dateParam(in.StartDate), Active: in.Active == nil || *in.Active, Now: ts(s.clock.Now()),
 		})
 		if database.IsUniqueViolation(err) && database.ConstraintName(err) == "patrol_zones_name_uq" {
 			return ErrZoneNameTaken
@@ -338,7 +331,7 @@ func (s *Service) Update(ctx context.Context, actor auth.Principal, scope access
 		next := db.UpdatePatrolZoneParams{
 			ID: id, TeamCode: row.TeamCode, Type: row.Type, Name: row.Name, Alias: row.Alias, Description: row.Description,
 			PopupText: row.PopupText, Latitude: row.Latitude, Longitude: row.Longitude, RadiusMeters: row.RadiusMeters,
-			MinVisit: row.MinVisit, StartDate: row.StartDate, PhotoRequired: row.PhotoRequired, Active: row.Active,
+			MinVisit: row.MinVisit, StartDate: row.StartDate, Active: row.Active,
 			Now: ts(s.clock.Now()),
 		}
 		if in.Type != nil {
@@ -361,9 +354,6 @@ func (s *Service) Update(ctx context.Context, actor auth.Principal, scope access
 		}
 		if in.StartDate.set {
 			next.StartDate = dateParam(startDate)
-		}
-		if in.PhotoRequired != nil {
-			next.PhotoRequired = *in.PhotoRequired
 		}
 		if in.Active != nil {
 			next.Active = *in.Active
@@ -408,6 +398,9 @@ func (s *Service) Update(ctx context.Context, actor auth.Principal, scope access
 			if err := linkCheckpoints(ctx, q, row, ids, found); err != nil {
 				return err
 			}
+			if err := releaseIfEmpty(ctx, q, id, s.clock.Now()); err != nil {
+				return err
+			}
 		}
 		out, err = withCheckpoints(ctx, q, row)
 		if err != nil {
@@ -447,6 +440,9 @@ func (s *Service) AssignCheckpoints(ctx context.Context, actor auth.Principal, s
 			return fmt.Errorf("list zone links: %w", err)
 		}
 		if err := linkCheckpoints(ctx, q, row, ids, found); err != nil {
+			return err
+		}
+		if err := releaseIfEmpty(ctx, q, id, s.clock.Now()); err != nil {
 			return err
 		}
 		// The checkpoints are part of what the zone looks like to the app, so their change moves updated_at.
@@ -494,68 +490,11 @@ func (s *Service) Delete(ctx context.Context, actor auth.Principal, scope access
 	})
 }
 
-// RotateQR gives the zone a new QR secret, so every sticker printed with the old one stops
-// working.
-func (s *Service) RotateQR(ctx context.Context, actor auth.Principal, scope access.AdminScope, id int64) (Zone, error) {
-	secret, err := newSecret()
-	if err != nil {
-		return Zone{}, err
-	}
-	var out Zone
-	err = database.WithTenant(ctx, s.pool, actor.OrganizationID, func(q *db.Queries) error {
-		row, err := q.GetPatrolZoneForUpdate(ctx, id)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return ErrZoneNotFound
-		}
-		if err != nil {
-			return fmt.Errorf("get zone: %w", err)
-		}
-		if err := assertRegion(scope, row.ProjectCode); err != nil {
-			return err
-		}
-		row, err = q.RotatePatrolZoneSecret(ctx, db.RotatePatrolZoneSecretParams{ID: id, QrSecret: secret, Now: ts(s.clock.Now())})
-		if err != nil {
-			return fmt.Errorf("rotate zone secret: %w", err)
-		}
-		out, err = withCheckpoints(ctx, q, row)
-		if err != nil {
-			return err
-		}
-		// The secret itself is never written to the audit log.
-		return auditZone(ctx, q, actor, "patrol.zone.rotate_qr", out, nil)
-	})
-	return out, err
-}
-
-// QR is a rendered QR code of a zone.
+// QR is a rendered QR code of a checkpoint, ready to be sent as a file.
 type QR struct {
 	Body        []byte
 	ContentType string
 	FileName    string
-}
-
-// QRImage renders the zone's QR code, in the format (FormatPNG or FormatSVG).
-func (s *Service) QRImage(ctx context.Context, actor auth.Principal, scope access.AdminScope, id int64, format string) (QR, error) {
-	var out QR
-	err := database.WithTenant(ctx, s.pool, actor.OrganizationID, func(q *db.Queries) error {
-		row, err := q.GetPatrolZone(ctx, id)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return ErrZoneNotFound
-		}
-		if err != nil {
-			return fmt.Errorf("get zone: %w", err)
-		}
-		if err := assertRegion(scope, row.ProjectCode); err != nil {
-			return err
-		}
-		body, contentType, err := renderQR(Payload(actor.OrganizationID, row.ID, row.QrSecret), format)
-		if err != nil {
-			return err
-		}
-		out = QR{Body: body, ContentType: contentType, FileName: fileName(row.Name, format)}
-		return nil
-	})
-	return out, err
 }
 
 // FieldFilter narrows the zones a field user lists.
@@ -887,7 +826,7 @@ func auditZone(ctx context.Context, q *db.Queries, actor auth.Principal, action 
 func zoneMeta(z Zone) map[string]any {
 	return map[string]any{
 		"type": z.Type, "name": z.Name, "team_code": z.TeamCode, "latitude": z.Latitude, "longitude": z.Longitude,
-		"radius_meters": z.RadiusMeters, "min_visit": z.MinVisit, "photo_required": z.PhotoRequired,
+		"radius_meters": z.RadiusMeters, "min_visit": z.MinVisit,
 		"active": z.Active, "checkpoints": z.CheckpointCount,
 	}
 }

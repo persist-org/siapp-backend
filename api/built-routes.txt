@@ -66,7 +66,6 @@ GET /api/v1/admin/teams/{code}/members
 GET /api/v1/admin/web-roles
 GET /api/v1/admin/zones
 GET /api/v1/admin/zones/{id}
-GET /api/v1/admin/zones/{id}/qr
 GET /api/v1/app-links
 GET /api/v1/attendances
 GET /api/v1/attendances/group-summary
@@ -159,7 +158,6 @@ POST /api/v1/admin/team-members/{id}/move
 POST /api/v1/admin/teams
 POST /api/v1/admin/teams/{code}/members
 POST /api/v1/admin/zones
-POST /api/v1/admin/zones/{id}/rotate-qr
 POST /api/v1/attendances/absent
 POST /api/v1/attendances/group
 POST /api/v1/attendances/qr/check-in

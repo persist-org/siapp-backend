@@ -15,15 +15,12 @@ import (
 const (
 	ReasonZoneNotFound = "ZONE_NOT_FOUND"
 
-	ReasonQRInvalid            = "ZONE_QR_INVALID"
 	ReasonNotInProject         = "ZONE_NOT_IN_PROJECT"
-	ReasonOutsideRadius        = "ZONE_OUTSIDE_RADIUS"
 	ReasonIntervalNotElapsed   = "ZONE_INTERVAL_NOT_ELAPSED"
 	ReasonChecklistItemInvalid = "CHECKLIST_ITEM_INVALID"
 	ReasonAnswerRequired       = "CHECKLIST_ANSWER_REQUIRED"
 	ReasonAnswerInvalid        = "CHECKLIST_ANSWER_INVALID"
 	ReasonAttachmentRequired   = "CHECKLIST_ATTACHMENT_REQUIRED"
-	ReasonPhotoRequired        = "SCAN_PHOTO_REQUIRED"
 	ReasonNotCheckedIn         = "ZONE_NOT_CHECKED_IN"
 	ReasonAlreadyCheckedIn     = "ZONE_ALREADY_CHECKED_IN" // not in the plan's list: "check in twice fails" needs a reason
 	ReasonLocalIDTaken         = "SCAN_LOCAL_ID_TAKEN"
@@ -35,21 +32,12 @@ const (
 var ErrZoneNotFound = apperr.New(http.StatusNotFound, apperr.CodeNotFound,
 	ReasonZoneNotFound, "Zona tidak ditemukan.")
 
-// ErrQRInvalid is returned for a QR code that is not this zone's: not a zone code at all, of
-// another zone, of another organization, or with an old secret (the sticker was replaced).
-var ErrQRInvalid = apperr.New(http.StatusUnprocessableEntity, apperr.CodeUnprocessable,
-	ReasonQRInvalid, "QR code tidak valid untuk zona ini.")
-
 // ErrNotInProject is returned to a person who does not serve in the zone's project (or regu).
 var ErrNotInProject = apperr.New(http.StatusForbidden, apperr.CodeForbidden,
 	ReasonNotInProject, "Anda tidak bertugas di proyek atau regu zona ini.")
 
-// ErrOutsideRadius is returned for a scan or check-in made away from the zone.
-var ErrOutsideRadius = apperr.New(http.StatusUnprocessableEntity, apperr.CodeUnprocessable,
-	ReasonOutsideRadius, "Anda berada diluar zona patroli.")
-
-// ErrIntervalNotElapsed is returned for a second scan of a zone inside the project's patrol
-// interval (DL-48).
+// ErrIntervalNotElapsed is returned for a second scan of a checkpoint inside the project's patrol
+// interval (DL-48). The reason keeps its zone name: a reason that has shipped is never renamed.
 var ErrIntervalNotElapsed = apperr.New(http.StatusUnprocessableEntity, apperr.CodeUnprocessable,
 	ReasonIntervalNotElapsed, "Zona ini baru saja di-scan. Tunggu sampai interval patroli terlewati.")
 
@@ -61,10 +49,6 @@ var ErrNotCheckedIn = apperr.New(http.StatusConflict, apperr.CodeConflict,
 // another zone: a guard is at one post at a time.
 var ErrAlreadyCheckedIn = apperr.New(http.StatusConflict, apperr.CodeConflict,
 	ReasonAlreadyCheckedIn, "Anda masih check-in di sebuah zona. Check-out lebih dulu.")
-
-// ErrPhotoRequired is returned for a scan with no photo in a zone that demands one.
-var ErrPhotoRequired = apperr.New(http.StatusUnprocessableEntity, apperr.CodeUnprocessable,
-	ReasonPhotoRequired, "Zona ini mewajibkan minimal satu foto.")
 
 // Reasons of Phase 10.3.
 const (
@@ -158,22 +142,56 @@ func actionInvalid(fields ...apperr.FieldError) *apperr.Error {
 	return apperr.ErrValidation.WithReason(ReasonCheckpointActionInvalid).WithFields(fields...)
 }
 
-// itemError builds the error of one checklist item: the reason says what is wrong, the details name
-// the item, and the message names it for a human.
-func itemError(base *apperr.Error, itemID int64, label, why string) *apperr.Error {
+// Reasons of Phase 10.9 (the scan at a checkpoint).
+const (
+	ReasonCheckpointNotInZone     = "CHECKPOINT_NOT_IN_ZONE"
+	ReasonCheckpointQRInvalid     = "CHECKPOINT_QR_INVALID"
+	ReasonCheckpointOutsideRadius = "CHECKPOINT_OUTSIDE_RADIUS"
+	ReasonCheckpointOutOfOrder    = "CHECKPOINT_OUT_OF_ORDER"
+)
+
+// ErrCheckpointNotInZone is returned for a checkpoint that a guard cannot scan in this zone: it is not one
+// of the zone's (any more), it is switched off, or it does not exist. One answer for all three, so an id
+// says nothing about checkpoints of other zones.
+var ErrCheckpointNotInZone = apperr.New(http.StatusUnprocessableEntity, apperr.CodeUnprocessable,
+	ReasonCheckpointNotInZone, "Checkpoint ini bukan bagian dari zona ini.")
+
+// ErrCheckpointQRInvalid is returned for a QR code that is not this checkpoint's: not a checkpoint code at
+// all, of another checkpoint, of another organization, or with an old secret (the sticker was replaced).
+var ErrCheckpointQRInvalid = apperr.New(http.StatusUnprocessableEntity, apperr.CodeUnprocessable,
+	ReasonCheckpointQRInvalid, "QR code tidak valid untuk checkpoint ini.")
+
+// ErrCheckpointOutsideRadius is returned for a scan or check-in made away from the checkpoint.
+var ErrCheckpointOutsideRadius = apperr.New(http.StatusUnprocessableEntity, apperr.CodeUnprocessable,
+	ReasonCheckpointOutsideRadius, "Anda berada di luar area checkpoint.")
+
+// ErrCheckpointOutOfOrder is returned for a checkpoint scanned before the one the zone's order puts first
+// (docs/plan/10.1-patrol-update.md, U3). details.expected_checkpoint_id names the one to scan.
+//
+// ⚠ It is 409, not 422 like the other refusals of a scan, on purpose. The idempotency middleware keeps the
+// answer of a 4xx under the request's key (the client would get the same answer again) but not of a 409,
+// which it takes for transient. This refusal is transient: an offline queue is sent in order, and the same
+// request, with the same local_id and key, is accepted once the earlier scans have arrived. A 422 would
+// hand the app its own stored refusal back for good.
+var ErrCheckpointOutOfOrder = apperr.New(http.StatusConflict, apperr.CodeConflict,
+	ReasonCheckpointOutOfOrder, "Scan checkpoint sebelumnya lebih dulu.")
+
+// actionError builds the error of one checkpoint action: the reason says what is wrong, the details name the
+// action, and the message names it for a human.
+func actionError(base *apperr.Error, actionID, name, why string) *apperr.Error {
 	msg := base.Message
 	if why != "" {
 		msg = why
 	}
-	if label != "" {
-		msg = "Butir \"" + label + "\": " + msg
+	if name != "" {
+		msg = "Aksi \"" + name + "\": " + msg
 	}
-	return base.WithMessage(msg).WithDetails(map[string]any{"item_id": itemID})
+	return base.WithMessage(msg).WithDetails(map[string]any{"action_id": actionID})
 }
 
 var (
 	errChecklistItemInvalid = apperr.New(http.StatusUnprocessableEntity, apperr.CodeUnprocessable,
-		ReasonChecklistItemInvalid, "Butir checklist tidak valid untuk zona ini.")
+		ReasonChecklistItemInvalid, "Aksi tidak valid untuk checkpoint ini.")
 	errAnswerRequired = apperr.New(http.StatusUnprocessableEntity, apperr.CodeUnprocessable,
 		ReasonAnswerRequired, "Wajib dijawab.")
 	errAnswerInvalid = apperr.New(http.StatusUnprocessableEntity, apperr.CodeUnprocessable,

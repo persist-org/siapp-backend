@@ -95,6 +95,12 @@ ORDER BY zc.checkpoint_id, z.name, z.id;
 -- name: ListZoneLinks :many
 SELECT project_code, checkpoint_id, sort_order FROM patrol_zone_checkpoints WHERE zone_id = $1 ORDER BY sort_order;
 
+-- Is this checkpoint one a guard can scan in this zone now: linked to it, and active? Its position when it is.
+-- name: GetZoneCheckpointLink :one
+SELECT zc.sort_order FROM patrol_zone_checkpoints zc
+JOIN patrol_checkpoints c ON c.organization_id = zc.organization_id AND c.id = zc.checkpoint_id
+WHERE zc.zone_id = $1 AND zc.checkpoint_id = $2 AND c.active AND c.deleted_at IS NULL;
+
 -- Every checkpoint a zone holds, in order, the inactive ones too (an admin sees them and they keep
 -- their place); only a deleted one is gone. is_active tells them apart.
 -- name: ListZoneCheckpointsAdmin :many
@@ -188,8 +194,8 @@ RETURNING id;
 -- ==============================
 
 -- name: InsertScanAction :one
-INSERT INTO patrol_scan_actions (scan_id, checkpoint_id, action_id, personnel_id, note, media_ids, snapshot, created_at)
-VALUES (@scan_id, @checkpoint_id, @action_id, @personnel_id, sqlc.narg('note'), @media_ids, @snapshot, @now)
+INSERT INTO patrol_scan_actions (scan_id, checkpoint_id, action_id, personnel_id, note, media_ids, snapshot, device_condition, created_at)
+VALUES (@scan_id, @checkpoint_id, @action_id, @personnel_id, sqlc.narg('note'), @media_ids, @snapshot, sqlc.narg('device_condition'), @now)
 RETURNING *;
 
 -- The answers of a page of scans in one query, in the order of the checkpoint's checklist.

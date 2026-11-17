@@ -2770,12 +2770,12 @@ components:
       type: object
       description: |
         Zona patroli (`PATROL`) atau pos jaga (`GUARD`) beserta checkpoint-nya (Phase 10.1, 10.8).
-        Checklist dan QR scan ada di checkpoint, bukan di zona. Proyek dan regu dikenali dengan kode (D19), bukan id.
+        Checklist, QR dan aturan foto ada di checkpoint, bukan di zona (titik dan radius zona hanya untuk tampilan peta). Proyek dan regu dikenali dengan kode (D19), bukan id.
         Rahasia QR TIDAK pernah ada di sini: isinya hanya ada di gambar QR yang dicetak admin
         (`GET /admin/zones/{id}/qr`; dan QR checkpoint di `GET /admin/checkpoints/{id}/qr`).
         Daftar hanya memuat `checkpoint_count`; `checkpoints` ada di detail (admin: semua, berurutan, tanpa checklist;
         lapangan: yang aktif, dengan checklist dan kemajuan pemanggil hari ini, dan `next_checkpoint_id`).
-      required: [id, project_code, type, name, min_visit, photo_required, is_active, checkpoint_count, created_at, updated_at]
+      required: [id, project_code, type, name, min_visit, is_active, checkpoint_count, created_at, updated_at]
       properties:
         id: { type: integer, format: int64 }
         project_code: { type: string, example: 1K-IBMI-S }
@@ -2790,7 +2790,6 @@ components:
         radius_meters: { type: integer, nullable: true, minimum: 1, description: "Zona tanpa geofence (semua null) hanya mengandalkan QR." }
         min_visit: { type: integer, minimum: 1, description: "Jumlah scan yang dibutuhkan (lingkaran merah)." }
         start_date: { type: string, format: date, nullable: true }
-        photo_required: { type: boolean, description: "Scan butuh minimal satu foto, walau tidak ada butir checklist yang meminta (SQD §4.3)." }
         is_active: { type: boolean }
         checkpoint_count: { type: integer, minimum: 0, description: "Jumlah checkpoint aktif zona ini: yang bisa di-scan petugas." }
         checkpoints:
@@ -2822,7 +2821,6 @@ components:
         radius_meters: { type: integer, nullable: true, minimum: 1, maximum: 5000, description: "Bawaan 50 bila titik dikirim tanpa radius." }
         min_visit: { type: integer, minimum: 1, maximum: 100, default: 1 }
         start_date: { type: string, format: date, nullable: true }
-        photo_required: { type: boolean, default: true }
         is_active: { type: boolean, default: true }
         checkpoint_ids: { type: array, maxItems: 100, items: { type: string, format: uuid }, description: "Checkpoint zona menurut urutannya (posisi 1..n). Di PATCH, bila dikirim menggantikan semuanya; bila tidak, tidak berubah." }
     PatrolZoneUpdate:
@@ -2844,7 +2842,6 @@ components:
         radius_meters: { type: integer, nullable: true, minimum: 1, maximum: 5000 }
         min_visit: { type: integer, minimum: 1, maximum: 100 }
         start_date: { type: string, format: date, nullable: true }
-        photo_required: { type: boolean }
         is_active: { type: boolean }
         checkpoint_ids: { type: array, maxItems: 100, items: { type: string, format: uuid }, description: "Checkpoint zona menurut urutannya (posisi 1..n). Di PATCH, bila dikirim menggantikan semuanya; bila tidak, tidak berubah." }
 
@@ -3005,13 +3002,14 @@ components:
         capture_source: { type: string, enum: [CAMERA, GALLERY, UNKNOWN] }
     PatrolScan:
       type: object
-      description: Satu kunjungan ke zona. `team_code` dan `work_date` ditentukan server dari shift pemindai, bukan dikirim aplikasi.
+      description: Satu kunjungan ke satu checkpoint zona. `team_code` dan `work_date` ditentukan server dari shift pemindai, bukan dikirim aplikasi.
       required: [id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, subject, answers, status, submitted_offline, created_at]
       properties:
         id: { type: integer, format: int64 }
         local_id: { type: string, format: uuid }
         zone_id: { type: integer, format: int64 }
         zone_type: { type: string, enum: [PATROL, GUARD] }
+        checkpoint_id: { type: string, format: uuid, nullable: true, description: "Checkpoint yang di-scan (Phase 10.9); null pada scan lama sebelum checkpoint ada." }
         personnel_id: { type: integer, format: int64 }
         team_code: { type: string, example: 1K-IBMI-S1 }
         project_code: { type: string, example: 1K-IBMI-S }
@@ -3021,7 +3019,7 @@ components:
         latitude: { type: number, format: double }
         longitude: { type: number, format: double }
         accuracy_meters: { type: number, format: double }
-        distance_meters: { type: integer, nullable: true, description: "Jarak dari pusat zona; null bila zona tanpa geofence." }
+        distance_meters: { type: integer, nullable: true, description: "Jarak dari checkpoint; null bila checkpoint tanpa geofence." }
         subject: { type: string }
         notes: { type: string, nullable: true }
         answers: { type: array, items: { $ref: '#/components/schemas/PatrolScanAnswer' } }
@@ -3073,34 +3071,55 @@ components:
       properties:
         approved: { type: array, items: { $ref: '#/components/schemas/PatrolScan' } }
         skipped: { type: array, items: { type: integer, format: int64 }, description: "Scan yang sudah diputuskan lebih dulu; dilewati, tidak diubah." }
-    PatrolScanAnswerInput:
+    PatrolScanActionInput:
       type: object
-      required: [item_id]
+      description: Jawaban satu aksi checklist checkpoint. Melakukan dan menunjukkan aksi itulah jawabannya, tanpa nilai.
+      required: [action_id]
       properties:
-        item_id: { type: integer, format: int64 }
-        value: { nullable: true, description: "Boolean, teks, angka atau nilai opsi menurut `answer_type` butirnya." }
-        note: { type: string, nullable: true, maxLength: 1000 }
-        media_ids: { type: array, maxItems: 5, items: { type: integer, format: int64 }, description: "Foto jawaban ini (`POST /media` dengan tujuan `PATROL_SCAN`)." }
+        action_id: { type: string, format: uuid, description: "Aksi aktif checkpoint yang di-scan; yang lain `CHECKLIST_ITEM_INVALID`." }
+        note: { type: string, nullable: true, maxLength: 1000, description: "Wajib bila `is_note_required`." }
+        media_ids: { type: array, maxItems: 20, items: { type: integer, format: int64 }, description: "Foto aksi ini (`POST /media` dengan tujuan `PATROL_SCAN`): paling sedikit `min_photos`, paling banyak `max_photos`. Tiap id hanya sekali di seluruh scan." }
+        device_condition: { $ref: '#/components/schemas/DeviceCondition' }
+    DeviceCondition:
+      type: object
+      description: |
+        Kondisi perangkat saat aksi dijawab. Bukti, bukan penghalang: server tidak pernah menolak scan karena
+        isinya (`mock_location: true` tetap diterima dan disimpan) dan tidak memercayainya (aplikasi yang
+        melaporkan). Harus objek JSON, paling besar 4096 byte; kunci yang dikenal diperiksa tipenya, kunci lain
+        disimpan apa adanya. Yang salah: 422 `DEVICE_CONDITION_INVALID`.
+      additionalProperties: true
+      properties:
+        battery_level: { type: number, minimum: 0, maximum: 100 }
+        is_charging: { type: boolean }
+        network_type: { type: string, enum: [wifi, cellular, none, unknown] }
+        gps_enabled: { type: boolean }
+        mock_location: { type: boolean }
+        os: { type: string, maxLength: 64 }
+        os_version: { type: string, maxLength: 64 }
+        device_model: { type: string, maxLength: 64 }
+        app_version: { type: string, maxLength: 64 }
     PatrolScanCreate:
       type: object
-      required: [local_id, occurred_at, qr_payload, latitude, longitude, accuracy_meters, subject]
+      required: [local_id, occurred_at, checkpoint_id, qr_payload, latitude, longitude, accuracy_meters]
       properties:
         local_id: { type: string, format: uuid, description: "Harus sama dengan header Idempotency-Key." }
         occurred_at: { type: string, format: date-time, description: "Saat scan terjadi di perangkat. Maksimal 5 menit di depan dan 7 hari ke belakang." }
-        qr_payload: { type: string, example: "PERSIST-ZONE:1:900101:42:abcdefghijklmnopqrstuv" }
+        checkpoint_id: { type: string, format: uuid }
+        qr_payload: { type: string, maxLength: 200, example: "PERSIST-CP:1:900101:3f2504e0-4f89-41d3-9a0c-0305e82c3301:abcdefghijklmnopqrstuv" }
         latitude: { type: number, format: double }
         longitude: { type: number, format: double }
         accuracy_meters: { type: number, format: double, minimum: 0, maximum: 100000 }
-        subject: { type: string, maxLength: 200 }
+        subject: { type: string, maxLength: 200, description: "Boleh dikosongkan: bawaannya nama checkpoint." }
         notes: { type: string, nullable: true, maxLength: 2000 }
-        answers: { type: array, maxItems: 100, items: { $ref: '#/components/schemas/PatrolScanAnswerInput' } }
-        media_ids: { type: array, maxItems: 20, items: { type: integer, format: int64 }, description: "Foto umum scan. Tiap id hanya sekali di seluruh scan (juga terhadap foto jawaban)." }
+        device_condition: { $ref: '#/components/schemas/DeviceCondition' }
+        actions: { type: array, maxItems: 50, items: { $ref: '#/components/schemas/PatrolScanActionInput' }, description: "Satu jawaban untuk setiap aksi aktif checkpoint. `device_condition` di sini menjadi bawaan aksi yang tidak membawa sendiri." }
         submitted_offline: { type: boolean, default: false }
     ZoneCheckInInput:
       type: object
-      description: Check-in dan check-out memakai badan yang sama. Waktunya waktu server.
-      required: [qr_payload, latitude, longitude, accuracy_meters]
+      description: Check-in dan check-out memakai badan yang sama. Waktunya waktu server. QR-nya QR salah satu checkpoint zona.
+      required: [checkpoint_id, qr_payload, latitude, longitude, accuracy_meters]
       properties:
+        checkpoint_id: { type: string, format: uuid }
         qr_payload: { type: string }
         latitude: { type: number, format: double }
         longitude: { type: number, format: double }
@@ -3111,6 +3130,7 @@ components:
       properties:
         id: { type: integer, format: int64 }
         zone_id: { type: integer, format: int64 }
+        checkpoint_id: { type: string, format: uuid, nullable: true, description: "Checkpoint yang QR-nya di-scan saat check-in; null pada check-in lama." }
         personnel_id: { type: integer, format: int64 }
         full_name: { type: string, description: "Terisi di `live` dan `tracking`." }
         team_code: { type: string }
@@ -10294,57 +10314,6 @@ paths:
                 SCHEDULE_NOT_FOUND:
                   summary: "Jadwal tidak ada atau milik organisasi lain"
                   value: { success: false, error: { code: NOT_FOUND, message: "Jadwal tidak ditemukan.", details: { reason: SCHEDULE_NOT_FOUND } }, meta: { request_id: req_abc123 } }
-  /admin/zones/{id}/qr:
-    parameters:
-      - $ref: '#/components/parameters/IdPath'
-    get:
-      operationId: getAdminZonesByIdQr
-      tags: [Patrol]
-      summary: Generate/print QR zona
-      description: |
-        Gambar QR berisi `PERSIST-ZONE:1:{organizationId}:{zoneId}:{qrSecret}`. QR ini statis
-        karena dicetak jadi stiker; keamanannya dari geofence di server, id organisasi di
-        isinya, dan `POST /admin/zones/{id}/rotate-qr` bila stiker bocor. Header
-        `Content-Disposition` memuat nama berkas dari nama zona.
-      parameters:
-        - { name: format, in: query, schema: { type: string, enum: [png, svg], default: png } }
-      responses:
-        '200':
-          description: Gambar QR
-          headers:
-            Content-Disposition: { schema: { type: string }, description: 'attachment; filename=qr-zona-nama-zona.png' }
-          content:
-            image/png: { schema: { type: string, format: binary } }
-            image/svg+xml: { schema: { type: string, format: binary } }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '422': { $ref: '#/components/responses/ValidationError' }
-  /admin/zones/{id}/rotate-qr:
-    parameters:
-      - $ref: '#/components/parameters/IdPath'
-    post:
-      operationId: postAdminZonesByIdRotateQr
-      tags: [Patrol]
-      summary: Ganti rahasia QR zona
-      description: |
-        Membuat rahasia QR baru. Semua stiker yang sudah dicetak berhenti berlaku; cetak ulang
-        lewat `GET /admin/zones/{id}/qr`.
-      security:
-        - bearerSession: []
-        - oauth2ClientCredentials: [patrol:write]
-        - apiKey: []
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - { $ref: '#/components/schemas/SuccessEnvelope' }
-                  - properties: { data: { $ref: '#/components/schemas/PatrolZone' } }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
   /admin/zones/{id}/checkpoints:
     parameters:
       - $ref: '#/components/parameters/IdPath'
@@ -11980,19 +11949,46 @@ paths:
     post:
       operationId: postZonesByIdScan
       tags: [Patrol]
-      summary: Scan QR zona (offline-capable, geofence)
+      summary: Scan QR checkpoint (offline-capable, geofence, berurutan)
       description: |
-        Memeriksa berurutan, dan yang pertama gagal menjadi jawabannya: QR (`ZONE_QR_INVALID`),
-        izin `patrol.scan`/`guard.scan` menurut tipe zona, keanggotaan proyek dan regu
-        (`ZONE_NOT_IN_PROJECT`, 403), geofence (`ZONE_OUTSIDE_RADIUS`: jarak lebih dari radius
-        ditambah `min(accuracy_meters, 30)`), interval patroli proyek (`ZONE_INTERVAL_NOT_ELAPSED`),
-        lalu checklist (`CHECKLIST_ITEM_INVALID`, `CHECKLIST_ANSWER_REQUIRED`,
-        `CHECKLIST_ANSWER_INVALID`, `CHECKLIST_ATTACHMENT_REQUIRED`) dan foto (`SCAN_PHOTO_REQUIRED`).
-        Scan offline dinilai dengan checklist saat `occurred_at`: butir yang dinonaktifkan sesudahnya
-        diabaikan, butir yang dibuat sesudahnya tidak wajib. Kirim ulang dengan `local_id` yang sama
-        mengembalikan scan tersimpan (200) tanpa notifikasi. Setelah tersimpan, DANRU regu diberi tahu
-        (`PATROL_SUBMITTED`/`GUARD_SUBMITTED`) dan, untuk `submitted_offline`, pengirim menerima
-        `OFFLINE_SUBMISSION_SENT`.
+        Satu kunjungan ke satu checkpoint zona, dengan checklist-nya. `checkpoint_id` dan `qr_payload`
+        (`PERSIST-CP:1:{organizationId}:{checkpointId}:{qrSecret}`, isi stiker checkpoint) wajib. Header
+        `Idempotency-Key` wajib (UUID) dan harus sama dengan `local_id`; `occurred_at` paling jauh 5 menit di
+        depan dan 7 hari ke belakang. Memeriksa berurutan, dan yang pertama gagal menjadi jawabannya:
+        checkpoint harus bagian dari zona ini dan aktif (`CHECKPOINT_NOT_IN_ZONE`; id yang tidak ada, nonaktif
+        atau milik zona lain dijawab sama), QR (`CHECKPOINT_QR_INVALID`), izin `patrol.scan`/`guard.scan` menurut
+        tipe zona (`PERMISSION_DENIED`, 403), keanggotaan proyek dan regu (`ZONE_NOT_IN_PROJECT`, 403), geofence
+        checkpoint (`CHECKPOINT_OUTSIDE_RADIUS`: jarak lebih dari radius ditambah `min(accuracy_meters, 30)`;
+        checkpoint tanpa titik hanya mengandalkan QR), urutan putaran (`CHECKPOINT_OUT_OF_ORDER`), interval
+        (`ZONE_INTERVAL_NOT_ELAPSED`: per checkpoint, paling cepat 30 detik, atau interval patroli proyek bila
+        lebih besar), lalu aksi (`CHECKLIST_ITEM_INVALID`, `CHECKLIST_ANSWER_REQUIRED`, `CHECKLIST_ANSWER_INVALID`,
+        `CHECKLIST_ATTACHMENT_REQUIRED`) dan `device_condition` (`DEVICE_CONDITION_INVALID`, yang tidak pernah
+        menolak scan karena isinya); terakhir foto dilampirkan.
+
+        **Urutan.** Checkpoint pertama zona selalu boleh di-scan (putaran baru bisa dimulai kapan saja);
+        checkpoint lain hanya bila checkpoint sebelumnya sudah lebih sering di-scan oleh pemanggil di zona ini
+        pada tanggal kerja yang sama (status scan apa pun dihitung). Pelanggarannya 409
+        `CHECKPOINT_OUT_OF_ORDER` dengan `details.expected_checkpoint_id` (checkpoint yang harus di-scan lebih
+        dulu). Sengaja 409, bukan 422: jawaban 4xx disimpan di bawah `Idempotency-Key`, sedangkan 409 dilepas, jadi
+        permintaan yang sama dengan `local_id` dan key yang sama bisa dikirim ulang dan diterima setelah pendahulunya tiba. `GET /zones/{id}` memberi `scannable` dan `next_checkpoint_id` dari aturan yang sama.
+
+        **Aksi.** Setiap aksi aktif checkpoint harus dijawab (tidak ada "lewati"): `actions` memuat satu jawaban per
+        aksi dengan `note` dan `media_ids`. Foto kurang dari `min_photos` atau catatan kosong untuk
+        `is_note_required` ditolak `CHECKLIST_ATTACHMENT_REQUIRED`; foto lebih dari `max_photos` atau satu foto dipakai
+        dua kali `CHECKLIST_ANSWER_INVALID`; aksi yang bukan milik checkpoint, nonaktif atau ganda
+        `CHECKLIST_ITEM_INVALID`, yang belum dijawab `CHECKLIST_ANSWER_REQUIRED` (semuanya dengan
+        `details.action_id`).
+
+        **Offline.** Urutan dinilai menurut `occurred_at`, bukan saat scan tiba, jadi aplikasi HARUS mengirim scan
+        satu zona berurutan menurut `occurred_at`: scan yang dikirim lebih dulu dari pendahulunya ditolak
+        409 `CHECKPOINT_OUT_OF_ORDER` dan boleh dikirim ulang (dengan key yang sama) setelah pendahulunya sampai. Aksi dinilai menurut checklist
+        saat `occurred_at`: aksi yang dinonaktifkan sesudahnya diabaikan, aksi yang dibuat sesudahnya tidak wajib.
+        Kirim ulang dengan `local_id` yang sama mengembalikan scan tersimpan (200) tanpa notifikasi. Setelah
+        tersimpan, DANRU regu diberi tahu (`PATROL_SUBMITTED`/`GUARD_SUBMITTED`, dengan `data.checkpoint_id` dan
+        `data.checkpoint_name`) dan, untuk `submitted_offline`, pengirim menerima `OFFLINE_SUBMISSION_SENT`. Bila
+        patroli pemanggil sedang berjalan di proyek itu, scan ikut patroli (`patrol_id`). Respons 201/200 belum
+        memuat `personnel_name` dan `media` (URL foto); baca scan untuk itu. Jawaban per aksi disimpan di
+        `patrol_scan_actions` dan baru tampil di bacaan scan pada Phase 10.10.
       security:
         - bearerSession: []
         - oauth2ClientCredentials: [patrol:write]
@@ -12055,7 +12051,7 @@ paths:
       tags: [Patrol]
       summary: Check-in pos (Jaga)
       description: |
-        QR dan geofence diperiksa seperti scan. Satu orang hanya boleh punya satu check-in terbuka;
+        QR dan geofence diperiksa seperti scan, dengan `checkpoint_id` dan `qr_payload` dari checkpoint mana pun di zona itu (zona tidak punya QR sendiri); urutan putaran tidak berlaku. Satu orang hanya boleh punya satu check-in terbuka;
         check-in lagi sebelum check-out dijawab 409 `ZONE_ALREADY_CHECKED_IN`.
       parameters: [ { $ref: '#/components/parameters/IdempotencyKeyHeader' } ]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ZoneCheckInInput' } } } }
@@ -12072,7 +12068,7 @@ paths:
       operationId: postZonesByIdCheckOut
       tags: [Patrol]
       summary: Check-out pos (Jaga)
-      description: Tanpa check-in terbuka di zona ini dijawab 409 `ZONE_NOT_CHECKED_IN`. QR dan geofence diperiksa seperti check-in.
+      description: Tanpa check-in terbuka di zona ini dijawab 409 `ZONE_NOT_CHECKED_IN`. QR dan geofence diperiksa seperti check-in; checkpoint mana pun di zona itu boleh dipakai (tidak harus yang dipakai saat check-in).
       parameters: [ { $ref: '#/components/parameters/IdempotencyKeyHeader' } ]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ZoneCheckInInput' } } } }
       responses:

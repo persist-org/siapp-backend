@@ -13,15 +13,11 @@ func TestCheckpointPayload(t *testing.T) {
 	require.Equal(t,
 		"PERSIST-CP:1:900101:3f2504e0-4f89-41d3-9a0c-0305e82c3301:abcdefghijklmnopqrstuv",
 		CheckpointPayload(900101, "3f2504e0-4f89-41d3-9a0c-0305e82c3301", "abcdefghijklmnopqrstuv"))
-	require.NotEqual(t, strings.Split(Payload(1, 2, "s"), ":")[0], strings.Split(CheckpointPayload(1, "x", "s"), ":")[0],
-		"the app and the server can tell a zone sticker from a checkpoint sticker")
 }
 
 func TestQRFileNames(t *testing.T) {
 	require.Equal(t, "qr-checkpoint-gerbang-utama.png", checkpointFileName("  Gerbang  Utama! ", "png"))
 	require.Equal(t, "qr-checkpoint-checkpoint.svg", checkpointFileName("???", "svg"), "nothing usable falls back to a plain name")
-	require.Equal(t, "qr-zona-pos-a.png", fileName("Pos A", "png"), "the zone's name is unchanged by the refactor")
-	require.Equal(t, "qr-zona-zona.png", fileName("", "png"))
 	require.LessOrEqual(t, len(checkpointFileName(strings.Repeat("a", 200), "png")), len("qr-checkpoint-")+60+len(".png"))
 }
 

@@ -62,9 +62,7 @@ func TestGeofence(t *testing.T) {
 	})
 }
 
-func TestPayloadAndSecret(t *testing.T) {
-	require.Equal(t, "PERSIST-ZONE:1:900101:42:abcdefghijklmnopqrstuv", Payload(900101, 42, "abcdefghijklmnopqrstuv"))
-
+func TestNewSecret(t *testing.T) {
 	seen := map[string]bool{}
 	for range 50 {
 		s, err := newSecret()
@@ -79,23 +77,23 @@ func TestPayloadAndSecret(t *testing.T) {
 }
 
 func TestFileName(t *testing.T) {
-	for name, tc := range map[string]struct{ zone, format, want string }{
-		"plain":            {"Pos Gerbang", "png", "qr-zona-pos-gerbang.png"},
-		"punctuation":      {"  Pos Gerbang Utama!! (A/B) ", "svg", "qr-zona-pos-gerbang-utama-a-b.svg"},
-		"unicode":          {"Pós Jaga ☃", "png", "qr-zona-p-s-jaga.png"},
-		"only symbols":     {"!!!", "png", "qr-zona-zona.png"},
-		"header injection": {"a\r\nSet-Cookie: x=1", "png", "qr-zona-a-set-cookie-x-1.png"},
+	for name, tc := range map[string]struct{ checkpoint, format, want string }{
+		"plain":            {"Pos Gerbang", "png", "qr-checkpoint-pos-gerbang.png"},
+		"punctuation":      {"  Pos Gerbang Utama!! (A/B) ", "svg", "qr-checkpoint-pos-gerbang-utama-a-b.svg"},
+		"unicode":          {"Pós Jaga ☃", "png", "qr-checkpoint-p-s-jaga.png"},
+		"only symbols":     {"!!!", "png", "qr-checkpoint-checkpoint.png"},
+		"header injection": {"a\r\nSet-Cookie: x=1", "png", "qr-checkpoint-a-set-cookie-x-1.png"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			require.Equal(t, tc.want, fileName(tc.zone, tc.format))
+			require.Equal(t, tc.want, checkpointFileName(tc.checkpoint, tc.format))
 		})
 	}
-	long := fileName(strings.Repeat("a", 200), "png")
-	require.LessOrEqual(t, len(long), len("qr-zona-")+60+len(".png"))
+	long := checkpointFileName(strings.Repeat("a", 200), "png")
+	require.LessOrEqual(t, len(long), len("qr-checkpoint-")+60+len(".png"))
 }
 
 func TestRenderQR(t *testing.T) {
-	payload := Payload(1, 2, "abcdefghijklmnopqrstuv")
+	payload := CheckpointPayload(1, "3f2504e0-4f89-41d3-9a0c-0305e82c3301", "abcdefghijklmnopqrstuv")
 
 	body, contentType, err := renderQR(payload, FormatPNG)
 	require.NoError(t, err)
@@ -118,7 +116,7 @@ func TestRenderQR(t *testing.T) {
 	require.Error(t, err)
 
 	t.Run("a different secret is a different picture", func(t *testing.T) {
-		other, _, err := renderQR(Payload(1, 2, "ZZZZZZZZZZZZZZZZZZZZZZ"), FormatSVG)
+		other, _, err := renderQR(CheckpointPayload(1, "3f2504e0-4f89-41d3-9a0c-0305e82c3301", "ZZZZZZZZZZZZZZZZZZZZZZ"), FormatSVG)
 		require.NoError(t, err)
 		require.NotEqual(t, svg, string(other))
 	})

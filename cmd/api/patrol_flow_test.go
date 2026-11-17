@@ -1,13 +1,10 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
-	"image/png"
 	"io"
 	"net/http"
 	"strconv"
-	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -17,41 +14,21 @@ import (
 	"siapp/pkg/platform/testkit"
 )
 
-type optionOut struct {
-	Value string `json:"value"`
-	Label string `json:"label"`
-}
-
-type checklistOut struct {
-	ID         int64       `json:"id"`
-	SortOrder  int         `json:"sort_order"`
-	Label      string      `json:"label"`
-	HelpText   *string     `json:"help_text"`
-	AnswerType string      `json:"answer_type"`
-	Options    []optionOut `json:"options"`
-	Required   bool        `json:"required"`
-	PhotoMode  string      `json:"photo_mode"`
-	PhotoMax   int         `json:"photo_max"`
-	NoteMode   string      `json:"note_mode"`
-	AttachWhen string      `json:"attach_when"`
-}
-
 type zoneOut struct {
-	ID            int64    `json:"id"`
-	ProjectCode   string   `json:"project_code"`
-	TeamCode      *string  `json:"team_code"`
-	Type          string   `json:"type"`
-	Name          string   `json:"name"`
-	Alias         *string  `json:"alias"`
-	Description   *string  `json:"description"`
-	PopupText     *string  `json:"popup_text"`
-	Latitude      *float64 `json:"latitude"`
-	Longitude     *float64 `json:"longitude"`
-	RadiusMeters  *int     `json:"radius_meters"`
-	MinVisit      int      `json:"min_visit"`
-	StartDate     *string  `json:"start_date"`
-	PhotoRequired bool     `json:"photo_required"`
-	IsActive      bool     `json:"is_active"`
+	ID           int64    `json:"id"`
+	ProjectCode  string   `json:"project_code"`
+	TeamCode     *string  `json:"team_code"`
+	Type         string   `json:"type"`
+	Name         string   `json:"name"`
+	Alias        *string  `json:"alias"`
+	Description  *string  `json:"description"`
+	PopupText    *string  `json:"popup_text"`
+	Latitude     *float64 `json:"latitude"`
+	Longitude    *float64 `json:"longitude"`
+	RadiusMeters *int     `json:"radius_meters"`
+	MinVisit     int      `json:"min_visit"`
+	StartDate    *string  `json:"start_date"`
+	IsActive     bool     `json:"is_active"`
 	// The checklist is gone from the zone (Phase 10.8): it is the checkpoint's. A list has only the
 	// count; a detail has the checkpoints.
 	CheckpointCount  int                 `json:"checkpoint_count"`
@@ -135,7 +112,6 @@ func TestPatrolZoneAdminCRUD(t *testing.T) {
 		require.Nil(t, z.TeamCode)
 		require.Equal(t, 75, *z.RadiusMeters)
 		require.Equal(t, 3, z.MinVisit)
-		require.True(t, z.PhotoRequired, "photo_required defaults to true")
 		require.True(t, z.IsActive)
 		require.Equal(t, "2026-01-15", *z.StartDate)
 
@@ -157,12 +133,11 @@ func TestPatrolZoneAdminCRUD(t *testing.T) {
 		require.Equal(t, 50, *z.RadiusMeters)
 
 		code, bare, raw := f.zoneCall(http.MethodPost, "/api/v1/admin/zones", f.adminTok, map[string]any{
-			"project_code": "1K-IBMI-S", "type": "GUARD", "name": "Pos tanpa geofence", "photo_required": false,
+			"project_code": "1K-IBMI-S", "type": "GUARD", "name": "Pos tanpa geofence",
 		})
 		require.Equal(t, http.StatusCreated, code, string(raw))
 		require.Nil(t, bare.Latitude)
 		require.Nil(t, bare.RadiusMeters)
-		require.False(t, bare.PhotoRequired)
 		require.Zero(t, bare.CheckpointCount)
 		require.Equal(t, 1, bare.MinVisit)
 	})
@@ -183,13 +158,12 @@ func TestPatrolZoneAdminCRUD(t *testing.T) {
 
 	t.Run("a patch changes what was sent, and null empties", func(t *testing.T) {
 		code, z, raw := f.zoneCall(http.MethodPatch, zonePath(id), f.adminTok, map[string]any{
-			"name": "Pos Utama", "min_visit": 2, "alias": nil, "photo_required": false, "team_code": "1K-IBMI-S1",
+			"name": "Pos Utama", "min_visit": 2, "alias": nil, "team_code": "1K-IBMI-S1",
 		})
 		require.Equal(t, http.StatusOK, code, string(raw))
 		require.Equal(t, "Pos Utama", z.Name)
 		require.Equal(t, 2, z.MinVisit)
 		require.Nil(t, z.Alias)
-		require.False(t, z.PhotoRequired)
 		require.Equal(t, "1K-IBMI-S1", *z.TeamCode)
 		require.Equal(t, "Gerbang depan", *z.Description, "what was not sent is kept")
 		require.Equal(t, 75, *z.RadiusMeters)
@@ -286,15 +260,10 @@ func TestPatrolZoneAdminCRUD(t *testing.T) {
 		require.Equal(t, http.StatusNotFound, code)
 	})
 
-	t.Run("every change is audited, with no secret", func(t *testing.T) {
+	t.Run("every change is audited", func(t *testing.T) {
 		var n int
 		f.query([]any{&n}, "SELECT count(*) FROM audit_logs WHERE entity_type = 'patrol_zone' AND action IN ('patrol.zone.create', 'patrol.zone.update', 'patrol.zone.delete')")
 		require.GreaterOrEqual(t, n, 6)
-		var secret string
-		f.query([]any{&secret}, "SELECT qr_secret FROM patrol_zones WHERE id = $1", id)
-		var leaked int
-		f.query([]any{&leaked}, "SELECT count(*) FROM audit_logs WHERE metadata::text LIKE '%' || $1 || '%'", secret)
-		require.Zero(t, leaked)
 	})
 }
 
@@ -321,62 +290,36 @@ func (f *flow) doHeader(method, path, token string) (int, http.Header, []byte) {
 	return res.StatusCode, res.Header, body
 }
 
-func TestPatrolQR(t *testing.T) {
+// The zone has no QR any more (Phase 10.9): the sticker is the checkpoint's, printed from
+// /admin/checkpoints/{id}/qr.
+func TestPatrolZoneHasNoQR(t *testing.T) {
 	f := newFlow(t)
-	_, z, _ := f.zoneCall(http.MethodPost, "/api/v1/admin/zones", f.adminTok, map[string]any{
-		"project_code": "1K-IBMI-S", "type": "PATROL", "name": "Pos Gerbang Utama!",
-	})
-	qr := func(query string) (int, http.Header, []byte) {
-		return f.doHeader(http.MethodGet, zonePath(z.ID)+"/qr"+query, f.adminTok)
-	}
+	z := f.newPlainZone("1K-IBMI-S", "Pos Gerbang Utama!", nil)
 
-	t.Run("the default is a PNG named after the zone", func(t *testing.T) {
-		code, header, body := qr("")
-		require.Equal(t, http.StatusOK, code)
-		require.Equal(t, "image/png", header.Get("Content-Type"))
-		require.Contains(t, header.Get("Content-Disposition"), `filename=qr-zona-pos-gerbang-utama.png`)
-		require.Contains(t, header.Get("Cache-Control"), "no-store")
-		img, err := png.Decode(bytes.NewReader(body))
-		require.NoError(t, err, "it is a real PNG")
-		require.Positive(t, img.Bounds().Dx())
+	t.Run("its QR routes are gone", func(t *testing.T) {
+		for _, call := range []struct{ method, path string }{
+			{http.MethodGet, zonePath(z.ID) + "/qr"},
+			{http.MethodPost, zonePath(z.ID) + "/rotate-qr"},
+		} {
+			code, raw := f.do(call.method, call.path, f.adminTok, nil, nil)
+			require.Contains(t, []int{http.StatusNotFound, http.StatusMethodNotAllowed}, code, call.method+" "+call.path+": "+string(raw))
+		}
 	})
 
-	t.Run("an SVG is offered too", func(t *testing.T) {
-		code, header, body := qr("?format=svg")
-		require.Equal(t, http.StatusOK, code)
-		require.Equal(t, "image/svg+xml", header.Get("Content-Type"))
-		require.Contains(t, header.Get("Content-Disposition"), ".svg")
-		require.True(t, strings.HasPrefix(string(body), `<?xml`) && strings.Contains(string(body), "<svg"))
+	t.Run("the zone's own answers carry nothing of the kind", func(t *testing.T) {
+		_, raw := f.do(http.MethodGet, zonePath(z.ID), f.adminTok, nil, nil)
+		for _, word := range []string{"qr_secret", "photo_required", "PERSIST-ZONE", "PERSIST-CP"} {
+			require.NotContains(t, string(raw), word)
+		}
 	})
 
-	t.Run("an unknown format is refused", func(t *testing.T) {
-		code, _, body := qr("?format=pdf")
-		require.Equal(t, http.StatusUnprocessableEntity, code, string(body))
-		_, fields := problem(t, body)
-		require.Equal(t, []string{"format"}, fields)
-	})
-
-	t.Run("rotating the secret changes the QR, and the payload holds the organization, the zone and the secret", func(t *testing.T) {
-		var secret string
-		f.query([]any{&secret}, "SELECT qr_secret FROM patrol_zones WHERE id = $1", z.ID)
-		require.Len(t, secret, 22)
-		_, _, before := qr("?format=svg")
-
-		code, rotated, raw := f.zoneCall(http.MethodPost, zonePath(z.ID)+"/rotate-qr", f.adminTok, nil)
-		require.Equal(t, http.StatusOK, code, string(raw))
-		require.Equal(t, z.ID, rotated.ID)
-		require.NotContains(t, string(raw), "qr_secret")
-
-		var after string
-		f.query([]any{&after}, "SELECT qr_secret FROM patrol_zones WHERE id = $1", z.ID)
-		require.Len(t, after, 22)
-		require.NotEqual(t, secret, after)
-		_, _, changed := qr("?format=svg")
-		require.NotEqual(t, before, changed, "the printed code is different")
-
-		var logged int
-		f.query([]any{&logged}, "SELECT count(*) FROM audit_logs WHERE action = 'patrol.zone.rotate_qr' AND entity_id = $1", z.ID)
-		require.Equal(t, 1, logged)
+	t.Run("photo_required is not a field of a zone any more", func(t *testing.T) {
+		code, _, raw := f.zoneCall(http.MethodPost, "/api/v1/admin/zones", f.adminTok, map[string]any{
+			"project_code": "1K-IBMI-S", "type": "PATROL", "name": "Dengan aturan foto", "photo_required": true,
+		})
+		require.Equal(t, http.StatusUnprocessableEntity, code, string(raw))
+		code, _, raw = f.zoneCall(http.MethodPatch, zonePath(z.ID), f.adminTok, map[string]any{"photo_required": false})
+		require.Equal(t, http.StatusUnprocessableEntity, code, string(raw))
 	})
 }
 
@@ -418,19 +361,14 @@ func TestPatrolZoneFieldReads(t *testing.T) {
 		require.Equal(t, http.StatusUnprocessableEntity, code, string(raw))
 	})
 
-	t.Run("nothing a field user reads holds the QR secret", func(t *testing.T) {
-		var secret string
-		f.query([]any{&secret}, "SELECT qr_secret FROM patrol_zones WHERE id = $1", whole.ID)
+	t.Run("nothing a field user reads holds a QR secret", func(t *testing.T) {
 		_, list := f.do(http.MethodGet, "/api/v1/zones", f.personTok, nil, nil)
 		_, one := f.do(http.MethodGet, "/api/v1/zones/"+strconv.FormatInt(whole.ID, 10), f.personTok, nil, nil)
-		for _, body := range [][]byte{list, one} {
-			require.NotContains(t, string(body), secret)
-			require.NotContains(t, string(body), "qr_secret")
-			require.NotContains(t, string(body), "PERSIST-ZONE")
-		}
-		// The admin's JSON does not carry it either: the secret lives in the image only.
 		_, admin := f.do(http.MethodGet, zonePath(whole.ID), f.adminTok, nil, nil)
-		require.NotContains(t, string(admin), secret)
+		for _, body := range [][]byte{list, one, admin} {
+			require.NotContains(t, string(body), "qr_secret")
+			require.NotContains(t, string(body), "PERSIST-")
+		}
 	})
 
 	t.Run("one zone is readable by a member of its project", func(t *testing.T) {
@@ -496,8 +434,6 @@ func TestPatrolZoneRegionScope(t *testing.T) {
 			{http.MethodGet, zonePath(z.ID), nil},
 			{http.MethodPatch, zonePath(z.ID), map[string]any{"name": "Dicuri"}},
 			{http.MethodDelete, zonePath(z.ID), nil},
-			{http.MethodPost, zonePath(z.ID) + "/rotate-qr", nil},
-			{http.MethodGet, zonePath(z.ID) + "/qr", nil},
 			{http.MethodPut, zonePath(z.ID) + "/checkpoints", map[string]any{"checkpoint_ids": []any{}}},
 			{http.MethodPost, "/api/v1/admin/zones", map[string]any{"project_code": "1K-IBMI-S", "type": "PATROL", "name": "Zona asing"}},
 		} {

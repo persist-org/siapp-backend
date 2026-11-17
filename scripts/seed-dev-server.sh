@@ -24,8 +24,8 @@
 #     admin's edits survive a re-run.
 #   - patrol routes (2 ended + 1 running), scans of the last 3 days in every state (SUBMITTED waiting
 #     for the danru, APPROVED, DECLINED), and zone check-ins (closed + one open). These scans are of the
-#     old kind (a zone, no checkpoint) and answer the old zone checklist: they predate the checkpoints
-#     and Phase 10.10 removes them.
+#     old kind (a zone, no checkpoint, answers kept in the scan itself): they predate the checkpoints and
+#     Phase 10.10 removes them. A scan made through the API now is of a checkpoint, in order.
 #   - leave requests in every state (PENDING, APPROVED, REJECTED, CANCELLED) with the ledger and counters,
 #     one shift swap, GPS points + last locations, the inbox notifications, and the master data
 #     (panic / stakeholder types, report + instruction categories, app links, a letterhead)
@@ -359,47 +359,23 @@ BEGIN;
 -- Three zones in project 1K-DEMO-S, all near its GPS point (a 50 m radius; the second is about
 -- 60 m north of the first, so a walked patrol has a line to draw). A zone is told apart by its
 -- name inside project + type, so running this again keeps what is there.
+-- A zone has no QR and no checklist of its own: its checkpoints do (below). Its point and radius are for the map.
 INSERT INTO patrol_zones (project_code, team_code, type, name, alias, description, popup_text,
-                          latitude, longitude, radius_meters, min_visit, photo_required, qr_secret)
+                          latitude, longitude, radius_meters, min_visit)
 SELECT '1K-DEMO-S', v.team_code, v.type::patrol_zone_type, v.name, v.alias, v.description, v.popup_text,
-       v.latitude, v.longitude, 50, v.min_visit, v.photo_required,
-       -- 16 random bytes as base64url, 22 characters, like the app makes them.
-       substr(translate(encode(decode(md5(random()::text || v.name), 'hex'), 'base64'), '+/=', '-_'), 1, 22)
+       v.latitude, v.longitude, 50, v.min_visit
 FROM (VALUES
   ('Pos Gerbang Utama', 'PATROL', NULL::text,   'Gerbang',  'Gerbang depan proyek demo', 'Periksa pagar dan lampu gerbang.',
-   -6.175392::numeric, 106.827153::numeric, 1, false),
+   -6.175392::numeric, 106.827153::numeric, 1),
   ('Pos Belakang',      'PATROL', NULL::text,   'Belakang', 'Pintu belakang gedung',     NULL::text,
-   -6.174850::numeric, 106.827153::numeric, 1, false),
+   -6.174850::numeric, 106.827153::numeric, 1),
   ('Pos Jaga Depan',    'GUARD',  '1K-DEMO-S1', 'Jaga',     'Pos jaga regu 1',           NULL::text,
-   -6.175392::numeric, 106.827600::numeric, 1, true)
-) AS v(name, type, team_code, alias, description, popup_text, latitude, longitude, min_visit, photo_required)
+   -6.175392::numeric, 106.827600::numeric, 1)
+) AS v(name, type, team_code, alias, description, popup_text, latitude, longitude, min_visit)
 ON CONFLICT DO NOTHING;
 
--- The questions, only for a zone that has none yet, so an admin's edits are never overwritten.
-INSERT INTO patrol_checklist_items (zone_id, sort_order, label, help_text, answer_type, options,
-                                    required, photo_mode, note_mode, attach_when)
-SELECT z.id, c.sort_order, c.label, c.help_text, c.answer_type::checklist_answer_type, c.options,
-       c.required, c.photo_mode::checklist_attach_mode, c.note_mode::checklist_attach_mode,
-       c.attach_when::checklist_attach_when
-FROM (VALUES
-  ('Pos Gerbang Utama', 'PATROL', 1, 'Pagar terkunci dan utuh?', 'Foto wajib bila jawabannya tidak.',
-   'BOOLEAN', NULL::jsonb, true, 'REQUIRED', 'NONE', 'ON_NO'),
-  ('Pos Gerbang Utama', 'PATROL', 2, 'Kondisi lampu', NULL,
-   'CHOICE', '[{"value":"baik","label":"Baik"},{"value":"redup","label":"Redup"},{"value":"mati","label":"Mati"}]'::jsonb,
-   true, 'NONE', 'NONE', 'ALWAYS'),
-  ('Pos Gerbang Utama', 'PATROL', 3, 'Catatan lain', NULL,
-   'TEXT', NULL::jsonb, false, 'NONE', 'OPTIONAL', 'ALWAYS'),
-  ('Pos Belakang', 'PATROL', 1, 'Pintu belakang terkunci?', NULL,
-   'BOOLEAN', NULL::jsonb, true, 'NONE', 'REQUIRED', 'ON_NO'),
-  ('Pos Jaga Depan', 'GUARD', 1, 'Jumlah tamu hari ini', NULL,
-   'NUMBER', NULL::jsonb, false, 'NONE', 'NONE', 'ALWAYS')
-) AS c(zone_name, zone_type, sort_order, label, help_text, answer_type, options, required, photo_mode, note_mode, attach_when)
-JOIN patrol_zones z ON z.project_code = '1K-DEMO-S' AND z.name = c.zone_name
-                   AND z.type = c.zone_type::patrol_zone_type AND z.deleted_at IS NULL
-WHERE NOT EXISTS (SELECT 1 FROM patrol_checklist_items i WHERE i.zone_id = z.id);
-
 -- Checkpoints: a few dozen metres apart around the project point, each with a 30 m radius and its own QR
--- secret (made like the zones'). A checkpoint is told apart by its name inside the project, so running this
+-- secret (16 random bytes as base64url, 22 characters, like the app makes them). A checkpoint is told apart by its name inside the project, so running this
 -- again keeps what is there.
 INSERT INTO patrol_checkpoints (project_code, name, description, latitude, longitude, radius_meters, qr_secret)
 SELECT '1K-DEMO-S', v.name, v.description, v.latitude, v.longitude, 30,
@@ -452,8 +428,8 @@ COMMIT;
 
 \pset footer off
 \echo Patrol zones
-SELECT z.id, z.type, z.name, z.team_code, z.radius_meters, count(i.id) AS questions
-FROM patrol_zones z LEFT JOIN patrol_checklist_items i ON i.zone_id = z.id
+SELECT z.id, z.type, z.name, z.team_code, count(zc.checkpoint_id) AS checkpoints
+FROM patrol_zones z LEFT JOIN patrol_zone_checkpoints zc ON zc.zone_id = z.id
 WHERE z.project_code = '1K-DEMO-S' AND z.deleted_at IS NULL
 GROUP BY z.id ORDER BY z.id;
 \echo Checkpoints of each zone, in order (qr_payload is the text to turn into a QR code and scan)

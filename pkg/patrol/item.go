@@ -31,21 +31,20 @@ const MaxRadiusMeters = 5000
 // ordered Checkpoints (inactive ones too, without their checklists); the field's detail has the active
 // Checkpoints with their checklists and what the caller has done today, and NextCheckpointID.
 type Zone struct {
-	ID            int64
-	ProjectCode   string
-	TeamCode      *string
-	Type          string
-	Name          string
-	Alias         *string
-	Description   *string
-	PopupText     *string
-	Latitude      *float64
-	Longitude     *float64
-	RadiusMeters  *int
-	MinVisit      int
-	StartDate     *timeutil.Date
-	PhotoRequired bool
-	Active        bool
+	ID           int64
+	ProjectCode  string
+	TeamCode     *string
+	Type         string
+	Name         string
+	Alias        *string
+	Description  *string
+	PopupText    *string
+	Latitude     *float64
+	Longitude    *float64
+	RadiusMeters *int
+	MinVisit     int
+	StartDate    *timeutil.Date
+	Active       bool
 	// CheckpointCount is how many active checkpoints the zone has: what a guard can scan.
 	CheckpointCount int
 	Checkpoints     []ZoneCheckpoint
@@ -74,18 +73,18 @@ type ZoneCheckpoint struct {
 	Actions []CheckpointAction
 }
 
-// Option is one choice of a CHOICE question: Value is what the app sends back. Only the old zone
-// checklist still read by the scan has them (Phase 10.9 deletes it).
+// Option is one choice of a CHOICE question of the old zone checklist, as the old scans kept it
+// (AnswerEntry). Phase 10.10 removes it with them.
 type Option struct {
-	Value string `json:"value" validate:"required,notblank,max=100"`
-	Label string `json:"label" validate:"required,notblank,max=200"`
+	Value string `json:"value"`
+	Label string `json:"label"`
 }
 
 func zoneOf(z db.PatrolZone) Zone {
 	out := Zone{
 		ID: z.ID, ProjectCode: z.ProjectCode, TeamCode: textPtr(z.TeamCode), Type: string(z.Type), Name: z.Name,
 		Alias: textPtr(z.Alias), Description: textPtr(z.Description), PopupText: textPtr(z.PopupText),
-		Latitude: z.Latitude, Longitude: z.Longitude, MinVisit: int(z.MinVisit), PhotoRequired: z.PhotoRequired,
+		Latitude: z.Latitude, Longitude: z.Longitude, MinVisit: int(z.MinVisit),
 		Active: z.Active, CreatedAt: z.CreatedAt.Time, UpdatedAt: z.UpdatedAt.Time,
 	}
 	if z.RadiusMeters.Valid {
@@ -116,6 +115,15 @@ func textPtr(t pgtype.Text) *string {
 	}
 	s := t.String
 	return &s
+}
+
+// nonBlank trims s and returns nil when nothing is left.
+func nonBlank(s *string) *string {
+	if s == nil || strings.TrimSpace(*s) == "" {
+		return nil
+	}
+	t := strings.TrimSpace(*s)
+	return &t
 }
 
 // textOrNull stores a blank (or missing) text as NULL: "" and "no value" mean the same thing for

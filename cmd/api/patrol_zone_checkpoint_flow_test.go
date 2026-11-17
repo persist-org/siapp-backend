@@ -509,14 +509,13 @@ func TestPatrolZoneFieldDetail(t *testing.T) {
 	})
 
 	t.Run("no QR secret, of the zone or of a checkpoint, is in anything the field reads", func(t *testing.T) {
-		var zoneSecret, cpSecret string
-		f.query([]any{&zoneSecret}, "SELECT qr_secret FROM patrol_zones WHERE id = $1", zone.ID)
+		var cpSecret string
 		f.query([]any{&cpSecret}, "SELECT qr_secret FROM patrol_checkpoints WHERE id = $1", gerbang.ID)
 		_, list := f.do(http.MethodGet, "/api/v1/zones", f.personTok, nil, nil)
 		_, one := f.do(http.MethodGet, "/api/v1/zones/"+strconv.FormatInt(zone.ID, 10), f.personTok, nil, nil)
 		_, adminOne := f.do(http.MethodGet, zonePath(zone.ID), f.adminTok, nil, nil)
 		for _, body := range [][]byte{list, one, adminOne} {
-			for _, secret := range []string{zoneSecret, cpSecret, "qr_secret", "PERSIST-CP", "PERSIST-ZONE"} {
+			for _, secret := range []string{cpSecret, "qr_secret", "PERSIST-CP", "PERSIST-ZONE"} {
 				require.False(t, bytes.Contains(body, []byte(secret)), secret)
 			}
 		}

@@ -84,6 +84,10 @@ func (n notifier) NotifyPatrol(ctx context.Context, nt patrol.Notice) {
 		typ = notifications.TypeGuardSubmitted
 	}
 	data := map[string]any{"scan_id": nt.ScanID, "zone_id": nt.ZoneID, "team_code": nt.TeamCode, "work_date": nt.Date.String()}
+	// Which checkpoint it was (a scan made before the checkpoints, or a decision on several, has none).
+	if nt.CheckpointID != "" {
+		data["checkpoint_id"], data["checkpoint_name"] = nt.CheckpointID, nt.CheckpointName
+	}
 	in := notifications.Input{
 		Type:         typ,
 		RecipientIDs: nt.RecipientIDs,
