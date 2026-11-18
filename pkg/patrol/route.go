@@ -348,6 +348,9 @@ func (s *Service) start(ctx context.Context, p auth.Principal, in StartInput) (R
 
 		projectCode := in.ProjectCode
 		var zoneID pgtype.Int8
+		// The regu the patrol is filed under is asked for among this one only: the scheduled zone's regu, when it
+		// has one. Unset (an ad-hoc patrol, or a zone of the whole project) leaves the whole project.
+		var zoneTeam pgtype.Text
 		if fromSchedule {
 			// The schedule row is locked for the whole start, so a start and an admin's cancel or edit of the
 			// schedule take turns, and so do two starts from it.
@@ -369,6 +372,16 @@ func (s *Service) start(ctx context.Context, p auth.Principal, in StartInput) (R
 				out = RouteResult{Route: got, Replayed: true}
 				return nil
 			}
+			// A schedule whose zone was deleted since is answered like one that does not exist: deleting a zone
+			// does not cancel its schedules, and a patrol must not be tied to a zone nobody can scan any more.
+			zone, err := q.GetPatrolZone(ctx, sc.ZoneID)
+			if errors.Is(err, pgx.ErrNoRows) || (err == nil && zone.DeletedAt.Valid) {
+				return ErrScheduleNotFound
+			}
+			if err != nil {
+				return fmt.Errorf("get zone of schedule: %w", err)
+			}
+			zoneTeam = zone.TeamCode
 			if strings.TrimSpace(projectCode) != "" && projectCode != sc.ProjectCode {
 				return apperr.ErrValidation.WithFields(apperr.FieldError{Field: "project_code", Code: "INVALID", Message: "Bukan proyek jadwal ini."})
 			}
@@ -402,9 +415,11 @@ func (s *Service) start(ctx context.Context, p auth.Principal, in StartInput) (R
 		if err := s.mayScan(ctx, q, p.PersonnelID, timeutil.BusinessDate(at, loc)); err != nil {
 			return err
 		}
-		// The regu and the work date from the shift rule of a scan (see place), asked for the whole
-		// project: a patrol belongs to a project and may cross several zones.
-		pl, err := s.placeIn(ctx, q, p, project.Code, pgtype.Text{}, loc, at)
+		// The regu and the work date from the shift rule of a scan (see place). An ad-hoc patrol asks for the
+		// whole project (it may cross several zones); one started from a schedule asks for the scheduled zone's
+		// regu, so a guard of two regus is filed under the one whose DANRU looks after that zone. Making the
+		// schedule already required that membership; a guard taken out of the regu since is refused here.
+		pl, err := s.placeIn(ctx, q, p, project.Code, zoneTeam, loc, at)
 		if errors.Is(err, ErrNotInProject) {
 			return errNotInProject
 		}

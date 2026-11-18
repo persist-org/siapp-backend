@@ -74,14 +74,6 @@ JOIN patrol_checkpoints c ON c.organization_id = zc.organization_id AND c.id = z
 WHERE zc.zone_id = $1 AND c.active AND c.deleted_at IS NULL
 ORDER BY zc.sort_order;
 
--- The zones a checkpoint is in, with its position in each.
--- name: ListCheckpointZones :many
-SELECT z.*, zc.sort_order AS position
-FROM patrol_zone_checkpoints zc
-JOIN patrol_zones z ON z.organization_id = zc.organization_id AND z.id = zc.zone_id
-WHERE zc.checkpoint_id = $1 AND z.deleted_at IS NULL
-ORDER BY z.project_code, z.name, z.id;
-
 -- The zones of many checkpoints at once (a page of the admin list), with each position.
 -- name: ListZonesOfCheckpoints :many
 SELECT zc.checkpoint_id, z.id AS zone_id, z.name AS zone_name, z.type AS zone_type, zc.sort_order AS position

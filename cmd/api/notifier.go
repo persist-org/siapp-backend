@@ -77,7 +77,8 @@ func (n notifier) NotifyPatrol(ctx context.Context, nt patrol.Notice) {
 			Type:         notifications.TypePatrolScheduleChanged,
 			RecipientIDs: nt.RecipientIDs,
 			Vars: notifications.Vars{
-				BusinessLine: notifications.BusinessLine(nt.BusinessLine), Subject: nt.Subject, Change: nt.ScheduleChange, Count: len(nt.ScheduleIDs),
+				BusinessLine: notifications.BusinessLine(nt.BusinessLine), ActorName: nt.ActorName, Subject: nt.Subject,
+				Change: nt.ScheduleChange, Count: len(nt.ScheduleIDs),
 			},
 			Data: map[string]any{
 				"change": nt.ScheduleChange, "count": len(nt.ScheduleIDs), "schedule_ids": nt.ScheduleIDs,

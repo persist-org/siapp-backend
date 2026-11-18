@@ -414,38 +414,6 @@ func (q *Queries) ListPersonnelNames(ctx context.Context, ids []int64) ([]ListPe
 	return items, nil
 }
 
-const listScanPhotos = `-- name: ListScanPhotos :many
-SELECT attached_entity_id AS scan_id, id AS media_id FROM media
-WHERE attached_entity_type = 'PATROL_SCAN' AND attached_entity_id = ANY($1::bigint[]) AND status = 'UPLOADED'
-ORDER BY attached_entity_id, id
-`
-
-type ListScanPhotosRow struct {
-	ScanID  pgtype.Int8
-	MediaID int64
-}
-
-// The photos of scans: one row per photo, with the scan it is attached to.
-func (q *Queries) ListScanPhotos(ctx context.Context, scanIds []int64) ([]ListScanPhotosRow, error) {
-	rows, err := q.db.Query(ctx, listScanPhotos, scanIds)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListScanPhotosRow{}
-	for rows.Next() {
-		var i ListScanPhotosRow
-		if err := rows.Scan(&i.ScanID, &i.MediaID); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listZoneScans = `-- name: ListZoneScans :many
 SELECT id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at, checkpoint_id FROM patrol_scans
 WHERE zone_id = $1

@@ -152,3 +152,30 @@ func TestPatrolStartFromSchedule(t *testing.T) {
 		require.Equal(t, http.StatusUnprocessableEntity, code, string(raw))
 	})
 }
+
+// A guard of two regus of one project is filed under the scheduled zone's regu, not under the first regu they
+// serve in, so that regu's DANRU sees the patrol.
+func TestPatrolFromScheduleIsFiledUnderTheZonesRegu(t *testing.T) {
+	f := newFlow(t)
+	// The person serves in S1 and (from today, not in ten days) S2; S1 is the one an ad-hoc patrol gets.
+	f.exec("UPDATE team_members SET start_date = current_date - 30 WHERE personnel_id = $1 AND team_code = '1K-IBMI-S2'", f.person)
+	z := f.fencedRound(1, map[string]any{"team_code": "1K-IBMI-S2"})
+	now := time.Now()
+
+	t.Run("the patrol takes the zone's regu", func(t *testing.T) {
+		sc := f.makeSchedule(z.ID, f.person, now.Add(-10*time.Minute), time.Hour)
+		code, raw := f.start(f.personTok, scheduledStart(sc.ID, now))
+		started := routeOf(t, code, raw, http.StatusCreated)
+		require.Equal(t, "1K-IBMI-S2", started.TeamCode)
+		code, raw = f.end(f.personTok, started.ID, time.Now())
+		require.Equal(t, http.StatusOK, code, string(raw))
+	})
+
+	t.Run("a guard taken out of the zone's regu since the schedule was made cannot start it", func(t *testing.T) {
+		// Straight to the table: the API would now refuse to schedule this person in this zone.
+		id := f.insertSchedule(z.ID, f.person, now.Add(-5*time.Minute), time.Hour)
+		f.exec("UPDATE team_members SET end_date = current_date - 1 WHERE personnel_id = $1 AND team_code = '1K-IBMI-S2'", f.person)
+		code, raw := f.start(f.personTok, scheduledStart(id, time.Now()))
+		reasonIs(t, code, raw, http.StatusForbidden, "ZONE_NOT_IN_PROJECT")
+	})
+}

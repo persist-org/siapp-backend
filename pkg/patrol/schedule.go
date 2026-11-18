@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -310,6 +311,10 @@ func (s *Service) CreateSchedules(ctx context.Context, actor auth.Principal, sco
 		if err := s.checkPeopleAndOverlaps(ctx, q, zone, loc, people, names, in.Slots, nil); err != nil {
 			return err
 		}
+		actorName, err := actorNameOf(ctx, q, actor)
+		if err != nil {
+			return err
+		}
 
 		for _, person := range people {
 			var ids []string
@@ -329,7 +334,7 @@ func (s *Service) CreateSchedules(ctx context.Context, actor auth.Principal, sco
 					return err
 				}
 			}
-			notices = append(notices, s.scheduleNotice(project, zone, actor, person, ScheduleChangeCreated, ids))
+			notices = append(notices, s.scheduleNotice(project, zone, actorName, person, ScheduleChangeCreated, ids))
 		}
 		return nil
 	})
@@ -423,12 +428,26 @@ func (s *Service) checkPeopleAndOverlaps(ctx context.Context, q *db.Queries, zon
 	return nil
 }
 
-// scheduleNotice is the one notice a person gets for a request: change says what happened to count schedules.
-func (s *Service) scheduleNotice(project db.Project, zone db.PatrolZone, _ auth.Principal, person int64, change string, ids []string) Notice {
+// scheduleNotice is the one notice a person gets for a request: change says what happened to count schedules,
+// and actorName who did it (the text names them: "... oleh <admin>").
+func (s *Service) scheduleNotice(project db.Project, zone db.PatrolZone, actorName string, person int64, change string, ids []string) Notice {
 	return Notice{
 		Kind: NoticeScheduleChanged, RecipientIDs: []int64{person}, ZoneType: string(zone.Type), BusinessLine: string(project.BusinessLine),
-		Subject: zone.Name, ZoneID: zone.ID, ProjectCode: zone.ProjectCode, ScheduleChange: change, ScheduleIDs: ids,
+		ActorName: actorName, Subject: zone.Name, ZoneID: zone.ID, ProjectCode: zone.ProjectCode, ScheduleChange: change, ScheduleIDs: ids,
 	}
+}
+
+// actorNameOf is the name of the admin who changed schedules, for their notices; empty when they have no
+// personnel row of the organization (the notice then names nobody).
+func actorNameOf(ctx context.Context, q *db.Queries, actor auth.Principal) (string, error) {
+	row, err := q.PersonnelNameAndNIK(ctx, actor.PersonnelID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("get actor name: %w", err)
+	}
+	return row.FullName, nil
 }
 
 // loadSchedule reads a schedule for update and checks the admin's region. A schedule that is not there is
@@ -473,7 +492,8 @@ func (s *Service) UpdateSchedule(ctx context.Context, actor auth.Principal, scop
 	if f := in.Notes.resolve("notes"); f != nil {
 		return Schedule{}, apperr.ErrValidation.WithFields(*f)
 	}
-	if n := in.Notes.ptr(); n != nil && len(*n) > 2000 {
+	// Characters, not bytes: the same limit as the create's max=2000 tag.
+	if n := in.Notes.ptr(); n != nil && utf8.RuneCountInString(*n) > 2000 {
 		return Schedule{}, apperr.ErrValidation.WithFields(apperr.FieldError{Field: "notes", Code: "TOO_LONG", Message: "Paling banyak 2000 karakter."})
 	}
 	now := s.clock.Now()
@@ -503,6 +523,13 @@ func (s *Service) UpdateSchedule(ctx context.Context, actor auth.Principal, scop
 		row, err := s.loadSchedule(ctx, q, scope, id, now)
 		if err != nil {
 			return err
+		}
+		// Another request moved the schedule to someone else between the peek and the row lock, so the person
+		// locked above is not its owner any more and the overlap check below would run unguarded. Taking that
+		// person's lock now would break the lock order (person, then row) and could deadlock, so refuse with a
+		// transient 409: the same request sent again locks the right person.
+		if row.PersonnelID != peek.PersonnelID {
+			return apperr.ErrConflict
 		}
 		zone, err := q.GetPatrolZone(ctx, row.ZoneID)
 		if err != nil {
@@ -567,12 +594,16 @@ func (s *Service) UpdateSchedule(ctx context.Context, actor auth.Principal, scop
 		if err := auditSchedule(ctx, q, actor, "patrol.schedule.update", out, map[string]any{"before": scheduleMeta(before), "after": scheduleMeta(out)}); err != nil {
 			return err
 		}
+		actorName, err := actorNameOf(ctx, q, actor)
+		if err != nil {
+			return err
+		}
 		if saved.PersonnelID != row.PersonnelID {
 			notices = append(notices,
-				s.scheduleNotice(project, zone, actor, row.PersonnelID, ScheduleChangeCancelled, []string{out.ID}),
-				s.scheduleNotice(project, zone, actor, saved.PersonnelID, ScheduleChangeCreated, []string{out.ID}))
+				s.scheduleNotice(project, zone, actorName, row.PersonnelID, ScheduleChangeCancelled, []string{out.ID}),
+				s.scheduleNotice(project, zone, actorName, saved.PersonnelID, ScheduleChangeCreated, []string{out.ID}))
 		} else {
-			notices = append(notices, s.scheduleNotice(project, zone, actor, saved.PersonnelID, ScheduleChangeUpdated, []string{out.ID}))
+			notices = append(notices, s.scheduleNotice(project, zone, actorName, saved.PersonnelID, ScheduleChangeUpdated, []string{out.ID}))
 		}
 		return nil
 	})
@@ -627,7 +658,11 @@ func (s *Service) CancelSchedule(ctx context.Context, actor auth.Principal, scop
 		if err := auditSchedule(ctx, q, actor, "patrol.schedule.cancel", sc, map[string]any{"before": scheduleMeta(sc)}); err != nil {
 			return err
 		}
-		notices = append(notices, s.scheduleNotice(project, zone, actor, saved.PersonnelID, ScheduleChangeCancelled, []string{sc.ID}))
+		actorName, err := actorNameOf(ctx, q, actor)
+		if err != nil {
+			return err
+		}
+		notices = append(notices, s.scheduleNotice(project, zone, actorName, saved.PersonnelID, ScheduleChangeCancelled, []string{sc.ID}))
 		return nil
 	})
 	if err != nil {

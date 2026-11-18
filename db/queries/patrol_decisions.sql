@@ -106,12 +106,6 @@ UPDATE patrol_scans SET status = @status, decided_by_id = @decided_by, decided_a
 WHERE id = ANY(@ids::bigint[]) AND status = 'SUBMITTED'
 RETURNING *;
 
--- The photos of scans: one row per photo, with the scan it is attached to.
--- name: ListScanPhotos :many
-SELECT attached_entity_id AS scan_id, id AS media_id FROM media
-WHERE attached_entity_type = 'PATROL_SCAN' AND attached_entity_id = ANY(@scan_ids::bigint[]) AND status = 'UPLOADED'
-ORDER BY attached_entity_id, id;
-
 -- name: ListPersonnelNames :many
 SELECT id, full_name FROM personnels WHERE id = ANY(@ids::bigint[]);
 

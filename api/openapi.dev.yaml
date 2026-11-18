@@ -18366,7 +18366,7 @@ paths:
           description: PATROL_SCHEDULE_NOT_FOUND.
           content: {application/json: {schema: {$ref: '#/components/schemas/ErrorEnvelope'}}}
         '409':
-          description: 'PATROL_SCHEDULE_LOCKED atau PATROL_SCHEDULE_OVERLAP.'
+          description: 'PATROL_SCHEDULE_LOCKED atau PATROL_SCHEDULE_OVERLAP; CONFLICT (tanpa reason) bila jadwal dipindah ke orang lain oleh permintaan lain pada saat yang sama: kirim ulang.'
           content: {application/json: {schema: {$ref: '#/components/schemas/ErrorEnvelope'}}}
         '422':
           description: 'VALIDATION_ERROR, SCHEDULE_PERSON_NOT_ALLOWED.'

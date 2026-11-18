@@ -566,7 +566,8 @@ UPDATE patrol_routes r SET scan_count = (SELECT count(*) FROM patrol_scans s WHE
 WITH me AS (SELECT (now() AT TIME ZONE 'Asia/Jakarta')::date AS today)
 INSERT INTO patrol_schedules (project_code, zone_id, personnel_id, starts_at, ends_at, work_date, notes, created_by_id)
 SELECT '1K-DEMO-S', z.id, p.id, t.s, t.s + v.len, (t.s AT TIME ZONE 'Asia/Jakarta')::date, v.note,
-       (SELECT id FROM personnels WHERE nik = 'KPIADMIN01')
+       COALESCE((SELECT id FROM personnels WHERE nik = 'KPIADMIN01'),
+                (SELECT id FROM personnels WHERE nik = 'KPIDANRU01'), p.id)
 FROM me
 CROSS JOIN personnels p
 CROSS JOIN (VALUES

@@ -111,9 +111,9 @@ func (h *Handler) scanners(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, r, err)
 		return
 	}
-	checkpoint, err := checkpointQuery(r)
-	if err != nil {
-		httpx.Error(w, r, err)
+	checkpoint, bad := checkpointQuery(r)
+	if bad != nil {
+		httpx.Error(w, r, apperr.ErrValidation.WithFields(*bad))
 		return
 	}
 	got, err := h.service.Scanners(r.Context(), p, id, r.URL.Query().Get("team_code"), day, checkpoint)
@@ -164,12 +164,9 @@ func (h *Handler) zoneScans(w http.ResponseWriter, r *http.Request) {
 		}
 		f.PersonnelID = n
 	}
-	if s := r.URL.Query().Get("checkpoint_id"); s != "" {
-		if id, ok := parseUUID(s); ok {
-			f.CheckpointID = id
-		} else {
-			problems = append(problems, apperr.FieldError{Field: "checkpoint_id", Code: "INVALID", Message: "Harus berupa uuid."})
-		}
+	var bad *apperr.FieldError
+	if f.CheckpointID, bad = checkpointQuery(r); bad != nil {
+		problems = append(problems, *bad)
 	}
 	if len(problems) > 0 {
 		httpx.Error(w, r, apperr.ErrValidation.WithFields(problems...))
@@ -183,15 +180,16 @@ func (h *Handler) zoneScans(w http.ResponseWriter, r *http.Request) {
 	httpx.List(w, r, scansToAPI(got), query.WithTotal(total))
 }
 
-// checkpointQuery reads the optional checkpoint_id filter; one that is not a uuid is a 422.
-func checkpointQuery(r *http.Request) (pgtype.UUID, error) {
+// checkpointQuery reads the optional checkpoint_id filter; one that is not a uuid is the field error the
+// caller reports (a 422), alone or with the other bad filters.
+func checkpointQuery(r *http.Request) (pgtype.UUID, *apperr.FieldError) {
 	s := r.URL.Query().Get("checkpoint_id")
 	if s == "" {
 		return pgtype.UUID{}, nil
 	}
 	id, ok := parseUUID(s)
 	if !ok {
-		return pgtype.UUID{}, apperr.ErrValidation.WithFields(apperr.FieldError{Field: "checkpoint_id", Code: "INVALID", Message: "Harus berupa uuid."})
+		return pgtype.UUID{}, &apperr.FieldError{Field: "checkpoint_id", Code: "INVALID", Message: "Harus berupa uuid."}
 	}
 	return id, nil
 }
