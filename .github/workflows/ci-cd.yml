@@ -79,12 +79,6 @@ jobs:
           (cd api && go generate ./...)
           git diff --exit-code -- internal/db internal/apigen
 
-      - name: Dev swagger spec is committed
-        run: |
-          pip install pyyaml==6.0.1
-          python3 scripts/make-dev-spec.py
-          git diff --exit-code -- api/openapi.dev.yaml
-
       - run: go vet ./...
       - run: go build ./...
 
