@@ -1361,6 +1361,30 @@ func (e PatrolCheckpointZoneType) Valid() bool {
 	}
 }
 
+// Defines values for PatrolLocationFlag.
+const (
+	LOWACCURACY   PatrolLocationFlag = "LOW_ACCURACY"
+	NOFIX         PatrolLocationFlag = "NO_FIX"
+	OK            PatrolLocationFlag = "OK"
+	OUTSIDERADIUS PatrolLocationFlag = "OUTSIDE_RADIUS"
+)
+
+// Valid indicates whether the value is a known member of the PatrolLocationFlag enum.
+func (e PatrolLocationFlag) Valid() bool {
+	switch e {
+	case LOWACCURACY:
+		return true
+	case NOFIX:
+		return true
+	case OK:
+		return true
+	case OUTSIDERADIUS:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PatrolRouteStatus.
 const (
 	PatrolRouteStatusACTIVE    PatrolRouteStatus = "ACTIVE"
@@ -1439,6 +1463,45 @@ func (e PatrolRouteDetailZoneType) Valid() bool {
 	}
 }
 
+// Defines values for PatrolRouteScanOutcome.
+const (
+	PatrolRouteScanOutcomeSCANNED PatrolRouteScanOutcome = "SCANNED"
+	PatrolRouteScanOutcomeSKIPPED PatrolRouteScanOutcome = "SKIPPED"
+)
+
+// Valid indicates whether the value is a known member of the PatrolRouteScanOutcome enum.
+func (e PatrolRouteScanOutcome) Valid() bool {
+	switch e {
+	case PatrolRouteScanOutcomeSCANNED:
+		return true
+	case PatrolRouteScanOutcomeSKIPPED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatrolRouteScanSkipReason.
+const (
+	PatrolRouteScanSkipReasonACCESSBLOCKED  PatrolRouteScanSkipReason = "ACCESS_BLOCKED"
+	PatrolRouteScanSkipReasonOTHER          PatrolRouteScanSkipReason = "OTHER"
+	PatrolRouteScanSkipReasonSTICKERDAMAGED PatrolRouteScanSkipReason = "STICKER_DAMAGED"
+)
+
+// Valid indicates whether the value is a known member of the PatrolRouteScanSkipReason enum.
+func (e PatrolRouteScanSkipReason) Valid() bool {
+	switch e {
+	case PatrolRouteScanSkipReasonACCESSBLOCKED:
+		return true
+	case PatrolRouteScanSkipReasonOTHER:
+		return true
+	case PatrolRouteScanSkipReasonSTICKERDAMAGED:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PatrolRouteScanStatus.
 const (
 	PatrolRouteScanStatusAPPROVED  PatrolRouteScanStatus = "APPROVED"
@@ -1454,6 +1517,45 @@ func (e PatrolRouteScanStatus) Valid() bool {
 	case PatrolRouteScanStatusDECLINED:
 		return true
 	case PatrolRouteScanStatusSUBMITTED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatrolScanOutcome.
+const (
+	PatrolScanOutcomeSCANNED PatrolScanOutcome = "SCANNED"
+	PatrolScanOutcomeSKIPPED PatrolScanOutcome = "SKIPPED"
+)
+
+// Valid indicates whether the value is a known member of the PatrolScanOutcome enum.
+func (e PatrolScanOutcome) Valid() bool {
+	switch e {
+	case PatrolScanOutcomeSCANNED:
+		return true
+	case PatrolScanOutcomeSKIPPED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatrolScanSkipReason.
+const (
+	PatrolScanSkipReasonACCESSBLOCKED  PatrolScanSkipReason = "ACCESS_BLOCKED"
+	PatrolScanSkipReasonOTHER          PatrolScanSkipReason = "OTHER"
+	PatrolScanSkipReasonSTICKERDAMAGED PatrolScanSkipReason = "STICKER_DAMAGED"
+)
+
+// Valid indicates whether the value is a known member of the PatrolScanSkipReason enum.
+func (e PatrolScanSkipReason) Valid() bool {
+	switch e {
+	case PatrolScanSkipReasonACCESSBLOCKED:
+		return true
+	case PatrolScanSkipReasonOTHER:
+		return true
+	case PatrolScanSkipReasonSTICKERDAMAGED:
 		return true
 	default:
 		return false
@@ -1580,6 +1682,27 @@ func (e PatrolScheduleStatus) Valid() bool {
 	case PatrolScheduleStatusMISSED:
 		return true
 	case PatrolScheduleStatusSCHEDULED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatrolSkipCreateReason.
+const (
+	PatrolSkipCreateReasonACCESSBLOCKED  PatrolSkipCreateReason = "ACCESS_BLOCKED"
+	PatrolSkipCreateReasonOTHER          PatrolSkipCreateReason = "OTHER"
+	PatrolSkipCreateReasonSTICKERDAMAGED PatrolSkipCreateReason = "STICKER_DAMAGED"
+)
+
+// Valid indicates whether the value is a known member of the PatrolSkipCreateReason enum.
+func (e PatrolSkipCreateReason) Valid() bool {
+	switch e {
+	case PatrolSkipCreateReasonACCESSBLOCKED:
+		return true
+	case PatrolSkipCreateReasonOTHER:
+		return true
+	case PatrolSkipCreateReasonSTICKERDAMAGED:
 		return true
 	default:
 		return false
@@ -7391,6 +7514,36 @@ func (e GetZonesByIdScans200JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
+// Defines values for PostZonesByIdSkip200JSONResponseBodySuccess.
+const (
+	PostZonesByIdSkip200JSONResponseBodySuccessTrue PostZonesByIdSkip200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostZonesByIdSkip200JSONResponseBodySuccess enum.
+func (e PostZonesByIdSkip200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostZonesByIdSkip200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostZonesByIdSkip201JSONResponseBodySuccess.
+const (
+	PostZonesByIdSkip201JSONResponseBodySuccessTrue PostZonesByIdSkip201JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostZonesByIdSkip201JSONResponseBodySuccess enum.
+func (e PostZonesByIdSkip201JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostZonesByIdSkip201JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetZonesByIdTracking200JSONResponseBodySuccess.
 const (
 	GetZonesByIdTracking200JSONResponseBodySuccessTrue GetZonesByIdTracking200JSONResponseBodySuccess = true
@@ -8123,7 +8276,10 @@ type CheckpointProgressItem struct {
 	Name         string             `json:"name"`
 
 	// Required `min_visit` zona: jumlah scan yang dibutuhkan checkpoint ini.
-	Required  int `json:"required"`
+	Required int `json:"required"`
+
+	// Skipped Dilewati dengan alasan (`outcome` = `SKIPPED`), belum ditolak. Bukan kunjungan.
+	Skipped   int `json:"skipped"`
 	SortOrder int `json:"sort_order"`
 	Submitted int `json:"submitted"`
 }
@@ -9511,6 +9667,12 @@ type PatrolCheckpointZone struct {
 // PatrolCheckpointZoneType defines model for PatrolCheckpointZone.Type.
 type PatrolCheckpointZoneType string
 
+// PatrolLocationFlag Tanda dari server atas posisi saat scan, untuk DANRU saat approval; tidak pernah penolakan. Urutan penilaian,
+// yang pertama cocok menang: `NO_FIX` (tidak ada posisi), `OUTSIDE_RADIUS` (lebih jauh dari radius checkpoint
+// ditambah `min(accuracy_meters, 30)`), `LOW_ACCURACY` (`accuracy_meters` di atas 50), `OK`. Checkpoint tanpa
+// geofence `OK` selama ada posisi.
+type PatrolLocationFlag string
+
 // PatrolRoute Satu patroli. `team_code` dan `work_date` ditentukan server dari shift penjaga. `point_count` adalah
 // titik mentah yang diterima, `distance_meters` panjang garis yang disimpan, `scan_count` scan yang
 // terjadi selama patroli.
@@ -9663,17 +9825,33 @@ type PatrolRoutePointsResult struct {
 
 // PatrolRouteScan Scan di sepanjang patroli, untuk pin di garis peta.
 type PatrolRouteScan struct {
-	CheckpointId   openapi_types.UUID    `json:"checkpoint_id"`
-	CheckpointName string                `json:"checkpoint_name"`
-	Id             int64                 `json:"id"`
-	Latitude       float64               `json:"latitude"`
-	Longitude      float64               `json:"longitude"`
-	OccurredAt     time.Time             `json:"occurred_at"`
-	Status         PatrolRouteScanStatus `json:"status"`
-	Subject        string                `json:"subject"`
-	ZoneId         int64                 `json:"zone_id"`
-	ZoneName       string                `json:"zone_name"`
+	CheckpointId   openapi_types.UUID `json:"checkpoint_id"`
+	CheckpointName string             `json:"checkpoint_name"`
+	Id             int64              `json:"id"`
+
+	// Latitude Tidak dikirim bila scan tanpa posisi; scan itu tidak punya pin.
+	Latitude *float64 `json:"latitude,omitempty"`
+
+	// LocationFlag Tanda dari server atas posisi saat scan, untuk DANRU saat approval; tidak pernah penolakan. Urutan penilaian,
+	// yang pertama cocok menang: `NO_FIX` (tidak ada posisi), `OUTSIDE_RADIUS` (lebih jauh dari radius checkpoint
+	// ditambah `min(accuracy_meters, 30)`), `LOW_ACCURACY` (`accuracy_meters` di atas 50), `OK`. Checkpoint tanpa
+	// geofence `OK` selama ada posisi.
+	LocationFlag PatrolLocationFlag         `json:"location_flag"`
+	Longitude    *float64                   `json:"longitude,omitempty"`
+	OccurredAt   time.Time                  `json:"occurred_at"`
+	Outcome      PatrolRouteScanOutcome     `json:"outcome"`
+	SkipReason   *PatrolRouteScanSkipReason `json:"skip_reason,omitempty"`
+	Status       PatrolRouteScanStatus      `json:"status"`
+	Subject      string                     `json:"subject"`
+	ZoneId       int64                      `json:"zone_id"`
+	ZoneName     string                     `json:"zone_name"`
 }
+
+// PatrolRouteScanOutcome defines model for PatrolRouteScan.Outcome.
+type PatrolRouteScanOutcome string
+
+// PatrolRouteScanSkipReason defines model for PatrolRouteScan.SkipReason.
+type PatrolRouteScanSkipReason string
 
 // PatrolRouteScanStatus defines model for PatrolRouteScan.Status.
 type PatrolRouteScanStatus string
@@ -9704,7 +9882,8 @@ type PatrolRouteStart struct {
 
 // PatrolScan Satu kunjungan ke satu checkpoint zona. `team_code` dan `work_date` ditentukan server dari shift pemindai, bukan dikirim aplikasi.
 type PatrolScan struct {
-	AccuracyMeters float64            `json:"accuracy_meters"`
+	// AccuracyMeters Idem `latitude`.
+	AccuracyMeters *float64           `json:"accuracy_meters,omitempty"`
 	Actions        []PatrolScanAction `json:"actions"`
 
 	// Checkpoint Checkpoint yang di-scan, dengan namanya sekarang dan urutannya sekarang di zona (tidak disertakan bila checkpoint sudah dilepas dari zona).
@@ -9719,33 +9898,58 @@ type PatrolScan struct {
 	// DecisionNote Catatan DANRU, wajib saat ditolak.
 	DecisionNote *string `json:"decision_note,omitempty"`
 
-	// DistanceMeters Jarak dari checkpoint; null bila checkpoint tanpa geofence.
-	DistanceMeters *int               `json:"distance_meters,omitempty"`
-	Id             int64              `json:"id"`
-	Latitude       float64            `json:"latitude"`
-	LocalId        openapi_types.UUID `json:"local_id"`
-	Longitude      float64            `json:"longitude"`
-	Notes          *string            `json:"notes,omitempty"`
-	OccurredAt     time.Time          `json:"occurred_at"`
+	// DistanceMeters Jarak dari checkpoint; null bila checkpoint tanpa geofence atau tanpa posisi.
+	DistanceMeters *int  `json:"distance_meters,omitempty"`
+	Id             int64 `json:"id"`
+
+	// Latitude Tidak dikirim bila perangkat tidak mendapat posisi (`location_flag` = `NO_FIX`).
+	Latitude *float64           `json:"latitude,omitempty"`
+	LocalId  openapi_types.UUID `json:"local_id"`
+
+	// LocationFlag Tanda dari server atas posisi saat scan, untuk DANRU saat approval; tidak pernah penolakan. Urutan penilaian,
+	// yang pertama cocok menang: `NO_FIX` (tidak ada posisi), `OUTSIDE_RADIUS` (lebih jauh dari radius checkpoint
+	// ditambah `min(accuracy_meters, 30)`), `LOW_ACCURACY` (`accuracy_meters` di atas 50), `OK`. Checkpoint tanpa
+	// geofence `OK` selama ada posisi.
+	LocationFlag PatrolLocationFlag `json:"location_flag"`
+
+	// Longitude Idem `latitude`.
+	Longitude  *float64  `json:"longitude,omitempty"`
+	Notes      *string   `json:"notes,omitempty"`
+	OccurredAt time.Time `json:"occurred_at"`
+
+	// Outcome `SKIPPED`: checkpoint dilewati dengan alasan (`POST /zones/{id}/skip`), bukan kunjungan. Scan yang dilewati tanpa `actions`; fotonya di `photos`.
+	Outcome PatrolScanOutcome `json:"outcome"`
 
 	// PatrolId Patroli yang sedang berjalan saat scan (Phase 10.4); diisi server.
 	PatrolId    *int64 `json:"patrol_id,omitempty"`
 	PersonnelId int64  `json:"personnel_id"`
 
 	// PersonnelName Nama pemindai. Ada saat scan dibaca (daftar dan detail).
-	PersonnelName    *string          `json:"personnel_name,omitempty"`
-	ProjectCode      string           `json:"project_code"`
-	ReceivedAt       time.Time        `json:"received_at"`
-	Status           PatrolScanStatus `json:"status"`
-	Subject          string           `json:"subject"`
-	SubmittedOffline bool             `json:"submitted_offline"`
-	TeamCode         string           `json:"team_code"`
+	PersonnelName *string `json:"personnel_name,omitempty"`
+
+	// Photos Foto sebuah scan yang dilewati. Scan biasa menaruh foto di `actions[].photos`. Ada saat scan dibaca, tidak pada jawaban pembuatannya.
+	Photos      *[]PatrolScanPhoto `json:"photos,omitempty"`
+	ProjectCode string             `json:"project_code"`
+	ReceivedAt  time.Time          `json:"received_at"`
+
+	// SkipReason Hanya ada bila `outcome` = `SKIPPED`.
+	SkipReason       *PatrolScanSkipReason `json:"skip_reason,omitempty"`
+	Status           PatrolScanStatus      `json:"status"`
+	Subject          string                `json:"subject"`
+	SubmittedOffline bool                  `json:"submitted_offline"`
+	TeamCode         string                `json:"team_code"`
 
 	// WorkDate Tanggal mulai shift (shift malam setelah tengah malam tetap tanggal kemarin).
 	WorkDate openapi_types.Date `json:"work_date"`
 	ZoneId   int64              `json:"zone_id"`
 	ZoneType PatrolScanZoneType `json:"zone_type"`
 }
+
+// PatrolScanOutcome `SKIPPED`: checkpoint dilewati dengan alasan (`POST /zones/{id}/skip`), bukan kunjungan. Scan yang dilewati tanpa `actions`; fotonya di `photos`.
+type PatrolScanOutcome string
+
+// PatrolScanSkipReason Hanya ada bila `outcome` = `SKIPPED`.
+type PatrolScanSkipReason string
 
 // PatrolScanStatus defines model for PatrolScan.Status.
 type PatrolScanStatus string
@@ -9794,7 +9998,7 @@ type PatrolScanCheckpoint struct {
 
 // PatrolScanCreate defines model for PatrolScanCreate.
 type PatrolScanCreate struct {
-	AccuracyMeters float64 `json:"accuracy_meters"`
+	AccuracyMeters *float64 `json:"accuracy_meters,omitempty"`
 
 	// Actions Satu jawaban untuk setiap aksi aktif checkpoint. `device_condition` di sini menjadi bawaan aksi yang tidak membawa sendiri.
 	Actions      *[]PatrolScanActionInput `json:"actions,omitempty"`
@@ -9805,11 +10009,13 @@ type PatrolScanCreate struct {
 	// melaporkan). Harus objek JSON, paling besar 4096 byte; kunci yang dikenal diperiksa tipenya, kunci lain
 	// disimpan apa adanya. Yang salah: 422 `DEVICE_CONDITION_INVALID`.
 	DeviceCondition *DeviceCondition `json:"device_condition,omitempty"`
-	Latitude        float64          `json:"latitude"`
+
+	// Latitude Posisi: ketiganya (`latitude`, `longitude`, `accuracy_meters`) atau tidak sama sekali; setengah posisi 422. Tanpa posisi, scan tersimpan dengan `location_flag` = `NO_FIX`.
+	Latitude *float64 `json:"latitude,omitempty"`
 
 	// LocalId Harus sama dengan header Idempotency-Key.
 	LocalId   openapi_types.UUID `json:"local_id"`
-	Longitude float64            `json:"longitude"`
+	Longitude *float64           `json:"longitude,omitempty"`
 	Notes     *string            `json:"notes,omitempty"`
 
 	// OccurredAt Saat scan terjadi di perangkat. Maksimal 5 menit di depan dan 7 hari ke belakang.
@@ -9907,6 +10113,34 @@ type PatrolScheduleUpdate struct {
 	PersonnelId *int64     `json:"personnel_id,omitempty"`
 	StartsAt    *time.Time `json:"starts_at,omitempty"`
 }
+
+// PatrolSkipCreate Badan `POST /zones/{id}/skip`: checkpoint putaran yang tidak bisa di-scan, mis. stiker rusak atau ruangan
+// terkunci. Tanpa QR dan tanpa geofence; posisi hanya diberi tanda.
+type PatrolSkipCreate struct {
+	AccuracyMeters *float64           `json:"accuracy_meters,omitempty"`
+	CheckpointId   openapi_types.UUID `json:"checkpoint_id"`
+
+	// Latitude Seperti pada scan: ketiganya atau tidak sama sekali.
+	Latitude *float64 `json:"latitude,omitempty"`
+
+	// LocalId Harus sama dengan header Idempotency-Key.
+	LocalId   openapi_types.UUID `json:"local_id"`
+	Longitude *float64           `json:"longitude,omitempty"`
+
+	// MediaIds Foto (`POST /media` dengan tujuan `PATROL_SCAN`), mis. stiker yang rusak. Tiap id hanya sekali.
+	MediaIds *[]int64 `json:"media_ids,omitempty"`
+
+	// Note Wajib bila `reason` = `OTHER` (422 pada field `note`).
+	Note *string `json:"note,omitempty"`
+
+	// OccurredAt Saat perangkat memutuskan melewati. Maksimal 5 menit di depan dan 7 hari ke belakang.
+	OccurredAt       time.Time              `json:"occurred_at"`
+	Reason           PatrolSkipCreateReason `json:"reason"`
+	SubmittedOffline *bool                  `json:"submitted_offline,omitempty"`
+}
+
+// PatrolSkipCreateReason defines model for PatrolSkipCreate.Reason.
+type PatrolSkipCreateReason string
 
 // PatrolZone Zona patroli (`PATROL`) atau pos jaga (`GUARD`) beserta checkpoint-nya (Phase 10.1, 10.8).
 // Checklist, QR dan aturan foto ada di checkpoint, bukan di zona (titik dan radius zona hanya untuk tampilan peta). Proyek dan regu dikenali dengan kode (D19), bukan id.
@@ -11553,6 +11787,9 @@ type ZoneProgressItem struct {
 
 	// Required Lingkaran merah: jumlah scan yang dibutuhkan (`min_visit`).
 	Required int `json:"required"`
+
+	// Skipped Checkpoint yang dilewati dengan alasan dan belum ditolak. Bukan kunjungan, jadi tidak masuk lingkaran mana pun.
+	Skipped int `json:"skipped"`
 
 	// Submitted Lingkaran biru: sudah di-scan, belum diputuskan.
 	Submitted int `json:"submitted"`
@@ -14700,6 +14937,20 @@ type GetZonesByIdScansParamsStatus string
 // GetZonesByIdScans200JSONResponseBodySuccess defines parameters for GetZonesByIdScans.
 type GetZonesByIdScans200JSONResponseBodySuccess bool
 
+// PostZonesByIdSkipParams defines parameters for PostZonesByIdSkip.
+type PostZonesByIdSkipParams struct {
+	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
+	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
+	// 409 CONFLICT.
+	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
+}
+
+// PostZonesByIdSkip200JSONResponseBodySuccess defines parameters for PostZonesByIdSkip.
+type PostZonesByIdSkip200JSONResponseBodySuccess bool
+
+// PostZonesByIdSkip201JSONResponseBodySuccess defines parameters for PostZonesByIdSkip.
+type PostZonesByIdSkip201JSONResponseBodySuccess bool
+
 // GetZonesByIdTrackingParams defines parameters for GetZonesByIdTracking.
 type GetZonesByIdTrackingParams struct {
 	From        openapi_types.Date `form:"from" json:"from"`
@@ -15127,6 +15378,9 @@ type PostZonesByIdCheckOutJSONRequestBody = ZoneCheckInInput
 
 // PostZonesByIdScanJSONRequestBody defines body for PostZonesByIdScan for application/json ContentType.
 type PostZonesByIdScanJSONRequestBody = PatrolScanCreate
+
+// PostZonesByIdSkipJSONRequestBody defines body for PostZonesByIdSkip for application/json ContentType.
+type PostZonesByIdSkipJSONRequestBody = PatrolSkipCreate
 
 // Getter for additional properties for DeviceCondition. Returns the specified
 // element and whether it was found

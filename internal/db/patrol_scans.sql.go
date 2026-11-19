@@ -108,7 +108,7 @@ func (q *Queries) CountZoneTracking(ctx context.Context, arg CountZoneTrackingPa
 
 const getPatrolScanByLocalID = `-- name: GetPatrolScanByLocalID :one
 
-SELECT id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at, checkpoint_id FROM patrol_scans WHERE local_id = $1
+SELECT id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at, checkpoint_id, location_flag, outcome, skip_reason, skip_media_ids FROM patrol_scans WHERE local_id = $1
 `
 
 // Scans and zone check-ins (Phase 10.2). Everything runs inside database.WithTenant.
@@ -142,6 +142,10 @@ func (q *Queries) GetPatrolScanByLocalID(ctx context.Context, localID pgtype.UUI
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CheckpointID,
+		&i.LocationFlag,
+		&i.Outcome,
+		&i.SkipReason,
+		&i.SkipMediaIds,
 	)
 	return i, err
 }
@@ -150,6 +154,7 @@ const hasScanBetween = `-- name: HasScanBetween :one
 SELECT EXISTS (
     SELECT 1 FROM patrol_scans
     WHERE personnel_id = $1 AND zone_id = $2 AND checkpoint_id = $3 AND status <> 'DECLINED'
+      AND outcome = 'SCANNED'
       AND occurred_at > $4 AND occurred_at < $5)
 `
 
@@ -163,7 +168,8 @@ type HasScanBetweenParams struct {
 
 // A scan of this checkpoint in this zone by this person between two instants, a declined one not
 // counting: the patrol interval is about how often a guard visits a checkpoint, and a visit the DANRU turned
-// down did not happen, so the guard may do it again.
+// down did not happen, so the guard may do it again. A skip is not a visit either (Phase 10.17), so a guard
+// who skipped a checkpoint may scan it a minute later.
 func (q *Queries) HasScanBetween(ctx context.Context, arg HasScanBetweenParams) (bool, error) {
 	row := q.db.QueryRow(ctx, hasScanBetween,
 		arg.PersonnelID,
@@ -180,11 +186,14 @@ func (q *Queries) HasScanBetween(ctx context.Context, arg HasScanBetweenParams) 
 const insertPatrolScan = `-- name: InsertPatrolScan :one
 INSERT INTO patrol_scans (local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at,
                           received_at, work_date, latitude, longitude, accuracy_meters, distance_meters,
-                          subject, notes, patrol_id, checkpoint_id, submitted_offline, created_at, updated_at)
+                          subject, notes, patrol_id, checkpoint_id, submitted_offline, location_flag, outcome,
+                          skip_reason, skip_media_ids, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
-        $9, $10, $11, $12, $13, $14,
-        $15, $16, $17, $18, $8, $8)
-RETURNING id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at, checkpoint_id
+        $9, $10, $11, $12,
+        $13, $14,
+        $15, $16, $17, $18, $19, $20,
+        $21, $22::bigint[], $8, $8)
+RETURNING id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at, checkpoint_id, location_flag, outcome, skip_reason, skip_media_ids
 `
 
 type InsertPatrolScanParams struct {
@@ -197,15 +206,19 @@ type InsertPatrolScanParams struct {
 	OccurredAt       pgtype.Timestamptz
 	ReceivedAt       pgtype.Timestamptz
 	WorkDate         pgtype.Date
-	Latitude         float64
-	Longitude        float64
-	AccuracyMeters   float64
+	Latitude         *float64
+	Longitude        *float64
+	AccuracyMeters   *float64
 	DistanceMeters   pgtype.Int4
 	Subject          string
 	Notes            pgtype.Text
 	PatrolID         pgtype.Int8
 	CheckpointID     pgtype.UUID
 	SubmittedOffline bool
+	LocationFlag     PatrolLocationFlag
+	Outcome          PatrolScanOutcome
+	SkipReason       NullPatrolSkipReason
+	SkipMediaIds     []int64
 }
 
 func (q *Queries) InsertPatrolScan(ctx context.Context, arg InsertPatrolScanParams) (PatrolScan, error) {
@@ -228,6 +241,10 @@ func (q *Queries) InsertPatrolScan(ctx context.Context, arg InsertPatrolScanPara
 		arg.PatrolID,
 		arg.CheckpointID,
 		arg.SubmittedOffline,
+		arg.LocationFlag,
+		arg.Outcome,
+		arg.SkipReason,
+		arg.SkipMediaIds,
 	)
 	var i PatrolScan
 	err := row.Scan(
@@ -257,6 +274,10 @@ func (q *Queries) InsertPatrolScan(ctx context.Context, arg InsertPatrolScanPara
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CheckpointID,
+		&i.LocationFlag,
+		&i.Outcome,
+		&i.SkipReason,
+		&i.SkipMediaIds,
 	)
 	return i, err
 }

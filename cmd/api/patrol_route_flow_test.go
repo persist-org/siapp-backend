@@ -57,6 +57,7 @@ type routeOut struct {
 		ZoneName string `json:"zone_name"`
 		Status   string `json:"status"`
 		Subject  string `json:"subject"`
+		Outcome  string `json:"outcome"`
 
 		CheckpointID   string `json:"checkpoint_id"`
 		CheckpointName string `json:"checkpoint_name"`

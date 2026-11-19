@@ -6,19 +6,24 @@ SELECT * FROM patrol_scans WHERE local_id = $1;
 -- name: InsertPatrolScan :one
 INSERT INTO patrol_scans (local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at,
                           received_at, work_date, latitude, longitude, accuracy_meters, distance_meters,
-                          subject, notes, patrol_id, checkpoint_id, submitted_offline, created_at, updated_at)
+                          subject, notes, patrol_id, checkpoint_id, submitted_offline, location_flag, outcome,
+                          skip_reason, skip_media_ids, created_at, updated_at)
 VALUES (@local_id, @zone_id, @zone_type, @personnel_id, @team_code, @project_code, @occurred_at, @received_at,
-        @work_date, @latitude, @longitude, @accuracy_meters, sqlc.narg('distance_meters'), @subject,
-        sqlc.narg('notes'), sqlc.narg('patrol_id'), @checkpoint_id, @submitted_offline, @received_at, @received_at)
+        @work_date, sqlc.narg('latitude'), sqlc.narg('longitude'), sqlc.narg('accuracy_meters'),
+        sqlc.narg('distance_meters'), @subject,
+        sqlc.narg('notes'), sqlc.narg('patrol_id'), @checkpoint_id, @submitted_offline, @location_flag, @outcome,
+        sqlc.narg('skip_reason'), @skip_media_ids::bigint[], @received_at, @received_at)
 RETURNING *;
 
 -- A scan of this checkpoint in this zone by this person between two instants, a declined one not
 -- counting: the patrol interval is about how often a guard visits a checkpoint, and a visit the DANRU turned
--- down did not happen, so the guard may do it again.
+-- down did not happen, so the guard may do it again. A skip is not a visit either (Phase 10.17), so a guard
+-- who skipped a checkpoint may scan it a minute later.
 -- name: HasScanBetween :one
 SELECT EXISTS (
     SELECT 1 FROM patrol_scans
     WHERE personnel_id = @personnel_id AND zone_id = @zone_id AND checkpoint_id = @checkpoint_id AND status <> 'DECLINED'
+      AND outcome = 'SCANNED'
       AND occurred_at > @after AND occurred_at < @before);
 
 -- A transaction-scoped lock on a name, so two requests about the same thing take turns.

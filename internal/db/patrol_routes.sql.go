@@ -686,7 +686,7 @@ func (q *Queries) ListRoutePoints(ctx context.Context, patrolID int64) ([]ListRo
 
 const listRouteScans = `-- name: ListRouteScans :many
 SELECT s.id, s.zone_id, z.name AS zone_name, s.checkpoint_id, c.name AS checkpoint_name, s.occurred_at, s.latitude, s.longitude,
-       s.status, s.subject
+       s.status, s.subject, s.outcome, s.skip_reason, s.location_flag
 FROM patrol_scans s
 JOIN patrol_zones z ON z.id = s.zone_id
 JOIN patrol_checkpoints c ON c.id = s.checkpoint_id
@@ -701,10 +701,13 @@ type ListRouteScansRow struct {
 	CheckpointID   pgtype.UUID
 	CheckpointName string
 	OccurredAt     pgtype.Timestamptz
-	Latitude       float64
-	Longitude      float64
+	Latitude       *float64
+	Longitude      *float64
 	Status         PatrolScanStatus
 	Subject        string
+	Outcome        PatrolScanOutcome
+	SkipReason     NullPatrolSkipReason
+	LocationFlag   PatrolLocationFlag
 }
 
 // The scans of a patrol, in the order they were made, for the pins on the line.
@@ -728,6 +731,9 @@ func (q *Queries) ListRouteScans(ctx context.Context, patrolID pgtype.Int8) ([]L
 			&i.Longitude,
 			&i.Status,
 			&i.Subject,
+			&i.Outcome,
+			&i.SkipReason,
+			&i.LocationFlag,
 		); err != nil {
 			return nil, err
 		}

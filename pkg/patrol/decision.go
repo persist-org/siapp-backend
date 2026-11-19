@@ -112,6 +112,13 @@ func (s *Service) present(ctx context.Context, q *db.Queries, rows []db.PatrolSc
 		if scan.Actions, err = s.actionsOfScan(ctx, q, r.ID, actionsOf[r.ID]); err != nil {
 			return nil, err
 		}
+		// A skip has no actions: its photos are its own. Few skips make a page, so one lookup each is fine
+		// (the media views ask for one record at a time).
+		if r.Outcome == db.PatrolScanOutcomeSKIPPED {
+			if scan.Photos, err = s.photos(ctx, q, r.ID, r.SkipMediaIds); err != nil {
+				return nil, err
+			}
+		}
 		out = append(out, scan)
 	}
 	return out, nil
@@ -366,6 +373,7 @@ type Progress struct {
 	Submitted   int
 	Approved    int
 	Declined    int
+	Skipped     int // checkpoints skipped with a reason (Phase 10.17); not visits, so in no circle above
 	Checkpoints []CheckpointProgress
 }
 
@@ -378,6 +386,7 @@ type CheckpointProgress struct {
 	Submitted    int
 	Approved     int
 	Declined     int
+	Skipped      int
 }
 
 // ProgressFilter narrows the progress list. A zero WorkDate is today in each project's timezone.
@@ -495,12 +504,13 @@ func progressOf(rows []db.ZoneProgressRow) []Progress {
 		}
 		z.Checkpoints = append(z.Checkpoints, CheckpointProgress{
 			CheckpointID: uuidString(r.CheckpointID), Name: r.CheckpointName, SortOrder: int(r.Position),
-			Required: int(r.MinVisit), Submitted: int(r.Submitted), Approved: int(r.Approved), Declined: int(r.Declined),
+			Required: int(r.MinVisit), Submitted: int(r.Submitted), Approved: int(r.Approved), Declined: int(r.Declined), Skipped: int(r.Skipped),
 		})
 		z.Required += int(r.MinVisit)
 		z.Submitted += int(r.Submitted)
 		z.Approved += int(r.Approved)
 		z.Declined += int(r.Declined)
+		z.Skipped += int(r.Skipped)
 	}
 	return out
 }

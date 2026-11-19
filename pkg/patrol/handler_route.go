@@ -248,11 +248,17 @@ func routeDetailToAPI(d RouteDetail) apigen.PatrolRouteDetail {
 	}
 	scans := make([]apigen.PatrolRouteScan, 0, len(d.Scans))
 	for _, s := range d.Scans {
-		scans = append(scans, apigen.PatrolRouteScan{
+		item := apigen.PatrolRouteScan{
 			Id: s.ID, ZoneId: s.ZoneID, ZoneName: s.ZoneName, CheckpointId: mustUUID(s.CheckpointID), CheckpointName: s.CheckpointName,
 			OccurredAt: s.OccurredAt, Latitude: s.Latitude,
 			Longitude: s.Longitude, Status: apigen.PatrolRouteScanStatus(s.Status), Subject: s.Subject,
-		})
+			Outcome: apigen.PatrolRouteScanOutcome(s.Outcome), LocationFlag: apigen.PatrolLocationFlag(s.LocationFlag),
+		}
+		if s.SkipReason != nil {
+			reason := apigen.PatrolRouteScanSkipReason(*s.SkipReason)
+			item.SkipReason = &reason
+		}
+		scans = append(scans, item)
 	}
 	out := apigen.PatrolRouteDetail{
 		Id: base.Id, LocalId: base.LocalId, PersonnelId: base.PersonnelId, PersonnelName: base.PersonnelName,

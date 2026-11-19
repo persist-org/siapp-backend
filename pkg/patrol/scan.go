@@ -107,6 +107,9 @@ type Notice struct {
 	// covers a decision on several scans, and for scans made before the checkpoints).
 	CheckpointID   string
 	CheckpointName string
+	// Outcome (SCANNED or SKIPPED) and LocationFlag of a submitted scan (Phase 10.17).
+	Outcome      string
+	LocationFlag string
 
 	// For NoticeDecided: the outcome, what the decider wrote, and every scan it covers (ScanID is the
 	// first; with more than one, the notice points at no single scan).
@@ -134,11 +137,13 @@ type ScanInput struct {
 	LocalID    string    `json:"local_id" validate:"required,uuid"`
 	OccurredAt time.Time `json:"occurred_at" validate:"required"`
 	// CheckpointID is the checkpoint scanned; QRPayload is what its sticker held.
-	CheckpointID   string   `json:"checkpoint_id" validate:"required,uuid"`
-	QRPayload      string   `json:"qr_payload" validate:"required,max=200"`
-	Latitude       *float64 `json:"latitude" validate:"required,gte=-90,lte=90"`
-	Longitude      *float64 `json:"longitude" validate:"required,gte=-180,lte=180"`
-	AccuracyMeters *float64 `json:"accuracy_meters" validate:"required,gte=0,lte=100000"`
+	CheckpointID string `json:"checkpoint_id" validate:"required,uuid"`
+	QRPayload    string `json:"qr_payload" validate:"required,max=200"`
+	// The position is optional (Phase 10.17): a phone with no GPS fix still proves the guard was there by the
+	// QR. All three or none; none is stored as location_flag NO_FIX (see Position).
+	Latitude       *float64 `json:"latitude" validate:"omitempty,gte=-90,lte=90"`
+	Longitude      *float64 `json:"longitude" validate:"omitempty,gte=-180,lte=180"`
+	AccuracyMeters *float64 `json:"accuracy_meters" validate:"omitempty,gte=0,lte=100000"`
 	// Subject is optional: left out, it is the checkpoint's name.
 	Subject *string `json:"subject" validate:"omitempty,max=200"`
 	Notes   *string `json:"notes" validate:"omitempty,max=2000"`
@@ -156,20 +161,28 @@ type Scan struct {
 	ZoneType    string
 	PersonnelID int64
 	// Checkpoint is the checkpoint scanned, as the zone shows it now; its name is the one it has today.
-	Checkpoint     ScanCheckpoint
-	TeamCode       string
-	ProjectCode    string
-	OccurredAt     time.Time
-	ReceivedAt     time.Time
-	WorkDate       timeutil.Date
-	Latitude       float64
-	Longitude      float64
-	AccuracyMeters float64
+	Checkpoint  ScanCheckpoint
+	TeamCode    string
+	ProjectCode string
+	OccurredAt  time.Time
+	ReceivedAt  time.Time
+	WorkDate    timeutil.Date
+	// The position is nil when the phone had no fix (LocationFlag NO_FIX).
+	Latitude       *float64
+	Longitude      *float64
+	AccuracyMeters *float64
 	// DistanceMeters is how far from the checkpoint the scan was made; nil for a checkpoint with no
-	// geofence.
+	// geofence, or no position.
 	DistanceMeters *int
-	Subject        string
-	Notes          *string
+	// LocationFlag is what the server made of the position (Phase 10.17): a mark for the DANRU, never a
+	// refusal. Outcome is SCANNED or SKIPPED; a skip has a SkipReason and its own photos (Photos), and no
+	// Actions.
+	LocationFlag string
+	Outcome      string
+	SkipReason   *string
+	Photos       []Photo
+	Subject      string
+	Notes        *string
 	// Actions are the answers, one per action of the checkpoint's checklist as it was when the guard scanned
 	// (from patrol_scan_actions, never from the live action). Photos are filled when a scan is read.
 	Actions          []ScanAction
@@ -235,6 +248,11 @@ func scanOf(r db.PatrolScan) (Scan, error) {
 		ReceivedAt: r.ReceivedAt.Time, WorkDate: timeutil.NewDate(r.WorkDate.Time.Year(), r.WorkDate.Time.Month(), r.WorkDate.Time.Day()),
 		Latitude: r.Latitude, Longitude: r.Longitude, AccuracyMeters: r.AccuracyMeters, Subject: r.Subject,
 		Notes: textPtr(r.Notes), Status: string(r.Status), SubmittedOffline: r.SubmittedOffline, CreatedAt: r.CreatedAt.Time,
+		LocationFlag: string(r.LocationFlag), Outcome: string(r.Outcome),
+	}
+	if r.SkipReason.Valid {
+		reason := string(r.SkipReason.PatrolSkipReason)
+		out.SkipReason = &reason
 	}
 	out.Checkpoint.ID = uuidString(r.CheckpointID)
 	if r.DistanceMeters.Valid {
@@ -276,6 +294,14 @@ type visit struct {
 func (s *Service) arrive(ctx context.Context, q *db.Queries, p auth.Principal, zone db.PatrolZone, project db.Project,
 	checkpointID, qrPayload string,
 ) (visit, error) {
+	return s.reach(ctx, q, p, zone, project, checkpointID, &qrPayload)
+}
+
+// reach is arrive, with the QR optional: a nil qrPayload skips the QR check. Only a skip passes nil (Phase
+// 10.17): the sticker may be the very reason the checkpoint cannot be scanned.
+func (s *Service) reach(ctx context.Context, q *db.Queries, p auth.Principal, zone db.PatrolZone, project db.Project,
+	checkpointID string, qrPayload *string,
+) (visit, error) {
 	v := visit{zone: zone, project: project}
 	id, ok := parseUUID(checkpointID)
 	if !ok {
@@ -297,7 +323,7 @@ func (s *Service) arrive(ctx context.Context, q *db.Queries, p auth.Principal, z
 		return v, fmt.Errorf("get checkpoint: %w", err)
 	}
 	v.checkpoint = cp
-	if !verifyCheckpointPayload(qrPayload, p.OrganizationID, uuidString(cp.ID), cp.QrSecret) {
+	if qrPayload != nil && !verifyCheckpointPayload(*qrPayload, p.OrganizationID, uuidString(cp.ID), cp.QrSecret) {
 		return v, ErrCheckpointQRInvalid
 	}
 	loc, err := time.LoadLocation(project.Timezone)
@@ -333,7 +359,8 @@ func (s *Service) authorize(ctx context.Context, q *db.Queries, p auth.Principal
 }
 
 // checkGeofence refuses a position outside the checkpoint's radius (plus the capped tolerance) and records
-// how far from it the position was. A checkpoint with no geofence accepts any position.
+// how far from it the position was. A checkpoint with no geofence accepts any position. Check-in and
+// check-out use it (online only, so a refusal costs nothing); a scan uses flagLocation.
 func checkGeofence(v visit, lat, lng, accuracy float64) (visit, error) {
 	cp := v.checkpoint
 	if cp.Latitude != nil && cp.Longitude != nil && cp.RadiusMeters.Valid {
@@ -347,6 +374,57 @@ func checkGeofence(v visit, lat, lng, accuracy float64) (visit, error) {
 		v.distance = &rounded
 	}
 	return v, nil
+}
+
+// lowAccuracyMeters is the accuracy above which a fix is flagged LOW_ACCURACY: it says too little to trust
+// where the guard stood. A mark for the DANRU, not a limit.
+const lowAccuracyMeters = 50.0
+
+// checkPosition is the rule of a scan's and a skip's position: all of latitude, longitude and accuracy, or
+// none. A half position is the client's mistake, and it names the missing field.
+func checkPosition(lat, lng, accuracy *float64) error {
+	var problems []apperr.FieldError
+	for _, f := range []struct {
+		name string
+		v    *float64
+	}{{"latitude", lat}, {"longitude", lng}, {"accuracy_meters", accuracy}} {
+		if f.v == nil && (lat != nil || lng != nil || accuracy != nil) {
+			problems = append(problems, apperr.FieldError{Field: f.name, Code: "REQUIRED", Message: "Wajib diisi bila posisi dikirim."})
+		}
+	}
+	if len(problems) > 0 {
+		return apperr.ErrValidation.WithFields(problems...)
+	}
+	return nil
+}
+
+// flagLocation says what the position shows about the visit and records how far from the checkpoint it was.
+// Unlike checkGeofence it never refuses (Phase 10.17): the QR is the proof the guard was there, and a refused
+// scan is not stored, so it broke the order rule for the rest of an offline round. The DANRU reads the flag at
+// approval.
+//
+// The flags, first match wins: NO_FIX (no position), OUTSIDE_RADIUS (the same test checkGeofence uses),
+// LOW_ACCURACY (the fix is vague, see lowAccuracyMeters), OK. A checkpoint with no geofence is OK whenever
+// there is a position.
+func flagLocation(v visit, lat, lng, accuracy *float64) (visit, db.PatrolLocationFlag) {
+	if lat == nil || lng == nil || accuracy == nil {
+		return v, db.PatrolLocationFlagNOFIX
+	}
+	cp := v.checkpoint
+	outside := false
+	if cp.Latitude != nil && cp.Longitude != nil && cp.RadiusMeters.Valid {
+		d := distanceTo(*cp.Latitude, *cp.Longitude, *lat, *lng)
+		rounded := int(d + 0.5)
+		v.distance = &rounded
+		outside = !insideZone(d, float64(cp.RadiusMeters.Int32), *accuracy)
+	}
+	switch {
+	case outside:
+		return v, db.PatrolLocationFlagOUTSIDERADIUS
+	case *accuracy > lowAccuracyMeters:
+		return v, db.PatrolLocationFlagLOWACCURACY
+	}
+	return v, db.PatrolLocationFlagOK
 }
 
 // membershipIn returns the regu of the person that count for the zone on a date: those in the
@@ -441,8 +519,8 @@ func (s *Service) placeIn(ctx context.Context, q *db.Queries, p auth.Principal, 
 // a client that changed its key but not its local_id).
 //
 // The checks run in this order, and the first that fails is the answer: that the checkpoint is the zone's,
-// its QR, the permission, the membership, the geofence, the order of the round, the patrol interval, then
-// the actions and their photos.
+// its QR, the permission, the membership, the geofence (a flag, not a refusal), the order of the round, the
+// patrol interval, then the actions and their photos.
 func (s *Service) Scan(ctx context.Context, p auth.Principal, zoneID int64, in ScanInput) (ScanResult, error) {
 	res, err := s.scan(ctx, p, zoneID, in)
 	// Two requests with the same local_id at once: both found nothing, one insert won. The loser
@@ -501,6 +579,9 @@ func (s *Service) scan(ctx context.Context, p auth.Principal, zoneID int64, in S
 	if err != nil {
 		return ScanResult{}, err
 	}
+	if err := checkPosition(in.Latitude, in.Longitude, in.AccuracyMeters); err != nil {
+		return ScanResult{}, err
+	}
 	now := s.clock.Now()
 	at := in.OccurredAt.UTC()
 
@@ -544,10 +625,9 @@ func (s *Service) scan(ctx context.Context, p auth.Principal, zoneID int64, in S
 		if err := s.authorize(ctx, q, p, v, at); err != nil {
 			return err
 		}
-		// 4: the geofence of the checkpoint.
-		if v, err = checkGeofence(v, *in.Latitude, *in.Longitude, *in.AccuracyMeters); err != nil {
-			return err
-		}
+		// 4: the position against the checkpoint's geofence. Only a flag for the DANRU (see flagLocation): a
+		// refusal here would not be stored and would break the order rule for the rest of the round.
+		v, flag := flagLocation(v, in.Latitude, in.Longitude, in.AccuracyMeters)
 		// 5: the regu and the work date, which the order rule needs.
 		pl, err := s.place(ctx, q, p, v, at)
 		if err != nil {
@@ -584,9 +664,10 @@ func (s *Service) scan(ctx context.Context, p auth.Principal, zoneID int64, in S
 			LocalID: pgtype.UUID{Bytes: localID, Valid: true}, ZoneID: zoneID, ZoneType: zone.Type,
 			PersonnelID: p.PersonnelID, TeamCode: pl.team, ProjectCode: zone.ProjectCode,
 			OccurredAt: ts(at), ReceivedAt: ts(now), WorkDate: pgtype.Date{Time: pl.workDate.Time(), Valid: true},
-			Latitude: *in.Latitude, Longitude: *in.Longitude, AccuracyMeters: *in.AccuracyMeters,
+			Latitude: in.Latitude, Longitude: in.Longitude, AccuracyMeters: in.AccuracyMeters,
 			DistanceMeters: intParam(v.distance), Subject: subjectOf(in.Subject, v.checkpoint.Name), Notes: textOrNull(in.Notes),
 			PatrolID: patrolID, CheckpointID: v.checkpoint.ID, SubmittedOffline: in.SubmittedOffline,
+			LocationFlag: flag, Outcome: db.PatrolScanOutcomeSCANNED, SkipMediaIds: []int64{},
 		})
 		if err != nil {
 			return fmt.Errorf("insert scan: %w", err)
@@ -694,7 +775,7 @@ func (s *Service) noticesFor(ctx context.Context, q *db.Queries, p auth.Principa
 	base := Notice{
 		ZoneType: string(zone.Type), BusinessLine: string(project.BusinessLine), ActorName: name.FullName,
 		TeamCode: scan.TeamCode, Subject: scan.Subject, Date: scan.WorkDate, ScanID: scan.ID, ZoneID: zone.ID,
-		CheckpointID: uuidString(cp.ID), CheckpointName: cp.Name,
+		CheckpointID: uuidString(cp.ID), CheckpointName: cp.Name, Outcome: scan.Outcome, LocationFlag: scan.LocationFlag,
 	}
 	var out []Notice
 	danru, err := s.perms.DanruOf(ctx, q, scan.TeamCode, p.PersonnelID, scan.WorkDate)

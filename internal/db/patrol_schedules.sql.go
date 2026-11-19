@@ -158,7 +158,7 @@ func (q *Queries) GetPatrolScheduleForUpdate(ctx context.Context, id pgtype.UUID
 const getPatrolScheduleView = `-- name: GetPatrolScheduleView :one
 SELECT sc.id, sc.organization_id, sc.project_code, sc.zone_id, sc.personnel_id, sc.starts_at, sc.ends_at, sc.work_date, sc.notes, sc.created_by_id, sc.cancelled_at, sc.cancelled_by_id, sc.created_at, sc.updated_at, z.name AS zone_name, z.type AS zone_type, p.full_name AS personnel_name,
        pr.id AS patrol_id, pr.status AS patrol_status, pr.started_at AS patrol_started_at,
-       (SELECT count(*) FROM patrol_scans s WHERE s.patrol_id = pr.id AND s.zone_id = sc.zone_id)::int AS scan_count
+       (SELECT count(*) FROM patrol_scans s WHERE s.patrol_id = pr.id AND s.zone_id = sc.zone_id AND s.outcome = 'SCANNED')::int AS scan_count
 FROM patrol_schedules sc
 JOIN patrol_zones z ON z.organization_id = sc.organization_id AND z.id = sc.zone_id
 JOIN personnels p ON p.id = sc.personnel_id
@@ -332,7 +332,7 @@ func (q *Queries) ListOverlappingSchedules(ctx context.Context, arg ListOverlapp
 const listPatrolSchedules = `-- name: ListPatrolSchedules :many
 SELECT sc.id, sc.organization_id, sc.project_code, sc.zone_id, sc.personnel_id, sc.starts_at, sc.ends_at, sc.work_date, sc.notes, sc.created_by_id, sc.cancelled_at, sc.cancelled_by_id, sc.created_at, sc.updated_at, z.name AS zone_name, z.type AS zone_type, p.full_name AS personnel_name,
        pr.id AS patrol_id, pr.status AS patrol_status, pr.started_at AS patrol_started_at,
-       (SELECT count(*) FROM patrol_scans s WHERE s.patrol_id = pr.id AND s.zone_id = sc.zone_id)::int AS scan_count
+       (SELECT count(*) FROM patrol_scans s WHERE s.patrol_id = pr.id AND s.zone_id = sc.zone_id AND s.outcome = 'SCANNED')::int AS scan_count
 FROM patrol_schedules sc
 JOIN patrol_zones z ON z.organization_id = sc.organization_id AND z.id = sc.zone_id
 JOIN personnels p ON p.id = sc.personnel_id

@@ -49,6 +49,7 @@ func (h *Handler) MountField(r chi.Router) {
 	r.Get("/api/v1/patrol-schedules", h.scheduleList)
 	r.Get("/api/v1/patrol-schedules/{id}", h.scheduleGet)
 	r.With(h.idempotent).Post("/api/v1/zones/{id}/scan", h.scan)
+	r.With(h.idempotent).Post("/api/v1/zones/{id}/skip", h.skip)
 	r.With(h.idempotent).Post("/api/v1/zones/{id}/check-in", h.checkIn)
 	r.With(h.idempotent).Post("/api/v1/zones/{id}/check-out", h.checkOut)
 	r.Get("/api/v1/zones/{id}/live", h.live)
@@ -316,6 +317,39 @@ func (h *Handler) scan(w http.ResponseWriter, r *http.Request) {
 	httpx.OK(w, r, status, scanToAPI(res.Scan))
 }
 
+// skip is POST /zones/{id}/skip: a checkpoint of the round that could not be scanned (Phase 10.17).
+func (h *Handler) skip(w http.ResponseWriter, r *http.Request) {
+	p, ok := auth.From(r.Context())
+	if !ok {
+		httpx.Error(w, r, apperr.ErrUnauthenticated)
+		return
+	}
+	id, err := idParam(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	var in SkipInput
+	if err := httpx.Decode(r, &in); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	if err := in.Offline().Check(r, h.service.Now()); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	res, err := h.service.Skip(r.Context(), p, id, in)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	status := http.StatusCreated
+	if res.Replayed {
+		status = http.StatusOK
+	}
+	httpx.OK(w, r, status, scanToAPI(res.Scan))
+}
+
 func (h *Handler) checkIn(w http.ResponseWriter, r *http.Request) {
 	h.presence(w, r, h.service.CheckIn, http.StatusCreated)
 }
@@ -476,7 +510,7 @@ func scanToAPI(sc Scan) apigen.PatrolScan {
 		name = &sc.PersonnelName
 	}
 	checkpoint := apigen.PatrolScanCheckpoint{Id: mustUUID(sc.Checkpoint.ID), Name: sc.Checkpoint.Name, SortOrder: sc.Checkpoint.SortOrder}
-	return apigen.PatrolScan{
+	out := apigen.PatrolScan{
 		Id: sc.ID, LocalId: local, ZoneId: sc.ZoneID, ZoneType: apigen.PatrolScanZoneType(sc.ZoneType),
 		CheckpointId: checkpoint.Id, Checkpoint: checkpoint,
 		PersonnelId: sc.PersonnelID, TeamCode: sc.TeamCode, ProjectCode: sc.ProjectCode, OccurredAt: sc.OccurredAt,
@@ -485,8 +519,14 @@ func scanToAPI(sc Scan) apigen.PatrolScan {
 		Notes: sc.Notes, Actions: actions, Status: apigen.PatrolScanStatus(sc.Status), PatrolId: sc.PatrolID,
 		SubmittedOffline: sc.SubmittedOffline, CreatedAt: sc.CreatedAt,
 		DecidedById: sc.DecidedByID, DecidedAt: sc.DecidedAt, DecisionNote: sc.DecisionNote,
-		PersonnelName: name,
+		PersonnelName: name, LocationFlag: apigen.PatrolLocationFlag(sc.LocationFlag), Outcome: apigen.PatrolScanOutcome(sc.Outcome),
+		Photos: photosToAPI(sc.Photos),
 	}
+	if sc.SkipReason != nil {
+		reason := apigen.PatrolScanSkipReason(*sc.SkipReason)
+		out.SkipReason = &reason
+	}
+	return out
 }
 
 func checkInToAPI(c CheckIn) apigen.ZoneCheckIn {

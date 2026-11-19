@@ -5699,9 +5699,8 @@ components:
       - occurred_at
       - received_at
       - work_date
-      - latitude
-      - longitude
-      - accuracy_meters
+      - location_flag
+      - outcome
       - subject
       - checkpoint
       - actions
@@ -5748,19 +5747,42 @@ components:
           type: string
           format: date
           description: Tanggal mulai shift (shift malam setelah tengah malam tetap tanggal kemarin).
+        outcome:
+          type: string
+          enum:
+          - SCANNED
+          - SKIPPED
+          description: '`SKIPPED`: checkpoint dilewati dengan alasan (`POST /zones/{id}/skip`), bukan kunjungan. Scan yang dilewati tidak punya `actions`; fotonya ada di `photos`.'
+        skip_reason:
+          type: string
+          enum:
+          - STICKER_DAMAGED
+          - ACCESS_BLOCKED
+          - OTHER
+          description: Hanya ada bila `outcome` = `SKIPPED`.
+        location_flag:
+          $ref: '#/components/schemas/PatrolLocationFlag'
+        photos:
+          type: array
+          items:
+            $ref: '#/components/schemas/PatrolScanPhoto'
+          description: Foto sebuah scan yang dilewati. Scan biasa menaruh foto di `actions[].photos`. Ada saat scan dibaca, tidak pada jawaban pembuatannya.
         latitude:
           type: number
           format: double
+          description: Tidak dikirim bila perangkat tidak mendapat posisi (`location_flag` = `NO_FIX`).
         longitude:
           type: number
           format: double
+          description: Idem `latitude`.
         accuracy_meters:
           type: number
           format: double
+          description: Idem `latitude`.
         distance_meters:
           type: integer
           nullable: true
-          description: Jarak dari checkpoint; null bila checkpoint tanpa geofence.
+          description: Jarak dari checkpoint; tidak ada bila checkpoint tanpa geofence atau scan tanpa posisi.
         subject:
           type: string
         notes:
@@ -5801,6 +5823,18 @@ components:
           type: string
           nullable: true
           description: Catatan DANRU, wajib saat ditolak.
+    PatrolLocationFlag:
+      type: string
+      enum:
+      - OK
+      - OUTSIDE_RADIUS
+      - LOW_ACCURACY
+      - NO_FIX
+      description: |
+        Tanda dari server atas posisi saat scan, untuk DANRU saat approval; tidak pernah penolakan. Dinilai berurutan, yang
+        pertama cocok menang: `NO_FIX` (tidak ada posisi), `OUTSIDE_RADIUS` (lebih jauh dari radius checkpoint ditambah
+        `min(accuracy_meters, 30)`), `LOW_ACCURACY` (`accuracy_meters` di atas 50), `OK`. Checkpoint tanpa geofence `OK` selama
+        ada posisi.
     PatrolDeclineInput:
       type: object
       description: Badan `POST /scans/{id}/decline`.
@@ -5821,6 +5855,7 @@ components:
       - submitted
       - approved
       - declined
+      - skipped
       - checkpoints
       properties:
         zone:
@@ -5864,6 +5899,9 @@ components:
         declined:
           type: integer
           description: Ditolak.
+        skipped:
+          type: integer
+          description: Jumlah checkpoint zona yang dilewati dengan alasan dan belum ditolak. Bukan kunjungan, jadi tidak masuk lingkaran mana pun.
         checkpoints:
           type: array
           description: Tiga lingkaran tiap checkpoint aktif zona menurut urutannya. Angka zona di atas adalah jumlahnya; zona tanpa checkpoint
@@ -5880,6 +5918,7 @@ components:
       - submitted
       - approved
       - declined
+      - skipped
       properties:
         checkpoint_id:
           type: string
@@ -5897,6 +5936,9 @@ components:
           type: integer
         declined:
           type: integer
+        skipped:
+          type: integer
+          description: Dilewati dengan alasan (`outcome` = `SKIPPED`) dan belum ditolak. Bukan kunjungan, jadi tidak masuk lingkaran mana pun.
     ZoneScanner:
       type: object
       required:
@@ -6016,9 +6058,6 @@ components:
       - occurred_at
       - checkpoint_id
       - qr_payload
-      - latitude
-      - longitude
-      - accuracy_meters
       properties:
         local_id:
           type: string
@@ -6040,6 +6079,7 @@ components:
           format: double
           minimum: -90
           maximum: 90
+          description: 'Posisi: `latitude`, `longitude` dan `accuracy_meters` dikirim ketiganya atau tidak sama sekali; yang setengah 422 (`REQUIRED` pada field yang kurang). Tanpa posisi, scan tersimpan dengan `location_flag` = `NO_FIX`.'
         longitude:
           type: number
           format: double
@@ -6066,6 +6106,65 @@ components:
           description: Satu jawaban untuk setiap aksi aktif checkpoint. `device_condition` di scan menjadi bawaan aksi yang tidak membawa sendiri.
           items:
             $ref: '#/components/schemas/PatrolScanActionInput'
+        submitted_offline:
+          type: boolean
+          default: false
+    PatrolSkipCreate:
+      type: object
+      description: |
+        Badan `POST /zones/{id}/skip`: checkpoint putaran yang tidak bisa di-scan, mis. stiker rusak atau ruangan terkunci.
+        Tanpa QR dan tanpa geofence; posisi hanya diberi tanda. Tidak ada `device_condition` (skip tidak punya aksi yang menyimpannya).
+      required:
+      - local_id
+      - occurred_at
+      - checkpoint_id
+      - reason
+      properties:
+        local_id:
+          type: string
+          format: uuid
+          description: Harus sama dengan header Idempotency-Key.
+        occurred_at:
+          type: string
+          format: date-time
+          description: Saat perangkat memutuskan melewati. Maksimal 5 menit di depan dan 7 hari ke belakang.
+        checkpoint_id:
+          type: string
+          format: uuid
+        reason:
+          type: string
+          enum:
+          - STICKER_DAMAGED
+          - ACCESS_BLOCKED
+          - OTHER
+        note:
+          type: string
+          nullable: true
+          maxLength: 2000
+          description: Wajib (tidak kosong atau spasi saja) bila `reason` = `OTHER`; selain itu 422 `REQUIRED` pada field `note`.
+        media_ids:
+          type: array
+          maxItems: 5
+          items:
+            type: integer
+            format: int64
+          description: Foto (`POST /media` dengan tujuan `PATROL_SCAN`), mis. stiker yang rusak. Tiap id hanya sekali (`DUPLICATE`).
+        latitude:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+          description: Seperti pada scan, ketiganya (`latitude`, `longitude`, `accuracy_meters`) atau tidak sama sekali.
+        longitude:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+        accuracy_meters:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 100000
         submitted_offline:
           type: boolean
           default: false
@@ -6410,10 +6509,10 @@ components:
       - checkpoint_id
       - checkpoint_name
       - occurred_at
-      - latitude
-      - longitude
       - status
       - subject
+      - outcome
+      - location_flag
       properties:
         id:
           type: integer
@@ -6434,9 +6533,11 @@ components:
         latitude:
           type: number
           format: double
+          description: Tidak dikirim bila scan tanpa posisi (`location_flag` = `NO_FIX`); scan itu tidak punya pin di peta.
         longitude:
           type: number
           format: double
+          description: Idem `latitude`.
         status:
           type: string
           enum:
@@ -6445,6 +6546,20 @@ components:
           - DECLINED
         subject:
           type: string
+        outcome:
+          type: string
+          enum:
+          - SCANNED
+          - SKIPPED
+        skip_reason:
+          type: string
+          enum:
+          - STICKER_DAMAGED
+          - ACCESS_BLOCKED
+          - OTHER
+          description: Hanya ada bila `outcome` = `SKIPPED`.
+        location_flag:
+          $ref: '#/components/schemas/PatrolLocationFlag'
     PatrolScheduleStatus:
       type: string
       enum:
@@ -21187,17 +21302,23 @@ paths:
         depan dan 7 hari ke belakang. Memeriksa berurutan, dan yang pertama gagal menjadi jawabannya:
         checkpoint harus bagian dari zona ini dan aktif (`CHECKPOINT_NOT_IN_ZONE`; id yang tidak ada, nonaktif
         atau milik zona lain dijawab sama), QR (`CHECKPOINT_QR_INVALID`), izin `patrol.scan`/`guard.scan` menurut
-        tipe zona (`PERMISSION_DENIED`, 403), keanggotaan proyek dan regu (`ZONE_NOT_IN_PROJECT`, 403), geofence
-        checkpoint (`CHECKPOINT_OUTSIDE_RADIUS`: jarak lebih dari radius ditambah `min(accuracy_meters, 30)`;
-        checkpoint tanpa titik hanya mengandalkan QR), urutan putaran (`CHECKPOINT_OUT_OF_ORDER`), interval
+        tipe zona (`PERMISSION_DENIED`, 403), keanggotaan proyek dan regu (`ZONE_NOT_IN_PROJECT`, 403), urutan
+        putaran (`CHECKPOINT_OUT_OF_ORDER`), interval
         (`ZONE_INTERVAL_NOT_ELAPSED`: per checkpoint, paling cepat 30 detik, atau interval patroli proyek bila
         lebih besar), lalu aksi (`CHECKLIST_ITEM_INVALID`, `CHECKLIST_ANSWER_REQUIRED`, `CHECKLIST_ANSWER_INVALID`,
         `CHECKLIST_ATTACHMENT_REQUIRED`) dan `device_condition` (`DEVICE_CONDITION_INVALID`, yang tidak pernah
         menolak scan karena isinya); terakhir foto dilampirkan.
 
+        **Posisi hanya tanda.** Posisi (`latitude`, `longitude`, `accuracy_meters`) boleh dikosongkan, ketiganya
+        sekaligus: QR sudah bukti hadir. Server tidak pernah menolak scan karena posisi; ia menyimpan `location_flag`
+        (`NO_FIX`, `OUTSIDE_RADIUS`, `LOW_ACCURACY`, `OK`; lihat `PatrolLocationFlag`) yang dibaca DANRU saat
+        approval. Alasannya: scan yang ditolak tidak tersimpan, dan tanpa itu semua checkpoint sesudahnya di putaran
+        offline ikut ditolak `CHECKPOINT_OUT_OF_ORDER` selamanya. (`CHECKPOINT_OUTSIDE_RADIUS` kini hanya untuk
+        check-in dan check-out.) Checkpoint yang memang tidak bisa di-scan: `POST /zones/{id}/skip`.
+
         **Urutan.** Checkpoint pertama zona selalu boleh di-scan (putaran baru bisa dimulai kapan saja);
-        checkpoint lain hanya bila checkpoint sebelumnya sudah lebih sering di-scan oleh pemanggil di zona ini
-        pada tanggal kerja yang sama (status scan apa pun dihitung). Pelanggarannya 409
+        checkpoint lain hanya bila checkpoint sebelumnya sudah lebih sering di-scan **atau dilewati** oleh pemanggil di
+        zona ini pada tanggal kerja yang sama (status scan apa pun dihitung). Pelanggarannya 409
         `CHECKPOINT_OUT_OF_ORDER` dengan `details.expected_checkpoint_id` (checkpoint yang harus di-scan lebih
         dulu). Sengaja 409, bukan 422: jawaban 4xx disimpan di bawah `Idempotency-Key`, sedangkan 409 dilepas, jadi
         permintaan yang sama dengan `local_id` dan key yang sama bisa dikirim ulang dan diterima setelah pendahulunya tiba. `GET /zones/{id}` memberi `scannable` dan `next_checkpoint_id` dari aturan yang sama.
@@ -21263,7 +21384,80 @@ paths:
         '413':
           $ref: '#/components/responses/PayloadTooLarge'
         '422':
-          description: '`VALIDATION_ERROR`: field body salah/tidak dikenal, header `Idempotency-Key` hilang atau bukan UUID, `local_id` tidak sama dengan header (`MISMATCH`), `media_ids` ganda (`DUPLICATE`). `UNPROCESSABLE` dengan `details.reason`: `OCCURRED_AT_IN_FUTURE`, `OCCURRED_AT_TOO_OLD`, `CHECKPOINT_NOT_IN_ZONE`, `CHECKPOINT_QR_INVALID`, `CHECKPOINT_OUTSIDE_RADIUS` (`details.distance_meters`, `details.radius_meters`), `ZONE_INTERVAL_NOT_ELAPSED` (`details.interval_seconds`), `CHECKLIST_ITEM_INVALID`, `CHECKLIST_ANSWER_REQUIRED`, `CHECKLIST_ANSWER_INVALID`, `CHECKLIST_ATTACHMENT_REQUIRED` (semua dengan `details.action_id`), `DEVICE_CONDITION_INVALID` (field `device_condition` atau `actions[i].device_condition`), `MEDIA_PURPOSE_MISMATCH`, `MEDIA_LIMIT_EXCEEDED`.'
+          description: '`VALIDATION_ERROR`: field body salah/tidak dikenal, header `Idempotency-Key` hilang atau bukan UUID, `local_id` tidak sama dengan header (`MISMATCH`), `media_ids` ganda (`DUPLICATE`). `UNPROCESSABLE` dengan `details.reason`: `OCCURRED_AT_IN_FUTURE`, `OCCURRED_AT_TOO_OLD`, `CHECKPOINT_NOT_IN_ZONE`, `CHECKPOINT_QR_INVALID`, `ZONE_INTERVAL_NOT_ELAPSED` (`details.interval_seconds`), `CHECKLIST_ITEM_INVALID`, `CHECKLIST_ANSWER_REQUIRED`, `CHECKLIST_ANSWER_INVALID`, `CHECKLIST_ATTACHMENT_REQUIRED` (semua dengan `details.action_id`), `DEVICE_CONDITION_INVALID` (field `device_condition` atau `actions[i].device_condition`), `MEDIA_PURPOSE_MISMATCH`, `MEDIA_LIMIT_EXCEEDED`. Posisi setengah: `VALIDATION_ERROR` `REQUIRED` pada field yang kurang.'
+          content: {application/json: {schema: {$ref: '#/components/schemas/ErrorEnvelope'}}}
+  /zones/{id}/skip:
+    parameters:
+    - $ref: '#/components/parameters/IdPath'
+    post:
+      operationId: postZonesByIdSkip
+      tags:
+      - Patrol
+      summary: Lewati checkpoint dengan alasan (offline-capable, berurutan)
+      description: |
+        Mencatat bahwa satu checkpoint putaran tidak bisa di-scan (`STICKER_DAMAGED`, `ACCESS_BLOCKED`, `OTHER` dengan
+        `note`), supaya checkpoint sesudahnya tetap bisa di-scan. Disimpan sebagai scan dengan `outcome` = `SKIPPED`
+        dan `skip_reason`; DANRU menyetujui atau menolaknya seperti scan lain. Jawabannya berbentuk `PatrolScan`.
+
+        Memeriksa berurutan, yang pertama gagal menjadi jawabannya: zona ada dan aktif (`ZONE_NOT_FOUND`), checkpoint
+        bagian dari zona (`CHECKPOINT_NOT_IN_ZONE`), izin dan keanggotaan seperti scan (`PERMISSION_DENIED`,
+        `ZONE_NOT_IN_PROJECT`, 403), urutan putaran (`CHECKPOINT_OUT_OF_ORDER`, 409, aturan dan `details` sama dengan
+        scan). **Tidak ada** QR (stikernya bisa jadi yang rusak), geofence (posisi hanya diberi `location_flag`),
+        interval, maupun aksi.
+
+        Skip dihitung untuk aturan urutan seperti scan (status apa pun, juga yang ditolak DANRU), tetapi bukan
+        kunjungan: tidak masuk lingkaran `submitted`/`approved`/`declined` (ada `skipped`), tidak masuk `scan_count`
+        patroli maupun jadwal, dan tidak menghalangi scan checkpoint itu semenit kemudian (interval). Skip yang
+        ditolak DANRU tidak masuk `skipped`.
+
+        Header `Idempotency-Key` wajib (UUID) dan harus sama dengan `local_id`; `occurred_at`, kirim ulang (200) dan
+        urutan offline seperti scan: kirim berurutan menurut `occurred_at`. DANRU diberi tahu seperti pada scan, dengan
+        `data.outcome` = `SKIPPED` dan `data.location_flag`.
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKeyRequiredHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatrolSkipCreate'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/SuccessEnvelope'
+                - properties:
+                    data:
+                      $ref: '#/components/schemas/PatrolScan'
+        '200':
+          description: Idempotent replay (local_id/key sama)
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/SuccessEnvelope'
+                - properties:
+                    data:
+                      $ref: '#/components/schemas/PatrolScan'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PatrolNotInProject'
+        '404':
+          description: '`NOT_FOUND`: `ZONE_NOT_FOUND` (zona tidak ada, nonaktif, atau id bukan angka positif) atau `MEDIA_NOT_FOUND` (foto bukan milik pemanggil).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/ErrorEnvelope'}}}
+        '409':
+          description: '`CONFLICT` `CHECKPOINT_OUT_OF_ORDER` (`details.expected_checkpoint_id`; tidak disimpan di bawah `Idempotency-Key`, kirim ulang setelah pendahulunya tiba); `DUPLICATE` `SCAN_LOCAL_ID_TAKEN`; `CONFLICT` `MEDIA_NOT_UPLOADED`, `MEDIA_ALREADY_ATTACHED` (`details.media_id`); `IDEMPOTENCY_KEY_REUSED`, `IDEMPOTENCY_KEY_IN_FLIGHT`, `IDEMPOTENCY_RESPONSE_NOT_STORED` (lihat header `Idempotency-Key`).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/ErrorEnvelope'}}}
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          description: '`VALIDATION_ERROR`: field body salah/tidak dikenal, `reason` bukan salah satu dari tiga nilai, `note` kosong untuk `OTHER` (`REQUIRED` pada `note`), `media_ids` ganda (`DUPLICATE`), lebih dari 5 foto, posisi setengah (`REQUIRED`), `local_id` tidak sama dengan header (`MISMATCH`). `UNPROCESSABLE` dengan `details.reason`: `OCCURRED_AT_IN_FUTURE`, `OCCURRED_AT_TOO_OLD`, `CHECKPOINT_NOT_IN_ZONE`, `MEDIA_PURPOSE_MISMATCH`, `MEDIA_LIMIT_EXCEEDED`.'
           content: {application/json: {schema: {$ref: '#/components/schemas/ErrorEnvelope'}}}
   /zones/{id}/scans:
     parameters:

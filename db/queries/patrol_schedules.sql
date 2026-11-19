@@ -43,7 +43,7 @@ ORDER BY starts_at, id;
 -- name: ListPatrolSchedules :many
 SELECT sc.*, z.name AS zone_name, z.type AS zone_type, p.full_name AS personnel_name,
        pr.id AS patrol_id, pr.status AS patrol_status, pr.started_at AS patrol_started_at,
-       (SELECT count(*) FROM patrol_scans s WHERE s.patrol_id = pr.id AND s.zone_id = sc.zone_id)::int AS scan_count
+       (SELECT count(*) FROM patrol_scans s WHERE s.patrol_id = pr.id AND s.zone_id = sc.zone_id AND s.outcome = 'SCANNED')::int AS scan_count
 FROM patrol_schedules sc
 JOIN patrol_zones z ON z.organization_id = sc.organization_id AND z.id = sc.zone_id
 JOIN personnels p ON p.id = sc.personnel_id
@@ -97,7 +97,7 @@ WHERE (sqlc.narg('scope_region')::text IS NULL OR 'OS' || substring(sc.project_c
 -- name: GetPatrolScheduleView :one
 SELECT sc.*, z.name AS zone_name, z.type AS zone_type, p.full_name AS personnel_name,
        pr.id AS patrol_id, pr.status AS patrol_status, pr.started_at AS patrol_started_at,
-       (SELECT count(*) FROM patrol_scans s WHERE s.patrol_id = pr.id AND s.zone_id = sc.zone_id)::int AS scan_count
+       (SELECT count(*) FROM patrol_scans s WHERE s.patrol_id = pr.id AND s.zone_id = sc.zone_id AND s.outcome = 'SCANNED')::int AS scan_count
 FROM patrol_schedules sc
 JOIN patrol_zones z ON z.organization_id = sc.organization_id AND z.id = sc.zone_id
 JOIN personnels p ON p.id = sc.personnel_id

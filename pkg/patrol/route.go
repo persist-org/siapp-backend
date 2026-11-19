@@ -153,10 +153,16 @@ type RouteScan struct {
 	CheckpointID   string // uuid
 	CheckpointName string
 	OccurredAt     time.Time
-	Latitude       float64
-	Longitude      float64
-	Status         string
-	Subject        string
+	// The position is nil for a scan with no fix and for a skip made with none: it has no pin on the map.
+	Latitude  *float64
+	Longitude *float64
+	Status    string
+	Subject   string
+	// Outcome is SCANNED or SKIPPED (Phase 10.17), SkipReason is set for a skip, LocationFlag is the mark of
+	// the position.
+	Outcome      string
+	SkipReason   *string
+	LocationFlag string
 }
 
 // RouteDetail is one patrol with its line and the scans along it.
@@ -676,8 +682,15 @@ func (s *Service) finish(ctx context.Context, q *db.Queries, route db.PatrolRout
 		return db.PatrolRoute{}, err
 	}
 	pins := make([]geo.Point, 0, len(scans))
+	visits := 0
 	for _, sc := range scans {
-		pins = append(pins, geo.Point{Lat: sc.Latitude, Lng: sc.Longitude})
+		// A skip is not a visit, so it is not in scan_count; a scan or a skip with no fix has no pin.
+		if sc.Outcome == db.PatrolScanOutcomeSCANNED {
+			visits++
+		}
+		if sc.Latitude != nil && sc.Longitude != nil {
+			pins = append(pins, geo.Point{Lat: *sc.Latitude, Lng: *sc.Longitude})
+		}
 	}
 	path, distance := BuildPath(raw, pins)
 	encoded, err := encodePath(path)
@@ -686,7 +699,7 @@ func (s *Service) finish(ctx context.Context, q *db.Queries, route db.PatrolRout
 	}
 	row, err := q.EndPatrolRoute(ctx, db.EndPatrolRouteParams{
 		Status: status, EndedAt: ts(endedAt), Path: encoded, DistanceMeters: int32(distance + 0.5), //nolint:gosec // a patrol is not 2 million km long
-		PointCount: int32(len(raw)), ScanCount: int32(len(scans)), Now: ts(s.clock.Now()), ID: route.ID, //nolint:gosec // bounded by what the phone sent
+		PointCount: int32(len(raw)), ScanCount: int32(visits), Now: ts(s.clock.Now()), ID: route.ID, //nolint:gosec // bounded by what the phone sent
 	})
 	if err != nil {
 		return db.PatrolRoute{}, fmt.Errorf("end patrol: %w", err)
@@ -784,12 +797,20 @@ func (s *Service) detail(ctx context.Context, q *db.Queries, row db.PatrolRoute)
 	out.Scans = make([]RouteScan, 0, len(scans))
 	pins := make([]geo.Point, 0, len(scans))
 	for _, sc := range scans {
-		out.Scans = append(out.Scans, RouteScan{
+		rs := RouteScan{
 			ID: sc.ID, ZoneID: sc.ZoneID, ZoneName: sc.ZoneName, CheckpointID: uuidString(sc.CheckpointID), CheckpointName: sc.CheckpointName,
 			OccurredAt: sc.OccurredAt.Time,
 			Latitude:   sc.Latitude, Longitude: sc.Longitude, Status: string(sc.Status), Subject: sc.Subject,
-		})
-		pins = append(pins, geo.Point{Lat: sc.Latitude, Lng: sc.Longitude})
+			Outcome: string(sc.Outcome), LocationFlag: string(sc.LocationFlag),
+		}
+		if sc.SkipReason.Valid {
+			reason := string(sc.SkipReason.PatrolSkipReason)
+			rs.SkipReason = &reason
+		}
+		out.Scans = append(out.Scans, rs)
+		if sc.Latitude != nil && sc.Longitude != nil {
+			pins = append(pins, geo.Point{Lat: *sc.Latitude, Lng: *sc.Longitude})
+		}
 	}
 
 	if row.Status != db.PatrolRouteStatusACTIVE {

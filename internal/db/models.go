@@ -761,6 +761,50 @@ func (ns NullOutboxStatus) Value() (driver.Value, error) {
 	return string(ns.OutboxStatus), nil
 }
 
+type PatrolLocationFlag string
+
+const (
+	PatrolLocationFlagOK            PatrolLocationFlag = "OK"
+	PatrolLocationFlagOUTSIDERADIUS PatrolLocationFlag = "OUTSIDE_RADIUS"
+	PatrolLocationFlagLOWACCURACY   PatrolLocationFlag = "LOW_ACCURACY"
+	PatrolLocationFlagNOFIX         PatrolLocationFlag = "NO_FIX"
+)
+
+func (e *PatrolLocationFlag) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PatrolLocationFlag(s)
+	case string:
+		*e = PatrolLocationFlag(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PatrolLocationFlag: %T", src)
+	}
+	return nil
+}
+
+type NullPatrolLocationFlag struct {
+	PatrolLocationFlag PatrolLocationFlag
+	Valid              bool // Valid is true if PatrolLocationFlag is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPatrolLocationFlag) Scan(value interface{}) error {
+	if value == nil {
+		ns.PatrolLocationFlag, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PatrolLocationFlag.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPatrolLocationFlag) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PatrolLocationFlag), nil
+}
+
 type PatrolMetadataKind string
 
 const (
@@ -846,6 +890,48 @@ func (ns NullPatrolRouteStatus) Value() (driver.Value, error) {
 	return string(ns.PatrolRouteStatus), nil
 }
 
+type PatrolScanOutcome string
+
+const (
+	PatrolScanOutcomeSCANNED PatrolScanOutcome = "SCANNED"
+	PatrolScanOutcomeSKIPPED PatrolScanOutcome = "SKIPPED"
+)
+
+func (e *PatrolScanOutcome) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PatrolScanOutcome(s)
+	case string:
+		*e = PatrolScanOutcome(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PatrolScanOutcome: %T", src)
+	}
+	return nil
+}
+
+type NullPatrolScanOutcome struct {
+	PatrolScanOutcome PatrolScanOutcome
+	Valid             bool // Valid is true if PatrolScanOutcome is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPatrolScanOutcome) Scan(value interface{}) error {
+	if value == nil {
+		ns.PatrolScanOutcome, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PatrolScanOutcome.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPatrolScanOutcome) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PatrolScanOutcome), nil
+}
+
 type PatrolScanStatus string
 
 const (
@@ -887,6 +973,49 @@ func (ns NullPatrolScanStatus) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return string(ns.PatrolScanStatus), nil
+}
+
+type PatrolSkipReason string
+
+const (
+	PatrolSkipReasonSTICKERDAMAGED PatrolSkipReason = "STICKER_DAMAGED"
+	PatrolSkipReasonACCESSBLOCKED  PatrolSkipReason = "ACCESS_BLOCKED"
+	PatrolSkipReasonOTHER          PatrolSkipReason = "OTHER"
+)
+
+func (e *PatrolSkipReason) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PatrolSkipReason(s)
+	case string:
+		*e = PatrolSkipReason(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PatrolSkipReason: %T", src)
+	}
+	return nil
+}
+
+type NullPatrolSkipReason struct {
+	PatrolSkipReason PatrolSkipReason
+	Valid            bool // Valid is true if PatrolSkipReason is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPatrolSkipReason) Scan(value interface{}) error {
+	if value == nil {
+		ns.PatrolSkipReason, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PatrolSkipReason.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPatrolSkipReason) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PatrolSkipReason), nil
 }
 
 type PatrolZoneType string
@@ -1751,9 +1880,9 @@ type PatrolScan struct {
 	OccurredAt       pgtype.Timestamptz
 	ReceivedAt       pgtype.Timestamptz
 	WorkDate         pgtype.Date
-	Latitude         float64
-	Longitude        float64
-	AccuracyMeters   float64
+	Latitude         *float64
+	Longitude        *float64
+	AccuracyMeters   *float64
 	DistanceMeters   pgtype.Int4
 	Subject          string
 	Notes            pgtype.Text
@@ -1766,6 +1895,10 @@ type PatrolScan struct {
 	CreatedAt        pgtype.Timestamptz
 	UpdatedAt        pgtype.Timestamptz
 	CheckpointID     pgtype.UUID
+	LocationFlag     PatrolLocationFlag
+	Outcome          PatrolScanOutcome
+	SkipReason       NullPatrolSkipReason
+	SkipMediaIds     []int64
 }
 
 type PatrolScanAction struct {
