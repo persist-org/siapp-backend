@@ -1,4 +1,4 @@
-# Routes the API serves today (method + chi route), one per line. Input of scripts/make-dev-spec.py.
+# Routes the API serves today (method + chi route), one per line. A reference list for hand-writing api/openapi.dev.yaml.
 # Made from chi.Walk over the real router (cmd/api newRouter). Update it when a phase adds routes.
 DELETE /api/v1/admin/app-links/{id}
 DELETE /api/v1/admin/branches/{code}
