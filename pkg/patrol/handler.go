@@ -252,16 +252,53 @@ func (h *Handler) fieldList(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, r, err)
 		return
 	}
+	bundle, err := includeQuery(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
 	zones, err := h.service.ListForField(r.Context(), p, FieldFilter{
 		ProjectCode: r.URL.Query().Get("project_code"), TeamCode: r.URL.Query().Get("team_code"), Type: typ,
+		WithCheckpoints: bundle,
 	})
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
 	}
+	data := zonesToAPI(zones)
+	if bundle {
+		// The bundle is what an app keeps for offline scans, so it can ask "has it changed?" instead of
+		// pulling the lot every time. The tag is a hash of the data (see httpx.ETag), so it changes when
+		// anything the caller would see changes: a checkpoint, a checklist, a scan, the clock moving into
+		// a new work date. private, no-cache: it is the caller's own view, to be revalidated on each use.
+		tag, err := httpx.ETag(data)
+		if err != nil {
+			httpx.Error(w, r, err)
+			return
+		}
+		w.Header().Set("ETag", tag)
+		w.Header().Set("Cache-Control", "private, no-cache")
+		if httpx.IfNoneMatch(r, tag) {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+	}
 	// The whole list is one page: a person serves in a handful of projects, each with a handful
 	// of zones, and the app caches the lot.
-	httpx.List(w, r, zonesToAPI(zones), httpx.Page{Page: 1, Limit: max(len(zones), 1), Total: len(zones)})
+	httpx.List(w, r, data, httpx.Page{Page: 1, Limit: max(len(zones), 1), Total: len(zones)})
+}
+
+// includeQuery reads ?include=: only "checkpoints" exists, and says to bundle each zone's checkpoints.
+func includeQuery(r *http.Request) (bool, error) {
+	switch r.URL.Query().Get("include") {
+	case "":
+		return false, nil
+	case "checkpoints":
+		return true, nil
+	}
+	return false, apperr.ErrValidation.WithFields(apperr.FieldError{
+		Field: "include", Code: "INVALID", Message: "Harus checkpoints, atau dikosongkan.",
+	})
 }
 
 func (h *Handler) fieldGet(w http.ResponseWriter, r *http.Request) {

@@ -18794,6 +18794,12 @@ paths:
         Membuat rahasia QR baru. Semua stiker yang sudah dicetak berhenti berlaku; cetak ulang lewat
         `GET /admin/checkpoints/{id}/qr`. `qr_rotated_at` menunjukkan kapan terakhir diganti. Rahasia tidak pernah
         ada di respons maupun di log audit.
+
+        **Masa tenggang untuk scan offline.** Rahasia sebelum penggantian terakhir tetap diterima oleh
+        `POST /zones/{id}/scan` untuk scan yang `occurred_at`-nya **sebelum** `qr_rotated_at` (dalam batas 7 hari
+        `occurred_at` yang sudah berlaku): petugas memindai stiker lama tanpa sinyal, scan baru sampai setelah admin
+        mengganti. Hanya satu generasi ke belakang: penggantian kedua menimpanya. Scan setelah penggantian, serta
+        check-in dan check-out (online), harus membawa rahasia baru: stiker yang bocor tetap mati untuk semua kunjungan baru.
       responses:
         '200':
           description: OK
@@ -21157,6 +21163,22 @@ paths:
         403 `PERMISSION_DENIED`. Daftar ini satu halaman penuh tanpa query `page`/`limit`:
         `pagination` = {page 1, limit jumlah item (minimal 1), total jumlah item}.
         Rahasia QR tidak pernah dikembalikan.
+
+        **Bundel untuk scan offline: `include=checkpoints`.** Tiap zona juga memuat `checkpoints` (checkpoint aktif menurut
+        urutannya, tiap satu dengan `actions`, `my_scans` dan `scannable`) dan `next_checkpoint_id`, persis seperti
+        `GET /zones/{id}` untuk pemanggil yang sama pada tanggal kerja zona itu. Aplikasi membacanya sekali, menyimpannya,
+        dan dari situ tahu zona mana yang memuat checkpoint yang QR-nya baru dipindai (satu checkpoint boleh ada di
+        beberapa zona; bila di lebih dari satu zona pemanggil, tanyakan "Zona mana?" kepada petugas) tanpa memanggil
+        detail tiap zona. Zona tanpa checkpoint aktif punya `checkpoints: []`. Server menghitungnya dengan fungsi yang
+        sama dengan pemeriksaan scan, jadi `scannable` tidak bisa berbeda dari yang diterima server.
+
+        Jawaban bundel membawa `ETag` (hash data respons, berbeda untuk tiap pemanggil) dan `Cache-Control: private, no-cache`.
+        Kirim ulang dengan `If-None-Match` berisi tag itu: bila tidak ada yang berubah, jawabannya **304** tanpa badan.
+        Tag berubah bila apa pun yang dilihat pemanggil berubah: checkpoint, checklist, scan baru, atau pergantian tanggal kerja.
+
+        Offline `scannable` cepat basi. Hitung ulang secara lokal dengan aturan yang sama dengan `POST /zones/{id}/scan`
+        (per orang, per zona, per tanggal kerja, status scan apa pun dihitung, dan checkpoint yang dilewati dengan
+        `POST /zones/{id}/skip` dihitung seperti scan), dari `my_scans` ditambah yang masih di antrean.
       parameters:
       - name: type
         in: query
@@ -21176,9 +21198,30 @@ paths:
         description: Menyaring zona milik satu regu.
         schema:
           type: string
+      - name: include
+        in: query
+        description: '`checkpoints`: bundel checkpoint tiap zona (lihat deskripsi). Nilai lain 422 (field `include`).'
+        schema:
+          type: string
+          enum:
+          - checkpoints
+      - name: If-None-Match
+        in: header
+        description: Tag dari jawaban `include=checkpoints` sebelumnya; hanya berlaku untuk bundel. Sama berarti 304.
+        schema:
+          type: string
       responses:
         '200':
           description: OK
+          headers:
+            ETag:
+              description: Hanya pada `include=checkpoints`.
+              schema:
+                type: string
+            Cache-Control:
+              description: '`private, no-cache`, hanya pada `include=checkpoints`.'
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -21189,12 +21232,14 @@ paths:
                       type: array
                       items:
                         $ref: '#/components/schemas/PatrolZone'
+        '304':
+          description: Tidak berubah sejak `If-None-Match` (hanya pada `include=checkpoints`). Tanpa badan.
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/PatrolForbidden'
         '422':
-          description: 'VALIDATION_ERROR: `type` bukan PATROL atau GUARD.'
+          description: 'VALIDATION_ERROR: `type` bukan PATROL atau GUARD, atau `include` bukan `checkpoints`.'
           content: {application/json: {schema: {$ref: '#/components/schemas/ErrorEnvelope'}}}
   /zones/progress:
     get:
@@ -21301,7 +21346,8 @@ paths:
         `Idempotency-Key` wajib (UUID) dan harus sama dengan `local_id`; `occurred_at` paling jauh 5 menit di
         depan dan 7 hari ke belakang. Memeriksa berurutan, dan yang pertama gagal menjadi jawabannya:
         checkpoint harus bagian dari zona ini dan aktif (`CHECKPOINT_NOT_IN_ZONE`; id yang tidak ada, nonaktif
-        atau milik zona lain dijawab sama), QR (`CHECKPOINT_QR_INVALID`), izin `patrol.scan`/`guard.scan` menurut
+        atau milik zona lain dijawab sama), QR (`CHECKPOINT_QR_INVALID`; rahasia sebelum penggantian terakhir tetap
+        diterima untuk scan yang `occurred_at`-nya sebelum penggantian, lihat `POST /admin/checkpoints/{id}/rotate-qr`), izin `patrol.scan`/`guard.scan` menurut
         tipe zona (`PERMISSION_DENIED`, 403), keanggotaan proyek dan regu (`ZONE_NOT_IN_PROJECT`, 403), urutan
         putaran (`CHECKPOINT_OUT_OF_ORDER`), interval
         (`ZONE_INTERVAL_NOT_ELAPSED`: per checkpoint, paling cepat 30 detik, atau interval patroli proyek bila

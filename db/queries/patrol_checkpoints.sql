@@ -51,9 +51,12 @@ UPDATE patrol_checkpoints SET
 WHERE id = @id AND deleted_at IS NULL
 RETURNING *;
 
--- A new secret invalidates the sticker printed before.
+-- A new secret invalidates the sticker printed before, for a scan made after the rotation. The secret it had
+-- is kept as previous_qr_secret (one generation: a second rotation overwrites it), so an offline scan made
+-- before the rotation is still accepted when it syncs (Phase 10.18). Both right-hand sides read the row as
+-- it was before the update.
 -- name: RotateCheckpointSecret :one
-UPDATE patrol_checkpoints SET qr_secret = @qr_secret, qr_rotated_at = @now, updated_at = @now
+UPDATE patrol_checkpoints SET previous_qr_secret = qr_secret, qr_secret = @qr_secret, qr_rotated_at = @now, updated_at = @now
 WHERE id = @id AND deleted_at IS NULL
 RETURNING *;
 
@@ -73,6 +76,14 @@ FROM patrol_zone_checkpoints zc
 JOIN patrol_checkpoints c ON c.organization_id = zc.organization_id AND c.id = zc.checkpoint_id
 WHERE zc.zone_id = $1 AND c.active AND c.deleted_at IS NULL
 ORDER BY zc.sort_order;
+
+-- The active checkpoints of many zones at once, each zone's in order (the bundled field list, Phase 10.18).
+-- name: ListCheckpointsOfZones :many
+SELECT c.*, zc.sort_order AS position, zc.zone_id
+FROM patrol_zone_checkpoints zc
+JOIN patrol_checkpoints c ON c.organization_id = zc.organization_id AND c.id = zc.checkpoint_id
+WHERE zc.zone_id = ANY(@zone_ids::bigint[]) AND c.active AND c.deleted_at IS NULL
+ORDER BY zc.zone_id, zc.sort_order;
 
 -- The zones of many checkpoints at once (a page of the admin list), with each position.
 -- name: ListZonesOfCheckpoints :many
@@ -211,3 +222,20 @@ LEFT JOIN patrol_scans s ON s.organization_id = zc.organization_id AND s.zone_id
 WHERE zc.zone_id = @zone_id AND c.active AND c.deleted_at IS NULL
 GROUP BY zc.checkpoint_id, zc.sort_order
 ORDER BY zc.sort_order;
+
+-- CountScansByPosition for many zones at once, each on its own work date (the bundled field list, Phase 10.18):
+-- zone_ids[i] is read on work_dates[i]. Same rows, same counting (any status, any outcome), no "before": the
+-- field read wants every scan so far. One row per active checkpoint of each zone, ordered by zone and position.
+-- name: CountScansByPositionOfZones :many
+SELECT zc.zone_id, zc.checkpoint_id, zc.sort_order AS position, count(s.id)::int AS scans
+FROM (SELECT z.zone_id, d.work_date
+      FROM unnest(@zone_ids::bigint[]) WITH ORDINALITY AS z(zone_id, n)
+      JOIN unnest(@work_dates::date[]) WITH ORDINALITY AS d(work_date, n) ON d.n = z.n) w
+JOIN patrol_zone_checkpoints zc ON zc.zone_id = w.zone_id
+JOIN patrol_checkpoints c ON c.organization_id = zc.organization_id AND c.id = zc.checkpoint_id
+LEFT JOIN patrol_scans s ON s.organization_id = zc.organization_id AND s.zone_id = zc.zone_id
+                        AND s.checkpoint_id = zc.checkpoint_id AND s.personnel_id = @personnel_id
+                        AND s.work_date = w.work_date
+WHERE c.active AND c.deleted_at IS NULL
+GROUP BY zc.zone_id, zc.checkpoint_id, zc.sort_order
+ORDER BY zc.zone_id, zc.sort_order;

@@ -125,7 +125,7 @@ func (s *Service) skip(ctx context.Context, p auth.Principal, zoneID int64, in S
 		}
 
 		// The checkpoint must be the zone's; no QR (see Skip).
-		v, err := s.reach(ctx, q, p, zone, project, in.CheckpointID, nil)
+		v, err := s.reach(ctx, q, p, zone, project, in.CheckpointID, nil, time.Time{})
 		if err != nil {
 			return err
 		}

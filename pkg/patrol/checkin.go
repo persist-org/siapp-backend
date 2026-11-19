@@ -107,7 +107,7 @@ func (s *Service) CheckIn(ctx context.Context, p auth.Principal, zoneID int64, i
 		if !zone.Active {
 			return ErrZoneNotFound
 		}
-		v, err := s.arrive(ctx, q, p, zone, project, in.CheckpointID, in.QRPayload)
+		v, err := s.arrive(ctx, q, p, zone, project, in.CheckpointID, in.QRPayload, time.Time{})
 		if err != nil {
 			return err
 		}
@@ -153,7 +153,7 @@ func (s *Service) CheckOut(ctx context.Context, p auth.Principal, zoneID int64, 
 		// check-in, so a guard must always be able to leave. A deleted zone closes its check-ins itself
 		// (Delete), and so does a zone that loses its last checkpoint (releaseIfEmpty): with no sticker left
 		// nobody could check out.
-		v, err := s.arrive(ctx, q, p, zone, project, in.CheckpointID, in.QRPayload)
+		v, err := s.arrive(ctx, q, p, zone, project, in.CheckpointID, in.QRPayload, time.Time{})
 		if err != nil {
 			return err
 		}

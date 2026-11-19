@@ -378,7 +378,11 @@ func TestPatrolScanCheckpointAndQR(t *testing.T) {
 	t.Run("a rotated QR stops working, the new one works", func(t *testing.T) {
 		code, raw := f.do(http.MethodPost, checkpointPath(z.checkpoint.ID)+"/rotate-qr", f.adminTok, nil, nil)
 		require.Equal(t, http.StatusOK, code, string(raw))
-		code, _, raw2 := f.scan(f.personTok, z.ID, scanBody(z))
+		// Made after the rotation: the old sticker is dead. (One made before it is still good when it syncs,
+		// Phase 10.18: see TestPatrolQRRotationGrace.)
+		afterRotation := scanBody(z)
+		afterRotation["occurred_at"] = time.Now().Add(time.Minute).UTC().Format(time.RFC3339Nano)
+		code, _, raw2 := f.scan(f.personTok, z.ID, afterRotation)
 		reasonIs(t, code, raw2, http.StatusUnprocessableEntity, "CHECKPOINT_QR_INVALID")
 		z.payload = f.checkpointPayload(z.checkpoint.ID)
 		z.checkpoint.payload = z.payload

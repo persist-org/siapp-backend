@@ -134,6 +134,62 @@ func (q *Queries) CountScansByPosition(ctx context.Context, arg CountScansByPosi
 	return items, nil
 }
 
+const countScansByPositionOfZones = `-- name: CountScansByPositionOfZones :many
+SELECT zc.zone_id, zc.checkpoint_id, zc.sort_order AS position, count(s.id)::int AS scans
+FROM (SELECT z.zone_id, d.work_date
+      FROM unnest($1::bigint[]) WITH ORDINALITY AS z(zone_id, n)
+      JOIN unnest($2::date[]) WITH ORDINALITY AS d(work_date, n) ON d.n = z.n) w
+JOIN patrol_zone_checkpoints zc ON zc.zone_id = w.zone_id
+JOIN patrol_checkpoints c ON c.organization_id = zc.organization_id AND c.id = zc.checkpoint_id
+LEFT JOIN patrol_scans s ON s.organization_id = zc.organization_id AND s.zone_id = zc.zone_id
+                        AND s.checkpoint_id = zc.checkpoint_id AND s.personnel_id = $3
+                        AND s.work_date = w.work_date
+WHERE c.active AND c.deleted_at IS NULL
+GROUP BY zc.zone_id, zc.checkpoint_id, zc.sort_order
+ORDER BY zc.zone_id, zc.sort_order
+`
+
+type CountScansByPositionOfZonesParams struct {
+	ZoneIds     []int64
+	WorkDates   []pgtype.Date
+	PersonnelID int64
+}
+
+type CountScansByPositionOfZonesRow struct {
+	ZoneID       int64
+	CheckpointID pgtype.UUID
+	Position     int32
+	Scans        int32
+}
+
+// CountScansByPosition for many zones at once, each on its own work date (the bundled field list, Phase 10.18):
+// zone_ids[i] is read on work_dates[i]. Same rows, same counting (any status, any outcome), no "before": the
+// field read wants every scan so far. One row per active checkpoint of each zone, ordered by zone and position.
+func (q *Queries) CountScansByPositionOfZones(ctx context.Context, arg CountScansByPositionOfZonesParams) ([]CountScansByPositionOfZonesRow, error) {
+	rows, err := q.db.Query(ctx, countScansByPositionOfZones, arg.ZoneIds, arg.WorkDates, arg.PersonnelID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CountScansByPositionOfZonesRow{}
+	for rows.Next() {
+		var i CountScansByPositionOfZonesRow
+		if err := rows.Scan(
+			&i.ZoneID,
+			&i.CheckpointID,
+			&i.Position,
+			&i.Scans,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const deactivateCheckpointActionsExcept = `-- name: DeactivateCheckpointActionsExcept :many
 UPDATE patrol_checkpoint_actions SET active = false, deactivated_at = $1, updated_at = $1
 WHERE checkpoint_id = $2 AND active AND NOT (id = ANY($3::uuid[]))
@@ -202,7 +258,7 @@ func (q *Queries) DeleteZoneCheckpoints(ctx context.Context, zoneID int64) error
 }
 
 const getPatrolCheckpoint = `-- name: GetPatrolCheckpoint :one
-SELECT id, organization_id, project_code, name, description, latitude, longitude, radius_meters, qr_secret, qr_rotated_at, active, created_at, updated_at, deleted_at FROM patrol_checkpoints WHERE id = $1 AND deleted_at IS NULL
+SELECT id, organization_id, project_code, name, description, latitude, longitude, radius_meters, qr_secret, qr_rotated_at, active, created_at, updated_at, deleted_at, previous_qr_secret FROM patrol_checkpoints WHERE id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetPatrolCheckpoint(ctx context.Context, id pgtype.UUID) (PatrolCheckpoint, error) {
@@ -223,12 +279,13 @@ func (q *Queries) GetPatrolCheckpoint(ctx context.Context, id pgtype.UUID) (Patr
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.PreviousQrSecret,
 	)
 	return i, err
 }
 
 const getPatrolCheckpointForUpdate = `-- name: GetPatrolCheckpointForUpdate :one
-SELECT id, organization_id, project_code, name, description, latitude, longitude, radius_meters, qr_secret, qr_rotated_at, active, created_at, updated_at, deleted_at FROM patrol_checkpoints WHERE id = $1 AND deleted_at IS NULL FOR UPDATE
+SELECT id, organization_id, project_code, name, description, latitude, longitude, radius_meters, qr_secret, qr_rotated_at, active, created_at, updated_at, deleted_at, previous_qr_secret FROM patrol_checkpoints WHERE id = $1 AND deleted_at IS NULL FOR UPDATE
 `
 
 func (q *Queries) GetPatrolCheckpointForUpdate(ctx context.Context, id pgtype.UUID) (PatrolCheckpoint, error) {
@@ -249,6 +306,7 @@ func (q *Queries) GetPatrolCheckpointForUpdate(ctx context.Context, id pgtype.UU
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.PreviousQrSecret,
 	)
 	return i, err
 }
@@ -328,7 +386,7 @@ INSERT INTO patrol_checkpoints (project_code, name, description, latitude, longi
                                 qr_secret, qr_rotated_at, active, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5,
         $6, $7, $8, $9, $8, $8)
-RETURNING id, organization_id, project_code, name, description, latitude, longitude, radius_meters, qr_secret, qr_rotated_at, active, created_at, updated_at, deleted_at
+RETURNING id, organization_id, project_code, name, description, latitude, longitude, radius_meters, qr_secret, qr_rotated_at, active, created_at, updated_at, deleted_at, previous_qr_secret
 `
 
 type InsertPatrolCheckpointParams struct {
@@ -375,6 +433,7 @@ func (q *Queries) InsertPatrolCheckpoint(ctx context.Context, arg InsertPatrolCh
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.PreviousQrSecret,
 	)
 	return i, err
 }
@@ -574,8 +633,75 @@ func (q *Queries) ListCheckpointActions(ctx context.Context, checkpointID pgtype
 	return items, nil
 }
 
+const listCheckpointsOfZones = `-- name: ListCheckpointsOfZones :many
+SELECT c.id, c.organization_id, c.project_code, c.name, c.description, c.latitude, c.longitude, c.radius_meters, c.qr_secret, c.qr_rotated_at, c.active, c.created_at, c.updated_at, c.deleted_at, c.previous_qr_secret, zc.sort_order AS position, zc.zone_id
+FROM patrol_zone_checkpoints zc
+JOIN patrol_checkpoints c ON c.organization_id = zc.organization_id AND c.id = zc.checkpoint_id
+WHERE zc.zone_id = ANY($1::bigint[]) AND c.active AND c.deleted_at IS NULL
+ORDER BY zc.zone_id, zc.sort_order
+`
+
+type ListCheckpointsOfZonesRow struct {
+	ID               pgtype.UUID
+	OrganizationID   int64
+	ProjectCode      string
+	Name             string
+	Description      pgtype.Text
+	Latitude         *float64
+	Longitude        *float64
+	RadiusMeters     pgtype.Int4
+	QrSecret         string
+	QrRotatedAt      pgtype.Timestamptz
+	Active           bool
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+	DeletedAt        pgtype.Timestamptz
+	PreviousQrSecret pgtype.Text
+	Position         int32
+	ZoneID           int64
+}
+
+// The active checkpoints of many zones at once, each zone's in order (the bundled field list, Phase 10.18).
+func (q *Queries) ListCheckpointsOfZones(ctx context.Context, zoneIds []int64) ([]ListCheckpointsOfZonesRow, error) {
+	rows, err := q.db.Query(ctx, listCheckpointsOfZones, zoneIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCheckpointsOfZonesRow{}
+	for rows.Next() {
+		var i ListCheckpointsOfZonesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrganizationID,
+			&i.ProjectCode,
+			&i.Name,
+			&i.Description,
+			&i.Latitude,
+			&i.Longitude,
+			&i.RadiusMeters,
+			&i.QrSecret,
+			&i.QrRotatedAt,
+			&i.Active,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.PreviousQrSecret,
+			&i.Position,
+			&i.ZoneID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPatrolCheckpoints = `-- name: ListPatrolCheckpoints :many
-SELECT c.id, c.organization_id, c.project_code, c.name, c.description, c.latitude, c.longitude, c.radius_meters, c.qr_secret, c.qr_rotated_at, c.active, c.created_at, c.updated_at, c.deleted_at FROM patrol_checkpoints c
+SELECT c.id, c.organization_id, c.project_code, c.name, c.description, c.latitude, c.longitude, c.radius_meters, c.qr_secret, c.qr_rotated_at, c.active, c.created_at, c.updated_at, c.deleted_at, c.previous_qr_secret FROM patrol_checkpoints c
 WHERE c.deleted_at IS NULL
   AND ($1::text IS NULL OR 'OS' || substring(c.project_code from '^[0-9]+') = $1)
   AND ($2::text IS NULL OR c.project_code = $2)
@@ -631,6 +757,7 @@ func (q *Queries) ListPatrolCheckpoints(ctx context.Context, arg ListPatrolCheck
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.PreviousQrSecret,
 		); err != nil {
 			return nil, err
 		}
@@ -682,7 +809,7 @@ func (q *Queries) ListScanActionsByScans(ctx context.Context, scanIds []int64) (
 
 const listZoneCheckpoints = `-- name: ListZoneCheckpoints :many
 
-SELECT c.id, c.organization_id, c.project_code, c.name, c.description, c.latitude, c.longitude, c.radius_meters, c.qr_secret, c.qr_rotated_at, c.active, c.created_at, c.updated_at, c.deleted_at, zc.sort_order AS position
+SELECT c.id, c.organization_id, c.project_code, c.name, c.description, c.latitude, c.longitude, c.radius_meters, c.qr_secret, c.qr_rotated_at, c.active, c.created_at, c.updated_at, c.deleted_at, c.previous_qr_secret, zc.sort_order AS position
 FROM patrol_zone_checkpoints zc
 JOIN patrol_checkpoints c ON c.organization_id = zc.organization_id AND c.id = zc.checkpoint_id
 WHERE zc.zone_id = $1 AND c.active AND c.deleted_at IS NULL
@@ -690,21 +817,22 @@ ORDER BY zc.sort_order
 `
 
 type ListZoneCheckpointsRow struct {
-	ID             pgtype.UUID
-	OrganizationID int64
-	ProjectCode    string
-	Name           string
-	Description    pgtype.Text
-	Latitude       *float64
-	Longitude      *float64
-	RadiusMeters   pgtype.Int4
-	QrSecret       string
-	QrRotatedAt    pgtype.Timestamptz
-	Active         bool
-	CreatedAt      pgtype.Timestamptz
-	UpdatedAt      pgtype.Timestamptz
-	DeletedAt      pgtype.Timestamptz
-	Position       int32
+	ID               pgtype.UUID
+	OrganizationID   int64
+	ProjectCode      string
+	Name             string
+	Description      pgtype.Text
+	Latitude         *float64
+	Longitude        *float64
+	RadiusMeters     pgtype.Int4
+	QrSecret         string
+	QrRotatedAt      pgtype.Timestamptz
+	Active           bool
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+	DeletedAt        pgtype.Timestamptz
+	PreviousQrSecret pgtype.Text
+	Position         int32
 }
 
 // Zone links
@@ -734,6 +862,7 @@ func (q *Queries) ListZoneCheckpoints(ctx context.Context, zoneID int64) ([]List
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.PreviousQrSecret,
 			&i.Position,
 		); err != nil {
 			return nil, err
@@ -747,7 +876,7 @@ func (q *Queries) ListZoneCheckpoints(ctx context.Context, zoneID int64) ([]List
 }
 
 const listZoneCheckpointsAdmin = `-- name: ListZoneCheckpointsAdmin :many
-SELECT c.id, c.organization_id, c.project_code, c.name, c.description, c.latitude, c.longitude, c.radius_meters, c.qr_secret, c.qr_rotated_at, c.active, c.created_at, c.updated_at, c.deleted_at, zc.sort_order AS position
+SELECT c.id, c.organization_id, c.project_code, c.name, c.description, c.latitude, c.longitude, c.radius_meters, c.qr_secret, c.qr_rotated_at, c.active, c.created_at, c.updated_at, c.deleted_at, c.previous_qr_secret, zc.sort_order AS position
 FROM patrol_zone_checkpoints zc
 JOIN patrol_checkpoints c ON c.organization_id = zc.organization_id AND c.id = zc.checkpoint_id
 WHERE zc.zone_id = $1 AND c.deleted_at IS NULL
@@ -755,21 +884,22 @@ ORDER BY zc.sort_order
 `
 
 type ListZoneCheckpointsAdminRow struct {
-	ID             pgtype.UUID
-	OrganizationID int64
-	ProjectCode    string
-	Name           string
-	Description    pgtype.Text
-	Latitude       *float64
-	Longitude      *float64
-	RadiusMeters   pgtype.Int4
-	QrSecret       string
-	QrRotatedAt    pgtype.Timestamptz
-	Active         bool
-	CreatedAt      pgtype.Timestamptz
-	UpdatedAt      pgtype.Timestamptz
-	DeletedAt      pgtype.Timestamptz
-	Position       int32
+	ID               pgtype.UUID
+	OrganizationID   int64
+	ProjectCode      string
+	Name             string
+	Description      pgtype.Text
+	Latitude         *float64
+	Longitude        *float64
+	RadiusMeters     pgtype.Int4
+	QrSecret         string
+	QrRotatedAt      pgtype.Timestamptz
+	Active           bool
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+	DeletedAt        pgtype.Timestamptz
+	PreviousQrSecret pgtype.Text
+	Position         int32
 }
 
 // Every checkpoint a zone holds, in order, the inactive ones too (an admin sees them and they keep
@@ -798,6 +928,7 @@ func (q *Queries) ListZoneCheckpointsAdmin(ctx context.Context, zoneID int64) ([
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.PreviousQrSecret,
 			&i.Position,
 		); err != nil {
 			return nil, err
@@ -886,7 +1017,7 @@ func (q *Queries) ListZonesOfCheckpoints(ctx context.Context, checkpointIds []pg
 }
 
 const lockCheckpointsByIDs = `-- name: LockCheckpointsByIDs :many
-SELECT id, organization_id, project_code, name, description, latitude, longitude, radius_meters, qr_secret, qr_rotated_at, active, created_at, updated_at, deleted_at FROM patrol_checkpoints
+SELECT id, organization_id, project_code, name, description, latitude, longitude, radius_meters, qr_secret, qr_rotated_at, active, created_at, updated_at, deleted_at, previous_qr_secret FROM patrol_checkpoints
 WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL
 ORDER BY id
 FOR UPDATE
@@ -920,6 +1051,7 @@ func (q *Queries) LockCheckpointsByIDs(ctx context.Context, ids []pgtype.UUID) (
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.PreviousQrSecret,
 		); err != nil {
 			return nil, err
 		}
@@ -951,9 +1083,9 @@ func (q *Queries) RenumberZoneLinks(ctx context.Context, zoneID int64) error {
 }
 
 const rotateCheckpointSecret = `-- name: RotateCheckpointSecret :one
-UPDATE patrol_checkpoints SET qr_secret = $1, qr_rotated_at = $2, updated_at = $2
+UPDATE patrol_checkpoints SET previous_qr_secret = qr_secret, qr_secret = $1, qr_rotated_at = $2, updated_at = $2
 WHERE id = $3 AND deleted_at IS NULL
-RETURNING id, organization_id, project_code, name, description, latitude, longitude, radius_meters, qr_secret, qr_rotated_at, active, created_at, updated_at, deleted_at
+RETURNING id, organization_id, project_code, name, description, latitude, longitude, radius_meters, qr_secret, qr_rotated_at, active, created_at, updated_at, deleted_at, previous_qr_secret
 `
 
 type RotateCheckpointSecretParams struct {
@@ -962,7 +1094,10 @@ type RotateCheckpointSecretParams struct {
 	ID       pgtype.UUID
 }
 
-// A new secret invalidates the sticker printed before.
+// A new secret invalidates the sticker printed before, for a scan made after the rotation. The secret it had
+// is kept as previous_qr_secret (one generation: a second rotation overwrites it), so an offline scan made
+// before the rotation is still accepted when it syncs (Phase 10.18). Both right-hand sides read the row as
+// it was before the update.
 func (q *Queries) RotateCheckpointSecret(ctx context.Context, arg RotateCheckpointSecretParams) (PatrolCheckpoint, error) {
 	row := q.db.QueryRow(ctx, rotateCheckpointSecret, arg.QrSecret, arg.Now, arg.ID)
 	var i PatrolCheckpoint
@@ -981,6 +1116,7 @@ func (q *Queries) RotateCheckpointSecret(ctx context.Context, arg RotateCheckpoi
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.PreviousQrSecret,
 	)
 	return i, err
 }
@@ -988,7 +1124,7 @@ func (q *Queries) RotateCheckpointSecret(ctx context.Context, arg RotateCheckpoi
 const softDeletePatrolCheckpoint = `-- name: SoftDeletePatrolCheckpoint :one
 UPDATE patrol_checkpoints SET active = false, deleted_at = $1, updated_at = $1
 WHERE id = $2 AND deleted_at IS NULL
-RETURNING id, organization_id, project_code, name, description, latitude, longitude, radius_meters, qr_secret, qr_rotated_at, active, created_at, updated_at, deleted_at
+RETURNING id, organization_id, project_code, name, description, latitude, longitude, radius_meters, qr_secret, qr_rotated_at, active, created_at, updated_at, deleted_at, previous_qr_secret
 `
 
 type SoftDeletePatrolCheckpointParams struct {
@@ -1015,6 +1151,7 @@ func (q *Queries) SoftDeletePatrolCheckpoint(ctx context.Context, arg SoftDelete
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.PreviousQrSecret,
 	)
 	return i, err
 }
@@ -1076,7 +1213,7 @@ UPDATE patrol_checkpoints SET
     longitude = $4, radius_meters = $5,
     active = $6, updated_at = $7
 WHERE id = $8 AND deleted_at IS NULL
-RETURNING id, organization_id, project_code, name, description, latitude, longitude, radius_meters, qr_secret, qr_rotated_at, active, created_at, updated_at, deleted_at
+RETURNING id, organization_id, project_code, name, description, latitude, longitude, radius_meters, qr_secret, qr_rotated_at, active, created_at, updated_at, deleted_at, previous_qr_secret
 `
 
 type UpdatePatrolCheckpointParams struct {
@@ -1119,6 +1256,7 @@ func (q *Queries) UpdatePatrolCheckpoint(ctx context.Context, arg UpdatePatrolCh
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.PreviousQrSecret,
 	)
 	return i, err
 }

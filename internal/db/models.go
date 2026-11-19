@@ -1793,20 +1793,21 @@ type PanicType struct {
 }
 
 type PatrolCheckpoint struct {
-	ID             pgtype.UUID
-	OrganizationID int64
-	ProjectCode    string
-	Name           string
-	Description    pgtype.Text
-	Latitude       *float64
-	Longitude      *float64
-	RadiusMeters   pgtype.Int4
-	QrSecret       string
-	QrRotatedAt    pgtype.Timestamptz
-	Active         bool
-	CreatedAt      pgtype.Timestamptz
-	UpdatedAt      pgtype.Timestamptz
-	DeletedAt      pgtype.Timestamptz
+	ID               pgtype.UUID
+	OrganizationID   int64
+	ProjectCode      string
+	Name             string
+	Description      pgtype.Text
+	Latitude         *float64
+	Longitude        *float64
+	RadiusMeters     pgtype.Int4
+	QrSecret         string
+	QrRotatedAt      pgtype.Timestamptz
+	Active           bool
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+	DeletedAt        pgtype.Timestamptz
+	PreviousQrSecret pgtype.Text
 }
 
 type PatrolCheckpointAction struct {
