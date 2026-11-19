@@ -532,6 +532,10 @@ func (s *Service) UpdateSchedule(ctx context.Context, actor auth.Principal, scop
 			return apperr.ErrConflict
 		}
 		zone, err := q.GetPatrolZone(ctx, row.ZoneID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			// The zone was deleted after the schedule was made: there is nothing left to move it within.
+			return ErrScheduleNotFound
+		}
 		if err != nil {
 			return fmt.Errorf("get zone: %w", err)
 		}

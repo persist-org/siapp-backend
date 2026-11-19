@@ -80,5 +80,18 @@ func parseDeviceCondition(raw json.RawMessage, field string) (json.RawMessage, e
 			}
 		}
 	}
-	return slices.Clone(trimmed), nil
+	// Stored re-encoded, not as the client sent it: a lone surrogate escape (backslash-u d800) passes Go's
+	// decoder but jsonb rejects it, and that insert error would reach the client as a 500. Marshal turns it
+	// into U+FFFD. UseNumber keeps big numbers exact.
+	dec := json.NewDecoder(bytes.NewReader(trimmed))
+	dec.UseNumber()
+	var clean map[string]any
+	if err := dec.Decode(&clean); err != nil {
+		return nil, fail("Harus berupa objek JSON.")
+	}
+	out, err := json.Marshal(clean)
+	if err != nil {
+		return nil, fail("Harus berupa objek JSON.")
+	}
+	return out, nil
 }

@@ -13,6 +13,15 @@
 -- The photo rows go with their scans so nothing points at a record that is gone. The files they named in
 -- storage are not touched here (a migration cannot reach the object store): they are orphans for the
 -- media cleanup, and on a dev server nothing to worry about.
+-- ⚠ FORCE ROW LEVEL SECURITY applies the tenant policy to the table owner too, and a migration has no
+-- tenant: on a database whose owner is not a superuser or BYPASSRLS the three statements below would see no
+-- rows, and SET NOT NULL would then fail on any old scan. FORCE is lifted for them and put back before the
+-- migration's transaction commits (the same pattern as 00008 and 00019), so no other session ever sees
+-- these tables without it.
+ALTER TABLE media NO FORCE ROW LEVEL SECURITY;
+ALTER TABLE patrol_scans NO FORCE ROW LEVEL SECURITY;
+ALTER TABLE patrol_routes NO FORCE ROW LEVEL SECURITY;
+
 DELETE FROM media
 WHERE attached_entity_type = 'PATROL_SCAN'
   AND attached_entity_id IN (SELECT id FROM patrol_scans WHERE checkpoint_id IS NULL);
@@ -23,6 +32,10 @@ DELETE FROM patrol_scans WHERE checkpoint_id IS NULL;
 UPDATE patrol_routes r
 SET scan_count = (SELECT count(*) FROM patrol_scans s WHERE s.patrol_id = r.id)
 WHERE r.scan_count <> (SELECT count(*) FROM patrol_scans s WHERE s.patrol_id = r.id);
+
+ALTER TABLE media FORCE ROW LEVEL SECURITY;
+ALTER TABLE patrol_scans FORCE ROW LEVEL SECURITY;
+ALTER TABLE patrol_routes FORCE ROW LEVEL SECURITY;
 
 -- patrol_scans_answers_check goes with its column.
 ALTER TABLE patrol_scans

@@ -120,7 +120,7 @@ type observation struct {
 	Null    bool   `json:"null"`
 }
 
-func checkResponse(doc *openapi3.T, op string, operation *openapi3.Operation, status int, contentType string, body []byte) ([]finding, map[observation]int) {
+func checkResponse(_ *openapi3.T, op string, operation *openapi3.Operation, status int, contentType string, body []byte) ([]finding, map[observation]int) {
 	if operation.Responses == nil {
 		return nil, nil
 	}
@@ -374,7 +374,7 @@ var reportMu sync.Mutex
 func writeReport(dir string, fs []finding, seen map[observation]int) {
 	reportMu.Lock()
 	defer reportMu.Unlock()
-	_ = os.MkdirAll(dir, 0o755)
+	_ = os.MkdirAll(dir, 0o750) //nolint:gosec // a test report path
 	appendJSONL(filepath.Join(dir, fmt.Sprintf("findings-%d.jsonl", os.Getpid())), func(enc *json.Encoder) {
 		for _, f := range fs {
 			_ = enc.Encode(f)
