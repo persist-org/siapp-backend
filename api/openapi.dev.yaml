@@ -3,7 +3,7 @@ info:
   title: 'PERSIST API (dev: built endpoints only)'
   version: 1.0.0
   description: |
-    **Dev copy.** Only the operations the API serves today. The complete contract is api/openapi.yaml; this file is made by scripts/make-dev-spec.py.
+    **Dev copy.** Only the operations the API serves today. The complete contract is api/openapi.yaml; this file is written by hand and must be kept in line manually with the handlers and api/openapi.yaml.
 
     Kontrak API resmi PERSIST (platform SaaS multi-tenant SiAPP rebuild) — integration
     seam untuk tim Core / Web / Mobile yang bekerja paralel. Sumber kebenaran kontrak
