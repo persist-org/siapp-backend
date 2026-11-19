@@ -11,9 +11,9 @@ SELECT * FROM patrol_routes WHERE personnel_id = $1 AND status = 'ACTIVE';
 
 -- name: InsertPatrolRoute :one
 INSERT INTO patrol_routes (local_id, personnel_id, team_code, project_code, started_at, work_date, submitted_offline,
-                           point_count, last_point_at, created_at, updated_at)
+                           point_count, last_point_at, zone_id, schedule_id, created_at, updated_at)
 VALUES (@local_id, @personnel_id, @team_code, @project_code, @started_at, @work_date, @submitted_offline,
-        1, @started_at, @now, @now)
+        1, @started_at, sqlc.narg('zone_id'), sqlc.narg('schedule_id'), @now, @now)
 RETURNING *;
 
 -- The points of one batch. The same seq twice is not an error, it is skipped: the app numbers its
@@ -51,9 +51,11 @@ RETURNING *;
 
 -- The scans of a patrol, in the order they were made, for the pins on the line.
 -- name: ListRouteScans :many
-SELECT s.id, s.zone_id, z.name AS zone_name, s.occurred_at, s.latitude, s.longitude, s.status, s.subject
+SELECT s.id, s.zone_id, z.name AS zone_name, s.checkpoint_id, c.name AS checkpoint_name, s.occurred_at, s.latitude, s.longitude,
+       s.status, s.subject
 FROM patrol_scans s
 JOIN patrol_zones z ON z.id = s.zone_id
+JOIN patrol_checkpoints c ON c.id = s.checkpoint_id
 WHERE s.patrol_id = $1
 ORDER BY s.occurred_at, s.id;
 
@@ -84,7 +86,9 @@ WHERE r.personnel_id <> @viewer_id
   AND (sqlc.narg('team_code')::text IS NULL OR r.team_code = sqlc.narg('team_code'))
   AND (sqlc.narg('personnel_id')::bigint IS NULL OR r.personnel_id = sqlc.narg('personnel_id'))
   AND (sqlc.narg('work_date')::date IS NULL OR r.work_date = sqlc.narg('work_date'))
-  AND (sqlc.narg('status')::patrol_route_status IS NULL OR r.status = sqlc.narg('status'));
+  AND (sqlc.narg('status')::patrol_route_status IS NULL OR r.status = sqlc.narg('status'))
+  AND (sqlc.narg('zone_id')::bigint IS NULL OR r.zone_id = sqlc.narg('zone_id'))
+  AND (sqlc.narg('schedule_id')::uuid IS NULL OR r.schedule_id = sqlc.narg('schedule_id'));
 
 -- The caller's memberships as date spans, to tell which dates share the same reach.
 -- name: ListMembershipSpans :many
@@ -105,6 +109,8 @@ WHERE (r.personnel_id = @viewer_id OR (r.work_date, r.team_code) IN (SELECT unne
   AND (sqlc.narg('personnel_id')::bigint IS NULL OR r.personnel_id = sqlc.narg('personnel_id'))
   AND (sqlc.narg('work_date')::date IS NULL OR r.work_date = sqlc.narg('work_date'))
   AND (sqlc.narg('status')::patrol_route_status IS NULL OR r.status = sqlc.narg('status'))
+  AND (sqlc.narg('zone_id')::bigint IS NULL OR r.zone_id = sqlc.narg('zone_id'))
+  AND (sqlc.narg('schedule_id')::uuid IS NULL OR r.schedule_id = sqlc.narg('schedule_id'))
 ORDER BY r.started_at DESC, r.id DESC
 LIMIT @page_limit OFFSET @page_offset;
 
@@ -115,7 +121,9 @@ WHERE (r.personnel_id = @viewer_id OR (r.work_date, r.team_code) IN (SELECT unne
   AND (sqlc.narg('team_code')::text IS NULL OR r.team_code = sqlc.narg('team_code'))
   AND (sqlc.narg('personnel_id')::bigint IS NULL OR r.personnel_id = sqlc.narg('personnel_id'))
   AND (sqlc.narg('work_date')::date IS NULL OR r.work_date = sqlc.narg('work_date'))
-  AND (sqlc.narg('status')::patrol_route_status IS NULL OR r.status = sqlc.narg('status'));
+  AND (sqlc.narg('status')::patrol_route_status IS NULL OR r.status = sqlc.narg('status'))
+  AND (sqlc.narg('zone_id')::bigint IS NULL OR r.zone_id = sqlc.narg('zone_id'))
+  AND (sqlc.narg('schedule_id')::uuid IS NULL OR r.schedule_id = sqlc.narg('schedule_id'));
 
 -- The active patrols that have logged nothing since a moment: their phone died or the guard forgot.
 -- name: ListStaleRoutes :many
@@ -131,3 +139,26 @@ LIMIT @batch;
 
 -- name: DeleteRoutePoints :execrows
 DELETE FROM patrol_route_points WHERE patrol_id = ANY(@ids::bigint[]);
+
+-- Phase 10.12. The phone's condition when a patrol started or ended. The first row of a kind stays: a replayed
+-- end does not change what was recorded.
+-- name: InsertPatrolMetadata :exec
+INSERT INTO patrol_route_metadata (patrol_id, kind, device_condition, recorded_at)
+VALUES (@patrol_id, @kind, @device_condition, @recorded_at)
+ON CONFLICT (organization_id, patrol_id, kind) DO NOTHING;
+
+-- name: ListPatrolMetadata :many
+SELECT patrol_id, kind, device_condition, recorded_at FROM patrol_route_metadata WHERE patrol_id = ANY(@patrol_ids::bigint[]);
+
+-- The zone and the schedule of the patrols that were started from a schedule, for a page of patrols in one query.
+-- name: ListRouteSchedules :many
+SELECT r.id AS patrol_id, z.id AS zone_id, z.name AS zone_name, z.type AS zone_type,
+       sc.id AS schedule_id, sc.starts_at AS schedule_starts_at, sc.ends_at AS schedule_ends_at
+FROM patrol_routes r
+JOIN patrol_zones z ON z.organization_id = r.organization_id AND z.id = r.zone_id
+JOIN patrol_schedules sc ON sc.organization_id = r.organization_id AND sc.id = r.schedule_id
+WHERE r.id = ANY(@ids::bigint[]);
+
+-- The patrol started from a schedule, if any (at most one: patrol_routes_schedule_uq).
+-- name: GetPatrolOfSchedule :one
+SELECT id, local_id, status FROM patrol_routes WHERE schedule_id = @schedule_id;

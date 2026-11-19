@@ -226,135 +226,6 @@ func (ns NullCategoryKind) Value() (driver.Value, error) {
 	return string(ns.CategoryKind), nil
 }
 
-type ChecklistAnswerType string
-
-const (
-	ChecklistAnswerTypeBOOLEAN ChecklistAnswerType = "BOOLEAN"
-	ChecklistAnswerTypeTEXT    ChecklistAnswerType = "TEXT"
-	ChecklistAnswerTypeNUMBER  ChecklistAnswerType = "NUMBER"
-	ChecklistAnswerTypeCHOICE  ChecklistAnswerType = "CHOICE"
-)
-
-func (e *ChecklistAnswerType) Scan(src interface{}) error {
-	switch s := src.(type) {
-	case []byte:
-		*e = ChecklistAnswerType(s)
-	case string:
-		*e = ChecklistAnswerType(s)
-	default:
-		return fmt.Errorf("unsupported scan type for ChecklistAnswerType: %T", src)
-	}
-	return nil
-}
-
-type NullChecklistAnswerType struct {
-	ChecklistAnswerType ChecklistAnswerType
-	Valid               bool // Valid is true if ChecklistAnswerType is not NULL
-}
-
-// Scan implements the Scanner interface.
-func (ns *NullChecklistAnswerType) Scan(value interface{}) error {
-	if value == nil {
-		ns.ChecklistAnswerType, ns.Valid = "", false
-		return nil
-	}
-	ns.Valid = true
-	return ns.ChecklistAnswerType.Scan(value)
-}
-
-// Value implements the driver Valuer interface.
-func (ns NullChecklistAnswerType) Value() (driver.Value, error) {
-	if !ns.Valid {
-		return nil, nil
-	}
-	return string(ns.ChecklistAnswerType), nil
-}
-
-type ChecklistAttachMode string
-
-const (
-	ChecklistAttachModeNONE     ChecklistAttachMode = "NONE"
-	ChecklistAttachModeOPTIONAL ChecklistAttachMode = "OPTIONAL"
-	ChecklistAttachModeREQUIRED ChecklistAttachMode = "REQUIRED"
-)
-
-func (e *ChecklistAttachMode) Scan(src interface{}) error {
-	switch s := src.(type) {
-	case []byte:
-		*e = ChecklistAttachMode(s)
-	case string:
-		*e = ChecklistAttachMode(s)
-	default:
-		return fmt.Errorf("unsupported scan type for ChecklistAttachMode: %T", src)
-	}
-	return nil
-}
-
-type NullChecklistAttachMode struct {
-	ChecklistAttachMode ChecklistAttachMode
-	Valid               bool // Valid is true if ChecklistAttachMode is not NULL
-}
-
-// Scan implements the Scanner interface.
-func (ns *NullChecklistAttachMode) Scan(value interface{}) error {
-	if value == nil {
-		ns.ChecklistAttachMode, ns.Valid = "", false
-		return nil
-	}
-	ns.Valid = true
-	return ns.ChecklistAttachMode.Scan(value)
-}
-
-// Value implements the driver Valuer interface.
-func (ns NullChecklistAttachMode) Value() (driver.Value, error) {
-	if !ns.Valid {
-		return nil, nil
-	}
-	return string(ns.ChecklistAttachMode), nil
-}
-
-type ChecklistAttachWhen string
-
-const (
-	ChecklistAttachWhenALWAYS ChecklistAttachWhen = "ALWAYS"
-	ChecklistAttachWhenONNO   ChecklistAttachWhen = "ON_NO"
-)
-
-func (e *ChecklistAttachWhen) Scan(src interface{}) error {
-	switch s := src.(type) {
-	case []byte:
-		*e = ChecklistAttachWhen(s)
-	case string:
-		*e = ChecklistAttachWhen(s)
-	default:
-		return fmt.Errorf("unsupported scan type for ChecklistAttachWhen: %T", src)
-	}
-	return nil
-}
-
-type NullChecklistAttachWhen struct {
-	ChecklistAttachWhen ChecklistAttachWhen
-	Valid               bool // Valid is true if ChecklistAttachWhen is not NULL
-}
-
-// Scan implements the Scanner interface.
-func (ns *NullChecklistAttachWhen) Scan(value interface{}) error {
-	if value == nil {
-		ns.ChecklistAttachWhen, ns.Valid = "", false
-		return nil
-	}
-	ns.Valid = true
-	return ns.ChecklistAttachWhen.Scan(value)
-}
-
-// Value implements the driver Valuer interface.
-func (ns NullChecklistAttachWhen) Value() (driver.Value, error) {
-	if !ns.Valid {
-		return nil, nil
-	}
-	return string(ns.ChecklistAttachWhen), nil
-}
-
 type DevicePlatform string
 
 const (
@@ -725,6 +596,7 @@ const (
 	NotificationTypeSWAPASSIGNED          NotificationType = "SWAP_ASSIGNED"
 	NotificationTypePANICRESOLVED         NotificationType = "PANIC_RESOLVED"
 	NotificationTypeLEAVECANCELLED        NotificationType = "LEAVE_CANCELLED"
+	NotificationTypePATROLSCHEDULECHANGED NotificationType = "PATROL_SCHEDULE_CHANGED"
 )
 
 func (e *NotificationType) Scan(src interface{}) error {
@@ -887,6 +759,48 @@ func (ns NullOutboxStatus) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return string(ns.OutboxStatus), nil
+}
+
+type PatrolMetadataKind string
+
+const (
+	PatrolMetadataKindSTART PatrolMetadataKind = "START"
+	PatrolMetadataKindEND   PatrolMetadataKind = "END"
+)
+
+func (e *PatrolMetadataKind) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PatrolMetadataKind(s)
+	case string:
+		*e = PatrolMetadataKind(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PatrolMetadataKind: %T", src)
+	}
+	return nil
+}
+
+type NullPatrolMetadataKind struct {
+	PatrolMetadataKind PatrolMetadataKind
+	Valid              bool // Valid is true if PatrolMetadataKind is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPatrolMetadataKind) Scan(value interface{}) error {
+	if value == nil {
+		ns.PatrolMetadataKind, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PatrolMetadataKind.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPatrolMetadataKind) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PatrolMetadataKind), nil
 }
 
 type PatrolRouteStatus string
@@ -1749,20 +1663,33 @@ type PanicType struct {
 	DeletedAt         pgtype.Timestamptz
 }
 
-type PatrolChecklistItem struct {
-	ID             int64
+type PatrolCheckpoint struct {
+	ID             pgtype.UUID
 	OrganizationID int64
-	ZoneID         int64
+	ProjectCode    string
+	Name           string
+	Description    pgtype.Text
+	Latitude       *float64
+	Longitude      *float64
+	RadiusMeters   pgtype.Int4
+	QrSecret       string
+	QrRotatedAt    pgtype.Timestamptz
+	Active         bool
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+	DeletedAt      pgtype.Timestamptz
+}
+
+type PatrolCheckpointAction struct {
+	ID             pgtype.UUID
+	OrganizationID int64
+	CheckpointID   pgtype.UUID
 	SortOrder      int32
-	Label          string
-	HelpText       pgtype.Text
-	AnswerType     ChecklistAnswerType
-	Options        json.RawMessage
-	Required       bool
-	PhotoMode      ChecklistAttachMode
-	PhotoMax       int16
-	NoteMode       ChecklistAttachMode
-	AttachWhen     ChecklistAttachWhen
+	Action         string
+	Instruction    pgtype.Text
+	MinPhotos      int16
+	MaxPhotos      int16
+	IsNoteRequired bool
 	Active         bool
 	DeactivatedAt  pgtype.Timestamptz
 	CreatedAt      pgtype.Timestamptz
@@ -1788,6 +1715,18 @@ type PatrolRoute struct {
 	LastPointAt      pgtype.Timestamptz
 	CreatedAt        pgtype.Timestamptz
 	UpdatedAt        pgtype.Timestamptz
+	ZoneID           pgtype.Int8
+	ScheduleID       pgtype.UUID
+}
+
+type PatrolRouteMetadatum struct {
+	ID              pgtype.UUID
+	OrganizationID  int64
+	PatrolID        int64
+	Kind            PatrolMetadataKind
+	DeviceCondition json.RawMessage
+	RecordedAt      pgtype.Timestamptz
+	CreatedAt       pgtype.Timestamptz
 }
 
 type PatrolRoutePoint struct {
@@ -1818,7 +1757,6 @@ type PatrolScan struct {
 	DistanceMeters   pgtype.Int4
 	Subject          string
 	Notes            pgtype.Text
-	Answers          json.RawMessage
 	Status           PatrolScanStatus
 	DecidedByID      pgtype.Int8
 	DecidedAt        pgtype.Timestamptz
@@ -1827,6 +1765,38 @@ type PatrolScan struct {
 	SubmittedOffline bool
 	CreatedAt        pgtype.Timestamptz
 	UpdatedAt        pgtype.Timestamptz
+	CheckpointID     pgtype.UUID
+}
+
+type PatrolScanAction struct {
+	ID              pgtype.UUID
+	OrganizationID  int64
+	ScanID          int64
+	CheckpointID    pgtype.UUID
+	ActionID        pgtype.UUID
+	PersonnelID     int64
+	Note            pgtype.Text
+	MediaIds        []int64
+	Snapshot        json.RawMessage
+	CreatedAt       pgtype.Timestamptz
+	DeviceCondition json.RawMessage
+}
+
+type PatrolSchedule struct {
+	ID             pgtype.UUID
+	OrganizationID int64
+	ProjectCode    string
+	ZoneID         int64
+	PersonnelID    int64
+	StartsAt       pgtype.Timestamptz
+	EndsAt         pgtype.Timestamptz
+	WorkDate       pgtype.Date
+	Notes          pgtype.Text
+	CreatedByID    int64
+	CancelledAt    pgtype.Timestamptz
+	CancelledByID  pgtype.Int8
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
 }
 
 type PatrolZone struct {
@@ -1839,17 +1809,27 @@ type PatrolZone struct {
 	Alias          pgtype.Text
 	Description    pgtype.Text
 	PopupText      pgtype.Text
-	Latitude       *float64
-	Longitude      *float64
-	RadiusMeters   pgtype.Int4
-	MinVisit       int32
-	StartDate      pgtype.Date
-	PhotoRequired  bool
-	QrSecret       string
-	Active         bool
+	// Display only (Phase 10.9): the geofence is the checkpoint's
+	Latitude *float64
+	// Display only (Phase 10.9): the geofence is the checkpoint's
+	Longitude *float64
+	// Display only (Phase 10.9): the geofence is the checkpoint's
+	RadiusMeters pgtype.Int4
+	MinVisit     int32
+	StartDate    pgtype.Date
+	Active       bool
+	CreatedAt    pgtype.Timestamptz
+	UpdatedAt    pgtype.Timestamptz
+	DeletedAt    pgtype.Timestamptz
+}
+
+type PatrolZoneCheckpoint struct {
+	OrganizationID int64
+	ProjectCode    string
+	ZoneID         int64
+	CheckpointID   pgtype.UUID
+	SortOrder      int32
 	CreatedAt      pgtype.Timestamptz
-	UpdatedAt      pgtype.Timestamptz
-	DeletedAt      pgtype.Timestamptz
 }
 
 type PersonelOutbox struct {
@@ -2112,4 +2092,5 @@ type ZoneCheckin struct {
 	CheckOutLng    *float64
 	CreatedAt      pgtype.Timestamptz
 	UpdatedAt      pgtype.Timestamptz
+	CheckpointID   pgtype.UUID
 }

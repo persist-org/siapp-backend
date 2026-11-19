@@ -66,11 +66,27 @@ func (n notifier) NotifyAttendance(ctx context.Context, nt attendance.Notice) {
 	})
 }
 
-// NotifyPatrol sends PATROL_SUBMITTED or GUARD_SUBMITTED (by the zone's type) to who decides a scan,
+// NotifyPatrol sends PATROL_SCHEDULE_CHANGED to a person whose schedules changed, PATROL_SUBMITTED or GUARD_SUBMITTED (by the zone's type) to who decides a scan,
 // OFFLINE_SUBMISSION_SENT to the guard whose offline scan has arrived, and PATROL_APPROVED or
 // GUARD_APPROVED to the author of scans that were decided. A decline uses the same type with
 // data.decision = DECLINED (patrol.Notifier).
 func (n notifier) NotifyPatrol(ctx context.Context, nt patrol.Notice) {
+	if nt.Kind == patrol.NoticeScheduleChanged {
+		// A schedule is named by a uuid and an entity by a number, so the notice carries ids in its data only.
+		n.service.Notify(ctx, notifications.Input{
+			Type:         notifications.TypePatrolScheduleChanged,
+			RecipientIDs: nt.RecipientIDs,
+			Vars: notifications.Vars{
+				BusinessLine: notifications.BusinessLine(nt.BusinessLine), ActorName: nt.ActorName, Subject: nt.Subject,
+				Change: nt.ScheduleChange, Count: len(nt.ScheduleIDs),
+			},
+			Data: map[string]any{
+				"change": nt.ScheduleChange, "count": len(nt.ScheduleIDs), "schedule_ids": nt.ScheduleIDs,
+				"zone_id": nt.ZoneID, "project_code": nt.ProjectCode,
+			},
+		})
+		return
+	}
 	guard := nt.ZoneType == patrol.TypeGuard
 	typ := notifications.TypePatrolSubmitted
 	switch {
@@ -84,6 +100,10 @@ func (n notifier) NotifyPatrol(ctx context.Context, nt patrol.Notice) {
 		typ = notifications.TypeGuardSubmitted
 	}
 	data := map[string]any{"scan_id": nt.ScanID, "zone_id": nt.ZoneID, "team_code": nt.TeamCode, "work_date": nt.Date.String()}
+	// Which checkpoint it was (a scan made before the checkpoints, or a decision on several, has none).
+	if nt.CheckpointID != "" {
+		data["checkpoint_id"], data["checkpoint_name"] = nt.CheckpointID, nt.CheckpointName
+	}
 	in := notifications.Input{
 		Type:         typ,
 		RecipientIDs: nt.RecipientIDs,

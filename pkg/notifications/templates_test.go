@@ -27,7 +27,7 @@ func TestAllTypesListsEveryTypeOnce(t *testing.T) {
 		require.False(t, seen[typ], "%s is listed twice", typ)
 		seen[typ] = true
 	}
-	require.Len(t, seen, 17, "the 12 types of Tabel 7, the 4 the manual's flows imply and LEAVE_CANCELLED (07.5)")
+	require.Len(t, seen, 18, "the 12 types of Tabel 7, the 4 the manual's flows imply, LEAVE_CANCELLED (07.5) and PATROL_SCHEDULE_CHANGED (10.11)")
 }
 
 // The unit test the plan asks for: every type renders a non-empty title and body in both
@@ -123,6 +123,30 @@ func TestLabelsFollowTheBusinessLine(t *testing.T) {
 			vars:     notifications.Vars{ActorName: "Sari", Subject: "Medis", TeamName: "R1"},
 			security: [2]string{"Sinyal Tombol Panik", "Sari mengirim sinyal tombol panik (Medis) di regu R1. Segera beri bantuan."},
 			cleaning: [2]string{"Sinyal Panik", "Sari mengirim sinyal panik (Medis) di tim R1. Segera beri bantuan."},
+		},
+		{
+			name: "one schedule was made", typ: notifications.TypePatrolScheduleChanged,
+			vars:     notifications.Vars{Subject: "Pos Gerbang", Change: "CREATED", Count: 1, ActorName: "Admin"},
+			security: [2]string{"Jadwal patroli", "Anda dijadwalkan: satu jadwal patroli di Pos Gerbang oleh Admin."},
+			cleaning: [2]string{"Jadwal rute pembersihan", "Anda dijadwalkan: satu jadwal rute pembersihan di Pos Gerbang oleh Admin."},
+		},
+		{
+			name: "several schedules were made", typ: notifications.TypePatrolScheduleChanged,
+			vars:     notifications.Vars{Subject: "Pos Gerbang", Change: "CREATED", Count: 4},
+			security: [2]string{"Jadwal patroli", "Anda dijadwalkan: 4 jadwal patroli di Pos Gerbang."},
+			cleaning: [2]string{"Jadwal rute pembersihan", "Anda dijadwalkan: 4 jadwal rute pembersihan di Pos Gerbang."},
+		},
+		{
+			name: "a schedule changed", typ: notifications.TypePatrolScheduleChanged,
+			vars:     notifications.Vars{Change: "UPDATED", Count: 1},
+			security: [2]string{"Jadwal patroli", "Anda mendapat perubahan satu jadwal patroli."},
+			cleaning: [2]string{"Jadwal rute pembersihan", "Anda mendapat perubahan satu jadwal rute pembersihan."},
+		},
+		{
+			name: "a schedule was cancelled", typ: notifications.TypePatrolScheduleChanged,
+			vars:     notifications.Vars{Change: "CANCELLED", Count: 2, Subject: "Pos Belakang"},
+			security: [2]string{"Jadwal patroli", "Anda tidak lagi dijadwalkan: 2 jadwal patroli di Pos Belakang dibatalkan."},
+			cleaning: [2]string{"Jadwal rute pembersihan", "Anda tidak lagi dijadwalkan: 2 jadwal rute pembersihan di Pos Belakang dibatalkan."},
 		},
 		{
 			name: "the panic ends", typ: notifications.TypePanicResolved,

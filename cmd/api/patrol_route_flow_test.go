@@ -57,6 +57,9 @@ type routeOut struct {
 		ZoneName string `json:"zone_name"`
 		Status   string `json:"status"`
 		Subject  string `json:"subject"`
+
+		CheckpointID   string `json:"checkpoint_id"`
+		CheckpointName string `json:"checkpoint_name"`
 	} `json:"scans"`
 }
 
@@ -496,6 +499,8 @@ func TestPatrolRouteScans(t *testing.T) {
 		require.Equal(t, during.ID, r.Scans[0].ID)
 		require.Equal(t, z.ID, r.Scans[0].ZoneID)
 		require.Equal(t, "Pos Rute", r.Scans[0].ZoneName)
+		require.Equal(t, z.checkpoint.ID, r.Scans[0].CheckpointID, "the pin says which checkpoint it was")
+		require.Equal(t, z.checkpoint.Name, r.Scans[0].CheckpointName)
 		require.Equal(t, "SUBMITTED", r.Scans[0].Status)
 
 		code, raw = f.end(f.personTok, started.ID, now.Add(-5*time.Minute))

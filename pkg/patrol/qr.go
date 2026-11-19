@@ -11,7 +11,7 @@ import (
 	qrcode "github.com/skip2/go-qrcode"
 )
 
-// QR image formats of GET /admin/zones/{id}/qr.
+// QR image formats of GET /admin/checkpoints/{id}/qr.
 const (
 	FormatPNG = "png"
 	FormatSVG = "svg"
@@ -24,53 +24,57 @@ const qrPayloadVersion = 1
 // pngSize is the side of the PNG in pixels: big enough to print a sticker sharply.
 const pngSize = 512
 
-// Payload is what the zone's QR code holds: PERSIST-ZONE:1:{organizationId}:{zoneId}:{qrSecret}.
+// CheckpointPayload is what a checkpoint's QR code holds: PERSIST-CP:1:{organizationId}:{checkpointId}:{qrSecret},
+// where the checkpoint id is its uuid.
 //
-// ⚠ It is static, unlike the attendance QR (which rotates), because it is printed on a sticker
-// and stuck at the post: a code that changed every minute could not be. What keeps a static code
-// from being a free pass is not the code but what the server does with a scan:
-//   - the geofence (Phase 10.2) rejects a scan made away from the zone, whatever the code says, so
-//     a photo of the sticker does nothing from the couch;
-//   - the organization id in the payload stops a sticker of one organization from opening a zone
-//     of another;
-//   - when a sticker leaks, the admin rotates the secret (POST /admin/zones/{id}/rotate-qr) and
+// ⚠ It is static, unlike the attendance QR (which rotates), because it is printed on a sticker and stuck at
+// the checkpoint: a code that changed every minute could not be. What keeps a static code from being a
+// free pass is not the code but what the server does with a scan:
+//   - the checkpoint's geofence rejects a scan made away from it, whatever the code says, so a photo of
+//     the sticker does nothing from the couch;
+//   - the organization id in the payload stops a sticker of one organization from opening a checkpoint of
+//     another;
+//   - when a sticker leaks, the admin rotates the secret (POST /admin/checkpoints/{id}/rotate-qr) and
 //     every printed one stops working at once.
-func Payload(organizationID, zoneID int64, secret string) string {
-	return fmt.Sprintf("PERSIST-ZONE:%d:%d:%d:%s", qrPayloadVersion, organizationID, zoneID, secret)
+//
+// The zone has no QR any more (Phase 10.9); the prefix PERSIST-ZONE is not accepted.
+func CheckpointPayload(organizationID int64, checkpointID, secret string) string {
+	return fmt.Sprintf("PERSIST-CP:%d:%d:%s:%s", qrPayloadVersion, organizationID, checkpointID, secret)
 }
 
-// parsePayload reads what Payload wrote. ok is false for anything else, including a payload of
-// another version: a code of a later layout is not one this server can verify.
-func parsePayload(s string) (organizationID, zoneID int64, secret string, ok bool) {
+// parseCheckpointPayload reads what CheckpointPayload wrote. ok is false for anything else, including a
+// payload of another version: a code of a later layout is not one this server can verify. The id comes back
+// in its canonical text, so it compares with a checkpoint's id however the sticker spelled it.
+func parseCheckpointPayload(s string) (organizationID int64, checkpointID, secret string, ok bool) {
 	parts := strings.Split(s, ":")
-	if len(parts) != 5 || parts[0] != "PERSIST-ZONE" || parts[1] != strconv.Itoa(qrPayloadVersion) {
-		return 0, 0, "", false
+	if len(parts) != 5 || parts[0] != "PERSIST-CP" || parts[1] != strconv.Itoa(qrPayloadVersion) {
+		return 0, "", "", false
 	}
 	organizationID, err := strconv.ParseInt(parts[2], 10, 64)
 	if err != nil || organizationID < 1 {
-		return 0, 0, "", false
+		return 0, "", "", false
 	}
-	zoneID, err = strconv.ParseInt(parts[3], 10, 64)
-	if err != nil || zoneID < 1 {
-		return 0, 0, "", false
+	id, ok := parseUUID(parts[3])
+	if !ok {
+		return 0, "", "", false
 	}
-	return organizationID, zoneID, parts[4], true
+	return organizationID, uuidString(id), parts[4], true
 }
 
-// verifyPayload says whether payload is the QR code of this zone of this organization.
+// verifyCheckpointPayload says whether payload is the QR code of this checkpoint of this organization.
 //
-// ⚠ All three parts must match: the organization (a sticker of another organization), the zone id
-// (a sticker of another zone held up at this one) and the secret, compared in constant time
-// (hmac.Equal) so the answer does not leak how much of a guess was right. Each failure is the
-// same ZONE_QR_INVALID: the caller learns nothing about which part was wrong.
-func verifyPayload(payload string, organizationID, zoneID int64, secret string) bool {
-	org, zone, got, ok := parsePayload(payload)
+// ⚠ All three parts must match: the organization (a sticker of another organization), the checkpoint id (a
+// sticker of another checkpoint held up at this one) and the secret, compared in constant time
+// (hmac.Equal) so the answer does not leak how much of a guess was right. Each failure is the same
+// CHECKPOINT_QR_INVALID: the caller learns nothing about which part was wrong.
+func verifyCheckpointPayload(payload string, organizationID int64, checkpointID, secret string) bool {
+	org, id, got, ok := parseCheckpointPayload(payload)
 	if !ok {
 		return false
 	}
-	// Both comparisons run whatever the first says, so the time taken is the same.
+	// Every comparison runs whatever the first says, so the time taken is the same.
 	secretOK := hmac.Equal([]byte(got), []byte(secret))
-	return org == organizationID && zone == zoneID && secretOK
+	return org == organizationID && id == checkpointID && secretOK
 }
 
 // newSecret returns a QR secret: 16 random bytes in base64url, which is 22 characters.
@@ -127,12 +131,17 @@ func svgOf(bitmap [][]bool) []byte {
 	return []byte(b.String())
 }
 
-// fileName is the download name of a zone's QR: "qr-zona-<name>.<ext>", with the name reduced to
-// lowercase letters, digits and hyphens so it is safe in a header and on any file system.
-func fileName(zoneName, format string) string {
+// checkpointFileName is the download name of a checkpoint's QR: "qr-checkpoint-<name>.<ext>".
+func checkpointFileName(name, format string) string {
+	return qrFileName("qr-checkpoint", "checkpoint", name, format)
+}
+
+// qrFileName is "<prefix>-<name>.<ext>", with the name reduced to lowercase letters, digits and
+// hyphens so it is safe in a header and on any file system, and `fallback` when nothing is left of it.
+func qrFileName(prefix, fallback, rawName, format string) string {
 	var slug strings.Builder
 	dash := true // no leading hyphen
-	for _, r := range strings.ToLower(zoneName) {
+	for _, r := range strings.ToLower(rawName) {
 		switch {
 		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
 			slug.WriteRune(r)
@@ -147,7 +156,7 @@ func fileName(zoneName, format string) string {
 		name = strings.TrimRight(name[:60], "-")
 	}
 	if name == "" {
-		name = "zona"
+		name = fallback
 	}
-	return "qr-zona-" + name + "." + format
+	return prefix + "-" + name + "." + format
 }

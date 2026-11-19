@@ -16,6 +16,24 @@
 #   - leave categories, a permit quota, 12 days of annual leave per person
 #   - patrol zones in 1K-DEMO-S (50 m radius): PATROL "Pos Gerbang Utama" (3 questions) and "Pos Belakang",
 #     GUARD "Pos Jaga Depan" (regu 1). Their QR secrets are made here; print or read them from patrol_zones.
+#   - patrol CHECKPOINTS in 1K-DEMO-S (30 m radius), each with its own QR secret and checklist, and the
+#     zones' order of them: "Pos Gerbang Utama" = Gerbang Utama, Pagar Timur, Pintu Belakang;
+#     "Pos Belakang" = Pintu Belakang (shared with the first), Ruang Panel Listrik; GUARD "Pos Jaga Depan"
+#     = Pos Jaga, Gerbang Utama (shared with a PATROL zone). The QR text of each is printed at the end
+#     of step 6 ("PERSIST-CP:..."): turn it into a QR code to scan. Filled only where empty, so an
+#     admin's edits survive a re-run.
+#   - patrol routes (2 ended + 1 running), scans of the last 3 days in every state (SUBMITTED waiting
+#     for the danru, APPROVED, DECLINED), and zone check-ins (closed + one open). Each scan is of the
+#     FIRST checkpoint of its zone (so the order rule holds) and answers every action of that
+#     checkpoint's checklist (rows of patrol_scan_actions, with the snapshot an app-made scan keeps).
+#     Patrol schedules (10.11): per member, Pos Gerbang Utama today (whole day), Pos Belakang yesterday
+#     (MISSED) and tomorrow night (crosses midnight).
+#     Re-running adds nothing: scans are keyed by guard, day and zone.
+#   - leave requests in every state (PENDING, APPROVED, REJECTED, CANCELLED) with the ledger and counters,
+#     one shift swap, GPS points + last locations, the inbox notifications, and the master data
+#     (panic / stakeholder types, report + instruction categories, app links, a letterhead)
+#   Not seeded on purpose: media (needs real files), devices / sessions / device bindings (made by
+#   login), audit_logs, idempotency_keys and personel_outbox (made by the app as it runs).
 #
 # Personalia is NOT touched. These accounts must already exist THERE (same NIKs, domain "siapp",
 # active, work row in a company listed in GROUP_COMPANY_IDS), or nobody can log in:
@@ -39,6 +57,12 @@
 #                      OFF at the weekend; there is then no attendance for weekend days).
 #   SKIP_ATTENDANCE=1  do not make the attendance rows
 #   FORCE=1            allow APP_ENV=production (do not)
+#   ASSUME_YES=1       do not ask before wiping the SiAPP database (for scripts / CI only)
+#   SKIP_WIPE=1        do not wipe: seed on top of what is there (the old behaviour)
+#
+# WARNING: unless SKIP_WIPE=1, the script FIRST DELETES ALL DATA in the SiAPP database (every table
+# except the goose migration history), after asking you to type the database name to confirm.
+# Personalia is never touched. Take a backup first if anything in there matters.
 
 set -euo pipefail
 
@@ -102,6 +126,33 @@ for v in DANRU_UID ANG1_UID ANG2_UID; do
 done
 echo "personalia user ids: danru=$DANRU_UID anggota1=$ANG1_UID anggota2=$ANG2_UID"
 
+# ---------- 0. wipe the SiAPP database (asks first) ----------
+# After the Personalia ids above are known (they may have been read from this very database).
+# Everything is removed except the goose migration history, so the schema stays and no migrate
+# run is needed. The seed below then rebuilds what it needs.
+if [ "${SKIP_WIPE:-0}" != "1" ]; then
+  say "0/8 Wipe the SiAPP database"
+  WIPE_TABLES="$(dc exec -T postgres psql -U siapp_owner -d siapp -tAc \
+    "SELECT string_agg(format('%I.%I', schemaname, tablename), ', ' ORDER BY tablename)
+       FROM pg_tables WHERE schemaname = 'public' AND tablename NOT LIKE 'goose%'")"
+  [ -n "$WIPE_TABLES" ] || die "found no tables to wipe, is the schema migrated?"
+  PERSONNEL_COUNT="$(dc exec -T postgres psql -U siapp_owner -d siapp -tAc "SELECT count(*) FROM personnels" | tr -d '[:space:]')"
+  echo "This will DELETE ALL DATA in database 'siapp' ($COMPOSE_FILE, $PROJECT_DIR):"
+  echo "  every table except goose migration history, $PERSONNEL_COUNT personnel row(s) among them."
+  echo "  Personalia is not touched."
+  if [ "${ASSUME_YES:-0}" = "1" ]; then
+    echo "ASSUME_YES=1: not asking."
+  else
+    [ -r /dev/tty ] || die "no terminal to ask on. Run it from an interactive shell, or pass ASSUME_YES=1 (or SKIP_WIPE=1)."
+    printf "Type the database name (siapp) to confirm, anything else aborts: " > /dev/tty
+    read -r CONFIRM < /dev/tty || CONFIRM=""
+    [ "$CONFIRM" = "siapp" ] || die "not confirmed, nothing was deleted"
+  fi
+  dc exec -T postgres psql -U siapp_owner -d siapp -v ON_ERROR_STOP=1 -q \
+    -c "TRUNCATE TABLE $WIPE_TABLES RESTART IDENTITY CASCADE"
+  echo "wiped"
+fi
+
 PSQL() {
   dc exec -T postgres psql -U siapp_owner -d siapp -v ON_ERROR_STOP=1 -q \
     -v org="$ORG_ID" -v company="$COMPANY_ID" -v every_day="$EVERY_DAY_SHIFT" \
@@ -110,7 +161,7 @@ PSQL() {
 }
 
 # ---------- 1. hierarchy + people ----------
-say "1/6 Organization, hierarchy, people, memberships"
+say "1/8 Organization, hierarchy, people, memberships"
 PSQL <<'SQL'
 SELECT set_config('app.current_org', :'org', false) \gset
 BEGIN;
@@ -154,14 +205,14 @@ echo "ok"
 # ---------- 2-3. SiAPP seed commands ----------
 SEED() { dc run --rm -T --entrypoint /seed api "$@"; }
 
-say "2/6 Starting shifts and shift group (seed shifts)"
+say "2/8 Starting shifts and shift group (seed shifts)"
 SEED shifts
 
-say "3/6 Default field permissions (seed permissions)"
+say "3/8 Default field permissions (seed permissions)"
 SEED permissions
 
 # ---------- 4. first admin ----------
-say "4/6 First ORG_ADMIN ($ADMIN_NIK)"
+say "4/8 First ORG_ADMIN ($ADMIN_NIK)"
 if SEED grant-admin --nik "$ADMIN_NIK"; then
   echo "ok"
 else
@@ -170,7 +221,7 @@ else
 fi
 
 # ---------- 5. schedules, leave, attendance ----------
-say "5/6 Schedules, leave data and attendance"
+say "5/8 Schedules, leave data and attendance"
 PSQL <<'SQL'
 SELECT set_config('app.current_org', :'org', false) \gset
 BEGIN;
@@ -303,7 +354,7 @@ SQL
 echo "ok"
 
 # ---------- summary ----------
-say "6/6 Patrol zones and checklists"
+say "6/8 Patrol zones, checkpoints and checklists"
 PSQL <<'SQL'
 SELECT set_config('app.current_org', :'org', false) \gset
 BEGIN;
@@ -311,54 +362,406 @@ BEGIN;
 -- Three zones in project 1K-DEMO-S, all near its GPS point (a 50 m radius; the second is about
 -- 60 m north of the first, so a walked patrol has a line to draw). A zone is told apart by its
 -- name inside project + type, so running this again keeps what is there.
+-- A zone has no QR and no checklist of its own: its checkpoints do (below). Its point and radius are for the map.
 INSERT INTO patrol_zones (project_code, team_code, type, name, alias, description, popup_text,
-                          latitude, longitude, radius_meters, min_visit, photo_required, qr_secret)
+                          latitude, longitude, radius_meters, min_visit)
 SELECT '1K-DEMO-S', v.team_code, v.type::patrol_zone_type, v.name, v.alias, v.description, v.popup_text,
-       v.latitude, v.longitude, 50, v.min_visit, v.photo_required,
-       -- 16 random bytes as base64url, 22 characters, like the app makes them.
-       substr(translate(encode(decode(md5(random()::text || v.name), 'hex'), 'base64'), '+/=', '-_'), 1, 22)
+       v.latitude, v.longitude, 50, v.min_visit
 FROM (VALUES
   ('Pos Gerbang Utama', 'PATROL', NULL::text,   'Gerbang',  'Gerbang depan proyek demo', 'Periksa pagar dan lampu gerbang.',
-   -6.175392::numeric, 106.827153::numeric, 1, false),
+   -6.175392::numeric, 106.827153::numeric, 1),
   ('Pos Belakang',      'PATROL', NULL::text,   'Belakang', 'Pintu belakang gedung',     NULL::text,
-   -6.174850::numeric, 106.827153::numeric, 1, false),
+   -6.174850::numeric, 106.827153::numeric, 1),
   ('Pos Jaga Depan',    'GUARD',  '1K-DEMO-S1', 'Jaga',     'Pos jaga regu 1',           NULL::text,
-   -6.175392::numeric, 106.827600::numeric, 1, true)
-) AS v(name, type, team_code, alias, description, popup_text, latitude, longitude, min_visit, photo_required)
+   -6.175392::numeric, 106.827600::numeric, 1)
+) AS v(name, type, team_code, alias, description, popup_text, latitude, longitude, min_visit)
 ON CONFLICT DO NOTHING;
 
--- The questions, only for a zone that has none yet, so an admin's edits are never overwritten.
-INSERT INTO patrol_checklist_items (zone_id, sort_order, label, help_text, answer_type, options,
-                                    required, photo_mode, note_mode, attach_when)
-SELECT z.id, c.sort_order, c.label, c.help_text, c.answer_type::checklist_answer_type, c.options,
-       c.required, c.photo_mode::checklist_attach_mode, c.note_mode::checklist_attach_mode,
-       c.attach_when::checklist_attach_when
+-- Checkpoints: a few dozen metres apart around the project point, each with a 30 m radius and its own QR
+-- secret (16 random bytes as base64url, 22 characters, like the app makes them). A checkpoint is told apart by its name inside the project, so running this
+-- again keeps what is there.
+INSERT INTO patrol_checkpoints (project_code, name, description, latitude, longitude, radius_meters, qr_secret)
+SELECT '1K-DEMO-S', v.name, v.description, v.latitude, v.longitude, 30,
+       substr(translate(encode(decode(md5(random()::text || v.name), 'hex'), 'base64'), '+/=', '-_'), 1, 22)
 FROM (VALUES
-  ('Pos Gerbang Utama', 'PATROL', 1, 'Pagar terkunci dan utuh?', 'Foto wajib bila jawabannya tidak.',
-   'BOOLEAN', NULL::jsonb, true, 'REQUIRED', 'NONE', 'ON_NO'),
-  ('Pos Gerbang Utama', 'PATROL', 2, 'Kondisi lampu', NULL,
-   'CHOICE', '[{"value":"baik","label":"Baik"},{"value":"redup","label":"Redup"},{"value":"mati","label":"Mati"}]'::jsonb,
-   true, 'NONE', 'NONE', 'ALWAYS'),
-  ('Pos Gerbang Utama', 'PATROL', 3, 'Catatan lain', NULL,
-   'TEXT', NULL::jsonb, false, 'NONE', 'OPTIONAL', 'ALWAYS'),
-  ('Pos Belakang', 'PATROL', 1, 'Pintu belakang terkunci?', NULL,
-   'BOOLEAN', NULL::jsonb, true, 'NONE', 'REQUIRED', 'ON_NO'),
-  ('Pos Jaga Depan', 'GUARD', 1, 'Jumlah tamu hari ini', NULL,
-   'NUMBER', NULL::jsonb, false, 'NONE', 'NONE', 'ALWAYS')
-) AS c(zone_name, zone_type, sort_order, label, help_text, answer_type, options, required, photo_mode, note_mode, attach_when)
-JOIN patrol_zones z ON z.project_code = '1K-DEMO-S' AND z.name = c.zone_name
-                   AND z.type = c.zone_type::patrol_zone_type AND z.deleted_at IS NULL
-WHERE NOT EXISTS (SELECT 1 FROM patrol_checklist_items i WHERE i.zone_id = z.id);
+  ('Gerbang Utama',       'Gerbang depan proyek demo',   -6.175392::numeric, 106.827153::numeric),
+  ('Pagar Timur',         'Pagar sisi timur',            -6.175392::numeric, 106.827400::numeric),
+  ('Pintu Belakang',      'Pintu belakang gedung',       -6.174850::numeric, 106.827153::numeric),
+  ('Ruang Panel Listrik', 'Panel listrik utama',         -6.174850::numeric, 106.827400::numeric),
+  ('Pos Jaga',            'Meja jaga depan',             -6.175392::numeric, 106.827600::numeric)
+) AS v(name, description, latitude, longitude)
+ON CONFLICT DO NOTHING;
+
+-- The order of each zone, only for a zone that has none yet. Pintu Belakang is in two PATROL zones and Gerbang
+-- Utama in a PATROL and a GUARD zone, each at its own position there.
+INSERT INTO patrol_zone_checkpoints (project_code, zone_id, checkpoint_id, sort_order)
+SELECT '1K-DEMO-S', z.id, c.id, l.position
+FROM (VALUES
+  ('Pos Gerbang Utama', 'PATROL', 'Gerbang Utama',       1),
+  ('Pos Gerbang Utama', 'PATROL', 'Pagar Timur',         2),
+  ('Pos Gerbang Utama', 'PATROL', 'Pintu Belakang',      3),
+  ('Pos Belakang',      'PATROL', 'Pintu Belakang',      1),
+  ('Pos Belakang',      'PATROL', 'Ruang Panel Listrik', 2),
+  ('Pos Jaga Depan',    'GUARD',  'Pos Jaga',            1),
+  ('Pos Jaga Depan',    'GUARD',  'Gerbang Utama',       2)
+) AS l(zone_name, zone_type, checkpoint_name, position)
+JOIN patrol_zones z ON z.project_code = '1K-DEMO-S' AND z.name = l.zone_name
+                   AND z.type = l.zone_type::patrol_zone_type AND z.deleted_at IS NULL
+JOIN patrol_checkpoints c ON c.project_code = '1K-DEMO-S' AND lower(c.name) = lower(l.checkpoint_name) AND c.deleted_at IS NULL
+WHERE NOT EXISTS (SELECT 1 FROM patrol_zone_checkpoints x WHERE x.zone_id = z.id);
+
+-- Each checkpoint's checklist, only for a checkpoint that has none (even a deactivated action counts as
+-- one), so an admin's edits are never overwritten. It covers every rule: a photo required (min 1), several
+-- photos, an optional photo (min 0), no photo at all (max 0), and a note required.
+INSERT INTO patrol_checkpoint_actions (checkpoint_id, sort_order, action, instruction, min_photos, max_photos, is_note_required)
+SELECT c.id, a.sort_order, a.action, a.instruction, a.min_photos, a.max_photos, a.is_note_required
+FROM (VALUES
+  ('Gerbang Utama',       0, 'Periksa gembok gerbang', 'Tarik gembok untuk memastikan terkunci.',     1, 2, false),
+  ('Gerbang Utama',       1, 'Periksa lampu gerbang',  NULL::text,                                     0, 1, true),
+  ('Pagar Timur',         0, 'Periksa pagar',          'Pastikan pagar utuh dan tidak ada yang rusak.', 1, 3, false),
+  ('Pintu Belakang',      0, 'Pastikan pintu terkunci', NULL::text,                                    1, 1, false),
+  ('Ruang Panel Listrik', 0, 'Cek panel',              NULL::text,                                     1, 2, true),
+  ('Ruang Panel Listrik', 1, 'Cek APAR',               'Pastikan segel dan tekanan APAR normal.',      0, 0, true),
+  ('Pos Jaga',            0, 'Isi buku tamu',          NULL::text,                                     1, 1, false)
+) AS a(checkpoint_name, sort_order, action, instruction, min_photos, max_photos, is_note_required)
+JOIN patrol_checkpoints c ON c.project_code = '1K-DEMO-S' AND lower(c.name) = lower(a.checkpoint_name) AND c.deleted_at IS NULL
+WHERE NOT EXISTS (SELECT 1 FROM patrol_checkpoint_actions x WHERE x.checkpoint_id = c.id);
 
 COMMIT;
 
 \pset footer off
 \echo Patrol zones
-SELECT z.id, z.type, z.name, z.team_code, z.radius_meters, count(i.id) AS questions
-FROM patrol_zones z LEFT JOIN patrol_checklist_items i ON i.zone_id = z.id
+SELECT z.id, z.type, z.name, z.team_code, count(zc.checkpoint_id) AS checkpoints
+FROM patrol_zones z LEFT JOIN patrol_zone_checkpoints zc ON zc.zone_id = z.id
 WHERE z.project_code = '1K-DEMO-S' AND z.deleted_at IS NULL
 GROUP BY z.id ORDER BY z.id;
+\echo Checkpoints of each zone, in order (qr_payload is the text to turn into a QR code and scan)
+SELECT z.name AS zone, zc.sort_order AS pos, c.name AS checkpoint,
+       (SELECT count(*) FROM patrol_checkpoint_actions a WHERE a.checkpoint_id = c.id AND a.active) AS actions,
+       'PERSIST-CP:1:' || :'org' || ':' || c.id || ':' || c.qr_secret AS qr_payload
+FROM patrol_zone_checkpoints zc
+JOIN patrol_zones z ON z.id = zc.zone_id
+JOIN patrol_checkpoints c ON c.id = zc.checkpoint_id
+WHERE z.project_code = '1K-DEMO-S' AND z.deleted_at IS NULL
+ORDER BY z.name, zc.sort_order;
 SQL
+
+# ---------- 7. patrol: routes, scans, approvals, zone check-ins ----------
+say "7/8 Patrol routes, scans (pending / approved / declined) and zone check-ins"
+PSQL <<'SQL'
+SELECT set_config('app.current_org', :'org', false) \gset
+BEGIN;
+
+-- Patrol routes. anggota1 walked one on each of the last two scheduled days (ENDED, with a path);
+-- anggota2 has one running now (ACTIVE, no path yet). The dates are project dates (Asia/Jakarta).
+WITH me AS (SELECT (now() AT TIME ZONE 'Asia/Jakarta')::date AS today)
+INSERT INTO patrol_routes (local_id, personnel_id, team_code, project_code, status, started_at, ended_at, work_date,
+                           path, distance_meters, point_count, scan_count, last_point_at)
+SELECT md5('seed-route-' || p.id || '-' || sc.work_date)::uuid, p.id, '1K-DEMO-S1', '1K-DEMO-S', 'ENDED'::patrol_route_status,
+       t.s, t.s + interval '40 minutes', sc.work_date,
+       jsonb_build_array(
+         jsonb_build_object('lat', -6.175392, 'lng', 106.827153, 'at', t.s,                          'acc', 8),
+         jsonb_build_object('lat', -6.175122, 'lng', 106.827153, 'at', t.s + interval '18 minutes', 'acc', 8),
+         jsonb_build_object('lat', -6.174852, 'lng', 106.827153, 'at', t.s + interval '36 minutes', 'acc', 8)),
+       60, 3, 0, t.s + interval '40 minutes'
+FROM me
+CROSS JOIN personnels p
+JOIN schedules sc ON sc.personnel_id = p.id AND sc.work_date BETWEEN me.today - 2 AND me.today - 1
+JOIN shifts sh ON sh.id = sc.shift_id AND NOT sh.is_off
+CROSS JOIN LATERAL (SELECT ((sc.work_date::timestamp + interval '9 hours 55 minutes') AT TIME ZONE 'Asia/Jakarta') AS s) t
+WHERE p.nik = 'KPIANG0001'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO patrol_routes (local_id, personnel_id, team_code, project_code, status, started_at, work_date,
+                           distance_meters, point_count, scan_count, last_point_at)
+SELECT md5('seed-route-active-' || p.id)::uuid, p.id, '1K-DEMO-S1', '1K-DEMO-S', 'ACTIVE'::patrol_route_status,
+       now() - interval '40 minutes', (now() AT TIME ZONE 'Asia/Jakarta')::date, 0, 3, 0, now() - interval '4 minutes'
+FROM personnels p WHERE p.nik = 'KPIANG0002'
+ON CONFLICT DO NOTHING;
+
+-- The raw points of every route: three, 18 minutes apart, walking north.
+INSERT INTO patrol_route_points (patrol_id, seq, logged_at, latitude, longitude, accuracy_meters)
+SELECT r.id, g, r.started_at + g * interval '18 minutes', -6.175392 + g * 0.00027, 106.827153, 8
+FROM patrol_routes r CROSS JOIN generate_series(0, 2) g
+ON CONFLICT DO NOTHING;
+
+-- Scans of the last 3 days (today included) for each scheduled day of the two members, one per
+-- zone, of the zone's first checkpoint at its point (the zone's own when the checkpoint has none), each
+-- answering every action of that checkpoint. anggota1 also scans the guard post. Outcome by age:
+--   today            SUBMITTED (waiting for the danru: shows in /patrol/pending-approvals)
+--   yesterday        anggota1 SUBMITTED, anggota2 APPROVED
+--   2 days ago       DECLINED (with a note)
+--   3 days ago       APPROVED
+WITH me AS (SELECT (now() AT TIME ZONE 'Asia/Jakarta')::date AS today),
+danru AS (SELECT id FROM personnels WHERE nik = 'KPIDANRU01'),
+src AS (
+  SELECT p.id AS pid, p.nik, sc.work_date, (me.today - sc.work_date) AS ago,
+         z.id AS zone_id, z.type AS zone_type, z.name AS zone_name,
+         cp.id AS checkpoint_id, COALESCE(cp.latitude, z.latitude) AS zone_lat, COALESCE(cp.longitude, z.longitude) AS zone_lng
+  FROM me
+  CROSS JOIN team_members tm
+  JOIN personnels p ON p.id = tm.personnel_id AND p.nik IN ('KPIANG0001', 'KPIANG0002')
+  JOIN schedules sc ON sc.personnel_id = p.id AND sc.work_date BETWEEN me.today - 3 AND me.today
+                   AND tm.start_date <= sc.work_date
+  JOIN shifts sh ON sh.id = sc.shift_id AND NOT sh.is_off
+  JOIN patrol_zones z ON z.project_code = '1K-DEMO-S' AND z.deleted_at IS NULL
+                     AND (z.type = 'PATROL' OR p.nik = 'KPIANG0001')
+  JOIN LATERAL (
+    SELECT c.id, c.latitude, c.longitude
+    FROM patrol_zone_checkpoints zc
+    JOIN patrol_checkpoints c ON c.organization_id = zc.organization_id AND c.id = zc.checkpoint_id
+    WHERE zc.zone_id = z.id AND c.active AND c.deleted_at IS NULL
+    ORDER BY zc.sort_order
+    LIMIT 1
+  ) cp ON true
+  WHERE tm.team_code = '1K-DEMO-S1' AND tm.end_date IS NULL
+), timed AS (
+  SELECT src.*,
+         LEAST(((work_date::timestamp + interval '10 hours' + (zone_id % 3) * interval '10 minutes') AT TIME ZONE 'Asia/Jakarta'),
+               now() - interval '10 minutes') AS occurred_at,
+         CASE WHEN ago = 0 THEN 'SUBMITTED'
+              WHEN ago = 1 THEN CASE WHEN nik = 'KPIANG0001' THEN 'SUBMITTED' ELSE 'APPROVED' END
+              WHEN ago = 2 THEN 'DECLINED'
+              ELSE 'APPROVED' END AS st
+  FROM src
+),
+scans AS (
+  INSERT INTO patrol_scans (local_id, zone_id, checkpoint_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at,
+                            work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, status,
+                            decided_by_id, decided_at, decision_note, patrol_id, submitted_offline)
+  SELECT md5('seed-scan-' || t.pid || '-' || t.work_date || '-' || t.zone_id)::uuid, t.zone_id, t.checkpoint_id, t.zone_type, t.pid,
+       '1K-DEMO-S1', '1K-DEMO-S', t.occurred_at, t.occurred_at + interval '1 minute', t.work_date,
+       t.zone_lat, t.zone_lng, 8, 12,
+       CASE WHEN t.zone_type = 'PATROL' THEN 'Patroli ' ELSE 'Jaga ' END || t.zone_name,
+       CASE WHEN t.st = 'DECLINED' THEN 'Foto kurang jelas' END,
+       t.st::patrol_scan_status,
+       CASE WHEN t.st <> 'SUBMITTED' THEN (SELECT id FROM danru) END,
+       CASE WHEN t.st <> 'SUBMITTED' THEN t.occurred_at + interval '1 hour' END,
+       CASE t.st WHEN 'DECLINED' THEN 'Foto tidak jelas, ulangi patroli' WHEN 'APPROVED' THEN 'OK' END,
+       (SELECT r.id FROM patrol_routes r WHERE r.personnel_id = t.pid AND r.work_date = t.work_date AND r.status <> 'ACTIVE' LIMIT 1),
+       false
+  FROM timed t
+  ON CONFLICT DO NOTHING
+  RETURNING id, checkpoint_id, personnel_id
+)
+-- The answers of the scans just made (none for a scan that already existed: it was answered then). No photo
+-- is attached (media needs real files), so an action that asks for photos still shows an empty list.
+INSERT INTO patrol_scan_actions (scan_id, checkpoint_id, action_id, personnel_id, note, media_ids, snapshot)
+SELECT s.id, s.checkpoint_id, a.id, s.personnel_id,
+       CASE WHEN a.is_note_required THEN 'Aman, tidak ada kelainan' END,
+       '{}'::bigint[],
+       jsonb_build_object('action', a.action, 'instruction', a.instruction, 'min_photos', a.min_photos, 'max_photos', a.max_photos,
+                          'is_note_required', a.is_note_required, 'sort_order', a.sort_order,
+                          'note', CASE WHEN a.is_note_required THEN 'Aman, tidak ada kelainan' END, 'media_ids', '[]'::jsonb)
+FROM scans s
+JOIN patrol_checkpoint_actions a ON a.checkpoint_id = s.checkpoint_id AND a.active
+ON CONFLICT DO NOTHING;
+
+UPDATE patrol_routes r SET scan_count = (SELECT count(*) FROM patrol_scans s WHERE s.patrol_id = r.id);
+
+-- Patrol schedules (Phase 10.11), for each of the two members: Pos Gerbang Utama today for the whole Jakarta day (so a
+-- tester can always start a patrol from one), Pos Belakang yesterday 08:00-16:00 (over with no patrol: MISSED) and
+-- tomorrow 22:00-06:00 (crosses midnight, keeps tomorrow's work date). One person's live schedules may not overlap
+-- (the API refuses it), so the three are at different times. Keyed by person, zone and start: a re-run adds nothing.
+WITH me AS (SELECT (now() AT TIME ZONE 'Asia/Jakarta')::date AS today)
+INSERT INTO patrol_schedules (project_code, zone_id, personnel_id, starts_at, ends_at, work_date, notes, created_by_id)
+SELECT '1K-DEMO-S', z.id, p.id, t.s, t.s + v.len, (t.s AT TIME ZONE 'Asia/Jakarta')::date, v.note,
+       COALESCE((SELECT id FROM personnels WHERE nik = 'KPIADMIN01'),
+                (SELECT id FROM personnels WHERE nik = 'KPIDANRU01'), p.id)
+FROM me
+CROSS JOIN personnels p
+CROSS JOIN (VALUES
+  ('Pos Gerbang Utama', 0,  interval '0 hours',  interval '24 hours', 'Patroli seharian, bisa dimulai kapan saja'),
+  ('Pos Belakang',     -1,  interval '8 hours',  interval '8 hours',  'Kemarin: terlewat (tanpa patroli)'),
+  ('Pos Belakang',      1,  interval '22 hours', interval '8 hours',  'Besok malam: melewati tengah malam')
+) AS v(zone_name, day_offset, from_hour, len, note)
+JOIN patrol_zones z ON z.project_code = '1K-DEMO-S' AND z.name = v.zone_name AND z.deleted_at IS NULL
+CROSS JOIN LATERAL (SELECT (((me.today + v.day_offset)::timestamp + v.from_hour) AT TIME ZONE 'Asia/Jakarta') AS s) t
+WHERE p.nik IN ('KPIANG0001', 'KPIANG0002')
+  AND NOT EXISTS (SELECT 1 FROM patrol_schedules x WHERE x.personnel_id = p.id AND x.zone_id = z.id AND x.starts_at = t.s);
+
+\echo Patrol schedules
+SELECT p.nik, z.name AS zone, sc.starts_at AT TIME ZONE 'Asia/Jakarta' AS starts_jakarta, sc.ends_at AT TIME ZONE 'Asia/Jakarta' AS ends_jakarta, sc.work_date
+FROM patrol_schedules sc JOIN personnels p ON p.id = sc.personnel_id JOIN patrol_zones z ON z.id = sc.zone_id
+WHERE sc.project_code = '1K-DEMO-S' ORDER BY p.nik, sc.starts_at;
+
+-- Zone check-ins: anggota1 sat at the guard post on past scheduled days (closed); anggota2 is
+-- at the front gate right now (open: a guard is at one post at a time).
+INSERT INTO zone_checkins (zone_id, personnel_id, team_code, shift_id, check_in_at, check_in_lat, check_in_lng,
+                           check_out_at, check_out_lat, check_out_lng)
+SELECT z.id, p.id, '1K-DEMO-S1', sc.shift_id, t.ci, z.latitude, z.longitude, t.ci + interval '8 hours',
+       z.latitude, z.longitude
+FROM (SELECT (now() AT TIME ZONE 'Asia/Jakarta')::date AS today) me
+CROSS JOIN personnels p
+JOIN schedules sc ON sc.personnel_id = p.id AND sc.work_date BETWEEN me.today - 3 AND me.today - 1
+JOIN shifts sh ON sh.id = sc.shift_id AND NOT sh.is_off
+JOIN patrol_zones z ON z.project_code = '1K-DEMO-S' AND z.name = 'Pos Jaga Depan' AND z.deleted_at IS NULL
+CROSS JOIN LATERAL (SELECT ((sc.work_date::timestamp + interval '8 hours') AT TIME ZONE 'Asia/Jakarta') AS ci) t
+WHERE p.nik = 'KPIANG0001'
+  AND NOT EXISTS (SELECT 1 FROM zone_checkins x WHERE x.check_out_at IS NOT NULL);
+
+INSERT INTO zone_checkins (zone_id, personnel_id, team_code, shift_id, check_in_at, check_in_lat, check_in_lng)
+SELECT z.id, p.id, '1K-DEMO-S1',
+       (SELECT sc.shift_id FROM schedules sc JOIN shifts sh ON sh.id = sc.shift_id AND NOT sh.is_off
+         WHERE sc.personnel_id = p.id AND sc.work_date = (now() AT TIME ZONE 'Asia/Jakarta')::date),
+       now() - interval '30 minutes', z.latitude, z.longitude
+FROM personnels p
+JOIN patrol_zones z ON z.project_code = '1K-DEMO-S' AND z.name = 'Pos Gerbang Utama' AND z.deleted_at IS NULL
+WHERE p.nik = 'KPIANG0002'
+  AND NOT EXISTS (SELECT 1 FROM zone_checkins x WHERE x.personnel_id = p.id AND x.check_out_at IS NULL);
+
+COMMIT;
+SQL
+echo "ok"
+
+# ---------- 8. leave requests, shift swap, location, notifications, master data ----------
+say "8/8 Leave requests, shift swap, location, notifications and master data"
+PSQL <<'SQL'
+SELECT set_config('app.current_org', :'org', false) \gset
+BEGIN;
+
+-- Leave requests: pending (the danru has to decide), approved (with a ledger deduction), rejected,
+-- cancelled. Numbers are LR / PR / SR + YYYYMM + a 5-digit counter per type, as the app makes them.
+INSERT INTO leave_requests (number, personnel_id, team_code, project_code, type, category_id, start_date, end_date,
+                            working_days, reason, status, approver_personnel_id, decided_level, decided_by_id,
+                            decided_at, decision_note, cancelled_at)
+SELECT v.pfx || to_char(me.today, 'YYYYMM') || lpad(v.seq::text, 5, '0'), p.id, '1K-DEMO-S1', '1K-DEMO-S', c.type, c.id,
+       me.today + v.s, me.today + v.e, v.wd, v.reason, v.status::leave_request_status, d.id,
+       CASE WHEN v.status IN ('APPROVED', 'REJECTED') THEN 'DANRU'::leave_decided_level END,
+       CASE WHEN v.status IN ('APPROVED', 'REJECTED') THEN d.id END,
+       CASE WHEN v.status IN ('APPROVED', 'REJECTED') THEN now() - interval '1 day' END,
+       v.note,
+       CASE WHEN v.status = 'CANCELLED' THEN now() - interval '8 days' END
+FROM (SELECT (now() AT TIME ZONE 'Asia/Jakarta')::date AS today) me
+CROSS JOIN (VALUES
+  ('LR', 1, 'KPIANG0001', 'ANNUAL',   3,   4, 2, 'Acara keluarga',              'PENDING',   NULL::text),
+  ('PR', 1, 'KPIANG0002', 'PERMIT',   1,   1, 1, 'Mengurus dokumen',            'PENDING',   NULL::text),
+  ('LR', 2, 'KPIANG0002', 'ANNUAL', -14, -13, 2, 'Liburan keluarga',            'APPROVED',  'Disetujui'),
+  ('PR', 2, 'KPIANG0001', 'PERMIT', -10, -10, 1, 'Keperluan pribadi',           'REJECTED',  'Kekuatan regu tidak cukup'),
+  ('SR', 1, 'KPIANG0001', 'SICK',   -20, -19, 0, 'Demam dan flu',               'APPROVED',  'Semoga lekas sembuh'),
+  ('LR', 3, 'KPIANG0002', 'ANNUAL',  -8,  -8, 1, 'Dibatalkan, jadwal berubah',  'CANCELLED', NULL::text)
+) AS v(pfx, seq, nik, cat, s, e, wd, reason, status, note)
+JOIN personnels p ON p.nik = v.nik
+JOIN leave_categories c ON c.code = v.cat
+CROSS JOIN (SELECT id FROM personnels WHERE nik = 'KPIDANRU01') d
+ON CONFLICT DO NOTHING;
+
+-- An approved request of a category with a quota is deducted from the ledger once (12 days granted).
+INSERT INTO leave_ledger (personnel_id, kind, days, balance_after, leave_request_id, note, created_by_id)
+SELECT lr.personnel_id, 'DEDUCT'::leave_ledger_kind, -lr.working_days, 12 - lr.working_days, lr.id, 'dev seed', lr.decided_by_id
+FROM leave_requests lr
+JOIN leave_categories c ON c.id = lr.category_id AND c.has_quota AND c.is_annual
+WHERE lr.status = 'APPROVED' AND lr.working_days > 0
+ON CONFLICT DO NOTHING;
+
+INSERT INTO leave_request_counters (type, counter)
+SELECT type, count(*) FROM leave_requests GROUP BY type
+ON CONFLICT (organization_id, type) DO UPDATE SET counter = EXCLUDED.counter;
+
+-- Shift swap: the danru asked anggota1 to cover the newest absence (mangkir) of anyone else.
+-- Nothing is made when there is no absence in the last 6 days.
+INSERT INTO shift_swaps (replaced_personnel_id, replaced_attendance_id, replacing_personnel_id, team_code, work_date,
+                         shift_id, starts_at, ends_at, note, created_by_id)
+SELECT a.personnel_id, a.id, r.id, a.team_code, a.work_date, a.shift_id, a.shift_starts_at, a.shift_ends_at,
+       'Tukar jaga (dev seed)', d.id
+FROM attendances a
+CROSS JOIN (SELECT id FROM personnels WHERE nik = 'KPIANG0001') r
+CROSS JOIN (SELECT id FROM personnels WHERE nik = 'KPIDANRU01') d
+WHERE a.status = 'ABSENT' AND a.personnel_id <> r.id
+ORDER BY a.work_date DESC
+LIMIT 1
+ON CONFLICT DO NOTHING;
+
+-- Location: a point every 15 minutes for the last 3 hours of each person, and the newest of each.
+INSERT INTO location_logs (personnel_id, logged_at, latitude, longitude, accuracy_meters, battery_pct)
+SELECT p.id, date_trunc('minute', now()) - g * interval '15 minutes',
+       -6.175392 + ((12 - g) * 0.00002) + (p.id % 3) * 0.00005, 106.827153 + ((12 - g) * 0.00001),
+       8 + (g % 5), 90 - g
+FROM personnels p CROSS JOIN generate_series(0, 11) g
+WHERE p.nik IN ('KPIDANRU01', 'KPIANG0001', 'KPIANG0002')
+  AND NOT EXISTS (SELECT 1 FROM location_logs)
+ON CONFLICT DO NOTHING;
+
+INSERT INTO personnel_last_locations (personnel_id, logged_at, latitude, longitude, accuracy_meters)
+SELECT DISTINCT ON (personnel_id) personnel_id, logged_at, latitude, longitude, accuracy_meters
+FROM location_logs ORDER BY personnel_id, logged_at DESC
+ON CONFLICT (organization_id, personnel_id) DO UPDATE
+  SET logged_at = EXCLUDED.logged_at, latitude = EXCLUDED.latitude, longitude = EXCLUDED.longitude,
+      accuracy_meters = EXCLUDED.accuracy_meters
+  WHERE EXCLUDED.logged_at > personnel_last_locations.logged_at;
+
+-- Master data: the same defaults the app gives an organization at its first login, so that login
+-- adds nothing, plus a default letterhead.
+INSERT INTO stakeholder_types (code, name, default_phone, sort_order) VALUES
+  ('POLICE', 'Polisi', '110', 0), ('HOSPITAL', 'Rumah Sakit', '119', 1), ('FIRE_DEPARTMENT', 'Pemadam Kebakaran', '113', 2)
+ON CONFLICT DO NOTHING;
+
+INSERT INTO panic_types (code, name, stakeholder_type_id, sort_order)
+SELECT v.code, v.name, (SELECT id FROM stakeholder_types WHERE code = v.stakeholder), v.sort_order
+FROM (VALUES ('SECURITY', 'Keamanan', 'POLICE', 0), ('MEDICAL', 'Medis', 'HOSPITAL', 1),
+             ('FIRE', 'Kebakaran', 'FIRE_DEPARTMENT', 2), ('OTHER', 'Lainnya', NULL::text, 3)) AS v(code, name, stakeholder, sort_order)
+ON CONFLICT DO NOTHING;
+
+INSERT INTO categories (kind, name, urgency, sort_order)
+SELECT v.kind::category_kind, v.name, v.urgency::urgency, v.sort_order
+FROM (VALUES
+  ('REPORT', 'Penemuan Barang', NULL::text, 0), ('REPORT', 'Kejadian', NULL::text, 1),
+  ('REPORT', 'Kehilangan', NULL::text, 2),      ('REPORT', 'Lainnya', NULL::text, 3),
+  ('INSTRUCTION', 'Umum', 'NORMAL', 0),         ('INSTRUCTION', 'Pengecekan', 'HIGH', 1)
+) AS v(kind, name, urgency, sort_order)
+WHERE NOT EXISTS (SELECT 1 FROM categories c WHERE c.kind = v.kind::category_kind)
+ON CONFLICT DO NOTHING;
+
+INSERT INTO app_links (name, icon_key, sort_order, active) VALUES
+  ('E-Koperasi Janusa', 'koperasi', 0, false), ('IKI', 'iki', 1, false)
+ON CONFLICT DO NOTHING;
+
+INSERT INTO letterheads (name, header_text, footer_text, is_default)
+VALUES ('KPI Group', 'PT KPI Group', 'Dokumen internal, dibuat otomatis oleh SiAPP', true)
+ON CONFLICT DO NOTHING;
+
+-- The inbox: what the danru has waiting (leave and patrol to decide), what the members were told.
+INSERT INTO notifications (recipient_personnel_id, type, title, body, entity_type, entity_id, data)
+SELECT d.id, 'LEAVE_REQUESTED'::notification_type, 'Pengajuan baru: ' || c.name,
+       p.full_name || ' mengajukan ' || lower(c.name) || ' ' || to_char(lr.start_date, 'DD-MM-YYYY'),
+       'leave_request', lr.id, jsonb_build_object('leave_request_id', lr.id, 'team_code', lr.team_code)
+FROM leave_requests lr
+JOIN personnels p ON p.id = lr.personnel_id
+JOIN leave_categories c ON c.id = lr.category_id
+CROSS JOIN (SELECT id FROM personnels WHERE nik = 'KPIDANRU01') d
+WHERE lr.status = 'PENDING'
+  AND NOT EXISTS (SELECT 1 FROM notifications n WHERE n.type = 'LEAVE_REQUESTED' AND n.entity_id = lr.id);
+
+INSERT INTO notifications (recipient_personnel_id, type, title, body, entity_type, entity_id, data)
+SELECT lr.personnel_id, 'LEAVE_DECIDED'::notification_type,
+       CASE lr.status WHEN 'APPROVED' THEN 'Pengajuan disetujui' ELSE 'Pengajuan ditolak' END,
+       lr.number || ': ' || coalesce(lr.decision_note, '-'),
+       'leave_request', lr.id, jsonb_build_object('leave_request_id', lr.id, 'status', lr.status)
+FROM leave_requests lr
+WHERE lr.status IN ('APPROVED', 'REJECTED')
+  AND NOT EXISTS (SELECT 1 FROM notifications n WHERE n.type = 'LEAVE_DECIDED' AND n.entity_id = lr.id);
+
+INSERT INTO notifications (recipient_personnel_id, type, title, body, entity_type, entity_id, data)
+SELECT d.id, (CASE WHEN s.zone_type = 'PATROL' THEN 'PATROL_SUBMITTED' ELSE 'GUARD_SUBMITTED' END)::notification_type,
+       'Menunggu persetujuan', p.full_name || ': ' || s.subject,
+       'patrol_scan', s.id, jsonb_build_object('scan_id', s.id, 'team_code', s.team_code)
+FROM patrol_scans s
+JOIN personnels p ON p.id = s.personnel_id
+CROSS JOIN (SELECT id FROM personnels WHERE nik = 'KPIDANRU01') d
+WHERE s.status = 'SUBMITTED'
+  AND NOT EXISTS (SELECT 1 FROM notifications n WHERE n.entity_type = 'patrol_scan' AND n.entity_id = s.id AND n.recipient_personnel_id = d.id);
+
+INSERT INTO notifications (recipient_personnel_id, type, title, body, entity_type, entity_id, data, read_at)
+SELECT s.personnel_id, (CASE WHEN s.zone_type = 'PATROL' THEN 'PATROL_APPROVED' ELSE 'GUARD_APPROVED' END)::notification_type,
+       'Disetujui', s.subject, 'patrol_scan', s.id, jsonb_build_object('scan_id', s.id),
+       CASE WHEN s.id % 2 = 0 THEN now() END
+FROM patrol_scans s
+WHERE s.status = 'APPROVED'
+  AND NOT EXISTS (SELECT 1 FROM notifications n WHERE n.entity_type = 'patrol_scan' AND n.entity_id = s.id AND n.recipient_personnel_id = s.personnel_id);
+
+COMMIT;
+SQL
+echo "ok"
 
 say "Result"
 PSQL <<'SQL'
@@ -373,6 +776,18 @@ ORDER BY (tm.role <> 'DANRU'), p.nik;
 SELECT p.nik, a.status, count(*) AS days, coalesce(sum(a.late_minutes), 0) AS late_minutes
 FROM attendances a JOIN personnels p ON p.id = a.personnel_id
 GROUP BY p.nik, a.status ORDER BY p.nik, a.status;
+\echo Patrol scans by status
+SELECT status, count(*) AS scans FROM patrol_scans GROUP BY status ORDER BY status;
+\echo Leave requests by status
+SELECT status, count(*) AS requests FROM leave_requests GROUP BY status ORDER BY status;
+\echo Rows per seeded table
+SELECT 'patrol_routes' AS tbl, count(*) FROM patrol_routes
+UNION ALL SELECT 'zone_checkins', count(*) FROM zone_checkins
+UNION ALL SELECT 'shift_swaps', count(*) FROM shift_swaps
+UNION ALL SELECT 'location_logs', count(*) FROM location_logs
+UNION ALL SELECT 'notifications', count(*) FROM notifications
+UNION ALL SELECT 'panic_types', count(*) FROM panic_types
+UNION ALL SELECT 'categories', count(*) FROM categories;
 SQL
 
 cat <<EOF
@@ -385,4 +800,7 @@ People: danru KPIDANRU01, members KPIANG0001 and KPIANG0002, admin $ADMIN_NIK (O
 Regu 1K-DEMO-S1 at project 1K-DEMO-S, GPS -6.175392, 106.827153 (radius 150 m).
 Today has no attendance rows: check in as a member to test it.
 Patrol zones: Pos Gerbang Utama, Pos Belakang (PATROL) and Pos Jaga Depan (GUARD), see the table above.
+Each zone has checkpoints in order (see step 6): a guard scans them one after the other, and each has its own
+checklist. The "qr_payload" column of step 6 is what the checkpoint's QR code holds: make a QR code from it
+(or print one from the admin panel: GET /api/v1/admin/checkpoints/{id}/qr).
 EOF

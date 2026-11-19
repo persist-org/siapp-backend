@@ -18,19 +18,28 @@ type photoOut struct {
 }
 
 type scanFull struct {
-	ID            int64       `json:"id"`
-	ZoneID        int64       `json:"zone_id"`
-	PersonnelID   int64       `json:"personnel_id"`
-	PersonnelName string      `json:"personnel_name"`
-	TeamCode      string      `json:"team_code"`
-	Status        string      `json:"status"`
-	DecidedByID   *int64      `json:"decided_by_id"`
-	DecisionNote  *string     `json:"decision_note"`
-	Media         *[]photoOut `json:"media"`
-	Answers       []struct {
-		ItemID int64       `json:"item_id"`
-		Media  *[]photoOut `json:"media"`
-	} `json:"answers"`
+	ID            int64   `json:"id"`
+	ZoneID        int64   `json:"zone_id"`
+	PersonnelID   int64   `json:"personnel_id"`
+	PersonnelName string  `json:"personnel_name"`
+	TeamCode      string  `json:"team_code"`
+	Status        string  `json:"status"`
+	DecidedByID   *int64  `json:"decided_by_id"`
+	DecisionNote  *string `json:"decision_note"`
+	CheckpointID  string  `json:"checkpoint_id"`
+	Checkpoint    struct {
+		ID        string `json:"id"`
+		Name      string `json:"name"`
+		SortOrder *int   `json:"sort_order"`
+	} `json:"checkpoint"`
+	Actions []struct {
+		ActionID        string         `json:"action_id"`
+		Action          string         `json:"action"`
+		Instruction     *string        `json:"instruction"`
+		Note            *string        `json:"note"`
+		DeviceCondition map[string]any `json:"device_condition"`
+		Photos          []photoOut     `json:"photos"`
+	} `json:"actions"`
 }
 
 type progressOut struct {
@@ -40,10 +49,19 @@ type progressOut struct {
 		Type     string `json:"type"`
 		MinVisit int    `json:"min_visit"`
 	} `json:"zone"`
-	Required  int `json:"required"`
-	Submitted int `json:"submitted"`
-	Approved  int `json:"approved"`
-	Declined  int `json:"declined"`
+	Required    int `json:"required"`
+	Submitted   int `json:"submitted"`
+	Approved    int `json:"approved"`
+	Declined    int `json:"declined"`
+	Checkpoints []struct {
+		CheckpointID string `json:"checkpoint_id"`
+		Name         string `json:"name"`
+		SortOrder    int    `json:"sort_order"`
+		Required     int    `json:"required"`
+		Submitted    int    `json:"submitted"`
+		Approved     int    `json:"approved"`
+		Declined     int    `json:"declined"`
+	} `json:"checkpoints"`
 }
 
 type scannerOut struct {
@@ -555,44 +573,51 @@ func TestPatrolScanViews(t *testing.T) {
 	danruID, danruTok := f.danru()
 	_ = danruID
 	z := f.fencedZone([]map[string]any{
-		{"label": "Pagar utuh?", "answer_type": "BOOLEAN", "photo_mode": "OPTIONAL", "photo_max": 2},
-		{"label": "Catatan", "answer_type": "TEXT", "required": false},
+		{"action": "Pagar utuh?", "max_photos": 2},
+		{"action": "Catatan"},
 	}, nil)
-	pagar := z.Checklist[0].ID
+	pagar, catatan := z.checkpoint.Actions[0].ID, z.checkpoint.Actions[1].ID
 
-	general, answerA, answerB := f.photo(f.person), f.photo(f.person), f.photo(f.person)
+	photoA, photoB := f.photo(f.person), f.photo(f.person)
 	body := scanBody(z)
-	body["media_ids"] = []int64{general}
-	body["answers"] = []map[string]any{{"item_id": pagar, "value": false, "media_ids": []int64{answerA, answerB}}}
+	body["actions"] = []map[string]any{{"action_id": pagar, "media_ids": []int64{photoA, photoB}}, {"action_id": catatan}}
 	scan := f.mustScan(f.personTok, z, body)
-	plain := f.mustScan(f.personTok, z, func() map[string]any {
-		b := scanBody(z)
-		b["answers"] = []map[string]any{{"item_id": pagar, "value": true}}
-		return b
-	}())
+	plain := f.mustScan(f.personTok, z, scanBody(z))
 
-	t.Run("a DANRU reads each answer with its own proof, and the general photos apart", func(t *testing.T) {
+	t.Run("a DANRU reads the scan with its checkpoint, its actions and their photos", func(t *testing.T) {
 		code, got, raw := f.getScan(danruTok, scan.ID)
 		require.Equal(t, http.StatusOK, code, string(raw))
 		require.Equal(t, "Anggota Satu A", got.PersonnelName)
-		require.NotNil(t, got.Media)
-		require.Len(t, *got.Media, 1)
-		require.Equal(t, general, (*got.Media)[0].ID)
-		require.NotEmpty(t, (*got.Media)[0].URL)
-		require.Equal(t, "image/jpeg", (*got.Media)[0].ContentType)
+		require.Equal(t, z.checkpoint.ID, got.CheckpointID)
+		require.Equal(t, z.checkpoint.ID, got.Checkpoint.ID)
+		require.Equal(t, z.checkpoint.Name, got.Checkpoint.Name)
+		require.NotNil(t, got.Checkpoint.SortOrder)
+		require.Equal(t, 1, *got.Checkpoint.SortOrder)
 
-		require.Len(t, got.Answers, 2)
-		require.Equal(t, pagar, got.Answers[0].ItemID)
-		require.NotNil(t, got.Answers[0].Media)
-		require.Len(t, *got.Answers[0].Media, 2)
-		require.Equal(t, []int64{answerA, answerB}, []int64{(*got.Answers[0].Media)[0].ID, (*got.Answers[0].Media)[1].ID})
-		require.Empty(t, *got.Answers[1].Media, "an unanswered question has no photos, and an empty list")
+		require.Len(t, got.Actions, 2, "one answer per action, in the order of the checklist")
+		first := got.Actions[0]
+		require.Equal(t, pagar, first.ActionID)
+		require.Equal(t, "Pagar utuh?", first.Action)
+		require.Len(t, first.Photos, 2)
+		require.Equal(t, []int64{photoA, photoB}, []int64{first.Photos[0].ID, first.Photos[1].ID})
+		require.NotEmpty(t, first.Photos[0].URL)
+		require.Equal(t, "image/jpeg", first.Photos[0].ContentType)
+		second := got.Actions[1]
+		require.Equal(t, catatan, second.ActionID)
+		require.NotNil(t, second.Photos, "an action with no photo has an empty list, not a missing one")
+		require.Empty(t, second.Photos)
+
+		_, bare, _ := f.getScan(danruTok, plain.ID)
+		require.Len(t, bare.Actions, 2)
+		for _, a := range bare.Actions {
+			require.Empty(t, a.Photos)
+		}
 	})
 
 	t.Run("the author reads their own scan, a colleague cannot", func(t *testing.T) {
 		code, got, raw := f.getScan(f.personTok, scan.ID)
 		require.Equal(t, http.StatusOK, code, string(raw))
-		require.Len(t, *got.Media, 1)
+		require.Len(t, got.Actions[0].Photos, 2)
 
 		_, colleagueTok := f.addMember("1K-IBMI-S1", "MEMBER", 900550, "KOLEGA0007", "Kolega Tujuh")
 		code, _, raw = f.getScan(colleagueTok, scan.ID)
@@ -610,14 +635,14 @@ func TestPatrolScanViews(t *testing.T) {
 		_, colleagueTok := f.addMember("1K-IBMI-S1", "MEMBER", 900551, "KOLEGA0008", "Kolega Delapan")
 		theirBody := scanBody(z)
 		theirBody["occurred_at"] = time.Now().UTC().Format(time.RFC3339Nano) // the newest of the zone's scans
-		theirBody["answers"] = []map[string]any{{"item_id": pagar, "value": true}}
 		theirs := f.mustScan(colleagueTok, z, theirBody)
 
 		code, list, raw := f.getScans(danruTok, zoneURL(z.ID, "/scans"))
 		require.Equal(t, http.StatusOK, code, string(raw))
 		require.Len(t, list, 3)
 		require.Equal(t, theirs.ID, list[0].ID, "newest first")
-		require.NotNil(t, list[0].Media, "the list carries the media views too")
+		require.Equal(t, z.checkpoint.ID, list[0].Checkpoint.ID, "the list carries the checkpoint and the actions too")
+		require.Len(t, list[0].Actions, 2)
 
 		_, list, _ = f.getScans(f.personTok, zoneURL(z.ID, "/scans"))
 		require.Len(t, list, 2)

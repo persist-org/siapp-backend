@@ -2,10 +2,12 @@
 # Made from chi.Walk over the real router (cmd/api newRouter). Update it when a phase adds routes.
 DELETE /api/v1/admin/app-links/{id}
 DELETE /api/v1/admin/branches/{code}
+DELETE /api/v1/admin/checkpoints/{id}
 DELETE /api/v1/admin/clients/{code}
 DELETE /api/v1/admin/instruction-categories/{id}
 DELETE /api/v1/admin/letterheads/{id}
 DELETE /api/v1/admin/panic-types/{id}
+DELETE /api/v1/admin/patrol-schedules/{id}
 DELETE /api/v1/admin/personnel/{personnel_id}/device-binding
 DELETE /api/v1/admin/projects/{code}
 DELETE /api/v1/admin/regions/{code}
@@ -26,6 +28,9 @@ GET /api/v1/admin/app-links/{id}
 GET /api/v1/admin/attendances
 GET /api/v1/admin/branches
 GET /api/v1/admin/branches/{code}
+GET /api/v1/admin/checkpoints
+GET /api/v1/admin/checkpoints/{id}
+GET /api/v1/admin/checkpoints/{id}/qr
 GET /api/v1/admin/clients
 GET /api/v1/admin/clients/{code}
 GET /api/v1/admin/field-permissions
@@ -35,6 +40,7 @@ GET /api/v1/admin/letterheads
 GET /api/v1/admin/letterheads/{id}
 GET /api/v1/admin/panic-types
 GET /api/v1/admin/panic-types/{id}
+GET /api/v1/admin/patrol-schedules
 GET /api/v1/admin/permission-categories
 GET /api/v1/admin/permission-categories/{code}
 GET /api/v1/admin/permissions
@@ -62,7 +68,6 @@ GET /api/v1/admin/teams/{code}/members
 GET /api/v1/admin/web-roles
 GET /api/v1/admin/zones
 GET /api/v1/admin/zones/{id}
-GET /api/v1/admin/zones/{id}/qr
 GET /api/v1/app-links
 GET /api/v1/attendances
 GET /api/v1/attendances/group-summary
@@ -80,6 +85,8 @@ GET /api/v1/notifications
 GET /api/v1/notifications/count
 GET /api/v1/notifications/{id}
 GET /api/v1/panic-types
+GET /api/v1/patrol-schedules
+GET /api/v1/patrol-schedules/{id}
 GET /api/v1/patrol/pending-approvals
 GET /api/v1/patrols
 GET /api/v1/patrols/active
@@ -114,10 +121,12 @@ GET /api/v1/zones/{id}/tracking
 PATCH /api/v1/admin/app-links/{id}
 PATCH /api/v1/admin/attendances/{id}
 PATCH /api/v1/admin/branches/{code}
+PATCH /api/v1/admin/checkpoints/{id}
 PATCH /api/v1/admin/clients/{code}
 PATCH /api/v1/admin/instruction-categories/{id}
 PATCH /api/v1/admin/letterheads/{id}
 PATCH /api/v1/admin/panic-types/{id}
+PATCH /api/v1/admin/patrol-schedules/{id}
 PATCH /api/v1/admin/permission-categories/{code}
 PATCH /api/v1/admin/projects/{code}
 PATCH /api/v1/admin/regions/{code}
@@ -131,10 +140,13 @@ PATCH /api/v1/admin/zones/{id}
 PATCH /api/v1/attendances/{id}/check-out
 POST /api/v1/admin/app-links
 POST /api/v1/admin/branches
+POST /api/v1/admin/checkpoints
+POST /api/v1/admin/checkpoints/{id}/rotate-qr
 POST /api/v1/admin/clients
 POST /api/v1/admin/instruction-categories
 POST /api/v1/admin/letterheads
 POST /api/v1/admin/panic-types
+POST /api/v1/admin/patrol-schedules
 POST /api/v1/admin/permission-categories
 POST /api/v1/admin/permissions/{id}/approve
 POST /api/v1/admin/permissions/{id}/decline
@@ -152,7 +164,6 @@ POST /api/v1/admin/team-members/{id}/move
 POST /api/v1/admin/teams
 POST /api/v1/admin/teams/{code}/members
 POST /api/v1/admin/zones
-POST /api/v1/admin/zones/{id}/rotate-qr
 POST /api/v1/attendances/absent
 POST /api/v1/attendances/group
 POST /api/v1/attendances/qr/check-in
@@ -185,10 +196,11 @@ POST /api/v1/ws/ticket
 POST /api/v1/zones/{id}/check-in
 POST /api/v1/zones/{id}/check-out
 POST /api/v1/zones/{id}/scan
+PUT /api/v1/admin/checkpoints/{id}/actions
 PUT /api/v1/admin/field-permissions/{team_role}
 PUT /api/v1/admin/leave-client-settings/{client_code}
 PUT /api/v1/admin/permission-categories/{code}/quotas
 PUT /api/v1/admin/personnel/{personnel_id}/shift-assignment
 PUT /api/v1/admin/web-roles/{personnel_id}
-PUT /api/v1/admin/zones/{id}/checklist
+PUT /api/v1/admin/zones/{id}/checkpoints
 PUT /api/v1/media/blobs/{token}

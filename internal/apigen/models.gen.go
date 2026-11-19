@@ -4,6 +4,8 @@
 package apigen
 
 import (
+	"encoding/json"
+	"fmt"
 	"time"
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -495,6 +497,30 @@ func (e CompanyLetter) Valid() bool {
 	}
 }
 
+// Defines values for DeviceConditionNetworkType.
+const (
+	Cellular DeviceConditionNetworkType = "cellular"
+	None     DeviceConditionNetworkType = "none"
+	Unknown  DeviceConditionNetworkType = "unknown"
+	Wifi     DeviceConditionNetworkType = "wifi"
+)
+
+// Valid indicates whether the value is a known member of the DeviceConditionNetworkType enum.
+func (e DeviceConditionNetworkType) Valid() bool {
+	switch e {
+	case Cellular:
+		return true
+	case None:
+		return true
+	case Unknown:
+		return true
+	case Wifi:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ErrorCode.
 const (
 	BADREQUEST        ErrorCode = "BAD_REQUEST"
@@ -968,6 +994,7 @@ const (
 	PANICRESOLVED         NotificationType = "PANIC_RESOLVED"
 	PANICTRIGGERED        NotificationType = "PANIC_TRIGGERED"
 	PATROLAPPROVED        NotificationType = "PATROL_APPROVED"
+	PATROLSCHEDULECHANGED NotificationType = "PATROL_SCHEDULE_CHANGED"
 	PATROLSUBMITTED       NotificationType = "PATROL_SUBMITTED"
 	POSITIONCHANGED       NotificationType = "POSITION_CHANGED"
 	REPORTSUBMITTED       NotificationType = "REPORT_SUBMITTED"
@@ -1001,6 +1028,8 @@ func (e NotificationType) Valid() bool {
 	case PANICTRIGGERED:
 		return true
 	case PATROLAPPROVED:
+		return true
+	case PATROLSCHEDULECHANGED:
 		return true
 	case PATROLSUBMITTED:
 		return true
@@ -1314,168 +1343,18 @@ func (e PanicStatus) Valid() bool {
 	}
 }
 
-// Defines values for PatrolChecklistItemAnswerType.
+// Defines values for PatrolCheckpointZoneType.
 const (
-	PatrolChecklistItemAnswerTypeBOOLEAN PatrolChecklistItemAnswerType = "BOOLEAN"
-	PatrolChecklistItemAnswerTypeCHOICE  PatrolChecklistItemAnswerType = "CHOICE"
-	PatrolChecklistItemAnswerTypeNUMBER  PatrolChecklistItemAnswerType = "NUMBER"
-	PatrolChecklistItemAnswerTypeTEXT    PatrolChecklistItemAnswerType = "TEXT"
+	PatrolCheckpointZoneTypeGUARD  PatrolCheckpointZoneType = "GUARD"
+	PatrolCheckpointZoneTypePATROL PatrolCheckpointZoneType = "PATROL"
 )
 
-// Valid indicates whether the value is a known member of the PatrolChecklistItemAnswerType enum.
-func (e PatrolChecklistItemAnswerType) Valid() bool {
+// Valid indicates whether the value is a known member of the PatrolCheckpointZoneType enum.
+func (e PatrolCheckpointZoneType) Valid() bool {
 	switch e {
-	case PatrolChecklistItemAnswerTypeBOOLEAN:
+	case PatrolCheckpointZoneTypeGUARD:
 		return true
-	case PatrolChecklistItemAnswerTypeCHOICE:
-		return true
-	case PatrolChecklistItemAnswerTypeNUMBER:
-		return true
-	case PatrolChecklistItemAnswerTypeTEXT:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PatrolChecklistItemAttachWhen.
-const (
-	PatrolChecklistItemAttachWhenALWAYS PatrolChecklistItemAttachWhen = "ALWAYS"
-	PatrolChecklistItemAttachWhenONNO   PatrolChecklistItemAttachWhen = "ON_NO"
-)
-
-// Valid indicates whether the value is a known member of the PatrolChecklistItemAttachWhen enum.
-func (e PatrolChecklistItemAttachWhen) Valid() bool {
-	switch e {
-	case PatrolChecklistItemAttachWhenALWAYS:
-		return true
-	case PatrolChecklistItemAttachWhenONNO:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PatrolChecklistItemNoteMode.
-const (
-	PatrolChecklistItemNoteModeNONE     PatrolChecklistItemNoteMode = "NONE"
-	PatrolChecklistItemNoteModeOPTIONAL PatrolChecklistItemNoteMode = "OPTIONAL"
-	PatrolChecklistItemNoteModeREQUIRED PatrolChecklistItemNoteMode = "REQUIRED"
-)
-
-// Valid indicates whether the value is a known member of the PatrolChecklistItemNoteMode enum.
-func (e PatrolChecklistItemNoteMode) Valid() bool {
-	switch e {
-	case PatrolChecklistItemNoteModeNONE:
-		return true
-	case PatrolChecklistItemNoteModeOPTIONAL:
-		return true
-	case PatrolChecklistItemNoteModeREQUIRED:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PatrolChecklistItemPhotoMode.
-const (
-	PatrolChecklistItemPhotoModeNONE     PatrolChecklistItemPhotoMode = "NONE"
-	PatrolChecklistItemPhotoModeOPTIONAL PatrolChecklistItemPhotoMode = "OPTIONAL"
-	PatrolChecklistItemPhotoModeREQUIRED PatrolChecklistItemPhotoMode = "REQUIRED"
-)
-
-// Valid indicates whether the value is a known member of the PatrolChecklistItemPhotoMode enum.
-func (e PatrolChecklistItemPhotoMode) Valid() bool {
-	switch e {
-	case PatrolChecklistItemPhotoModeNONE:
-		return true
-	case PatrolChecklistItemPhotoModeOPTIONAL:
-		return true
-	case PatrolChecklistItemPhotoModeREQUIRED:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PatrolChecklistItemInputAnswerType.
-const (
-	PatrolChecklistItemInputAnswerTypeBOOLEAN PatrolChecklistItemInputAnswerType = "BOOLEAN"
-	PatrolChecklistItemInputAnswerTypeCHOICE  PatrolChecklistItemInputAnswerType = "CHOICE"
-	PatrolChecklistItemInputAnswerTypeNUMBER  PatrolChecklistItemInputAnswerType = "NUMBER"
-	PatrolChecklistItemInputAnswerTypeTEXT    PatrolChecklistItemInputAnswerType = "TEXT"
-)
-
-// Valid indicates whether the value is a known member of the PatrolChecklistItemInputAnswerType enum.
-func (e PatrolChecklistItemInputAnswerType) Valid() bool {
-	switch e {
-	case PatrolChecklistItemInputAnswerTypeBOOLEAN:
-		return true
-	case PatrolChecklistItemInputAnswerTypeCHOICE:
-		return true
-	case PatrolChecklistItemInputAnswerTypeNUMBER:
-		return true
-	case PatrolChecklistItemInputAnswerTypeTEXT:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PatrolChecklistItemInputAttachWhen.
-const (
-	PatrolChecklistItemInputAttachWhenALWAYS PatrolChecklistItemInputAttachWhen = "ALWAYS"
-	PatrolChecklistItemInputAttachWhenONNO   PatrolChecklistItemInputAttachWhen = "ON_NO"
-)
-
-// Valid indicates whether the value is a known member of the PatrolChecklistItemInputAttachWhen enum.
-func (e PatrolChecklistItemInputAttachWhen) Valid() bool {
-	switch e {
-	case PatrolChecklistItemInputAttachWhenALWAYS:
-		return true
-	case PatrolChecklistItemInputAttachWhenONNO:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PatrolChecklistItemInputNoteMode.
-const (
-	PatrolChecklistItemInputNoteModeNONE     PatrolChecklistItemInputNoteMode = "NONE"
-	PatrolChecklistItemInputNoteModeOPTIONAL PatrolChecklistItemInputNoteMode = "OPTIONAL"
-	PatrolChecklistItemInputNoteModeREQUIRED PatrolChecklistItemInputNoteMode = "REQUIRED"
-)
-
-// Valid indicates whether the value is a known member of the PatrolChecklistItemInputNoteMode enum.
-func (e PatrolChecklistItemInputNoteMode) Valid() bool {
-	switch e {
-	case PatrolChecklistItemInputNoteModeNONE:
-		return true
-	case PatrolChecklistItemInputNoteModeOPTIONAL:
-		return true
-	case PatrolChecklistItemInputNoteModeREQUIRED:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PatrolChecklistItemInputPhotoMode.
-const (
-	PatrolChecklistItemInputPhotoModeNONE     PatrolChecklistItemInputPhotoMode = "NONE"
-	PatrolChecklistItemInputPhotoModeOPTIONAL PatrolChecklistItemInputPhotoMode = "OPTIONAL"
-	PatrolChecklistItemInputPhotoModeREQUIRED PatrolChecklistItemInputPhotoMode = "REQUIRED"
-)
-
-// Valid indicates whether the value is a known member of the PatrolChecklistItemInputPhotoMode enum.
-func (e PatrolChecklistItemInputPhotoMode) Valid() bool {
-	switch e {
-	case PatrolChecklistItemInputPhotoModeNONE:
-		return true
-	case PatrolChecklistItemInputPhotoModeOPTIONAL:
-		return true
-	case PatrolChecklistItemInputPhotoModeREQUIRED:
+	case PatrolCheckpointZoneTypePATROL:
 		return true
 	default:
 		return false
@@ -1503,6 +1382,24 @@ func (e PatrolRouteStatus) Valid() bool {
 	}
 }
 
+// Defines values for PatrolRouteZoneType.
+const (
+	PatrolRouteZoneTypeGUARD  PatrolRouteZoneType = "GUARD"
+	PatrolRouteZoneTypePATROL PatrolRouteZoneType = "PATROL"
+)
+
+// Valid indicates whether the value is a known member of the PatrolRouteZoneType enum.
+func (e PatrolRouteZoneType) Valid() bool {
+	switch e {
+	case PatrolRouteZoneTypeGUARD:
+		return true
+	case PatrolRouteZoneTypePATROL:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PatrolRouteDetailStatus.
 const (
 	PatrolRouteDetailStatusACTIVE    PatrolRouteDetailStatus = "ACTIVE"
@@ -1518,6 +1415,24 @@ func (e PatrolRouteDetailStatus) Valid() bool {
 	case PatrolRouteDetailStatusAUTOENDED:
 		return true
 	case PatrolRouteDetailStatusENDED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatrolRouteDetailZoneType.
+const (
+	PatrolRouteDetailZoneTypeGUARD  PatrolRouteDetailZoneType = "GUARD"
+	PatrolRouteDetailZoneTypePATROL PatrolRouteDetailZoneType = "PATROL"
+)
+
+// Valid indicates whether the value is a known member of the PatrolRouteDetailZoneType enum.
+func (e PatrolRouteDetailZoneType) Valid() bool {
+	switch e {
+	case PatrolRouteDetailZoneTypeGUARD:
+		return true
+	case PatrolRouteDetailZoneTypePATROL:
 		return true
 	default:
 		return false
@@ -1584,90 +1499,6 @@ func (e PatrolScanZoneType) Valid() bool {
 	}
 }
 
-// Defines values for PatrolScanAnswerAnswerType.
-const (
-	PatrolScanAnswerAnswerTypeBOOLEAN PatrolScanAnswerAnswerType = "BOOLEAN"
-	PatrolScanAnswerAnswerTypeCHOICE  PatrolScanAnswerAnswerType = "CHOICE"
-	PatrolScanAnswerAnswerTypeNUMBER  PatrolScanAnswerAnswerType = "NUMBER"
-	PatrolScanAnswerAnswerTypeTEXT    PatrolScanAnswerAnswerType = "TEXT"
-)
-
-// Valid indicates whether the value is a known member of the PatrolScanAnswerAnswerType enum.
-func (e PatrolScanAnswerAnswerType) Valid() bool {
-	switch e {
-	case PatrolScanAnswerAnswerTypeBOOLEAN:
-		return true
-	case PatrolScanAnswerAnswerTypeCHOICE:
-		return true
-	case PatrolScanAnswerAnswerTypeNUMBER:
-		return true
-	case PatrolScanAnswerAnswerTypeTEXT:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PatrolScanAnswerAttachWhen.
-const (
-	PatrolScanAnswerAttachWhenALWAYS PatrolScanAnswerAttachWhen = "ALWAYS"
-	PatrolScanAnswerAttachWhenONNO   PatrolScanAnswerAttachWhen = "ON_NO"
-)
-
-// Valid indicates whether the value is a known member of the PatrolScanAnswerAttachWhen enum.
-func (e PatrolScanAnswerAttachWhen) Valid() bool {
-	switch e {
-	case PatrolScanAnswerAttachWhenALWAYS:
-		return true
-	case PatrolScanAnswerAttachWhenONNO:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PatrolScanAnswerNoteMode.
-const (
-	PatrolScanAnswerNoteModeNONE     PatrolScanAnswerNoteMode = "NONE"
-	PatrolScanAnswerNoteModeOPTIONAL PatrolScanAnswerNoteMode = "OPTIONAL"
-	PatrolScanAnswerNoteModeREQUIRED PatrolScanAnswerNoteMode = "REQUIRED"
-)
-
-// Valid indicates whether the value is a known member of the PatrolScanAnswerNoteMode enum.
-func (e PatrolScanAnswerNoteMode) Valid() bool {
-	switch e {
-	case PatrolScanAnswerNoteModeNONE:
-		return true
-	case PatrolScanAnswerNoteModeOPTIONAL:
-		return true
-	case PatrolScanAnswerNoteModeREQUIRED:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PatrolScanAnswerPhotoMode.
-const (
-	PatrolScanAnswerPhotoModeNONE     PatrolScanAnswerPhotoMode = "NONE"
-	PatrolScanAnswerPhotoModeOPTIONAL PatrolScanAnswerPhotoMode = "OPTIONAL"
-	PatrolScanAnswerPhotoModeREQUIRED PatrolScanAnswerPhotoMode = "REQUIRED"
-)
-
-// Valid indicates whether the value is a known member of the PatrolScanAnswerPhotoMode enum.
-func (e PatrolScanAnswerPhotoMode) Valid() bool {
-	switch e {
-	case PatrolScanAnswerPhotoModeNONE:
-		return true
-	case PatrolScanAnswerPhotoModeOPTIONAL:
-		return true
-	case PatrolScanAnswerPhotoModeREQUIRED:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for PatrolScanPhotoCaptureSource.
 const (
 	PatrolScanPhotoCaptureSourceCAMERA  PatrolScanPhotoCaptureSource = "CAMERA"
@@ -1683,6 +1514,72 @@ func (e PatrolScanPhotoCaptureSource) Valid() bool {
 	case PatrolScanPhotoCaptureSourceGALLERY:
 		return true
 	case PatrolScanPhotoCaptureSourceUNKNOWN:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatrolSchedulePatrolStatus.
+const (
+	PatrolSchedulePatrolStatusACTIVE    PatrolSchedulePatrolStatus = "ACTIVE"
+	PatrolSchedulePatrolStatusAUTOENDED PatrolSchedulePatrolStatus = "AUTO_ENDED"
+	PatrolSchedulePatrolStatusENDED     PatrolSchedulePatrolStatus = "ENDED"
+)
+
+// Valid indicates whether the value is a known member of the PatrolSchedulePatrolStatus enum.
+func (e PatrolSchedulePatrolStatus) Valid() bool {
+	switch e {
+	case PatrolSchedulePatrolStatusACTIVE:
+		return true
+	case PatrolSchedulePatrolStatusAUTOENDED:
+		return true
+	case PatrolSchedulePatrolStatusENDED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatrolScheduleZoneType.
+const (
+	PatrolScheduleZoneTypeGUARD  PatrolScheduleZoneType = "GUARD"
+	PatrolScheduleZoneTypePATROL PatrolScheduleZoneType = "PATROL"
+)
+
+// Valid indicates whether the value is a known member of the PatrolScheduleZoneType enum.
+func (e PatrolScheduleZoneType) Valid() bool {
+	switch e {
+	case PatrolScheduleZoneTypeGUARD:
+		return true
+	case PatrolScheduleZoneTypePATROL:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatrolScheduleStatus.
+const (
+	PatrolScheduleStatusCANCELLED  PatrolScheduleStatus = "CANCELLED"
+	PatrolScheduleStatusCOMPLETED  PatrolScheduleStatus = "COMPLETED"
+	PatrolScheduleStatusINPROGRESS PatrolScheduleStatus = "IN_PROGRESS"
+	PatrolScheduleStatusMISSED     PatrolScheduleStatus = "MISSED"
+	PatrolScheduleStatusSCHEDULED  PatrolScheduleStatus = "SCHEDULED"
+)
+
+// Valid indicates whether the value is a known member of the PatrolScheduleStatus enum.
+func (e PatrolScheduleStatus) Valid() bool {
+	switch e {
+	case PatrolScheduleStatusCANCELLED:
+		return true
+	case PatrolScheduleStatusCOMPLETED:
+		return true
+	case PatrolScheduleStatusINPROGRESS:
+		return true
+	case PatrolScheduleStatusMISSED:
+		return true
+	case PatrolScheduleStatusSCHEDULED:
 		return true
 	default:
 		return false
@@ -2853,6 +2750,114 @@ func (e PatchAdminCctvsByIdAccess200JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
+// Defines values for GetAdminCheckpoints200JSONResponseBodySuccess.
+const (
+	GetAdminCheckpoints200JSONResponseBodySuccessTrue GetAdminCheckpoints200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetAdminCheckpoints200JSONResponseBodySuccess enum.
+func (e GetAdminCheckpoints200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetAdminCheckpoints200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostAdminCheckpoints201JSONResponseBodySuccess.
+const (
+	PostAdminCheckpoints201JSONResponseBodySuccessTrue PostAdminCheckpoints201JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostAdminCheckpoints201JSONResponseBodySuccess enum.
+func (e PostAdminCheckpoints201JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostAdminCheckpoints201JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetAdminCheckpointsById200JSONResponseBodySuccess.
+const (
+	GetAdminCheckpointsById200JSONResponseBodySuccessTrue GetAdminCheckpointsById200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetAdminCheckpointsById200JSONResponseBodySuccess enum.
+func (e GetAdminCheckpointsById200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetAdminCheckpointsById200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatchAdminCheckpointsById200JSONResponseBodySuccess.
+const (
+	PatchAdminCheckpointsById200JSONResponseBodySuccessTrue PatchAdminCheckpointsById200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PatchAdminCheckpointsById200JSONResponseBodySuccess enum.
+func (e PatchAdminCheckpointsById200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PatchAdminCheckpointsById200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PutAdminCheckpointsByIdActions200JSONResponseBodySuccess.
+const (
+	PutAdminCheckpointsByIdActions200JSONResponseBodySuccessTrue PutAdminCheckpointsByIdActions200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PutAdminCheckpointsByIdActions200JSONResponseBodySuccess enum.
+func (e PutAdminCheckpointsByIdActions200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PutAdminCheckpointsByIdActions200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetAdminCheckpointsByIdQrParamsFormat.
+const (
+	GetAdminCheckpointsByIdQrParamsFormatPng GetAdminCheckpointsByIdQrParamsFormat = "png"
+	GetAdminCheckpointsByIdQrParamsFormatSvg GetAdminCheckpointsByIdQrParamsFormat = "svg"
+)
+
+// Valid indicates whether the value is a known member of the GetAdminCheckpointsByIdQrParamsFormat enum.
+func (e GetAdminCheckpointsByIdQrParamsFormat) Valid() bool {
+	switch e {
+	case GetAdminCheckpointsByIdQrParamsFormatPng:
+		return true
+	case GetAdminCheckpointsByIdQrParamsFormatSvg:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostAdminCheckpointsByIdRotateQr200JSONResponseBodySuccess.
+const (
+	PostAdminCheckpointsByIdRotateQr200JSONResponseBodySuccessTrue PostAdminCheckpointsByIdRotateQr200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostAdminCheckpointsByIdRotateQr200JSONResponseBodySuccess enum.
+func (e PostAdminCheckpointsByIdRotateQr200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostAdminCheckpointsByIdRotateQr200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetAdminClientGroups200JSONResponseBodySuccess.
 const (
 	GetAdminClientGroups200JSONResponseBodySuccessTrue GetAdminClientGroups200JSONResponseBodySuccess = true
@@ -3360,6 +3365,51 @@ const (
 func (e PostAdminPanicsByIdResolve200JSONResponseBodySuccess) Valid() bool {
 	switch e {
 	case PostAdminPanicsByIdResolve200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetAdminPatrolSchedules200JSONResponseBodySuccess.
+const (
+	GetAdminPatrolSchedules200JSONResponseBodySuccessTrue GetAdminPatrolSchedules200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetAdminPatrolSchedules200JSONResponseBodySuccess enum.
+func (e GetAdminPatrolSchedules200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetAdminPatrolSchedules200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostAdminPatrolSchedules201JSONResponseBodySuccess.
+const (
+	PostAdminPatrolSchedules201JSONResponseBodySuccessTrue PostAdminPatrolSchedules201JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PostAdminPatrolSchedules201JSONResponseBodySuccess enum.
+func (e PostAdminPatrolSchedules201JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PostAdminPatrolSchedules201JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatchAdminPatrolSchedulesById200JSONResponseBodySuccess.
+const (
+	PatchAdminPatrolSchedulesById200JSONResponseBodySuccessTrue PatchAdminPatrolSchedulesById200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the PatchAdminPatrolSchedulesById200JSONResponseBodySuccess enum.
+func (e PatchAdminPatrolSchedulesById200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case PatchAdminPatrolSchedulesById200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
@@ -4638,48 +4688,15 @@ func (e PatchAdminZonesById200JSONResponseBodySuccess) Valid() bool {
 	}
 }
 
-// Defines values for PutAdminZonesByIdChecklist200JSONResponseBodySuccess.
+// Defines values for PutAdminZonesByIdCheckpoints200JSONResponseBodySuccess.
 const (
-	PutAdminZonesByIdChecklist200JSONResponseBodySuccessTrue PutAdminZonesByIdChecklist200JSONResponseBodySuccess = true
+	PutAdminZonesByIdCheckpoints200JSONResponseBodySuccessTrue PutAdminZonesByIdCheckpoints200JSONResponseBodySuccess = true
 )
 
-// Valid indicates whether the value is a known member of the PutAdminZonesByIdChecklist200JSONResponseBodySuccess enum.
-func (e PutAdminZonesByIdChecklist200JSONResponseBodySuccess) Valid() bool {
+// Valid indicates whether the value is a known member of the PutAdminZonesByIdCheckpoints200JSONResponseBodySuccess enum.
+func (e PutAdminZonesByIdCheckpoints200JSONResponseBodySuccess) Valid() bool {
 	switch e {
-	case PutAdminZonesByIdChecklist200JSONResponseBodySuccessTrue:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for GetAdminZonesByIdQrParamsFormat.
-const (
-	GetAdminZonesByIdQrParamsFormatPng GetAdminZonesByIdQrParamsFormat = "png"
-	GetAdminZonesByIdQrParamsFormatSvg GetAdminZonesByIdQrParamsFormat = "svg"
-)
-
-// Valid indicates whether the value is a known member of the GetAdminZonesByIdQrParamsFormat enum.
-func (e GetAdminZonesByIdQrParamsFormat) Valid() bool {
-	switch e {
-	case GetAdminZonesByIdQrParamsFormatPng:
-		return true
-	case GetAdminZonesByIdQrParamsFormatSvg:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PostAdminZonesByIdRotateQr200JSONResponseBodySuccess.
-const (
-	PostAdminZonesByIdRotateQr200JSONResponseBodySuccessTrue PostAdminZonesByIdRotateQr200JSONResponseBodySuccess = true
-)
-
-// Valid indicates whether the value is a known member of the PostAdminZonesByIdRotateQr200JSONResponseBodySuccess enum.
-func (e PostAdminZonesByIdRotateQr200JSONResponseBodySuccess) Valid() bool {
-	switch e {
-	case PostAdminZonesByIdRotateQr200JSONResponseBodySuccessTrue:
+	case PutAdminZonesByIdCheckpoints200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
@@ -5988,6 +6005,36 @@ const (
 func (e PostPanicsByIdFinish200JSONResponseBodySuccess) Valid() bool {
 	switch e {
 	case PostPanicsByIdFinish200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetPatrolSchedules200JSONResponseBodySuccess.
+const (
+	GetPatrolSchedules200JSONResponseBodySuccessTrue GetPatrolSchedules200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetPatrolSchedules200JSONResponseBodySuccess enum.
+func (e GetPatrolSchedules200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetPatrolSchedules200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetPatrolSchedulesById200JSONResponseBodySuccess.
+const (
+	GetPatrolSchedulesById200JSONResponseBodySuccessTrue GetPatrolSchedulesById200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetPatrolSchedulesById200JSONResponseBodySuccess enum.
+func (e GetPatrolSchedulesById200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetPatrolSchedulesById200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
@@ -8068,6 +8115,19 @@ type ChartSeries struct {
 	} `json:"points,omitempty"`
 }
 
+// CheckpointProgressItem defines model for CheckpointProgressItem.
+type CheckpointProgressItem struct {
+	Approved     int                `json:"approved"`
+	CheckpointId openapi_types.UUID `json:"checkpoint_id"`
+	Declined     int                `json:"declined"`
+	Name         string             `json:"name"`
+
+	// Required `min_visit` zona: jumlah scan yang dibutuhkan checkpoint ini.
+	Required  int `json:"required"`
+	SortOrder int `json:"sort_order"`
+	Submitted int `json:"submitted"`
+}
+
 // City Master global kota (cascading dari province).
 type City struct {
 	Code       *string `json:"code,omitempty"`
@@ -8209,6 +8269,26 @@ type DeltaMeta struct {
 	// ServerTime Watermark monoton (= titik mulai pull `since` berikutnya).
 	ServerTime time.Time `json:"server_time"`
 }
+
+// DeviceCondition Kondisi perangkat saat aksi dijawab. Bukti, bukan penghalang: server tidak pernah menolak scan karena
+// isinya (`mock_location: true` tetap diterima dan disimpan) dan tidak memercayainya (aplikasi yang
+// melaporkan). Harus objek JSON, paling besar 4096 byte; kunci yang dikenal diperiksa tipenya, kunci lain
+// disimpan apa adanya. Yang salah: 422 `DEVICE_CONDITION_INVALID`.
+type DeviceCondition struct {
+	AppVersion           *string                     `json:"app_version,omitempty"`
+	BatteryLevel         *float32                    `json:"battery_level,omitempty"`
+	DeviceModel          *string                     `json:"device_model,omitempty"`
+	GpsEnabled           *bool                       `json:"gps_enabled,omitempty"`
+	IsCharging           *bool                       `json:"is_charging,omitempty"`
+	MockLocation         *bool                       `json:"mock_location,omitempty"`
+	NetworkType          *DeviceConditionNetworkType `json:"network_type,omitempty"`
+	Os                   *string                     `json:"os,omitempty"`
+	OsVersion            *string                     `json:"os_version,omitempty"`
+	AdditionalProperties map[string]interface{}      `json:"-"`
+}
+
+// DeviceConditionNetworkType defines model for DeviceCondition.NetworkType.
+type DeviceConditionNetworkType string
 
 // DirectoryPerson Kartu singkat seorang personil (DANRU, relationship officer).
 type DirectoryPerson struct {
@@ -9317,85 +9397,119 @@ type PanicTypePatch struct {
 	StakeholderTypeId *int64  `json:"stakeholder_type_id,omitempty"`
 }
 
-// PatrolChecklistItem defines model for PatrolChecklistItem.
-type PatrolChecklistItem struct {
-	// AnswerType `BOOLEAN` = centang ya/tidak; `CHOICE` = pilih satu dari `options`.
-	AnswerType PatrolChecklistItemAnswerType `json:"answer_type"`
+// PatrolCheckpoint Checkpoint: tempat yang di-scan petugas, dengan QR dan checklist sendiri. Satu checkpoint bisa
+// ada di banyak zona (`zones`, dengan urutannya di tiap zona). Rahasia QR TIDAK pernah ada di sini:
+// isinya hanya ada di gambar QR yang dicetak admin (`GET /admin/checkpoints/{id}/qr`).
+// Proyek dikenali dengan kode (D19).
+type PatrolCheckpoint struct {
+	// Actions Aksi checklist yang aktif, urut menurut `sort_order`.
+	Actions     []PatrolCheckpointAction `json:"actions"`
+	CreatedAt   time.Time                `json:"created_at"`
+	Description *string                  `json:"description,omitempty"`
+	Id          openapi_types.UUID       `json:"id"`
+	IsActive    bool                     `json:"is_active"`
 
-	// AttachWhen `ON_NO` (hanya `BOOLEAN`): foto atau catatan `REQUIRED` hanya diminta bila jawabannya "tidak".
-	AttachWhen PatrolChecklistItemAttachWhen `json:"attach_when"`
+	// Latitude Titik checkpoint. latitude, longitude dan radius_meters terisi bersama atau kosong bersama.
+	Latitude    *float64 `json:"latitude,omitempty"`
+	Longitude   *float64 `json:"longitude,omitempty"`
+	Name        string   `json:"name"`
+	ProjectCode string   `json:"project_code"`
 
-	// HelpText Petunjuk di bawah pertanyaan.
-	HelpText *string `json:"help_text,omitempty"`
-	Id       int64   `json:"id"`
+	// QrRotatedAt Kapan rahasia QR terakhir dibuat; stiker yang dicetak sebelumnya sudah tidak berlaku.
+	QrRotatedAt time.Time `json:"qr_rotated_at"`
 
-	// Label Pertanyaan.
-	Label    string                      `json:"label"`
-	NoteMode PatrolChecklistItemNoteMode `json:"note_mode"`
+	// RadiusMeters Checkpoint tanpa geofence (semua null) hanya mengandalkan QR.
+	RadiusMeters *int      `json:"radius_meters,omitempty"`
+	UpdatedAt    time.Time `json:"updated_at"`
 
-	// Options Hanya untuk `CHOICE`; null untuk tipe lain.
-	Options   *[]PatrolChecklistOption     `json:"options,omitempty"`
-	PhotoMax  int                          `json:"photo_max"`
-	PhotoMode PatrolChecklistItemPhotoMode `json:"photo_mode"`
-
-	// Required Wajib dijawab.
-	Required  bool `json:"required"`
-	SortOrder int  `json:"sort_order"`
+	// Zones Zona tempat checkpoint ini berada.
+	Zones []PatrolCheckpointZone `json:"zones"`
 }
 
-// PatrolChecklistItemAnswerType `BOOLEAN` = centang ya/tidak; `CHOICE` = pilih satu dari `options`.
-type PatrolChecklistItemAnswerType string
+// PatrolCheckpointAction defines model for PatrolCheckpointAction.
+type PatrolCheckpointAction struct {
+	// Action Nama aksi, mis. Periksa gembok.
+	Action string             `json:"action"`
+	Id     openapi_types.UUID `json:"id"`
 
-// PatrolChecklistItemAttachWhen `ON_NO` (hanya `BOOLEAN`): foto atau catatan `REQUIRED` hanya diminta bila jawabannya "tidak".
-type PatrolChecklistItemAttachWhen string
+	// Instruction Petunjuk dari admin yang ditampilkan ke petugas.
+	Instruction *string `json:"instruction,omitempty"`
 
-// PatrolChecklistItemNoteMode defines model for PatrolChecklistItem.NoteMode.
-type PatrolChecklistItemNoteMode string
+	// IsNoteRequired Petugas wajib mengisi catatan.
+	IsNoteRequired bool `json:"is_note_required"`
 
-// PatrolChecklistItemPhotoMode defines model for PatrolChecklistItem.PhotoMode.
-type PatrolChecklistItemPhotoMode string
+	// MaxPhotos Foto yang boleh diambil; 0 = aksi ini tanpa foto.
+	MaxPhotos int `json:"max_photos"`
 
-// PatrolChecklistItemInput Butir yang punya `id` diubah, yang tanpa `id` dibuat, dan yang tidak ada di badan permintaan
-// dinonaktifkan (tidak pernah dihapus). Urutan array menentukan `sort_order`.
-// Kombinasi yang salah (`CHOICE` tanpa opsi, `photo_max` di luar 1 sampai 5, `ON_NO` pada
-// tipe selain `BOOLEAN`) ditolak 422 dengan nama field-nya, mis. `checklist[2].options`.
-type PatrolChecklistItemInput struct {
-	AnswerType PatrolChecklistItemInputAnswerType  `json:"answer_type"`
-	AttachWhen *PatrolChecklistItemInputAttachWhen `json:"attach_when,omitempty"`
-	HelpText   *string                             `json:"help_text,omitempty"`
-	Id         *int64                              `json:"id,omitempty"`
-	Label      string                              `json:"label"`
-	NoteMode   *PatrolChecklistItemInputNoteMode   `json:"note_mode,omitempty"`
-	Options    *[]PatrolChecklistOption            `json:"options,omitempty"`
-	PhotoMax   *int                                `json:"photo_max,omitempty"`
-	PhotoMode  *PatrolChecklistItemInputPhotoMode  `json:"photo_mode,omitempty"`
-	Required   *bool                               `json:"required,omitempty"`
+	// MinPhotos Foto yang wajib diambil; 0 = foto opsional.
+	MinPhotos int `json:"min_photos"`
+
+	// PhotoRequired `min_photos` > 0.
+	PhotoRequired bool `json:"photo_required"`
+	SortOrder     int  `json:"sort_order"`
 }
 
-// PatrolChecklistItemInputAnswerType defines model for PatrolChecklistItemInput.AnswerType.
-type PatrolChecklistItemInputAnswerType string
+// PatrolCheckpointActionInput Aksi yang punya `id` diubah, yang tanpa `id` dibuat, dan yang tidak ada di badan permintaan
+// dinonaktifkan (tidak pernah dihapus). Urutan array menentukan `sort_order`. Kombinasi yang salah
+// (`min_photos` lebih besar dari `max_photos`, foto di luar 0 sampai 5, nama kosong, `id` yang bukan
+// milik checkpoint ini) ditolak 422 `CHECKPOINT_ACTION_INVALID` dengan nama field-nya, mis.
+// `actions[2].max_photos`.
+type PatrolCheckpointActionInput struct {
+	Action         string              `json:"action"`
+	Id             *openapi_types.UUID `json:"id,omitempty"`
+	Instruction    *string             `json:"instruction,omitempty"`
+	IsNoteRequired *bool               `json:"is_note_required,omitempty"`
 
-// PatrolChecklistItemInputAttachWhen defines model for PatrolChecklistItemInput.AttachWhen.
-type PatrolChecklistItemInputAttachWhen string
-
-// PatrolChecklistItemInputNoteMode defines model for PatrolChecklistItemInput.NoteMode.
-type PatrolChecklistItemInputNoteMode string
-
-// PatrolChecklistItemInputPhotoMode defines model for PatrolChecklistItemInput.PhotoMode.
-type PatrolChecklistItemInputPhotoMode string
-
-// PatrolChecklistOption defines model for PatrolChecklistOption.
-type PatrolChecklistOption struct {
-	Label string `json:"label"`
-
-	// Value Nilai yang dikirim aplikasi; unik dalam satu butir.
-	Value string `json:"value"`
+	// MaxPhotos Bawaan 1, atau `min_photos` bila lebih besar.
+	MaxPhotos *int `json:"max_photos,omitempty"`
+	MinPhotos *int `json:"min_photos,omitempty"`
 }
 
-// PatrolChecklistReplace defines model for PatrolChecklistReplace.
-type PatrolChecklistReplace struct {
-	Checklist []PatrolChecklistItemInput `json:"checklist"`
+// PatrolCheckpointActionsReplace defines model for PatrolCheckpointActionsReplace.
+type PatrolCheckpointActionsReplace struct {
+	Actions []PatrolCheckpointActionInput `json:"actions"`
 }
+
+// PatrolCheckpointInput defines model for PatrolCheckpointInput.
+type PatrolCheckpointInput struct {
+	Actions     *[]PatrolCheckpointActionInput `json:"actions,omitempty"`
+	Description *string                        `json:"description,omitempty"`
+	IsActive    *bool                          `json:"is_active,omitempty"`
+	Latitude    *float64                       `json:"latitude,omitempty"`
+	Longitude   *float64                       `json:"longitude,omitempty"`
+	Name        string                         `json:"name"`
+	ProjectCode string                         `json:"project_code"`
+
+	// RadiusMeters Bawaan 30 bila titik dikirim tanpa radius.
+	RadiusMeters *int `json:"radius_meters,omitempty"`
+}
+
+// PatrolCheckpointUpdate Hanya field yang dikirim yang berubah; `null` mengosongkan field yang boleh kosong.
+// `project_code` hanya diterima bila sama dengan yang sekarang (proyek checkpoint tidak bisa
+// diubah; selain itu 422). Checklist diganti lewat `PUT /admin/checkpoints/{id}/actions`.
+// Titik dan radius harus tetap terisi bersama atau kosong bersama setelah perubahan.
+type PatrolCheckpointUpdate struct {
+	Description  *string  `json:"description,omitempty"`
+	IsActive     *bool    `json:"is_active,omitempty"`
+	Latitude     *float64 `json:"latitude,omitempty"`
+	Longitude    *float64 `json:"longitude,omitempty"`
+	Name         *string  `json:"name,omitempty"`
+	ProjectCode  *string  `json:"project_code,omitempty"`
+	RadiusMeters *int     `json:"radius_meters,omitempty"`
+}
+
+// PatrolCheckpointZone defines model for PatrolCheckpointZone.
+type PatrolCheckpointZone struct {
+	Id   int64  `json:"id"`
+	Name string `json:"name"`
+
+	// SortOrder Urutan checkpoint di zona itu, mulai dari 1.
+	SortOrder int                      `json:"sort_order"`
+	Type      PatrolCheckpointZoneType `json:"type"`
+}
+
+// PatrolCheckpointZoneType defines model for PatrolCheckpointZone.Type.
+type PatrolCheckpointZoneType string
 
 // PatrolRoute Satu patroli. `team_code` dan `work_date` ditentukan server dari shift penjaga. `point_count` adalah
 // titik mentah yang diterima, `distance_meters` panjang garis yang disimpan, `scan_count` scan yang
@@ -9409,22 +9523,47 @@ type PatrolRoute struct {
 	PersonnelId    int64              `json:"personnel_id"`
 
 	// PersonnelName Ada saat patroli dibaca (daftar dan detail).
-	PersonnelName    *string            `json:"personnel_name,omitempty"`
-	PointCount       int                `json:"point_count"`
-	ProjectCode      string             `json:"project_code"`
-	ScanCount        int                `json:"scan_count"`
-	StartedAt        time.Time          `json:"started_at"`
-	Status           PatrolRouteStatus  `json:"status"`
-	SubmittedOffline bool               `json:"submitted_offline"`
-	TeamCode         string             `json:"team_code"`
-	WorkDate         openapi_types.Date `json:"work_date"`
+	PersonnelName *string `json:"personnel_name,omitempty"`
+	PointCount    int     `json:"point_count"`
+	ProjectCode   string  `json:"project_code"`
+	ScanCount     int     `json:"scan_count"`
+
+	// Schedule Jadwal tempat patroli dimulai, hanya untuk patroli yang dimulai dari jadwal.
+	Schedule *struct {
+		EndsAt   time.Time          `json:"ends_at"`
+		Id       openapi_types.UUID `json:"id"`
+		StartsAt time.Time          `json:"starts_at"`
+	} `json:"schedule,omitempty"`
+
+	// StartDelayMinutes Terlambat berapa menit dibanding `schedule.starts_at` (0 bila tepat waktu atau lebih awal). Hanya untuk patroli dari jadwal.
+	StartDelayMinutes *int               `json:"start_delay_minutes,omitempty"`
+	StartedAt         time.Time          `json:"started_at"`
+	Status            PatrolRouteStatus  `json:"status"`
+	SubmittedOffline  bool               `json:"submitted_offline"`
+	TeamCode          string             `json:"team_code"`
+	WorkDate          openapi_types.Date `json:"work_date"`
+
+	// Zone Zona jadwal, hanya untuk patroli yang dimulai dari jadwal.
+	Zone *struct {
+		Id   int64               `json:"id"`
+		Name string              `json:"name"`
+		Type PatrolRouteZoneType `json:"type"`
+	} `json:"zone,omitempty"`
 }
 
 // PatrolRouteStatus defines model for PatrolRoute.Status.
 type PatrolRouteStatus string
 
+// PatrolRouteZoneType defines model for PatrolRoute.Zone.Type.
+type PatrolRouteZoneType string
+
 // PatrolRouteDetail defines model for PatrolRouteDetail.
 type PatrolRouteDetail struct {
+	// DeviceCondition Kondisi perangkat saat patroli dimulai dan diakhiri (bukti, bukan syarat). Hanya di detail, tidak di daftar; patroli `AUTO_ENDED` hanya punya `start`.
+	DeviceCondition *struct {
+		End   *map[string]interface{} `json:"end,omitempty"`
+		Start *map[string]interface{} `json:"start,omitempty"`
+	} `json:"device_condition,omitempty"`
 	DistanceMeters int                `json:"distance_meters"`
 	EndedAt        *time.Time         `json:"ended_at,omitempty"`
 	Id             int64              `json:"id"`
@@ -9436,24 +9575,50 @@ type PatrolRouteDetail struct {
 	PersonnelId int64                  `json:"personnel_id"`
 
 	// PersonnelName Ada saat patroli dibaca (daftar dan detail).
-	PersonnelName    *string                 `json:"personnel_name,omitempty"`
-	PointCount       int                     `json:"point_count"`
-	ProjectCode      string                  `json:"project_code"`
-	Route            GeoJsonLineString       `json:"route"`
-	ScanCount        int                     `json:"scan_count"`
-	Scans            []PatrolRouteScan       `json:"scans"`
-	StartedAt        time.Time               `json:"started_at"`
-	Status           PatrolRouteDetailStatus `json:"status"`
-	SubmittedOffline bool                    `json:"submitted_offline"`
-	TeamCode         string                  `json:"team_code"`
-	WorkDate         openapi_types.Date      `json:"work_date"`
+	PersonnelName *string           `json:"personnel_name,omitempty"`
+	PointCount    int               `json:"point_count"`
+	ProjectCode   string            `json:"project_code"`
+	Route         GeoJsonLineString `json:"route"`
+	ScanCount     int               `json:"scan_count"`
+	Scans         []PatrolRouteScan `json:"scans"`
+
+	// Schedule Jadwal tempat patroli dimulai, hanya untuk patroli yang dimulai dari jadwal.
+	Schedule *struct {
+		EndsAt   time.Time          `json:"ends_at"`
+		Id       openapi_types.UUID `json:"id"`
+		StartsAt time.Time          `json:"starts_at"`
+	} `json:"schedule,omitempty"`
+
+	// StartDelayMinutes Terlambat berapa menit dibanding `schedule.starts_at` (0 bila tepat waktu atau lebih awal). Hanya untuk patroli dari jadwal.
+	StartDelayMinutes *int                    `json:"start_delay_minutes,omitempty"`
+	StartedAt         time.Time               `json:"started_at"`
+	Status            PatrolRouteDetailStatus `json:"status"`
+	SubmittedOffline  bool                    `json:"submitted_offline"`
+	TeamCode          string                  `json:"team_code"`
+	WorkDate          openapi_types.Date      `json:"work_date"`
+
+	// Zone Zona jadwal, hanya untuk patroli yang dimulai dari jadwal.
+	Zone *struct {
+		Id   int64                     `json:"id"`
+		Name string                    `json:"name"`
+		Type PatrolRouteDetailZoneType `json:"type"`
+	} `json:"zone,omitempty"`
 }
 
 // PatrolRouteDetailStatus defines model for PatrolRouteDetail.Status.
 type PatrolRouteDetailStatus string
 
+// PatrolRouteDetailZoneType defines model for PatrolRouteDetail.Zone.Type.
+type PatrolRouteDetailZoneType string
+
 // PatrolRouteEnd defines model for PatrolRouteEnd.
 type PatrolRouteEnd struct {
+	// DeviceCondition Kondisi perangkat saat aksi dijawab. Bukti, bukan penghalang: server tidak pernah menolak scan karena
+	// isinya (`mock_location: true` tetap diterima dan disimpan) dan tidak memercayainya (aplikasi yang
+	// melaporkan). Harus objek JSON, paling besar 4096 byte; kunci yang dikenal diperiksa tipenya, kunci lain
+	// disimpan apa adanya. Yang salah: 422 `DEVICE_CONDITION_INVALID`.
+	DeviceCondition *DeviceCondition `json:"device_condition,omitempty"`
+
 	// EndedAt Tidak boleh sebelum `started_at`; maksimal 5 menit di depan dan 7 hari ke belakang.
 	EndedAt time.Time `json:"ended_at"`
 
@@ -9498,14 +9663,16 @@ type PatrolRoutePointsResult struct {
 
 // PatrolRouteScan Scan di sepanjang patroli, untuk pin di garis peta.
 type PatrolRouteScan struct {
-	Id         int64                 `json:"id"`
-	Latitude   float64               `json:"latitude"`
-	Longitude  float64               `json:"longitude"`
-	OccurredAt time.Time             `json:"occurred_at"`
-	Status     PatrolRouteScanStatus `json:"status"`
-	Subject    string                `json:"subject"`
-	ZoneId     int64                 `json:"zone_id"`
-	ZoneName   string                `json:"zone_name"`
+	CheckpointId   openapi_types.UUID    `json:"checkpoint_id"`
+	CheckpointName string                `json:"checkpoint_name"`
+	Id             int64                 `json:"id"`
+	Latitude       float64               `json:"latitude"`
+	Longitude      float64               `json:"longitude"`
+	OccurredAt     time.Time             `json:"occurred_at"`
+	Status         PatrolRouteScanStatus `json:"status"`
+	Subject        string                `json:"subject"`
+	ZoneId         int64                 `json:"zone_id"`
+	ZoneName       string                `json:"zone_name"`
 }
 
 // PatrolRouteScanStatus defines model for PatrolRouteScan.Status.
@@ -9513,39 +9680,53 @@ type PatrolRouteScanStatus string
 
 // PatrolRouteStart Badan `POST /patrols/start`. `local_id` harus sama dengan header Idempotency-Key.
 type PatrolRouteStart struct {
-	AccuracyMeters float64            `json:"accuracy_meters"`
-	Latitude       float64            `json:"latitude"`
-	LocalId        openapi_types.UUID `json:"local_id"`
-	Longitude      float64            `json:"longitude"`
-	ProjectCode    string             `json:"project_code"`
+	AccuracyMeters float64 `json:"accuracy_meters"`
+
+	// DeviceCondition Kondisi perangkat saat aksi dijawab. Bukti, bukan penghalang: server tidak pernah menolak scan karena
+	// isinya (`mock_location: true` tetap diterima dan disimpan) dan tidak memercayainya (aplikasi yang
+	// melaporkan). Harus objek JSON, paling besar 4096 byte; kunci yang dikenal diperiksa tipenya, kunci lain
+	// disimpan apa adanya. Yang salah: 422 `DEVICE_CONDITION_INVALID`.
+	DeviceCondition *DeviceCondition   `json:"device_condition,omitempty"`
+	Latitude        float64            `json:"latitude"`
+	LocalId         openapi_types.UUID `json:"local_id"`
+	Longitude       float64            `json:"longitude"`
+
+	// ProjectCode Wajib untuk patroli tanpa jadwal. Dengan `schedule_id` boleh dikosongkan (proyek jadwal); proyek lain: 422.
+	ProjectCode *string `json:"project_code,omitempty"`
+
+	// ScheduleId Memulai patroli sebagai realisasi jadwal milik pemanggil (Phase 10.12).
+	ScheduleId *openapi_types.UUID `json:"schedule_id,omitempty"`
 
 	// StartedAt Saat patroli dimulai di perangkat. Maksimal 5 menit di depan dan 7 hari ke belakang.
 	StartedAt        time.Time `json:"started_at"`
 	SubmittedOffline *bool     `json:"submitted_offline,omitempty"`
 }
 
-// PatrolScan Satu kunjungan ke zona. `team_code` dan `work_date` ditentukan server dari shift pemindai, bukan dikirim aplikasi.
+// PatrolScan Satu kunjungan ke satu checkpoint zona. `team_code` dan `work_date` ditentukan server dari shift pemindai, bukan dikirim aplikasi.
 type PatrolScan struct {
 	AccuracyMeters float64            `json:"accuracy_meters"`
-	Answers        []PatrolScanAnswer `json:"answers"`
-	CreatedAt      time.Time          `json:"created_at"`
-	DecidedAt      *time.Time         `json:"decided_at,omitempty"`
-	DecidedById    *int64             `json:"decided_by_id,omitempty"`
+	Actions        []PatrolScanAction `json:"actions"`
+
+	// Checkpoint Checkpoint yang di-scan, dengan namanya sekarang dan urutannya sekarang di zona (tidak disertakan bila checkpoint sudah dilepas dari zona).
+	Checkpoint PatrolScanCheckpoint `json:"checkpoint"`
+
+	// CheckpointId Checkpoint yang di-scan.
+	CheckpointId openapi_types.UUID `json:"checkpoint_id"`
+	CreatedAt    time.Time          `json:"created_at"`
+	DecidedAt    *time.Time         `json:"decided_at,omitempty"`
+	DecidedById  *int64             `json:"decided_by_id,omitempty"`
 
 	// DecisionNote Catatan DANRU, wajib saat ditolak.
 	DecisionNote *string `json:"decision_note,omitempty"`
 
-	// DistanceMeters Jarak dari pusat zona; null bila zona tanpa geofence.
+	// DistanceMeters Jarak dari checkpoint; null bila checkpoint tanpa geofence.
 	DistanceMeters *int               `json:"distance_meters,omitempty"`
 	Id             int64              `json:"id"`
 	Latitude       float64            `json:"latitude"`
 	LocalId        openapi_types.UUID `json:"local_id"`
 	Longitude      float64            `json:"longitude"`
-
-	// Media Foto umum scan (bukan foto jawaban) sebagai URL bertanda tangan. Ada saat scan dibaca.
-	Media      *[]PatrolScanPhoto `json:"media,omitempty"`
-	Notes      *string            `json:"notes,omitempty"`
-	OccurredAt time.Time          `json:"occurred_at"`
+	Notes          *string            `json:"notes,omitempty"`
+	OccurredAt     time.Time          `json:"occurred_at"`
 
 	// PatrolId Patroli yang sedang berjalan saat scan (Phase 10.4); diisi server.
 	PatrolId    *int64 `json:"patrol_id,omitempty"`
@@ -9572,71 +9753,72 @@ type PatrolScanStatus string
 // PatrolScanZoneType defines model for PatrolScan.ZoneType.
 type PatrolScanZoneType string
 
-// PatrolScanAnswer Satu pertanyaan checklist beserta jawabannya, disalin seperti saat scan dibuat (judul,
-// tipe, opsi dan aturan lampiran), jadi mengubah checklist tidak menulis ulang riwayat.
-type PatrolScanAnswer struct {
-	AnswerType PatrolScanAnswerAnswerType `json:"answer_type"`
-	AttachWhen PatrolScanAnswerAttachWhen `json:"attach_when"`
-	ItemId     int64                      `json:"item_id"`
-	Label      string                     `json:"label"`
+// PatrolScanAction Satu aksi checklist yang dijawab pada scan. Teks aksi disalin saat scan dibuat, jadi mengubah checklist tidak menulis ulang riwayat.
+type PatrolScanAction struct {
+	Action   string             `json:"action"`
+	ActionId openapi_types.UUID `json:"action_id"`
 
-	// Media Foto jawaban ini sebagai URL bertanda tangan. Hanya ada saat scan dibaca (daftar dan detail).
-	Media     *[]PatrolScanPhoto        `json:"media,omitempty"`
-	MediaIds  []int64                   `json:"media_ids"`
-	Note      *string                   `json:"note,omitempty"`
-	NoteMode  PatrolScanAnswerNoteMode  `json:"note_mode"`
-	Options   *[]PatrolChecklistOption  `json:"options,omitempty"`
-	PhotoMax  int                       `json:"photo_max"`
-	PhotoMode PatrolScanAnswerPhotoMode `json:"photo_mode"`
-	Required  bool                      `json:"required"`
+	// DeviceCondition Kondisi perangkat saat aksi dijawab (bukti, bukan syarat); null bila tidak dikirim.
+	DeviceCondition *map[string]interface{} `json:"device_condition,omitempty"`
+	Instruction     *string                 `json:"instruction,omitempty"`
+	Note            *string                 `json:"note,omitempty"`
 
-	// Value Boolean, teks, angka atau nilai opsi menurut `answer_type`; null bila pertanyaan opsional tidak dijawab.
-	Value interface{} `json:"value,omitempty"`
+	// Photos Foto aksi ini sebagai URL bertanda tangan. Kosong pada respons pembuatan scan; terisi saat scan dibaca.
+	Photos []PatrolScanPhoto `json:"photos"`
 }
 
-// PatrolScanAnswerAnswerType defines model for PatrolScanAnswer.AnswerType.
-type PatrolScanAnswerAnswerType string
+// PatrolScanActionInput Jawaban satu aksi checklist checkpoint. Melakukan dan menunjukkan aksi itulah jawabannya, tanpa nilai.
+type PatrolScanActionInput struct {
+	// ActionId Aksi aktif checkpoint yang di-scan; yang lain `CHECKLIST_ITEM_INVALID`.
+	ActionId openapi_types.UUID `json:"action_id"`
 
-// PatrolScanAnswerAttachWhen defines model for PatrolScanAnswer.AttachWhen.
-type PatrolScanAnswerAttachWhen string
+	// DeviceCondition Kondisi perangkat saat aksi dijawab. Bukti, bukan penghalang: server tidak pernah menolak scan karena
+	// isinya (`mock_location: true` tetap diterima dan disimpan) dan tidak memercayainya (aplikasi yang
+	// melaporkan). Harus objek JSON, paling besar 4096 byte; kunci yang dikenal diperiksa tipenya, kunci lain
+	// disimpan apa adanya. Yang salah: 422 `DEVICE_CONDITION_INVALID`.
+	DeviceCondition *DeviceCondition `json:"device_condition,omitempty"`
 
-// PatrolScanAnswerNoteMode defines model for PatrolScanAnswer.NoteMode.
-type PatrolScanAnswerNoteMode string
-
-// PatrolScanAnswerPhotoMode defines model for PatrolScanAnswer.PhotoMode.
-type PatrolScanAnswerPhotoMode string
-
-// PatrolScanAnswerInput defines model for PatrolScanAnswerInput.
-type PatrolScanAnswerInput struct {
-	ItemId int64 `json:"item_id"`
-
-	// MediaIds Foto jawaban ini (`POST /media` dengan tujuan `PATROL_SCAN`).
+	// MediaIds Foto aksi ini (`POST /media` dengan tujuan `PATROL_SCAN`): paling sedikit `min_photos`, paling banyak `max_photos`. Tiap id hanya sekali di seluruh scan.
 	MediaIds *[]int64 `json:"media_ids,omitempty"`
-	Note     *string  `json:"note,omitempty"`
 
-	// Value Boolean, teks, angka atau nilai opsi menurut `answer_type` butirnya.
-	Value interface{} `json:"value,omitempty"`
+	// Note Wajib bila `is_note_required`.
+	Note *string `json:"note,omitempty"`
+}
+
+// PatrolScanCheckpoint Checkpoint yang di-scan, dengan namanya sekarang dan urutannya sekarang di zona (tidak disertakan bila checkpoint sudah dilepas dari zona).
+type PatrolScanCheckpoint struct {
+	Id        openapi_types.UUID `json:"id"`
+	Name      string             `json:"name"`
+	SortOrder *int               `json:"sort_order,omitempty"`
 }
 
 // PatrolScanCreate defines model for PatrolScanCreate.
 type PatrolScanCreate struct {
-	AccuracyMeters float64                  `json:"accuracy_meters"`
-	Answers        *[]PatrolScanAnswerInput `json:"answers,omitempty"`
-	Latitude       float64                  `json:"latitude"`
+	AccuracyMeters float64 `json:"accuracy_meters"`
+
+	// Actions Satu jawaban untuk setiap aksi aktif checkpoint. `device_condition` di sini menjadi bawaan aksi yang tidak membawa sendiri.
+	Actions      *[]PatrolScanActionInput `json:"actions,omitempty"`
+	CheckpointId openapi_types.UUID       `json:"checkpoint_id"`
+
+	// DeviceCondition Kondisi perangkat saat aksi dijawab. Bukti, bukan penghalang: server tidak pernah menolak scan karena
+	// isinya (`mock_location: true` tetap diterima dan disimpan) dan tidak memercayainya (aplikasi yang
+	// melaporkan). Harus objek JSON, paling besar 4096 byte; kunci yang dikenal diperiksa tipenya, kunci lain
+	// disimpan apa adanya. Yang salah: 422 `DEVICE_CONDITION_INVALID`.
+	DeviceCondition *DeviceCondition `json:"device_condition,omitempty"`
+	Latitude        float64          `json:"latitude"`
 
 	// LocalId Harus sama dengan header Idempotency-Key.
 	LocalId   openapi_types.UUID `json:"local_id"`
 	Longitude float64            `json:"longitude"`
-
-	// MediaIds Foto umum scan. Tiap id hanya sekali di seluruh scan (juga terhadap foto jawaban).
-	MediaIds *[]int64 `json:"media_ids,omitempty"`
-	Notes    *string  `json:"notes,omitempty"`
+	Notes     *string            `json:"notes,omitempty"`
 
 	// OccurredAt Saat scan terjadi di perangkat. Maksimal 5 menit di depan dan 7 hari ke belakang.
-	OccurredAt       time.Time `json:"occurred_at"`
-	QrPayload        string    `json:"qr_payload"`
-	Subject          string    `json:"subject"`
-	SubmittedOffline *bool     `json:"submitted_offline,omitempty"`
+	OccurredAt time.Time `json:"occurred_at"`
+	QrPayload  string    `json:"qr_payload"`
+
+	// Subject Boleh dikosongkan: bawaannya nama checkpoint.
+	Subject          *string `json:"subject,omitempty"`
+	SubmittedOffline *bool   `json:"submitted_offline,omitempty"`
 }
 
 // PatrolScanPhoto Foto sebuah scan. URL-nya bertanda tangan dan berumur sekitar satu jam; jangan disimpan, muat ulang scan untuk URL baru.
@@ -9651,18 +9833,99 @@ type PatrolScanPhoto struct {
 // PatrolScanPhotoCaptureSource defines model for PatrolScanPhoto.CaptureSource.
 type PatrolScanPhotoCaptureSource string
 
-// PatrolZone Zona patroli (`PATROL`) atau pos jaga (`GUARD`) beserta checklist aktifnya (Phase 10.1).
-// Proyek dan regu dikenali dengan kode (D19), bukan id. Rahasia QR TIDAK pernah ada di sini:
-// isinya hanya ada di gambar QR yang dicetak admin (`GET /admin/zones/{id}/qr`).
+// PatrolSchedule Jadwal patroli: satu orang, satu zona, satu jendela waktu. `notes` dan `cancelled_at` yang kosong tidak disertakan.
+type PatrolSchedule struct {
+	CancelledAt *time.Time         `json:"cancelled_at,omitempty"`
+	EndsAt      time.Time          `json:"ends_at"`
+	Id          openapi_types.UUID `json:"id"`
+	Notes       *string            `json:"notes,omitempty"`
+
+	// Patrol Patroli yang dimulai dari jadwal ini; tidak ada bila belum dimulai.
+	Patrol *struct {
+		Id     int64                      `json:"id"`
+		Status PatrolSchedulePatrolStatus `json:"status"`
+	} `json:"patrol,omitempty"`
+	Personnel struct {
+		FullName string `json:"full_name"`
+		Id       int64  `json:"id"`
+	} `json:"personnel"`
+	ProjectCode string `json:"project_code"`
+
+	// ScanCount Scan patroli itu di zona jadwal (scan di zona lain tidak dihitung). 0 tanpa patroli.
+	ScanCount int `json:"scan_count"`
+
+	// StartDelayMinutes Terlambat berapa menit patroli dimulai (0 bila tepat waktu atau lebih awal). Hanya bila `patrol` ada.
+	StartDelayMinutes *int      `json:"start_delay_minutes,omitempty"`
+	StartsAt          time.Time `json:"starts_at"`
+
+	// Status Dihitung dari jam server, bukan disimpan: `CANCELLED` bila dibatalkan; `IN_PROGRESS` / `COMPLETED` bila ada patroli
+	// yang merealisasikannya (patroli `ACTIVE` / selesai, juga `AUTO_ENDED`); `MISSED` bila jendelanya lewat tanpa patroli;
+	// selain itu `SCHEDULED`. Patroli `AUTO_ENDED` juga `COMPLETED`; `patrol.status` memberi tahu DANRU bedanya.
+	Status PatrolScheduleStatus `json:"status"`
+
+	// WorkDate Tanggal `starts_at` menurut zona waktu proyek; jendela yang melewati tengah malam tetap bertanggal mulai.
+	WorkDate openapi_types.Date `json:"work_date"`
+	Zone     struct {
+		Id   int64                  `json:"id"`
+		Name string                 `json:"name"`
+		Type PatrolScheduleZoneType `json:"type"`
+	} `json:"zone"`
+}
+
+// PatrolSchedulePatrolStatus defines model for PatrolSchedule.Patrol.Status.
+type PatrolSchedulePatrolStatus string
+
+// PatrolScheduleZoneType defines model for PatrolSchedule.Zone.Type.
+type PatrolScheduleZoneType string
+
+// PatrolScheduleInput defines model for PatrolScheduleInput.
+type PatrolScheduleInput struct {
+	Notes        *string              `json:"notes,omitempty"`
+	PersonnelIds []int64              `json:"personnel_ids"`
+	Slots        []PatrolScheduleSlot `json:"slots"`
+	ZoneId       int64                `json:"zone_id"`
+}
+
+// PatrolScheduleSlot defines model for PatrolScheduleSlot.
+type PatrolScheduleSlot struct {
+	// EndsAt Setelah `starts_at`, paling lama 24 jam darinya, dan belum lewat.
+	EndsAt time.Time `json:"ends_at"`
+
+	// StartsAt Harus memuat offset waktu (`+07:00` atau `Z`).
+	StartsAt time.Time `json:"starts_at"`
+}
+
+// PatrolScheduleStatus Dihitung dari jam server, bukan disimpan: `CANCELLED` bila dibatalkan; `IN_PROGRESS` / `COMPLETED` bila ada patroli
+// yang merealisasikannya (patroli `ACTIVE` / selesai, juga `AUTO_ENDED`); `MISSED` bila jendelanya lewat tanpa patroli;
+// selain itu `SCHEDULED`. Patroli `AUTO_ENDED` juga `COMPLETED`; `patrol.status` memberi tahu DANRU bedanya.
+type PatrolScheduleStatus string
+
+// PatrolScheduleUpdate Zona tidak bisa diganti (batalkan dan buat lagi). Field yang tidak dikirim tetap.
+type PatrolScheduleUpdate struct {
+	EndsAt      *time.Time `json:"ends_at,omitempty"`
+	Notes       *string    `json:"notes,omitempty"`
+	PersonnelId *int64     `json:"personnel_id,omitempty"`
+	StartsAt    *time.Time `json:"starts_at,omitempty"`
+}
+
+// PatrolZone Zona patroli (`PATROL`) atau pos jaga (`GUARD`) beserta checkpoint-nya (Phase 10.1, 10.8).
+// Checklist, QR dan aturan foto ada di checkpoint, bukan di zona (titik dan radius zona hanya untuk tampilan peta). Proyek dan regu dikenali dengan kode (D19), bukan id.
+// Rahasia QR TIDAK pernah ada di sini: isinya hanya ada di gambar QR yang dicetak admin
+// (`GET /admin/zones/{id}/qr`; dan QR checkpoint di `GET /admin/checkpoints/{id}/qr`).
+// Daftar hanya memuat `checkpoint_count`; `checkpoints` ada di detail (admin: semua, berurutan, tanpa checklist;
+// lapangan: yang aktif, dengan checklist dan kemajuan pemanggil hari ini, dan `next_checkpoint_id`).
 type PatrolZone struct {
 	Alias *string `json:"alias,omitempty"`
 
-	// Checklist Butir checklist yang aktif, urut menurut `sort_order`.
-	Checklist   []PatrolChecklistItem `json:"checklist"`
-	CreatedAt   time.Time             `json:"created_at"`
-	Description *string               `json:"description,omitempty"`
-	Id          int64                 `json:"id"`
-	IsActive    bool                  `json:"is_active"`
+	// CheckpointCount Jumlah checkpoint aktif zona ini: yang bisa di-scan petugas.
+	CheckpointCount int `json:"checkpoint_count"`
+
+	// Checkpoints Checkpoint zona menurut urutannya. Hanya ada di detail (bukan di daftar).
+	Checkpoints *[]PatrolZoneCheckpoint `json:"checkpoints,omitempty"`
+	CreatedAt   time.Time               `json:"created_at"`
+	Description *string                 `json:"description,omitempty"`
+	Id          int64                   `json:"id"`
+	IsActive    bool                    `json:"is_active"`
 
 	// Latitude Pusat zona. latitude, longitude dan radius_meters terisi bersama atau kosong bersama.
 	Latitude  *float64 `json:"latitude,omitempty"`
@@ -9672,8 +9935,8 @@ type PatrolZone struct {
 	MinVisit int    `json:"min_visit"`
 	Name     string `json:"name"`
 
-	// PhotoRequired Scan butuh minimal satu foto, walau tidak ada butir checklist yang meminta (SQD §4.3).
-	PhotoRequired bool `json:"photo_required"`
+	// NextCheckpointId Checkpoint yang sebaiknya di-scan pemanggil berikutnya. Hanya di detail lapangan; tidak ada bila zona tanpa checkpoint aktif.
+	NextCheckpointId *openapi_types.UUID `json:"next_checkpoint_id,omitempty"`
 
 	// PopupText Ditampilkan saat zona dibuka.
 	PopupText   *string `json:"popup_text,omitempty"`
@@ -9694,19 +9957,50 @@ type PatrolZone struct {
 // PatrolZoneType Jaga = GUARD (DL-11).
 type PatrolZoneType string
 
+// PatrolZoneCheckpoint Checkpoint sebagaimana zona menampilkannya, dengan urutannya di zona itu. `my_scans`, `scannable` dan
+// `actions` hanya ada di bacaan lapangan (`GET /zones/{id}`), tidak di bacaan admin.
+type PatrolZoneCheckpoint struct {
+	// Actions Checklist aktif checkpoint, berurutan.
+	Actions *[]PatrolCheckpointAction `json:"actions,omitempty"`
+	Id      openapi_types.UUID        `json:"id"`
+
+	// IsActive Checkpoint nonaktif tetap memegang urutannya tetapi tidak bisa di-scan; bacaan lapangan hanya memuat yang aktif.
+	IsActive  bool     `json:"is_active"`
+	Latitude  *float64 `json:"latitude,omitempty"`
+	Longitude *float64 `json:"longitude,omitempty"`
+
+	// MyScans Berapa kali pemanggil men-scan checkpoint ini di zona ini pada tanggal kerja hari ini (status apa pun).
+	MyScans      *int   `json:"my_scans,omitempty"`
+	Name         string `json:"name"`
+	RadiusMeters *int   `json:"radius_meters,omitempty"`
+
+	// Scannable Apakah aturan urutan mengizinkan pemanggil men-scan checkpoint ini sekarang (checkpoint pertama selalu boleh; yang lain hanya bila sebelumnya sudah lebih sering di-scan).
+	Scannable *bool `json:"scannable,omitempty"`
+
+	// SortOrder Urutan di zona ini, mulai dari 1 (bisa melompat bila checkpoint nonaktif memegang satu nomor).
+	SortOrder int `json:"sort_order"`
+}
+
+// PatrolZoneCheckpointsReplace defines model for PatrolZoneCheckpointsReplace.
+type PatrolZoneCheckpointsReplace struct {
+	// CheckpointIds Daftar kosong mengeluarkan semua checkpoint dari zona.
+	CheckpointIds []openapi_types.UUID `json:"checkpoint_ids"`
+}
+
 // PatrolZoneInput defines model for PatrolZoneInput.
 type PatrolZoneInput struct {
-	Alias         *string                     `json:"alias,omitempty"`
-	Checklist     *[]PatrolChecklistItemInput `json:"checklist,omitempty"`
-	Description   *string                     `json:"description,omitempty"`
-	IsActive      *bool                       `json:"is_active,omitempty"`
-	Latitude      *float64                    `json:"latitude,omitempty"`
-	Longitude     *float64                    `json:"longitude,omitempty"`
-	MinVisit      *int                        `json:"min_visit,omitempty"`
-	Name          string                      `json:"name"`
-	PhotoRequired *bool                       `json:"photo_required,omitempty"`
-	PopupText     *string                     `json:"popup_text,omitempty"`
-	ProjectCode   string                      `json:"project_code"`
+	Alias *string `json:"alias,omitempty"`
+
+	// CheckpointIds Checkpoint zona menurut urutannya (posisi 1..n). Di PATCH, bila dikirim menggantikan semuanya; bila tidak, tidak berubah.
+	CheckpointIds *[]openapi_types.UUID `json:"checkpoint_ids,omitempty"`
+	Description   *string               `json:"description,omitempty"`
+	IsActive      *bool                 `json:"is_active,omitempty"`
+	Latitude      *float64              `json:"latitude,omitempty"`
+	Longitude     *float64              `json:"longitude,omitempty"`
+	MinVisit      *int                  `json:"min_visit,omitempty"`
+	Name          string                `json:"name"`
+	PopupText     *string               `json:"popup_text,omitempty"`
+	ProjectCode   string                `json:"project_code"`
 
 	// RadiusMeters Bawaan 50 bila titik dikirim tanpa radius.
 	RadiusMeters *int                `json:"radius_meters,omitempty"`
@@ -9721,24 +10015,25 @@ type PatrolZoneInput struct {
 type PatrolZoneInputType string
 
 // PatrolZoneUpdate Hanya field yang dikirim yang berubah; `null` mengosongkan field yang boleh kosong.
-// `project_code` tidak bisa diubah. `checklist`, bila dikirim, menggantikan checklist
-// (aturannya sama dengan `PUT /admin/zones/{id}/checklist`). Titik dan radius harus tetap
-// terisi bersama atau kosong bersama setelah perubahan.
+// `project_code` tidak bisa diubah. `checkpoint_ids`, bila dikirim, menggantikan checkpoint zona dan
+// urutannya (aturannya sama dengan `PUT /admin/zones/{id}/checkpoints`); bila tidak dikirim, checkpoint
+// tidak berubah. Titik dan radius harus tetap terisi bersama atau kosong bersama setelah perubahan.
 type PatrolZoneUpdate struct {
-	Alias         *string                     `json:"alias,omitempty"`
-	Checklist     *[]PatrolChecklistItemInput `json:"checklist,omitempty"`
-	Description   *string                     `json:"description,omitempty"`
-	IsActive      *bool                       `json:"is_active,omitempty"`
-	Latitude      *float64                    `json:"latitude,omitempty"`
-	Longitude     *float64                    `json:"longitude,omitempty"`
-	MinVisit      *int                        `json:"min_visit,omitempty"`
-	Name          *string                     `json:"name,omitempty"`
-	PhotoRequired *bool                       `json:"photo_required,omitempty"`
-	PopupText     *string                     `json:"popup_text,omitempty"`
-	RadiusMeters  *int                        `json:"radius_meters,omitempty"`
-	StartDate     *openapi_types.Date         `json:"start_date,omitempty"`
-	TeamCode      *string                     `json:"team_code,omitempty"`
-	Type          *PatrolZoneUpdateType       `json:"type,omitempty"`
+	Alias *string `json:"alias,omitempty"`
+
+	// CheckpointIds Checkpoint zona menurut urutannya (posisi 1..n). Di PATCH, bila dikirim menggantikan semuanya; bila tidak, tidak berubah.
+	CheckpointIds *[]openapi_types.UUID `json:"checkpoint_ids,omitempty"`
+	Description   *string               `json:"description,omitempty"`
+	IsActive      *bool                 `json:"is_active,omitempty"`
+	Latitude      *float64              `json:"latitude,omitempty"`
+	Longitude     *float64              `json:"longitude,omitempty"`
+	MinVisit      *int                  `json:"min_visit,omitempty"`
+	Name          *string               `json:"name,omitempty"`
+	PopupText     *string               `json:"popup_text,omitempty"`
+	RadiusMeters  *int                  `json:"radius_meters,omitempty"`
+	StartDate     *openapi_types.Date   `json:"start_date,omitempty"`
+	TeamCode      *string               `json:"team_code,omitempty"`
+	Type          *PatrolZoneUpdateType `json:"type,omitempty"`
 }
 
 // PatrolZoneUpdateType defines model for PatrolZoneUpdate.Type.
@@ -11224,6 +11519,9 @@ type ZoneCheckIn struct {
 	CheckOutLatitude  *float64   `json:"check_out_latitude,omitempty"`
 	CheckOutLongitude *float64   `json:"check_out_longitude,omitempty"`
 
+	// CheckpointId Checkpoint yang QR-nya di-scan saat check-in; null pada check-in lama.
+	CheckpointId *openapi_types.UUID `json:"checkpoint_id,omitempty"`
+
 	// FullName Terisi di `live` dan `tracking`.
 	FullName    *string `json:"full_name,omitempty"`
 	Id          int64   `json:"id"`
@@ -11233,18 +11531,22 @@ type ZoneCheckIn struct {
 	ZoneId      int64   `json:"zone_id"`
 }
 
-// ZoneCheckInInput Check-in dan check-out memakai badan yang sama. Waktunya waktu server.
+// ZoneCheckInInput Check-in dan check-out memakai badan yang sama. Waktunya waktu server. QR-nya QR salah satu checkpoint zona.
 type ZoneCheckInInput struct {
-	AccuracyMeters float64 `json:"accuracy_meters"`
-	Latitude       float64 `json:"latitude"`
-	Longitude      float64 `json:"longitude"`
-	QrPayload      string  `json:"qr_payload"`
+	AccuracyMeters float64            `json:"accuracy_meters"`
+	CheckpointId   openapi_types.UUID `json:"checkpoint_id"`
+	Latitude       float64            `json:"latitude"`
+	Longitude      float64            `json:"longitude"`
+	QrPayload      string             `json:"qr_payload"`
 }
 
 // ZoneProgressItem Tiga lingkaran satu zona pada satu tanggal kerja (Gambar 10).
 type ZoneProgressItem struct {
 	// Approved Lingkaran hijau: disetujui.
 	Approved int `json:"approved"`
+
+	// Checkpoints Tiga lingkaran tiap checkpoint aktif zona menurut urutannya. Angka zona di atas adalah jumlahnya; zona tanpa checkpoint aktif punya larik kosong dan `required` 0.
+	Checkpoints []CheckpointProgressItem `json:"checkpoints"`
 
 	// Declined Ditolak.
 	Declined int `json:"declined"`
@@ -11293,6 +11595,9 @@ type BusinessLineParam string
 // BusinessLineQuery Bidang usaha proyek (DL-20). security membentuk kode berakhiran S, cleaning berakhiran C; satu klien paling banyak satu proyek per bidang.
 type BusinessLineQuery = BusinessLine
 
+// CheckpointIdPath defines model for CheckpointIdPath.
+type CheckpointIdPath = string
+
 // ClientCodePath defines model for ClientCodePath.
 type ClientCodePath = string
 
@@ -11340,6 +11645,9 @@ type OnDateQuery = openapi_types.Date
 
 // PageParam defines model for PageParam.
 type PageParam = int
+
+// PatrolScheduleIdPath defines model for PatrolScheduleIdPath.
+type PatrolScheduleIdPath = string
 
 // PersonnelIdOfMemberPath defines model for PersonnelIdOfMemberPath.
 type PersonnelIdOfMemberPath = int64
@@ -11670,6 +11978,57 @@ type PatchAdminCctvsById200JSONResponseBodySuccess bool
 // PatchAdminCctvsByIdAccess200JSONResponseBodySuccess defines parameters for PatchAdminCctvsByIdAccess.
 type PatchAdminCctvsByIdAccess200JSONResponseBodySuccess bool
 
+// GetAdminCheckpointsParams defines parameters for GetAdminCheckpoints.
+type GetAdminCheckpointsParams struct {
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
+	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
+
+	// Limit Item per halaman (maks 100).
+	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Q Pencarian teks tanpa membedakan huruf besar/kecil, paling panjang 100 karakter (422 bila lebih). Dicocokkan sebagai potongan teks biasa: % dan _ bukan wildcard.
+	Q *QParam `form:"q,omitempty" json:"q,omitempty"`
+
+	// IsActive Filter status aktif.
+	IsActive    *IsActiveParam `form:"is_active,omitempty" json:"is_active,omitempty"`
+	ProjectCode *string        `form:"project_code,omitempty" json:"project_code,omitempty"`
+	ZoneId      *int64         `form:"zone_id,omitempty" json:"zone_id,omitempty"`
+}
+
+// GetAdminCheckpoints200JSONResponseBodySuccess defines parameters for GetAdminCheckpoints.
+type GetAdminCheckpoints200JSONResponseBodySuccess bool
+
+// PostAdminCheckpointsParams defines parameters for PostAdminCheckpoints.
+type PostAdminCheckpointsParams struct {
+	// IdempotencyKey UUIDv4 stabil seumur item; WAJIB untuk mutasi tak-aman yang dapat di-retry/antre
+	// offline (DL-34). Retry key sama → respons tersimpan; body berbeda + key sama →
+	// 409 CONFLICT.
+	IdempotencyKey *IdempotencyKeyHeader `json:"Idempotency-Key,omitempty"`
+}
+
+// PostAdminCheckpoints201JSONResponseBodySuccess defines parameters for PostAdminCheckpoints.
+type PostAdminCheckpoints201JSONResponseBodySuccess bool
+
+// GetAdminCheckpointsById200JSONResponseBodySuccess defines parameters for GetAdminCheckpointsById.
+type GetAdminCheckpointsById200JSONResponseBodySuccess bool
+
+// PatchAdminCheckpointsById200JSONResponseBodySuccess defines parameters for PatchAdminCheckpointsById.
+type PatchAdminCheckpointsById200JSONResponseBodySuccess bool
+
+// PutAdminCheckpointsByIdActions200JSONResponseBodySuccess defines parameters for PutAdminCheckpointsByIdActions.
+type PutAdminCheckpointsByIdActions200JSONResponseBodySuccess bool
+
+// GetAdminCheckpointsByIdQrParams defines parameters for GetAdminCheckpointsByIdQr.
+type GetAdminCheckpointsByIdQrParams struct {
+	Format *GetAdminCheckpointsByIdQrParamsFormat `form:"format,omitempty" json:"format,omitempty"`
+}
+
+// GetAdminCheckpointsByIdQrParamsFormat defines parameters for GetAdminCheckpointsByIdQr.
+type GetAdminCheckpointsByIdQrParamsFormat string
+
+// PostAdminCheckpointsByIdRotateQr200JSONResponseBodySuccess defines parameters for PostAdminCheckpointsByIdRotateQr.
+type PostAdminCheckpointsByIdRotateQr200JSONResponseBodySuccess bool
+
 // GetAdminClientGroupsParams defines parameters for GetAdminClientGroups.
 type GetAdminClientGroupsParams struct {
 	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
@@ -11935,6 +12294,30 @@ type GetAdminPanics200JSONResponseBodySuccess bool
 
 // PostAdminPanicsByIdResolve200JSONResponseBodySuccess defines parameters for PostAdminPanicsByIdResolve.
 type PostAdminPanicsByIdResolve200JSONResponseBodySuccess bool
+
+// GetAdminPatrolSchedulesParams defines parameters for GetAdminPatrolSchedules.
+type GetAdminPatrolSchedulesParams struct {
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
+	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
+
+	// Limit Item per halaman (maks 100).
+	Limit       *LimitParam           `form:"limit,omitempty" json:"limit,omitempty"`
+	ProjectCode *string               `form:"project_code,omitempty" json:"project_code,omitempty"`
+	ZoneId      *int64                `form:"zone_id,omitempty" json:"zone_id,omitempty"`
+	PersonnelId *int64                `form:"personnel_id,omitempty" json:"personnel_id,omitempty"`
+	DateFrom    *openapi_types.Date   `form:"date_from,omitempty" json:"date_from,omitempty"`
+	DateTo      *openapi_types.Date   `form:"date_to,omitempty" json:"date_to,omitempty"`
+	Status      *PatrolScheduleStatus `form:"status,omitempty" json:"status,omitempty"`
+}
+
+// GetAdminPatrolSchedules200JSONResponseBodySuccess defines parameters for GetAdminPatrolSchedules.
+type GetAdminPatrolSchedules200JSONResponseBodySuccess bool
+
+// PostAdminPatrolSchedules201JSONResponseBodySuccess defines parameters for PostAdminPatrolSchedules.
+type PostAdminPatrolSchedules201JSONResponseBodySuccess bool
+
+// PatchAdminPatrolSchedulesById200JSONResponseBodySuccess defines parameters for PatchAdminPatrolSchedulesById.
+type PatchAdminPatrolSchedulesById200JSONResponseBodySuccess bool
 
 // GetAdminPermissionCategoriesParams defines parameters for GetAdminPermissionCategories.
 type GetAdminPermissionCategoriesParams struct {
@@ -12650,19 +13033,8 @@ type GetAdminZonesById200JSONResponseBodySuccess bool
 // PatchAdminZonesById200JSONResponseBodySuccess defines parameters for PatchAdminZonesById.
 type PatchAdminZonesById200JSONResponseBodySuccess bool
 
-// PutAdminZonesByIdChecklist200JSONResponseBodySuccess defines parameters for PutAdminZonesByIdChecklist.
-type PutAdminZonesByIdChecklist200JSONResponseBodySuccess bool
-
-// GetAdminZonesByIdQrParams defines parameters for GetAdminZonesByIdQr.
-type GetAdminZonesByIdQrParams struct {
-	Format *GetAdminZonesByIdQrParamsFormat `form:"format,omitempty" json:"format,omitempty"`
-}
-
-// GetAdminZonesByIdQrParamsFormat defines parameters for GetAdminZonesByIdQr.
-type GetAdminZonesByIdQrParamsFormat string
-
-// PostAdminZonesByIdRotateQr200JSONResponseBodySuccess defines parameters for PostAdminZonesByIdRotateQr.
-type PostAdminZonesByIdRotateQr200JSONResponseBodySuccess bool
+// PutAdminZonesByIdCheckpoints200JSONResponseBodySuccess defines parameters for PutAdminZonesByIdCheckpoints.
+type PutAdminZonesByIdCheckpoints200JSONResponseBodySuccess bool
 
 // GetAppLinksParams defines parameters for GetAppLinks.
 type GetAppLinksParams struct {
@@ -13503,6 +13875,27 @@ type PostPanics201JSONResponseBodySuccess bool
 // PostPanicsByIdFinish200JSONResponseBodySuccess defines parameters for PostPanicsByIdFinish.
 type PostPanicsByIdFinish200JSONResponseBodySuccess bool
 
+// GetPatrolSchedulesParams defines parameters for GetPatrolSchedules.
+type GetPatrolSchedulesParams struct {
+	DateFrom    *openapi_types.Date   `form:"date_from,omitempty" json:"date_from,omitempty"`
+	DateTo      *openapi_types.Date   `form:"date_to,omitempty" json:"date_to,omitempty"`
+	ZoneId      *int64                `form:"zone_id,omitempty" json:"zone_id,omitempty"`
+	PersonnelId *int64                `form:"personnel_id,omitempty" json:"personnel_id,omitempty"`
+	Status      *PatrolScheduleStatus `form:"status,omitempty" json:"status,omitempty"`
+
+	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
+	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
+
+	// Limit Item per halaman (maks 100).
+	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetPatrolSchedules200JSONResponseBodySuccess defines parameters for GetPatrolSchedules.
+type GetPatrolSchedules200JSONResponseBodySuccess bool
+
+// GetPatrolSchedulesById200JSONResponseBodySuccess defines parameters for GetPatrolSchedulesById.
+type GetPatrolSchedulesById200JSONResponseBodySuccess bool
+
 // GetPatrolPendingApprovalsParams defines parameters for GetPatrolPendingApprovals.
 type GetPatrolPendingApprovalsParams struct {
 	TeamCode *string `form:"team_code,omitempty" json:"team_code,omitempty"`
@@ -13524,6 +13917,12 @@ type GetPatrolsParams struct {
 	PersonnelId *int64                  `form:"personnel_id,omitempty" json:"personnel_id,omitempty"`
 	WorkDate    *openapi_types.Date     `form:"work_date,omitempty" json:"work_date,omitempty"`
 	Status      *GetPatrolsParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+
+	// ZoneId Hanya patroli yang dimulai dari jadwal di zona ini.
+	ZoneId *int64 `form:"zone_id,omitempty" json:"zone_id,omitempty"`
+
+	// ScheduleId Hanya patroli yang dimulai dari jadwal ini.
+	ScheduleId *openapi_types.UUID `form:"schedule_id,omitempty" json:"schedule_id,omitempty"`
 
 	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
@@ -14271,6 +14670,9 @@ type PostZonesByIdScan201JSONResponseBodySuccess bool
 type GetZonesByIdScannersParams struct {
 	TeamCode *string             `form:"team_code,omitempty" json:"team_code,omitempty"`
 	WorkDate *openapi_types.Date `form:"work_date,omitempty" json:"work_date,omitempty"`
+
+	// CheckpointId Hitung hanya scan checkpoint ini.
+	CheckpointId *openapi_types.UUID `form:"checkpoint_id,omitempty" json:"checkpoint_id,omitempty"`
 }
 
 // GetZonesByIdScanners200JSONResponseBodySuccess defines parameters for GetZonesByIdScanners.
@@ -14278,9 +14680,12 @@ type GetZonesByIdScanners200JSONResponseBodySuccess bool
 
 // GetZonesByIdScansParams defines parameters for GetZonesByIdScans.
 type GetZonesByIdScansParams struct {
-	PersonnelId *int64                         `form:"personnel_id,omitempty" json:"personnel_id,omitempty"`
-	WorkDate    *openapi_types.Date            `form:"work_date,omitempty" json:"work_date,omitempty"`
-	Status      *GetZonesByIdScansParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+	PersonnelId *int64 `form:"personnel_id,omitempty" json:"personnel_id,omitempty"`
+
+	// CheckpointId Hanya scan checkpoint ini.
+	CheckpointId *openapi_types.UUID            `form:"checkpoint_id,omitempty" json:"checkpoint_id,omitempty"`
+	WorkDate     *openapi_types.Date            `form:"work_date,omitempty" json:"work_date,omitempty"`
+	Status       *GetZonesByIdScansParamsStatus `form:"status,omitempty" json:"status,omitempty"`
 
 	// Page Nomor halaman (1-indexed), paling besar 1000000 (422 page).
 	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
@@ -14348,6 +14753,15 @@ type PatchAdminCctvsByIdJSONRequestBody = CctvInput
 // PatchAdminCctvsByIdAccessJSONRequestBody defines body for PatchAdminCctvsByIdAccess for application/json ContentType.
 type PatchAdminCctvsByIdAccessJSONRequestBody = CctvAccessInput
 
+// PostAdminCheckpointsJSONRequestBody defines body for PostAdminCheckpoints for application/json ContentType.
+type PostAdminCheckpointsJSONRequestBody = PatrolCheckpointInput
+
+// PatchAdminCheckpointsByIdJSONRequestBody defines body for PatchAdminCheckpointsById for application/json ContentType.
+type PatchAdminCheckpointsByIdJSONRequestBody = PatrolCheckpointUpdate
+
+// PutAdminCheckpointsByIdActionsJSONRequestBody defines body for PutAdminCheckpointsByIdActions for application/json ContentType.
+type PutAdminCheckpointsByIdActionsJSONRequestBody = PatrolCheckpointActionsReplace
+
 // PostAdminClientGroupsJSONRequestBody defines body for PostAdminClientGroups for application/json ContentType.
 type PostAdminClientGroupsJSONRequestBody = CodedMasterInput
 
@@ -14398,6 +14812,12 @@ type PatchAdminPanicTypesByIdJSONRequestBody = PanicTypePatch
 
 // PostAdminPanicsByIdResolveJSONRequestBody defines body for PostAdminPanicsByIdResolve for application/json ContentType.
 type PostAdminPanicsByIdResolveJSONRequestBody = PanicResolve
+
+// PostAdminPatrolSchedulesJSONRequestBody defines body for PostAdminPatrolSchedules for application/json ContentType.
+type PostAdminPatrolSchedulesJSONRequestBody = PatrolScheduleInput
+
+// PatchAdminPatrolSchedulesByIdJSONRequestBody defines body for PatchAdminPatrolSchedulesById for application/json ContentType.
+type PatchAdminPatrolSchedulesByIdJSONRequestBody = PatrolScheduleUpdate
 
 // PostAdminPermissionCategoriesJSONRequestBody defines body for PostAdminPermissionCategories for application/json ContentType.
 type PostAdminPermissionCategoriesJSONRequestBody = LeaveCategoryInput
@@ -14525,8 +14945,8 @@ type PostAdminZonesJSONRequestBody = PatrolZoneInput
 // PatchAdminZonesByIdJSONRequestBody defines body for PatchAdminZonesById for application/json ContentType.
 type PatchAdminZonesByIdJSONRequestBody = PatrolZoneUpdate
 
-// PutAdminZonesByIdChecklistJSONRequestBody defines body for PutAdminZonesByIdChecklist for application/json ContentType.
-type PutAdminZonesByIdChecklistJSONRequestBody = PatrolChecklistReplace
+// PutAdminZonesByIdCheckpointsJSONRequestBody defines body for PutAdminZonesByIdCheckpoints for application/json ContentType.
+type PutAdminZonesByIdCheckpointsJSONRequestBody = PatrolZoneCheckpointsReplace
 
 // PostAssetReportsJSONRequestBody defines body for PostAssetReports for application/json ContentType.
 type PostAssetReportsJSONRequestBody = AssetReportCreate
@@ -14707,3 +15127,191 @@ type PostZonesByIdCheckOutJSONRequestBody = ZoneCheckInInput
 
 // PostZonesByIdScanJSONRequestBody defines body for PostZonesByIdScan for application/json ContentType.
 type PostZonesByIdScanJSONRequestBody = PatrolScanCreate
+
+// Getter for additional properties for DeviceCondition. Returns the specified
+// element and whether it was found
+func (a DeviceCondition) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for DeviceCondition
+func (a *DeviceCondition) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for DeviceCondition to handle AdditionalProperties
+func (a *DeviceCondition) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["app_version"]; found {
+		err = json.Unmarshal(raw, &a.AppVersion)
+		if err != nil {
+			return fmt.Errorf("error reading 'app_version': %w", err)
+		}
+		delete(object, "app_version")
+	}
+
+	if raw, found := object["battery_level"]; found {
+		err = json.Unmarshal(raw, &a.BatteryLevel)
+		if err != nil {
+			return fmt.Errorf("error reading 'battery_level': %w", err)
+		}
+		delete(object, "battery_level")
+	}
+
+	if raw, found := object["device_model"]; found {
+		err = json.Unmarshal(raw, &a.DeviceModel)
+		if err != nil {
+			return fmt.Errorf("error reading 'device_model': %w", err)
+		}
+		delete(object, "device_model")
+	}
+
+	if raw, found := object["gps_enabled"]; found {
+		err = json.Unmarshal(raw, &a.GpsEnabled)
+		if err != nil {
+			return fmt.Errorf("error reading 'gps_enabled': %w", err)
+		}
+		delete(object, "gps_enabled")
+	}
+
+	if raw, found := object["is_charging"]; found {
+		err = json.Unmarshal(raw, &a.IsCharging)
+		if err != nil {
+			return fmt.Errorf("error reading 'is_charging': %w", err)
+		}
+		delete(object, "is_charging")
+	}
+
+	if raw, found := object["mock_location"]; found {
+		err = json.Unmarshal(raw, &a.MockLocation)
+		if err != nil {
+			return fmt.Errorf("error reading 'mock_location': %w", err)
+		}
+		delete(object, "mock_location")
+	}
+
+	if raw, found := object["network_type"]; found {
+		err = json.Unmarshal(raw, &a.NetworkType)
+		if err != nil {
+			return fmt.Errorf("error reading 'network_type': %w", err)
+		}
+		delete(object, "network_type")
+	}
+
+	if raw, found := object["os"]; found {
+		err = json.Unmarshal(raw, &a.Os)
+		if err != nil {
+			return fmt.Errorf("error reading 'os': %w", err)
+		}
+		delete(object, "os")
+	}
+
+	if raw, found := object["os_version"]; found {
+		err = json.Unmarshal(raw, &a.OsVersion)
+		if err != nil {
+			return fmt.Errorf("error reading 'os_version': %w", err)
+		}
+		delete(object, "os_version")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for DeviceCondition to handle AdditionalProperties
+func (a DeviceCondition) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.AppVersion != nil {
+		object["app_version"], err = json.Marshal(a.AppVersion)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'app_version': %w", err)
+		}
+	}
+
+	if a.BatteryLevel != nil {
+		object["battery_level"], err = json.Marshal(a.BatteryLevel)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'battery_level': %w", err)
+		}
+	}
+
+	if a.DeviceModel != nil {
+		object["device_model"], err = json.Marshal(a.DeviceModel)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'device_model': %w", err)
+		}
+	}
+
+	if a.GpsEnabled != nil {
+		object["gps_enabled"], err = json.Marshal(a.GpsEnabled)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'gps_enabled': %w", err)
+		}
+	}
+
+	if a.IsCharging != nil {
+		object["is_charging"], err = json.Marshal(a.IsCharging)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'is_charging': %w", err)
+		}
+	}
+
+	if a.MockLocation != nil {
+		object["mock_location"], err = json.Marshal(a.MockLocation)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'mock_location': %w", err)
+		}
+	}
+
+	if a.NetworkType != nil {
+		object["network_type"], err = json.Marshal(a.NetworkType)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'network_type': %w", err)
+		}
+	}
+
+	if a.Os != nil {
+		object["os"], err = json.Marshal(a.Os)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'os': %w", err)
+		}
+	}
+
+	if a.OsVersion != nil {
+		object["os_version"], err = json.Marshal(a.OsVersion)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'os_version': %w", err)
+		}
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}

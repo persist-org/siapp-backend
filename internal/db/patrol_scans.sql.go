@@ -7,7 +7,6 @@ package db
 
 import (
 	"context"
-	"encoding/json"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -15,7 +14,7 @@ import (
 const closeZoneCheckin = `-- name: CloseZoneCheckin :one
 UPDATE zone_checkins SET check_out_at = $1, check_out_lat = $2, check_out_lng = $3, updated_at = $1
 WHERE zone_id = $4 AND personnel_id = $5 AND check_out_at IS NULL
-RETURNING id, organization_id, zone_id, personnel_id, team_code, shift_id, check_in_at, check_in_lat, check_in_lng, check_out_at, check_out_lat, check_out_lng, created_at, updated_at
+RETURNING id, organization_id, zone_id, personnel_id, team_code, shift_id, check_in_at, check_in_lat, check_in_lng, check_out_at, check_out_lat, check_out_lng, created_at, updated_at, checkpoint_id
 `
 
 type CloseZoneCheckinParams struct {
@@ -51,6 +50,7 @@ func (q *Queries) CloseZoneCheckin(ctx context.Context, arg CloseZoneCheckinPara
 		&i.CheckOutLng,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CheckpointID,
 	)
 	return i, err
 }
@@ -107,9 +107,11 @@ func (q *Queries) CountZoneTracking(ctx context.Context, arg CountZoneTrackingPa
 }
 
 const getPatrolScanByLocalID = `-- name: GetPatrolScanByLocalID :one
-SELECT id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, answers, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at FROM patrol_scans WHERE local_id = $1
+
+SELECT id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at, checkpoint_id FROM patrol_scans WHERE local_id = $1
 `
 
+// Scans and zone check-ins (Phase 10.2). Everything runs inside database.WithTenant.
 func (q *Queries) GetPatrolScanByLocalID(ctx context.Context, localID pgtype.UUID) (PatrolScan, error) {
 	row := q.db.QueryRow(ctx, getPatrolScanByLocalID, localID)
 	var i PatrolScan
@@ -131,7 +133,6 @@ func (q *Queries) GetPatrolScanByLocalID(ctx context.Context, localID pgtype.UUI
 		&i.DistanceMeters,
 		&i.Subject,
 		&i.Notes,
-		&i.Answers,
 		&i.Status,
 		&i.DecidedByID,
 		&i.DecidedAt,
@@ -140,6 +141,7 @@ func (q *Queries) GetPatrolScanByLocalID(ctx context.Context, localID pgtype.UUI
 		&i.SubmittedOffline,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CheckpointID,
 	)
 	return i, err
 }
@@ -147,24 +149,26 @@ func (q *Queries) GetPatrolScanByLocalID(ctx context.Context, localID pgtype.UUI
 const hasScanBetween = `-- name: HasScanBetween :one
 SELECT EXISTS (
     SELECT 1 FROM patrol_scans
-    WHERE personnel_id = $1 AND zone_id = $2 AND status <> 'DECLINED'
-      AND occurred_at > $3 AND occurred_at < $4)
+    WHERE personnel_id = $1 AND zone_id = $2 AND checkpoint_id = $3 AND status <> 'DECLINED'
+      AND occurred_at > $4 AND occurred_at < $5)
 `
 
 type HasScanBetweenParams struct {
-	PersonnelID int64
-	ZoneID      int64
-	After       pgtype.Timestamptz
-	Before      pgtype.Timestamptz
+	PersonnelID  int64
+	ZoneID       int64
+	CheckpointID pgtype.UUID
+	After        pgtype.Timestamptz
+	Before       pgtype.Timestamptz
 }
 
-// A scan of this zone by this person between two instants, a declined one not counting: the
-// patrol interval is about how often a guard visits, and a visit the DANRU turned down did not
-// happen, so the guard may do it again.
+// A scan of this checkpoint in this zone by this person between two instants, a declined one not
+// counting: the patrol interval is about how often a guard visits a checkpoint, and a visit the DANRU turned
+// down did not happen, so the guard may do it again.
 func (q *Queries) HasScanBetween(ctx context.Context, arg HasScanBetweenParams) (bool, error) {
 	row := q.db.QueryRow(ctx, hasScanBetween,
 		arg.PersonnelID,
 		arg.ZoneID,
+		arg.CheckpointID,
 		arg.After,
 		arg.Before,
 	)
@@ -176,11 +180,11 @@ func (q *Queries) HasScanBetween(ctx context.Context, arg HasScanBetweenParams) 
 const insertPatrolScan = `-- name: InsertPatrolScan :one
 INSERT INTO patrol_scans (local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at,
                           received_at, work_date, latitude, longitude, accuracy_meters, distance_meters,
-                          subject, notes, answers, patrol_id, submitted_offline, created_at, updated_at)
+                          subject, notes, patrol_id, checkpoint_id, submitted_offline, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
         $9, $10, $11, $12, $13, $14,
         $15, $16, $17, $18, $8, $8)
-RETURNING id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, answers, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at
+RETURNING id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at, checkpoint_id
 `
 
 type InsertPatrolScanParams struct {
@@ -199,8 +203,8 @@ type InsertPatrolScanParams struct {
 	DistanceMeters   pgtype.Int4
 	Subject          string
 	Notes            pgtype.Text
-	Answers          json.RawMessage
 	PatrolID         pgtype.Int8
+	CheckpointID     pgtype.UUID
 	SubmittedOffline bool
 }
 
@@ -221,8 +225,8 @@ func (q *Queries) InsertPatrolScan(ctx context.Context, arg InsertPatrolScanPara
 		arg.DistanceMeters,
 		arg.Subject,
 		arg.Notes,
-		arg.Answers,
 		arg.PatrolID,
+		arg.CheckpointID,
 		arg.SubmittedOffline,
 	)
 	var i PatrolScan
@@ -244,7 +248,6 @@ func (q *Queries) InsertPatrolScan(ctx context.Context, arg InsertPatrolScanPara
 		&i.DistanceMeters,
 		&i.Subject,
 		&i.Notes,
-		&i.Answers,
 		&i.Status,
 		&i.DecidedByID,
 		&i.DecidedAt,
@@ -253,30 +256,33 @@ func (q *Queries) InsertPatrolScan(ctx context.Context, arg InsertPatrolScanPara
 		&i.SubmittedOffline,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CheckpointID,
 	)
 	return i, err
 }
 
 const insertZoneCheckin = `-- name: InsertZoneCheckin :one
-INSERT INTO zone_checkins (zone_id, personnel_id, team_code, shift_id, check_in_at, check_in_lat, check_in_lng,
+INSERT INTO zone_checkins (zone_id, checkpoint_id, personnel_id, team_code, shift_id, check_in_at, check_in_lat, check_in_lng,
                            created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $5, $5)
-RETURNING id, organization_id, zone_id, personnel_id, team_code, shift_id, check_in_at, check_in_lat, check_in_lng, check_out_at, check_out_lat, check_out_lng, created_at, updated_at
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $6, $6)
+RETURNING id, organization_id, zone_id, personnel_id, team_code, shift_id, check_in_at, check_in_lat, check_in_lng, check_out_at, check_out_lat, check_out_lng, created_at, updated_at, checkpoint_id
 `
 
 type InsertZoneCheckinParams struct {
-	ZoneID      int64
-	PersonnelID int64
-	TeamCode    string
-	ShiftID     pgtype.Int8
-	At          pgtype.Timestamptz
-	Latitude    float64
-	Longitude   float64
+	ZoneID       int64
+	CheckpointID pgtype.UUID
+	PersonnelID  int64
+	TeamCode     string
+	ShiftID      pgtype.Int8
+	At           pgtype.Timestamptz
+	Latitude     float64
+	Longitude    float64
 }
 
 func (q *Queries) InsertZoneCheckin(ctx context.Context, arg InsertZoneCheckinParams) (ZoneCheckin, error) {
 	row := q.db.QueryRow(ctx, insertZoneCheckin,
 		arg.ZoneID,
+		arg.CheckpointID,
 		arg.PersonnelID,
 		arg.TeamCode,
 		arg.ShiftID,
@@ -300,58 +306,13 @@ func (q *Queries) InsertZoneCheckin(ctx context.Context, arg InsertZoneCheckinPa
 		&i.CheckOutLng,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CheckpointID,
 	)
 	return i, err
 }
 
-const listAllChecklistItems = `-- name: ListAllChecklistItems :many
-
-SELECT id, organization_id, zone_id, sort_order, label, help_text, answer_type, options, required, photo_mode, photo_max, note_mode, attach_when, active, deactivated_at, created_at, updated_at FROM patrol_checklist_items WHERE zone_id = $1 ORDER BY sort_order, id
-`
-
-// Scans and zone check-ins (Phase 10.2). Everything runs inside database.WithTenant.
-// Every item of a zone, the deactivated ones too: an offline scan is judged against the checklist
-// as it was when the guard scanned.
-func (q *Queries) ListAllChecklistItems(ctx context.Context, zoneID int64) ([]PatrolChecklistItem, error) {
-	rows, err := q.db.Query(ctx, listAllChecklistItems, zoneID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []PatrolChecklistItem{}
-	for rows.Next() {
-		var i PatrolChecklistItem
-		if err := rows.Scan(
-			&i.ID,
-			&i.OrganizationID,
-			&i.ZoneID,
-			&i.SortOrder,
-			&i.Label,
-			&i.HelpText,
-			&i.AnswerType,
-			&i.Options,
-			&i.Required,
-			&i.PhotoMode,
-			&i.PhotoMax,
-			&i.NoteMode,
-			&i.AttachWhen,
-			&i.Active,
-			&i.DeactivatedAt,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listZoneLive = `-- name: ListZoneLive :many
-SELECT c.id, c.organization_id, c.zone_id, c.personnel_id, c.team_code, c.shift_id, c.check_in_at, c.check_in_lat, c.check_in_lng, c.check_out_at, c.check_out_lat, c.check_out_lng, c.created_at, c.updated_at, p.full_name FROM zone_checkins c
+SELECT c.id, c.organization_id, c.zone_id, c.personnel_id, c.team_code, c.shift_id, c.check_in_at, c.check_in_lat, c.check_in_lng, c.check_out_at, c.check_out_lat, c.check_out_lng, c.created_at, c.updated_at, c.checkpoint_id, p.full_name FROM zone_checkins c
 JOIN personnels p ON p.id = c.personnel_id
 WHERE c.zone_id = $1 AND c.check_out_at IS NULL
   AND ($2::text[] IS NULL OR c.team_code = ANY($2::text[]))
@@ -380,6 +341,7 @@ type ListZoneLiveRow struct {
 	CheckOutLng    *float64
 	CreatedAt      pgtype.Timestamptz
 	UpdatedAt      pgtype.Timestamptz
+	CheckpointID   pgtype.UUID
 	FullName       string
 }
 
@@ -409,6 +371,7 @@ func (q *Queries) ListZoneLive(ctx context.Context, arg ListZoneLiveParams) ([]L
 			&i.CheckOutLng,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.CheckpointID,
 			&i.FullName,
 		); err != nil {
 			return nil, err
@@ -422,7 +385,7 @@ func (q *Queries) ListZoneLive(ctx context.Context, arg ListZoneLiveParams) ([]L
 }
 
 const listZoneTracking = `-- name: ListZoneTracking :many
-SELECT c.id, c.organization_id, c.zone_id, c.personnel_id, c.team_code, c.shift_id, c.check_in_at, c.check_in_lat, c.check_in_lng, c.check_out_at, c.check_out_lat, c.check_out_lng, c.created_at, c.updated_at, p.full_name FROM zone_checkins c
+SELECT c.id, c.organization_id, c.zone_id, c.personnel_id, c.team_code, c.shift_id, c.check_in_at, c.check_in_lat, c.check_in_lng, c.check_out_at, c.check_out_lat, c.check_out_lng, c.created_at, c.updated_at, c.checkpoint_id, p.full_name FROM zone_checkins c
 JOIN personnels p ON p.id = c.personnel_id
 WHERE c.zone_id = $1 AND c.check_in_at >= $2 AND c.check_in_at < $3
   AND ($4::text[] IS NULL OR c.team_code = ANY($4::text[]))
@@ -456,6 +419,7 @@ type ListZoneTrackingRow struct {
 	CheckOutLng    *float64
 	CreatedAt      pgtype.Timestamptz
 	UpdatedAt      pgtype.Timestamptz
+	CheckpointID   pgtype.UUID
 	FullName       string
 }
 
@@ -491,6 +455,7 @@ func (q *Queries) ListZoneTracking(ctx context.Context, arg ListZoneTrackingPara
 			&i.CheckOutLng,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.CheckpointID,
 			&i.FullName,
 		); err != nil {
 			return nil, err

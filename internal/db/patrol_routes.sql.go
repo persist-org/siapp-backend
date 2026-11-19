@@ -29,6 +29,8 @@ WHERE (r.personnel_id = $1 OR (r.work_date, r.team_code) IN (SELECT unnest($2::d
   AND ($6::bigint IS NULL OR r.personnel_id = $6)
   AND ($7::date IS NULL OR r.work_date = $7)
   AND ($8::patrol_route_status IS NULL OR r.status = $8)
+  AND ($9::bigint IS NULL OR r.zone_id = $9)
+  AND ($10::uuid IS NULL OR r.schedule_id = $10)
 `
 
 type CountPatrolRoutesParams struct {
@@ -40,6 +42,8 @@ type CountPatrolRoutesParams struct {
 	PersonnelID pgtype.Int8
 	WorkDate    pgtype.Date
 	Status      NullPatrolRouteStatus
+	ZoneID      pgtype.Int8
+	ScheduleID  pgtype.UUID
 }
 
 func (q *Queries) CountPatrolRoutes(ctx context.Context, arg CountPatrolRoutesParams) (int64, error) {
@@ -52,6 +56,8 @@ func (q *Queries) CountPatrolRoutes(ctx context.Context, arg CountPatrolRoutesPa
 		arg.PersonnelID,
 		arg.WorkDate,
 		arg.Status,
+		arg.ZoneID,
+		arg.ScheduleID,
 	)
 	var count int64
 	err := row.Scan(&count)
@@ -86,7 +92,7 @@ UPDATE patrol_routes
 SET status = $1, ended_at = $2, path = $3, distance_meters = $4,
     point_count = $5, scan_count = $6, updated_at = $7
 WHERE id = $8 AND status = 'ACTIVE'
-RETURNING id, organization_id, local_id, personnel_id, team_code, project_code, status, started_at, ended_at, work_date, path, distance_meters, point_count, scan_count, submitted_offline, last_point_at, created_at, updated_at
+RETURNING id, organization_id, local_id, personnel_id, team_code, project_code, status, started_at, ended_at, work_date, path, distance_meters, point_count, scan_count, submitted_offline, last_point_at, created_at, updated_at, zone_id, schedule_id
 `
 
 type EndPatrolRouteParams struct {
@@ -132,6 +138,8 @@ func (q *Queries) EndPatrolRoute(ctx context.Context, arg EndPatrolRouteParams) 
 		&i.LastPointAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ZoneID,
+		&i.ScheduleID,
 	)
 	return i, err
 }
@@ -161,7 +169,7 @@ func (q *Queries) FindRouteForScan(ctx context.Context, arg FindRouteForScanPara
 }
 
 const getActivePatrolRoute = `-- name: GetActivePatrolRoute :one
-SELECT id, organization_id, local_id, personnel_id, team_code, project_code, status, started_at, ended_at, work_date, path, distance_meters, point_count, scan_count, submitted_offline, last_point_at, created_at, updated_at FROM patrol_routes WHERE personnel_id = $1 AND status = 'ACTIVE'
+SELECT id, organization_id, local_id, personnel_id, team_code, project_code, status, started_at, ended_at, work_date, path, distance_meters, point_count, scan_count, submitted_offline, last_point_at, created_at, updated_at, zone_id, schedule_id FROM patrol_routes WHERE personnel_id = $1 AND status = 'ACTIVE'
 `
 
 func (q *Queries) GetActivePatrolRoute(ctx context.Context, personnelID int64) (PatrolRoute, error) {
@@ -186,12 +194,32 @@ func (q *Queries) GetActivePatrolRoute(ctx context.Context, personnelID int64) (
 		&i.LastPointAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ZoneID,
+		&i.ScheduleID,
 	)
 	return i, err
 }
 
+const getPatrolOfSchedule = `-- name: GetPatrolOfSchedule :one
+SELECT id, local_id, status FROM patrol_routes WHERE schedule_id = $1
+`
+
+type GetPatrolOfScheduleRow struct {
+	ID      int64
+	LocalID pgtype.UUID
+	Status  PatrolRouteStatus
+}
+
+// The patrol started from a schedule, if any (at most one: patrol_routes_schedule_uq).
+func (q *Queries) GetPatrolOfSchedule(ctx context.Context, scheduleID pgtype.UUID) (GetPatrolOfScheduleRow, error) {
+	row := q.db.QueryRow(ctx, getPatrolOfSchedule, scheduleID)
+	var i GetPatrolOfScheduleRow
+	err := row.Scan(&i.ID, &i.LocalID, &i.Status)
+	return i, err
+}
+
 const getPatrolRoute = `-- name: GetPatrolRoute :one
-SELECT id, organization_id, local_id, personnel_id, team_code, project_code, status, started_at, ended_at, work_date, path, distance_meters, point_count, scan_count, submitted_offline, last_point_at, created_at, updated_at FROM patrol_routes WHERE id = $1
+SELECT id, organization_id, local_id, personnel_id, team_code, project_code, status, started_at, ended_at, work_date, path, distance_meters, point_count, scan_count, submitted_offline, last_point_at, created_at, updated_at, zone_id, schedule_id FROM patrol_routes WHERE id = $1
 `
 
 func (q *Queries) GetPatrolRoute(ctx context.Context, id int64) (PatrolRoute, error) {
@@ -216,13 +244,15 @@ func (q *Queries) GetPatrolRoute(ctx context.Context, id int64) (PatrolRoute, er
 		&i.LastPointAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ZoneID,
+		&i.ScheduleID,
 	)
 	return i, err
 }
 
 const getPatrolRouteByLocalID = `-- name: GetPatrolRouteByLocalID :one
 
-SELECT id, organization_id, local_id, personnel_id, team_code, project_code, status, started_at, ended_at, work_date, path, distance_meters, point_count, scan_count, submitted_offline, last_point_at, created_at, updated_at FROM patrol_routes WHERE local_id = $1
+SELECT id, organization_id, local_id, personnel_id, team_code, project_code, status, started_at, ended_at, work_date, path, distance_meters, point_count, scan_count, submitted_offline, last_point_at, created_at, updated_at, zone_id, schedule_id FROM patrol_routes WHERE local_id = $1
 `
 
 // The patrol route (Phase 10.4). Everything runs inside database.WithTenant.
@@ -248,16 +278,43 @@ func (q *Queries) GetPatrolRouteByLocalID(ctx context.Context, localID pgtype.UU
 		&i.LastPointAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ZoneID,
+		&i.ScheduleID,
 	)
 	return i, err
 }
 
+const insertPatrolMetadata = `-- name: InsertPatrolMetadata :exec
+INSERT INTO patrol_route_metadata (patrol_id, kind, device_condition, recorded_at)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (organization_id, patrol_id, kind) DO NOTHING
+`
+
+type InsertPatrolMetadataParams struct {
+	PatrolID        int64
+	Kind            PatrolMetadataKind
+	DeviceCondition json.RawMessage
+	RecordedAt      pgtype.Timestamptz
+}
+
+// Phase 10.12. The phone's condition when a patrol started or ended. The first row of a kind stays: a replayed
+// end does not change what was recorded.
+func (q *Queries) InsertPatrolMetadata(ctx context.Context, arg InsertPatrolMetadataParams) error {
+	_, err := q.db.Exec(ctx, insertPatrolMetadata,
+		arg.PatrolID,
+		arg.Kind,
+		arg.DeviceCondition,
+		arg.RecordedAt,
+	)
+	return err
+}
+
 const insertPatrolRoute = `-- name: InsertPatrolRoute :one
 INSERT INTO patrol_routes (local_id, personnel_id, team_code, project_code, started_at, work_date, submitted_offline,
-                           point_count, last_point_at, created_at, updated_at)
+                           point_count, last_point_at, zone_id, schedule_id, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7,
-        1, $5, $8, $8)
-RETURNING id, organization_id, local_id, personnel_id, team_code, project_code, status, started_at, ended_at, work_date, path, distance_meters, point_count, scan_count, submitted_offline, last_point_at, created_at, updated_at
+        1, $5, $8, $9, $10, $10)
+RETURNING id, organization_id, local_id, personnel_id, team_code, project_code, status, started_at, ended_at, work_date, path, distance_meters, point_count, scan_count, submitted_offline, last_point_at, created_at, updated_at, zone_id, schedule_id
 `
 
 type InsertPatrolRouteParams struct {
@@ -268,6 +325,8 @@ type InsertPatrolRouteParams struct {
 	StartedAt        pgtype.Timestamptz
 	WorkDate         pgtype.Date
 	SubmittedOffline bool
+	ZoneID           pgtype.Int8
+	ScheduleID       pgtype.UUID
 	Now              pgtype.Timestamptz
 }
 
@@ -280,6 +339,8 @@ func (q *Queries) InsertPatrolRoute(ctx context.Context, arg InsertPatrolRoutePa
 		arg.StartedAt,
 		arg.WorkDate,
 		arg.SubmittedOffline,
+		arg.ZoneID,
+		arg.ScheduleID,
 		arg.Now,
 	)
 	var i PatrolRoute
@@ -302,6 +363,8 @@ func (q *Queries) InsertPatrolRoute(ctx context.Context, arg InsertPatrolRoutePa
 		&i.LastPointAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ZoneID,
+		&i.ScheduleID,
 	)
 	return i, err
 }
@@ -373,6 +436,42 @@ func (q *Queries) ListMembershipSpans(ctx context.Context, personnelID int64) ([
 	return items, nil
 }
 
+const listPatrolMetadata = `-- name: ListPatrolMetadata :many
+SELECT patrol_id, kind, device_condition, recorded_at FROM patrol_route_metadata WHERE patrol_id = ANY($1::bigint[])
+`
+
+type ListPatrolMetadataRow struct {
+	PatrolID        int64
+	Kind            PatrolMetadataKind
+	DeviceCondition json.RawMessage
+	RecordedAt      pgtype.Timestamptz
+}
+
+func (q *Queries) ListPatrolMetadata(ctx context.Context, patrolIds []int64) ([]ListPatrolMetadataRow, error) {
+	rows, err := q.db.Query(ctx, listPatrolMetadata, patrolIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPatrolMetadataRow{}
+	for rows.Next() {
+		var i ListPatrolMetadataRow
+		if err := rows.Scan(
+			&i.PatrolID,
+			&i.Kind,
+			&i.DeviceCondition,
+			&i.RecordedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPatrolRoutes = `-- name: ListPatrolRoutes :many
 SELECT r.id, r.organization_id, r.local_id, r.personnel_id, r.team_code, r.project_code, r.status, r.started_at,
        r.ended_at, r.work_date, r.distance_meters, r.point_count, r.scan_count, r.submitted_offline,
@@ -385,8 +484,10 @@ WHERE (r.personnel_id = $1 OR (r.work_date, r.team_code) IN (SELECT unnest($2::d
   AND ($6::bigint IS NULL OR r.personnel_id = $6)
   AND ($7::date IS NULL OR r.work_date = $7)
   AND ($8::patrol_route_status IS NULL OR r.status = $8)
+  AND ($9::bigint IS NULL OR r.zone_id = $9)
+  AND ($10::uuid IS NULL OR r.schedule_id = $10)
 ORDER BY r.started_at DESC, r.id DESC
-LIMIT $10 OFFSET $9
+LIMIT $12 OFFSET $11
 `
 
 type ListPatrolRoutesParams struct {
@@ -398,6 +499,8 @@ type ListPatrolRoutesParams struct {
 	PersonnelID pgtype.Int8
 	WorkDate    pgtype.Date
 	Status      NullPatrolRouteStatus
+	ZoneID      pgtype.Int8
+	ScheduleID  pgtype.UUID
 	PageOffset  int32
 	PageLimit   int32
 }
@@ -436,6 +539,8 @@ func (q *Queries) ListPatrolRoutes(ctx context.Context, arg ListPatrolRoutesPara
 		arg.PersonnelID,
 		arg.WorkDate,
 		arg.Status,
+		arg.ZoneID,
+		arg.ScheduleID,
 		arg.PageOffset,
 		arg.PageLimit,
 	)
@@ -487,6 +592,8 @@ WHERE r.personnel_id <> $1
   AND ($4::bigint IS NULL OR r.personnel_id = $4)
   AND ($5::date IS NULL OR r.work_date = $5)
   AND ($6::patrol_route_status IS NULL OR r.status = $6)
+  AND ($7::bigint IS NULL OR r.zone_id = $7)
+  AND ($8::uuid IS NULL OR r.schedule_id = $8)
 `
 
 type ListRouteKeysParams struct {
@@ -496,6 +603,8 @@ type ListRouteKeysParams struct {
 	PersonnelID pgtype.Int8
 	WorkDate    pgtype.Date
 	Status      NullPatrolRouteStatus
+	ZoneID      pgtype.Int8
+	ScheduleID  pgtype.UUID
 }
 
 type ListRouteKeysRow struct {
@@ -515,6 +624,8 @@ func (q *Queries) ListRouteKeys(ctx context.Context, arg ListRouteKeysParams) ([
 		arg.PersonnelID,
 		arg.WorkDate,
 		arg.Status,
+		arg.ZoneID,
+		arg.ScheduleID,
 	)
 	if err != nil {
 		return nil, err
@@ -574,22 +685,26 @@ func (q *Queries) ListRoutePoints(ctx context.Context, patrolID int64) ([]ListRo
 }
 
 const listRouteScans = `-- name: ListRouteScans :many
-SELECT s.id, s.zone_id, z.name AS zone_name, s.occurred_at, s.latitude, s.longitude, s.status, s.subject
+SELECT s.id, s.zone_id, z.name AS zone_name, s.checkpoint_id, c.name AS checkpoint_name, s.occurred_at, s.latitude, s.longitude,
+       s.status, s.subject
 FROM patrol_scans s
 JOIN patrol_zones z ON z.id = s.zone_id
+JOIN patrol_checkpoints c ON c.id = s.checkpoint_id
 WHERE s.patrol_id = $1
 ORDER BY s.occurred_at, s.id
 `
 
 type ListRouteScansRow struct {
-	ID         int64
-	ZoneID     int64
-	ZoneName   string
-	OccurredAt pgtype.Timestamptz
-	Latitude   float64
-	Longitude  float64
-	Status     PatrolScanStatus
-	Subject    string
+	ID             int64
+	ZoneID         int64
+	ZoneName       string
+	CheckpointID   pgtype.UUID
+	CheckpointName string
+	OccurredAt     pgtype.Timestamptz
+	Latitude       float64
+	Longitude      float64
+	Status         PatrolScanStatus
+	Subject        string
 }
 
 // The scans of a patrol, in the order they were made, for the pins on the line.
@@ -606,11 +721,61 @@ func (q *Queries) ListRouteScans(ctx context.Context, patrolID pgtype.Int8) ([]L
 			&i.ID,
 			&i.ZoneID,
 			&i.ZoneName,
+			&i.CheckpointID,
+			&i.CheckpointName,
 			&i.OccurredAt,
 			&i.Latitude,
 			&i.Longitude,
 			&i.Status,
 			&i.Subject,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRouteSchedules = `-- name: ListRouteSchedules :many
+SELECT r.id AS patrol_id, z.id AS zone_id, z.name AS zone_name, z.type AS zone_type,
+       sc.id AS schedule_id, sc.starts_at AS schedule_starts_at, sc.ends_at AS schedule_ends_at
+FROM patrol_routes r
+JOIN patrol_zones z ON z.organization_id = r.organization_id AND z.id = r.zone_id
+JOIN patrol_schedules sc ON sc.organization_id = r.organization_id AND sc.id = r.schedule_id
+WHERE r.id = ANY($1::bigint[])
+`
+
+type ListRouteSchedulesRow struct {
+	PatrolID         int64
+	ZoneID           int64
+	ZoneName         string
+	ZoneType         PatrolZoneType
+	ScheduleID       pgtype.UUID
+	ScheduleStartsAt pgtype.Timestamptz
+	ScheduleEndsAt   pgtype.Timestamptz
+}
+
+// The zone and the schedule of the patrols that were started from a schedule, for a page of patrols in one query.
+func (q *Queries) ListRouteSchedules(ctx context.Context, ids []int64) ([]ListRouteSchedulesRow, error) {
+	rows, err := q.db.Query(ctx, listRouteSchedules, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRouteSchedulesRow{}
+	for rows.Next() {
+		var i ListRouteSchedulesRow
+		if err := rows.Scan(
+			&i.PatrolID,
+			&i.ZoneID,
+			&i.ZoneName,
+			&i.ZoneType,
+			&i.ScheduleID,
+			&i.ScheduleStartsAt,
+			&i.ScheduleEndsAt,
 		); err != nil {
 			return nil, err
 		}

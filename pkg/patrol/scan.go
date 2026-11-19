@@ -23,23 +23,31 @@ import (
 	"siapp/pkg/platform/timeutil"
 )
 
-// checkScanInterval refuses a second scan of the zone by the person too close to another one, on
-// either side of its own moment: an offline scan can arrive after a later one.
-//
-// ⚠ The patrol interval (DL-48) is project.patrol_interval_minutes. Even a project with none refuses
-// a scan within scanMinGap of another: a double tap, or a retry with a new local_id, must not make two
-// scans of one visit. The lock makes two scans that arrive together take turns, so both cannot pass
-// the check before either is stored.
-func (s *Service) checkScanInterval(ctx context.Context, q *db.Queries, p auth.Principal, zoneID int64, project db.Project, at time.Time) error {
+// lockScanning makes one person's scans of one zone take turns. The order rule and the patrol interval both
+// read what the person has scanned in the zone and then write a scan, so two scans that arrive together
+// must not both read before either has written: both could pass a check the second should have failed.
+func lockScanning(ctx context.Context, q *db.Queries, p auth.Principal, zoneID int64) error {
 	if err := q.LockPatrolKey(ctx, fmt.Sprintf("patrol:scan:%d:%d:%d", p.OrganizationID, p.PersonnelID, zoneID)); err != nil {
 		return fmt.Errorf("lock scan: %w", err)
 	}
+	return nil
+}
+
+// checkScanInterval refuses a second scan of the checkpoint, in the zone, by the person too close to another
+// one, on either side of its own moment: an offline scan can arrive after a later one. The caller holds
+// lockScanning.
+//
+// ⚠ The patrol interval (DL-48) is project.patrol_interval_minutes, and it is per checkpoint: a guard
+// scans the zone's stickers a few minutes apart, so a zone-wide interval would refuse the very walk the order
+// rule asks for. Even a project with no interval refuses a scan within scanMinGap of another of the same
+// checkpoint: a double tap, or a retry with a new local_id, must not make two scans of one visit.
+func checkScanInterval(ctx context.Context, q *db.Queries, p auth.Principal, zoneID int64, checkpointID pgtype.UUID, project db.Project, at time.Time) error {
 	interval := scanMinGap
 	if project.PatrolIntervalMinutes.Valid {
 		interval = max(interval, time.Duration(project.PatrolIntervalMinutes.Int32)*time.Minute)
 	}
 	tooSoon, err := q.HasScanBetween(ctx, db.HasScanBetweenParams{
-		PersonnelID: p.PersonnelID, ZoneID: zoneID, After: ts(at.Add(-interval)), Before: ts(at.Add(interval)),
+		PersonnelID: p.PersonnelID, ZoneID: zoneID, CheckpointID: checkpointID, After: ts(at.Add(-interval)), Before: ts(at.Add(interval)),
 	})
 	if err != nil {
 		return fmt.Errorf("check patrol interval: %w", err)
@@ -50,7 +58,7 @@ func (s *Service) checkScanInterval(ctx context.Context, q *db.Queries, p auth.P
 	return nil
 }
 
-// scanMinGap is the least time between two scans of one zone by one person, whatever the project's
+// scanMinGap is the least time between two scans of one checkpoint by one person, whatever the project's
 // patrol_interval_minutes says (or does not say).
 const scanMinGap = 30 * time.Second
 
@@ -78,6 +86,9 @@ const (
 	// NoticeDecided tells an author that their scans were approved or declined. One notice per
 	// author per request, however many of their scans the request decided.
 	NoticeDecided
+	// NoticeScheduleChanged tells a person that patrol schedules of theirs were made, changed or cancelled: one
+	// notice per person per request, however many schedules the request touched.
+	NoticeScheduleChanged
 )
 
 // Notice is something to tell people about. cmd/api turns it into a notification.
@@ -92,12 +103,22 @@ type Notice struct {
 	Date         timeutil.Date
 	ScanID       int64
 	ZoneID       int64
+	// CheckpointID and CheckpointName say which checkpoint a submitted scan was of (empty for a notice that
+	// covers a decision on several scans, and for scans made before the checkpoints).
+	CheckpointID   string
+	CheckpointName string
 
 	// For NoticeDecided: the outcome, what the decider wrote, and every scan it covers (ScanID is the
 	// first; with more than one, the notice points at no single scan).
 	Declined     bool
 	DecisionNote string
 	ScanIDs      []int64
+
+	// For NoticeScheduleChanged (Subject is the zone's name): what happened (ScheduleChangeCreated, ...), the
+	// schedules it covers, and their project.
+	ProjectCode    string
+	ScheduleChange string
+	ScheduleIDs    []string
 }
 
 // Notifier sends notices. cmd/api adapts notifications.Service to it.
@@ -105,31 +126,37 @@ type Notifier interface {
 	NotifyPatrol(ctx context.Context, n Notice)
 }
 
-// ScanInput is the body of POST /zones/{id}/scan. local_id (which is also the Idempotency-Key) and
-// occurred_at are the offline fields of idem.OfflineCreate, declared here rather than embedded so
-// that a validation error names them as the client sent them ("local_id", not
+// ScanInput is the body of POST /zones/{id}/scan: one visit to one checkpoint of the zone. local_id (which
+// is also the Idempotency-Key) and occurred_at are the offline fields of idem.OfflineCreate, declared here
+// rather than embedded so that a validation error names them as the client sent them ("local_id", not
 // "OfflineCreate.local_id").
 type ScanInput struct {
-	LocalID          string        `json:"local_id" validate:"required,uuid"`
-	OccurredAt       time.Time     `json:"occurred_at" validate:"required"`
-	QRPayload        string        `json:"qr_payload" validate:"required,max=200"`
-	Latitude         *float64      `json:"latitude" validate:"required,gte=-90,lte=90"`
-	Longitude        *float64      `json:"longitude" validate:"required,gte=-180,lte=180"`
-	AccuracyMeters   *float64      `json:"accuracy_meters" validate:"required,gte=0,lte=100000"`
-	Subject          string        `json:"subject" validate:"required,notblank,max=200"`
-	Notes            *string       `json:"notes" validate:"omitempty,max=2000"`
-	Answers          []AnswerInput `json:"answers" validate:"omitempty,max=100,dive"`
-	MediaIDs         []int64       `json:"media_ids" validate:"omitempty,max=20,dive,min=1"`
-	SubmittedOffline bool          `json:"submitted_offline"`
+	LocalID    string    `json:"local_id" validate:"required,uuid"`
+	OccurredAt time.Time `json:"occurred_at" validate:"required"`
+	// CheckpointID is the checkpoint scanned; QRPayload is what its sticker held.
+	CheckpointID   string   `json:"checkpoint_id" validate:"required,uuid"`
+	QRPayload      string   `json:"qr_payload" validate:"required,max=200"`
+	Latitude       *float64 `json:"latitude" validate:"required,gte=-90,lte=90"`
+	Longitude      *float64 `json:"longitude" validate:"required,gte=-180,lte=180"`
+	AccuracyMeters *float64 `json:"accuracy_meters" validate:"required,gte=0,lte=100000"`
+	// Subject is optional: left out, it is the checkpoint's name.
+	Subject *string `json:"subject" validate:"omitempty,max=200"`
+	Notes   *string `json:"notes" validate:"omitempty,max=2000"`
+	// DeviceCondition is the phone's condition, the default of every action that does not carry its own.
+	DeviceCondition  json.RawMessage     `json:"device_condition"`
+	Actions          []ActionAnswerInput `json:"actions" validate:"omitempty,max=50,dive"`
+	SubmittedOffline bool                `json:"submitted_offline"`
 }
 
-// Scan is a visit to a zone, as it was recorded.
+// Scan is a visit to a checkpoint of a zone, as it was recorded.
 type Scan struct {
-	ID             int64
-	LocalID        string
-	ZoneID         int64
-	ZoneType       string
-	PersonnelID    int64
+	ID          int64
+	LocalID     string
+	ZoneID      int64
+	ZoneType    string
+	PersonnelID int64
+	// Checkpoint is the checkpoint scanned, as the zone shows it now; its name is the one it has today.
+	Checkpoint     ScanCheckpoint
 	TeamCode       string
 	ProjectCode    string
 	OccurredAt     time.Time
@@ -138,12 +165,14 @@ type Scan struct {
 	Latitude       float64
 	Longitude      float64
 	AccuracyMeters float64
-	// DistanceMeters is how far from the zone's centre the scan was made; nil for a zone with no
+	// DistanceMeters is how far from the checkpoint the scan was made; nil for a checkpoint with no
 	// geofence.
-	DistanceMeters   *int
-	Subject          string
-	Notes            *string
-	Answers          []AnswerEntry
+	DistanceMeters *int
+	Subject        string
+	Notes          *string
+	// Actions are the answers, one per action of the checkpoint's checklist as it was when the guard scanned
+	// (from patrol_scan_actions, never from the live action). Photos are filled when a scan is read.
+	Actions          []ScanAction
 	Status           string
 	PatrolID         *int64
 	SubmittedOffline bool
@@ -154,10 +183,32 @@ type Scan struct {
 	DecidedAt    *time.Time
 	DecisionNote *string
 
-	// Filled when a scan is read, not when it is stored: the author's name and the photos as
-	// signed URLs (Service.present). Photos are the general ones; each answer carries its own.
+	// Filled when a scan is read, not when it is stored: the author's name (Service.present).
 	PersonnelName string
-	Photos        []Photo
+}
+
+// ScanCheckpoint is the checkpoint a scan was made at.
+type ScanCheckpoint struct {
+	ID   string // uuid
+	Name string
+	// SortOrder is its place in the scan's zone now; nil once it has left that zone (or the scan was just made
+	// and the place is not read again).
+	SortOrder *int
+}
+
+// ScanAction is one answered action of a scan, as the scan kept it: the action as it was (so renaming it
+// later changes nothing here) and what the guard gave.
+type ScanAction struct {
+	ActionID    string // uuid
+	Action      string
+	Instruction *string
+	Note        *string
+	// DeviceCondition is the phone's condition when it was answered, as the app sent it; nil when it sent none.
+	// Evidence for whoever reviews the scan, not a verdict (see devicecondition.go).
+	DeviceCondition json.RawMessage
+	// Photos are this action's photos as signed URLs that expire in about an hour, so they are never stored:
+	// a reader loads the scan again for fresh ones. Nil on the answer to the scan that was just made.
+	Photos []Photo
 }
 
 // Photo is a photo of a scan as a reader sees it: a signed URL that expires in about an hour, so it
@@ -185,6 +236,7 @@ func scanOf(r db.PatrolScan) (Scan, error) {
 		Latitude: r.Latitude, Longitude: r.Longitude, AccuracyMeters: r.AccuracyMeters, Subject: r.Subject,
 		Notes: textPtr(r.Notes), Status: string(r.Status), SubmittedOffline: r.SubmittedOffline, CreatedAt: r.CreatedAt.Time,
 	}
+	out.Checkpoint.ID = uuidString(r.CheckpointID)
 	if r.DistanceMeters.Valid {
 		d := int(r.DistanceMeters.Int32)
 		out.DistanceMeters = &d
@@ -199,79 +251,54 @@ func scanOf(r db.PatrolScan) (Scan, error) {
 		out.DecidedAt = &r.DecidedAt.Time
 	}
 	out.DecisionNote = textPtr(r.DecisionNote)
-	if err := json.Unmarshal(r.Answers, &out.Answers); err != nil {
-		return Scan{}, fmt.Errorf("scan %d: decode answers: %w", r.ID, err)
-	}
-	if out.Answers == nil {
-		out.Answers = []AnswerEntry{}
-	}
+	out.Actions = []ScanAction{}
 	return out, nil
 }
 
-// visit is a person arriving at a zone: what the checks established.
+// visit is a person arriving at a checkpoint of a zone: what the checks established.
 type visit struct {
-	zone     db.PatrolZone
-	project  db.Project
+	zone       db.PatrolZone
+	project    db.Project
+	checkpoint db.PatrolCheckpoint
+	// position is the checkpoint's place in the zone (from 1).
+	position int
 	loc      *time.Location
 	distance *int
 }
 
-// admit runs the checks a scan, a check-in and a check-out have in common, in this order: the QR
-// code, the permission, the membership and the geofence. The zone and its project are already
-// loaded.
+// arrive runs the first two checks a scan, a check-in and a check-out have in common, in this order: the
+// checkpoint must be one of the zone's, and the QR code must be the checkpoint's. The zone and its project
+// are already loaded.
 //
-// ⚠ The QR comes first. A request with a wrong code learns nothing else about the zone, not even
-// whether the caller may use it.
-func (s *Service) admit(ctx context.Context, q *db.Queries, p auth.Principal, zone db.PatrolZone, project db.Project,
-	qrPayload string, lat, lng, accuracy float64, at time.Time,
+// ⚠ The link comes first and answers CHECKPOINT_NOT_IN_ZONE for a checkpoint that does not exist, is
+// switched off or is another zone's alike. Then the QR: a request with a wrong code learns nothing about
+// the caller's permission or position.
+func (s *Service) arrive(ctx context.Context, q *db.Queries, p auth.Principal, zone db.PatrolZone, project db.Project,
+	checkpointID, qrPayload string,
 ) (visit, error) {
-	v, err := s.verifyVisit(zone, project, p.OrganizationID, qrPayload)
-	if err != nil {
-		return v, err
-	}
-	day := timeutil.BusinessDate(at, v.loc)
-
-	// The permission is the one of the zone's type, judged on the date of the scan in the project's
-	// timezone: someone who changed regu this morning still has yesterday's scans in the old one.
-	perm := access.PatrolScan
-	if zone.Type == db.PatrolZoneTypeGUARD {
-		perm = access.GuardScan
-	}
-	if s.perms == nil {
-		return v, errors.New("patrol: permissions are not plugged in")
-	}
-	res, err := s.perms.Resolve(ctx, q, p.PersonnelID, perm, day)
-	if err != nil {
-		return v, err
-	}
-	if !res.Allowed {
-		return v, access.ErrPermissionDenied
-	}
-
-	if _, err := s.membershipIn(ctx, q, p.PersonnelID, zone, day); err != nil {
-		return v, err
-	}
-
-	return checkGeofence(v, lat, lng, accuracy)
-}
-
-// admitRelease is what a check-out needs: the QR and the geofence, as proof that the guard is
-// there, but not the permission or the membership. A guard whose membership or permission ended
-// while they were checked in must still be able to leave, or the open check-in blocks every
-// check-in they make afterwards.
-func (s *Service) admitRelease(p auth.Principal, zone db.PatrolZone, project db.Project, qrPayload string, lat, lng, accuracy float64) (visit, error) {
-	v, err := s.verifyVisit(zone, project, p.OrganizationID, qrPayload)
-	if err != nil {
-		return v, err
-	}
-	return checkGeofence(v, lat, lng, accuracy)
-}
-
-// verifyVisit checks the QR and loads the project's timezone: the first step of every visit.
-func (s *Service) verifyVisit(zone db.PatrolZone, project db.Project, organizationID int64, qrPayload string) (visit, error) {
 	v := visit{zone: zone, project: project}
-	if !verifyPayload(qrPayload, organizationID, zone.ID, zone.QrSecret) {
-		return v, ErrQRInvalid
+	id, ok := parseUUID(checkpointID)
+	if !ok {
+		return v, ErrCheckpointNotInZone
+	}
+	position, err := q.GetZoneCheckpointLink(ctx, db.GetZoneCheckpointLinkParams{ZoneID: zone.ID, CheckpointID: id})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return v, ErrCheckpointNotInZone
+	}
+	if err != nil {
+		return v, fmt.Errorf("get zone checkpoint link: %w", err)
+	}
+	v.position = int(position)
+	cp, err := q.GetPatrolCheckpoint(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return v, ErrCheckpointNotInZone
+	}
+	if err != nil {
+		return v, fmt.Errorf("get checkpoint: %w", err)
+	}
+	v.checkpoint = cp
+	if !verifyCheckpointPayload(qrPayload, p.OrganizationID, uuidString(cp.ID), cp.QrSecret) {
+		return v, ErrCheckpointQRInvalid
 	}
 	loc, err := time.LoadLocation(project.Timezone)
 	if err != nil {
@@ -281,15 +308,39 @@ func (s *Service) verifyVisit(zone db.PatrolZone, project db.Project, organizati
 	return v, nil
 }
 
-// checkGeofence refuses a position outside the zone's radius (plus the capped tolerance) and records
-// how far from the centre it was. A zone with no geofence accepts any position.
+// authorize is the permission and the membership a scan and a check-in need, after the QR.
+//
+// The permission is the one of the zone's type, judged on the date of the moment in the project's
+// timezone: someone who changed regu this morning still has yesterday's scans in the old one.
+func (s *Service) authorize(ctx context.Context, q *db.Queries, p auth.Principal, v visit, at time.Time) error {
+	day := timeutil.BusinessDate(at, v.loc)
+	perm := access.PatrolScan
+	if v.zone.Type == db.PatrolZoneTypeGUARD {
+		perm = access.GuardScan
+	}
+	if s.perms == nil {
+		return errors.New("patrol: permissions are not plugged in")
+	}
+	res, err := s.perms.Resolve(ctx, q, p.PersonnelID, perm, day)
+	if err != nil {
+		return err
+	}
+	if !res.Allowed {
+		return access.ErrPermissionDenied
+	}
+	_, err = s.membershipIn(ctx, q, p.PersonnelID, v.zone, day)
+	return err
+}
+
+// checkGeofence refuses a position outside the checkpoint's radius (plus the capped tolerance) and records
+// how far from it the position was. A checkpoint with no geofence accepts any position.
 func checkGeofence(v visit, lat, lng, accuracy float64) (visit, error) {
-	zone := v.zone
-	if zone.Latitude != nil && zone.Longitude != nil && zone.RadiusMeters.Valid {
-		d := distanceTo(*zone.Latitude, *zone.Longitude, lat, lng)
-		if !insideZone(d, float64(zone.RadiusMeters.Int32), accuracy) {
-			return v, ErrOutsideRadius.WithDetails(map[string]any{
-				"distance_meters": int(d + 0.5), "radius_meters": int(zone.RadiusMeters.Int32),
+	cp := v.checkpoint
+	if cp.Latitude != nil && cp.Longitude != nil && cp.RadiusMeters.Valid {
+		d := distanceTo(*cp.Latitude, *cp.Longitude, lat, lng)
+		if !insideZone(d, float64(cp.RadiusMeters.Int32), accuracy) {
+			return v, ErrCheckpointOutsideRadius.WithDetails(map[string]any{
+				"distance_meters": int(d + 0.5), "radius_meters": int(cp.RadiusMeters.Int32),
 			})
 		}
 		rounded := int(d + 0.5)
@@ -383,14 +434,15 @@ func (s *Service) placeIn(ctx context.Context, q *db.Queries, p auth.Principal, 
 	return pl, nil
 }
 
-// Scan records a visit to a zone.
+// Scan records a visit to a checkpoint of a zone.
 //
 // It is idempotent by local_id: a scan sent again returns the stored one and sends nothing. The
 // Idempotency-Key middleware answers most replays itself; this covers the rest (the key expired, or
 // a client that changed its key but not its local_id).
 //
-// The checks run in this order, and the first that fails is the answer: the QR, the permission, the
-// membership, the geofence, the patrol interval, then the checklist and the photos.
+// The checks run in this order, and the first that fails is the answer: that the checkpoint is the zone's,
+// its QR, the permission, the membership, the geofence, the order of the round, the patrol interval, then
+// the actions and their photos.
 func (s *Service) Scan(ctx context.Context, p auth.Principal, zoneID int64, in ScanInput) (ScanResult, error) {
 	res, err := s.scan(ctx, p, zoneID, in)
 	// Two requests with the same local_id at once: both found nothing, one insert won. The loser
@@ -443,6 +495,12 @@ func (s *Service) scan(ctx context.Context, p auth.Principal, zoneID int64, in S
 	if err != nil {
 		return ScanResult{}, apperr.ErrValidation.WithFields(apperr.FieldError{Field: "local_id", Code: "INVALID", Message: "Harus berupa UUID yang valid."})
 	}
+	// The device conditions are judged first: they need no data, and a malformed one is the client's to fix
+	// whatever else is wrong.
+	answers, err := withDeviceConditions(in.DeviceCondition, in.Actions)
+	if err != nil {
+		return ScanResult{}, err
+	}
 	now := s.clock.Now()
 	at := in.OccurredAt.UTC()
 
@@ -477,37 +535,44 @@ func (s *Service) scan(ctx context.Context, p auth.Principal, zoneID int64, in S
 			return fmt.Errorf("get project: %w", err)
 		}
 
-		v, err := s.admit(ctx, q, p, zone, project, in.QRPayload, *in.Latitude, *in.Longitude, *in.AccuracyMeters, at)
+		// 1 and 2: the checkpoint is the zone's, and the QR is its own.
+		v, err := s.arrive(ctx, q, p, zone, project, in.CheckpointID, in.QRPayload)
 		if err != nil {
 			return err
 		}
-
-		if err := s.checkScanInterval(ctx, q, p, zoneID, project, at); err != nil {
+		// 3: the permission of the zone's type, and the membership.
+		if err := s.authorize(ctx, q, p, v, at); err != nil {
 			return err
 		}
-
+		// 4: the geofence of the checkpoint.
+		if v, err = checkGeofence(v, *in.Latitude, *in.Longitude, *in.AccuracyMeters); err != nil {
+			return err
+		}
+		// 5: the regu and the work date, which the order rule needs.
 		pl, err := s.place(ctx, q, p, v, at)
 		if err != nil {
 			return err
 		}
 
-		items, err := q.ListAllChecklistItems(ctx, zoneID)
-		if err != nil {
-			return fmt.Errorf("list checklist: %w", err)
-		}
-		entries, answerMedia, err := checkAnswers(items, in.Answers, at)
-		if err != nil {
+		// 6 and 7: the order of the round, and the interval, under one lock (see lockScanning).
+		if err := lockScanning(ctx, q, p, zoneID); err != nil {
 			return err
 		}
-		// ⚠ photo_required: one photo in the whole scan is enough, wherever it is, even when no
-		// question asks for one (mobile spec SQD §4.3).
-		allMedia := append(slices.Clone(in.MediaIDs), answerMedia...)
-		if zone.PhotoRequired && len(allMedia) == 0 {
-			return ErrPhotoRequired
+		if err := checkOrder(ctx, q, p, zoneID, v.checkpoint.ID, pl.workDate, at); err != nil {
+			return err
 		}
-		answers, err := json.Marshal(entries)
+		if err := checkScanInterval(ctx, q, p, zoneID, v.checkpoint.ID, project, at); err != nil {
+			return err
+		}
+
+		// 8: the actions, as the checklist was when the guard scanned.
+		all, err := q.ListAllCheckpointActions(ctx, v.checkpoint.ID)
 		if err != nil {
-			return fmt.Errorf("encode answers: %w", err)
+			return fmt.Errorf("list checkpoint actions: %w", err)
+		}
+		entries, photos, err := checkActions(all, answers, at)
+		if err != nil {
+			return err
 		}
 
 		patrolID, err := s.joinPatrol(ctx, q, p, zone.ProjectCode, at)
@@ -520,8 +585,8 @@ func (s *Service) scan(ctx context.Context, p auth.Principal, zoneID int64, in S
 			PersonnelID: p.PersonnelID, TeamCode: pl.team, ProjectCode: zone.ProjectCode,
 			OccurredAt: ts(at), ReceivedAt: ts(now), WorkDate: pgtype.Date{Time: pl.workDate.Time(), Valid: true},
 			Latitude: *in.Latitude, Longitude: *in.Longitude, AccuracyMeters: *in.AccuracyMeters,
-			DistanceMeters: intParam(v.distance), Subject: in.Subject, Notes: textOrNull(in.Notes),
-			Answers: answers, PatrolID: patrolID, SubmittedOffline: in.SubmittedOffline,
+			DistanceMeters: intParam(v.distance), Subject: subjectOf(in.Subject, v.checkpoint.Name), Notes: textOrNull(in.Notes),
+			PatrolID: patrolID, CheckpointID: v.checkpoint.ID, SubmittedOffline: in.SubmittedOffline,
 		})
 		if err != nil {
 			return fmt.Errorf("insert scan: %w", err)
@@ -532,17 +597,31 @@ func (s *Service) scan(ctx context.Context, p auth.Principal, zoneID int64, in S
 			}
 		}
 
-		// Every photo of the scan, the general ones and those of the answers, in the same
-		// transaction as the scan: each must belong to the caller and be unused (media.Attach).
-		if s.attach == nil && len(allMedia) > 0 {
+		// 9: every photo of the scan, in the same transaction as the scan: each must belong to the caller
+		// and be unused (media.Attach).
+		if s.attach == nil && len(photos) > 0 {
 			return errors.New("patrol: photo attachments are not plugged in")
 		}
-		if len(allMedia) > 0 {
+		if len(photos) > 0 {
 			if err := s.attach.Attach(ctx, q, media.AttachInput{
-				MediaIDs: allMedia, OwnerID: p.PersonnelID, Purpose: media.PurposePatrolScan,
-				EntityType: EntityScan, EntityID: row.ID, Max: len(allMedia),
+				MediaIDs: photos, OwnerID: p.PersonnelID, Purpose: media.PurposePatrolScan,
+				EntityType: EntityScan, EntityID: row.ID, Max: len(photos),
 			}); err != nil {
 				return err
+			}
+		}
+
+		// 10: one row per answered action. The snapshot and the columns come from the same values.
+		for _, e := range entries {
+			snapshot, err := actionSnapshot(e)
+			if err != nil {
+				return err
+			}
+			if _, err := q.InsertScanAction(ctx, db.InsertScanActionParams{
+				ScanID: row.ID, CheckpointID: v.checkpoint.ID, ActionID: e.action.ID, PersonnelID: p.PersonnelID,
+				Note: textOrNull(e.note), MediaIds: e.mediaIDs, Snapshot: snapshot, DeviceCondition: e.deviceCondition, Now: ts(now),
+			}); err != nil {
+				return fmt.Errorf("insert scan action: %w", err)
 			}
 		}
 
@@ -550,8 +629,18 @@ func (s *Service) scan(ctx context.Context, p auth.Principal, zoneID int64, in S
 		if err != nil {
 			return err
 		}
+		// What this answer shows of the checkpoint and the actions is what the guard just sent; the photo
+		// URLs are not made here (a reader asks for the scan to get them).
+		scan.Checkpoint = ScanCheckpoint{ID: uuidString(v.checkpoint.ID), Name: v.checkpoint.Name, SortOrder: &v.position}
+		scan.Actions = make([]ScanAction, 0, len(entries))
+		for _, e := range entries {
+			scan.Actions = append(scan.Actions, ScanAction{
+				ActionID: uuidString(e.action.ID), Action: e.action.Action, Instruction: textPtr(e.action.Instruction),
+				Note: e.note, DeviceCondition: e.deviceCondition,
+			})
+		}
 		out = ScanResult{Scan: scan}
-		notices, err = s.noticesFor(ctx, q, p, zone, project, scan)
+		notices, err = s.noticesFor(ctx, q, p, zone, project, v.checkpoint, scan)
 		return err
 	})
 	if err != nil {
@@ -562,12 +651,39 @@ func (s *Service) scan(ctx context.Context, p auth.Principal, zoneID int64, in S
 	return out, nil
 }
 
+// checkOrder applies the order rule (order.go) to a scan of a checkpoint made at a moment: the checkpoint
+// can be scanned only when the round in progress has passed the one before it. The caller holds
+// lockScanning.
+//
+// A scan counts the person's earlier scans by occurred_at, not by arrival, so a queue made offline and
+// synced in occurred_at order is judged exactly as it would have been online. ⚠ The app must send a zone's
+// offline scans in that order: a later one sent first is CHECKPOINT_OUT_OF_ORDER and can be sent again once
+// the earlier ones have arrived.
+func checkOrder(ctx context.Context, q *db.Queries, p auth.Principal, zoneID int64, checkpointID pgtype.UUID, workDate timeutil.Date, at time.Time) error {
+	order, err := loadOrder(ctx, q, p.PersonnelID, zoneID, workDate, at)
+	if err != nil {
+		return err
+	}
+	i := slices.IndexFunc(order.Steps, func(st orderStep) bool { return st.CheckpointID == checkpointID })
+	if i < 0 {
+		return ErrCheckpointNotInZone // switched off or unlinked since the link was read
+	}
+	if order.Steps[i].Scannable {
+		return nil
+	}
+	// The place the order wants first is the one before this one: this one is behind a checkpoint the round
+	// has not reached.
+	return ErrCheckpointOutOfOrder.WithDetails(map[string]any{"expected_checkpoint_id": uuidString(order.Steps[i-1].CheckpointID)})
+}
+
 // EntityScan is the name of a scan as the record media and notifications point at.
 const EntityScan = "PATROL_SCAN"
 
 // noticesFor works out who to tell about a new scan: the team's DANRU (or the admins when there is
 // none, or the author is the DANRU), and the author when the scan was made offline.
-func (s *Service) noticesFor(ctx context.Context, q *db.Queries, p auth.Principal, zone db.PatrolZone, project db.Project, scan Scan) ([]Notice, error) {
+func (s *Service) noticesFor(ctx context.Context, q *db.Queries, p auth.Principal, zone db.PatrolZone, project db.Project,
+	cp db.PatrolCheckpoint, scan Scan,
+) ([]Notice, error) {
 	if s.notifier == nil {
 		return nil, nil
 	}
@@ -578,6 +694,7 @@ func (s *Service) noticesFor(ctx context.Context, q *db.Queries, p auth.Principa
 	base := Notice{
 		ZoneType: string(zone.Type), BusinessLine: string(project.BusinessLine), ActorName: name.FullName,
 		TeamCode: scan.TeamCode, Subject: scan.Subject, Date: scan.WorkDate, ScanID: scan.ID, ZoneID: zone.ID,
+		CheckpointID: uuidString(cp.ID), CheckpointName: cp.Name,
 	}
 	var out []Notice
 	danru, err := s.perms.DanruOf(ctx, q, scan.TeamCode, p.PersonnelID, scan.WorkDate)

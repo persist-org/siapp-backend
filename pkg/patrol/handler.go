@@ -2,10 +2,9 @@ package patrol
 
 import (
 	"context"
-	"mime"
+	"encoding/json"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -47,6 +46,8 @@ func (h *Handler) MountField(r chi.Router) {
 	r.Post("/api/v1/scans/{id}/decline", h.decline)
 	r.Post("/api/v1/scans/approve", h.approveMany)
 	r.Get("/api/v1/patrol/pending-approvals", h.pending)
+	r.Get("/api/v1/patrol-schedules", h.scheduleList)
+	r.Get("/api/v1/patrol-schedules/{id}", h.scheduleGet)
 	r.With(h.idempotent).Post("/api/v1/zones/{id}/scan", h.scan)
 	r.With(h.idempotent).Post("/api/v1/zones/{id}/check-in", h.checkIn)
 	r.With(h.idempotent).Post("/api/v1/zones/{id}/check-out", h.checkOut)
@@ -63,9 +64,9 @@ func (h *Handler) MountAdmin(r chi.Router) {
 	r.Get("/zones/{id}", h.adminGet)
 	r.Patch("/zones/{id}", h.adminUpdate)
 	r.Delete("/zones/{id}", h.adminDelete)
-	r.Put("/zones/{id}/checklist", h.adminChecklist)
-	r.Post("/zones/{id}/rotate-qr", h.adminRotateQR)
-	r.Get("/zones/{id}/qr", h.adminQR)
+	r.Put("/zones/{id}/checkpoints", h.adminCheckpoints)
+	h.mountCheckpoints(r)
+	h.mountSchedules(r)
 }
 
 func admin(w http.ResponseWriter, r *http.Request) (auth.Principal, access.AdminScope, bool) {
@@ -214,7 +215,7 @@ func (h *Handler) adminDelete(w http.ResponseWriter, r *http.Request) {
 	httpx.OK(w, r, http.StatusOK, nil)
 }
 
-func (h *Handler) adminChecklist(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) adminCheckpoints(w http.ResponseWriter, r *http.Request) {
 	p, scope, ok := admin(w, r)
 	if !ok {
 		return
@@ -224,72 +225,17 @@ func (h *Handler) adminChecklist(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, r, err)
 		return
 	}
-	var in ChecklistReplace
+	var in CheckpointsReplace
 	if err := httpx.Decode(r, &in); err != nil {
 		httpx.Error(w, r, err)
 		return
 	}
-	zone, err := h.service.ReplaceChecklist(r.Context(), p, scope, id, in)
+	zone, err := h.service.AssignCheckpoints(r.Context(), p, scope, id, in)
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
 	}
 	httpx.OK(w, r, http.StatusOK, zoneToAPI(zone))
-}
-
-func (h *Handler) adminRotateQR(w http.ResponseWriter, r *http.Request) {
-	p, scope, ok := admin(w, r)
-	if !ok {
-		return
-	}
-	id, err := idParam(r)
-	if err != nil {
-		httpx.Error(w, r, err)
-		return
-	}
-	zone, err := h.service.RotateQR(r.Context(), p, scope, id)
-	if err != nil {
-		httpx.Error(w, r, err)
-		return
-	}
-	httpx.OK(w, r, http.StatusOK, zoneToAPI(zone))
-}
-
-// adminQR is GET /admin/zones/{id}/qr: the image itself, not an envelope.
-func (h *Handler) adminQR(w http.ResponseWriter, r *http.Request) {
-	p, scope, ok := admin(w, r)
-	if !ok {
-		return
-	}
-	id, err := idParam(r)
-	if err != nil {
-		httpx.Error(w, r, err)
-		return
-	}
-	format := strings.ToLower(r.URL.Query().Get("format"))
-	switch format {
-	case "":
-		format = FormatPNG
-	case FormatPNG, FormatSVG:
-	default:
-		httpx.Error(w, r, apperr.ErrValidation.WithFields(apperr.FieldError{
-			Field: "format", Code: "INVALID", Message: "Harus salah satu dari: png, svg.",
-		}))
-		return
-	}
-	qr, err := h.service.QRImage(r.Context(), p, scope, id, format)
-	if err != nil {
-		httpx.Error(w, r, err)
-		return
-	}
-	w.Header().Set("Content-Type", qr.ContentType)
-	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": qr.FileName}))
-	// The image holds the zone's secret: nothing between the server and the admin's screen should
-	// keep a copy of it.
-	w.Header().Set("Cache-Control", "private, no-store")
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(qr.Body)
 }
 
 // ---------- field ----------
@@ -507,43 +453,45 @@ func photosToAPI(photos []Photo) *[]apigen.PatrolScanPhoto {
 }
 
 func scanToAPI(sc Scan) apigen.PatrolScan {
-	answers := make([]apigen.PatrolScanAnswer, 0, len(sc.Answers))
-	for _, a := range sc.Answers {
-		out := apigen.PatrolScanAnswer{
-			ItemId: a.ItemID, Label: a.Label, AnswerType: apigen.PatrolScanAnswerAnswerType(a.AnswerType), Required: a.Required,
-			PhotoMode: apigen.PatrolScanAnswerPhotoMode(a.PhotoMode), PhotoMax: a.PhotoMax,
-			NoteMode: apigen.PatrolScanAnswerNoteMode(a.NoteMode), AttachWhen: apigen.PatrolScanAnswerAttachWhen(a.AttachWhen),
-			Value: a.Value, Note: a.Note, MediaIds: a.MediaIDs, Media: photosToAPI(a.Photos),
+	actions := make([]apigen.PatrolScanAction, 0, len(sc.Actions))
+	for _, a := range sc.Actions {
+		out := apigen.PatrolScanAction{
+			ActionId: mustUUID(a.ActionID), Action: a.Action, Instruction: a.Instruction, Note: a.Note,
+			Photos: []apigen.PatrolScanPhoto{},
 		}
-		if len(a.Options) > 0 {
-			opts := make([]apigen.PatrolChecklistOption, 0, len(a.Options))
-			for _, o := range a.Options {
-				opts = append(opts, apigen.PatrolChecklistOption{Value: o.Value, Label: o.Label})
+		if p := photosToAPI(a.Photos); p != nil {
+			out.Photos = *p
+		}
+		if len(a.DeviceCondition) > 0 && string(a.DeviceCondition) != "null" {
+			var dc map[string]interface{}
+			if err := json.Unmarshal(a.DeviceCondition, &dc); err == nil {
+				out.DeviceCondition = &dc
 			}
-			out.Options = &opts
 		}
-		answers = append(answers, out)
+		actions = append(actions, out)
 	}
 	local, _ := uuid.Parse(sc.LocalID)
 	var name *string
 	if sc.PersonnelName != "" {
 		name = &sc.PersonnelName
 	}
+	checkpoint := apigen.PatrolScanCheckpoint{Id: mustUUID(sc.Checkpoint.ID), Name: sc.Checkpoint.Name, SortOrder: sc.Checkpoint.SortOrder}
 	return apigen.PatrolScan{
 		Id: sc.ID, LocalId: local, ZoneId: sc.ZoneID, ZoneType: apigen.PatrolScanZoneType(sc.ZoneType),
+		CheckpointId: checkpoint.Id, Checkpoint: checkpoint,
 		PersonnelId: sc.PersonnelID, TeamCode: sc.TeamCode, ProjectCode: sc.ProjectCode, OccurredAt: sc.OccurredAt,
 		ReceivedAt: sc.ReceivedAt, WorkDate: openapi_types.Date{Time: sc.WorkDate.Time()}, Latitude: sc.Latitude,
 		Longitude: sc.Longitude, AccuracyMeters: sc.AccuracyMeters, DistanceMeters: sc.DistanceMeters, Subject: sc.Subject,
-		Notes: sc.Notes, Answers: answers, Status: apigen.PatrolScanStatus(sc.Status), PatrolId: sc.PatrolID,
+		Notes: sc.Notes, Actions: actions, Status: apigen.PatrolScanStatus(sc.Status), PatrolId: sc.PatrolID,
 		SubmittedOffline: sc.SubmittedOffline, CreatedAt: sc.CreatedAt,
 		DecidedById: sc.DecidedByID, DecidedAt: sc.DecidedAt, DecisionNote: sc.DecisionNote,
-		PersonnelName: name, Media: photosToAPI(sc.Photos),
+		PersonnelName: name,
 	}
 }
 
 func checkInToAPI(c CheckIn) apigen.ZoneCheckIn {
 	out := apigen.ZoneCheckIn{
-		Id: c.ID, ZoneId: c.ZoneID, PersonnelId: c.PersonnelID, TeamCode: c.TeamCode, ShiftId: c.ShiftID,
+		Id: c.ID, ZoneId: c.ZoneID, CheckpointId: uuidPtr(c.CheckpointID), PersonnelId: c.PersonnelID, TeamCode: c.TeamCode, ShiftId: c.ShiftID,
 		CheckInAt: c.CheckInAt, CheckInLatitude: c.CheckInLat, CheckInLongitude: c.CheckInLng,
 		CheckOutAt: c.CheckOutAt, CheckOutLatitude: c.CheckOutLat, CheckOutLongitude: c.CheckOutLng,
 	}
@@ -552,6 +500,15 @@ func checkInToAPI(c CheckIn) apigen.ZoneCheckIn {
 		out.FullName = &name
 	}
 	return out
+}
+
+// uuidPtr is the uuid of an optional id kept as text (the service's), for a nullable field of the API.
+func uuidPtr(s *string) *uuid.UUID {
+	if s == nil {
+		return nil
+	}
+	u := mustUUID(*s)
+	return &u
 }
 
 func checkInsToAPI(list []CheckIn) []apigen.ZoneCheckIn {
@@ -571,35 +528,38 @@ func zonesToAPI(zones []Zone) []apigen.PatrolZone {
 }
 
 func zoneToAPI(z Zone) apigen.PatrolZone {
-	items := make([]apigen.PatrolChecklistItem, 0, len(z.Checklist))
-	for _, it := range z.Checklist {
-		items = append(items, itemToAPI(it))
-	}
 	out := apigen.PatrolZone{
 		Id: z.ID, ProjectCode: z.ProjectCode, TeamCode: z.TeamCode, Type: apigen.PatrolZoneType(z.Type), Name: z.Name,
 		Alias: z.Alias, Description: z.Description, PopupText: z.PopupText, Latitude: z.Latitude, Longitude: z.Longitude,
-		RadiusMeters: z.RadiusMeters, MinVisit: z.MinVisit, PhotoRequired: z.PhotoRequired, IsActive: z.Active,
-		Checklist: items, CreatedAt: z.CreatedAt, UpdatedAt: z.UpdatedAt,
+		RadiusMeters: z.RadiusMeters, MinVisit: z.MinVisit, IsActive: z.Active,
+		CheckpointCount: z.CheckpointCount, CreatedAt: z.CreatedAt, UpdatedAt: z.UpdatedAt,
 	}
 	if z.StartDate != nil {
 		out.StartDate = &openapi_types.Date{Time: z.StartDate.Time()}
 	}
+	// A list leaves checkpoints out (nil); a detail has them, possibly none (an empty array).
+	if z.Checkpoints != nil {
+		cps := make([]apigen.PatrolZoneCheckpoint, 0, len(z.Checkpoints))
+		for _, c := range z.Checkpoints {
+			cps = append(cps, zoneCheckpointToAPI(c))
+		}
+		out.Checkpoints = &cps
+	}
+	if z.NextCheckpointID != nil {
+		next := mustUUID(*z.NextCheckpointID)
+		out.NextCheckpointId = &next
+	}
 	return out
 }
 
-func itemToAPI(it ChecklistItem) apigen.PatrolChecklistItem {
-	out := apigen.PatrolChecklistItem{
-		Id: it.ID, SortOrder: it.SortOrder, Label: it.Label, HelpText: it.HelpText,
-		AnswerType: apigen.PatrolChecklistItemAnswerType(it.AnswerType), Required: it.Required,
-		PhotoMode: apigen.PatrolChecklistItemPhotoMode(it.PhotoMode), PhotoMax: it.PhotoMax,
-		NoteMode: apigen.PatrolChecklistItemNoteMode(it.NoteMode), AttachWhen: apigen.PatrolChecklistItemAttachWhen(it.AttachWhen),
+func zoneCheckpointToAPI(c ZoneCheckpoint) apigen.PatrolZoneCheckpoint {
+	out := apigen.PatrolZoneCheckpoint{
+		Id: mustUUID(c.ID), Name: c.Name, SortOrder: c.SortOrder, IsActive: c.Active,
+		Latitude: c.Latitude, Longitude: c.Longitude, RadiusMeters: c.RadiusMeters, MyScans: c.MyScans, Scannable: c.Scannable,
 	}
-	if len(it.Options) > 0 {
-		opts := make([]apigen.PatrolChecklistOption, 0, len(it.Options))
-		for _, o := range it.Options {
-			opts = append(opts, apigen.PatrolChecklistOption{Value: o.Value, Label: o.Label})
-		}
-		out.Options = &opts
+	if c.Actions != nil {
+		actions := actionsToAPI(c.Actions)
+		out.Actions = &actions
 	}
 	return out
 }

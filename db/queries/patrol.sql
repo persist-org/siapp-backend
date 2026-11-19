@@ -2,11 +2,11 @@
 
 -- name: InsertPatrolZone :one
 INSERT INTO patrol_zones (project_code, team_code, type, name, alias, description, popup_text,
-                          latitude, longitude, radius_meters, min_visit, start_date, photo_required,
-                          qr_secret, active, created_at, updated_at)
+                          latitude, longitude, radius_meters, min_visit, start_date,
+                          active, created_at, updated_at)
 VALUES (@project_code, sqlc.narg('team_code'), @type, @name, sqlc.narg('alias'), sqlc.narg('description'),
         sqlc.narg('popup_text'), sqlc.narg('latitude'), sqlc.narg('longitude'), sqlc.narg('radius_meters'),
-        @min_visit, sqlc.narg('start_date'), @photo_required, @qr_secret, @active, @now, @now)
+        @min_visit, sqlc.narg('start_date'), @active, @now, @now)
 RETURNING *;
 
 -- name: GetPatrolZone :one
@@ -60,13 +60,8 @@ UPDATE patrol_zones SET
     team_code = sqlc.narg('team_code'), type = @type, name = @name, alias = sqlc.narg('alias'),
     description = sqlc.narg('description'), popup_text = sqlc.narg('popup_text'),
     latitude = sqlc.narg('latitude'), longitude = sqlc.narg('longitude'), radius_meters = sqlc.narg('radius_meters'),
-    min_visit = @min_visit, start_date = sqlc.narg('start_date'), photo_required = @photo_required,
+    min_visit = @min_visit, start_date = sqlc.narg('start_date'),
     active = @active, updated_at = @now
-WHERE id = @id AND deleted_at IS NULL
-RETURNING *;
-
--- name: RotatePatrolZoneSecret :one
-UPDATE patrol_zones SET qr_secret = @qr_secret, updated_at = @now
 WHERE id = @id AND deleted_at IS NULL
 RETURNING *;
 
@@ -77,30 +72,3 @@ WHERE id = @id AND deleted_at IS NULL;
 -- name: TouchPatrolZone :exec
 UPDATE patrol_zones SET updated_at = @now WHERE id = @id;
 
--- name: ListChecklistItems :many
-SELECT * FROM patrol_checklist_items WHERE zone_id = $1 AND active ORDER BY sort_order, id;
-
--- name: ListChecklistItemsOfZones :many
-SELECT * FROM patrol_checklist_items WHERE zone_id = ANY(@zone_ids::bigint[]) AND active
-ORDER BY zone_id, sort_order, id;
-
--- name: InsertChecklistItem :one
-INSERT INTO patrol_checklist_items (zone_id, sort_order, label, help_text, answer_type, options, required,
-                                    photo_mode, photo_max, note_mode, attach_when, created_at, updated_at)
-VALUES (@zone_id, @sort_order, @label, sqlc.narg('help_text'), @answer_type, sqlc.narg('options'), @required,
-        @photo_mode, @photo_max, @note_mode, @attach_when, @now, @now)
-RETURNING *;
-
--- name: UpdateChecklistItem :one
-UPDATE patrol_checklist_items SET
-    sort_order = @sort_order, label = @label, help_text = sqlc.narg('help_text'), answer_type = @answer_type,
-    options = sqlc.narg('options'), required = @required, photo_mode = @photo_mode, photo_max = @photo_max,
-    note_mode = @note_mode, attach_when = @attach_when, updated_at = @now
-WHERE id = @id AND zone_id = @zone_id AND active
-RETURNING *;
-
--- Deactivates what the admin left out of the checklist they sent. Returns the ids, for the audit.
--- name: DeactivateChecklistItemsExcept :many
-UPDATE patrol_checklist_items SET active = false, deactivated_at = @now, updated_at = @now
-WHERE zone_id = @zone_id AND active AND NOT (id = ANY(@keep_ids::bigint[]))
-RETURNING id;

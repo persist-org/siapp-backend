@@ -47,13 +47,19 @@ const (
 // started_at are declared here like a scan's, so that a validation error names them as the client
 // sent them.
 type StartInput struct {
-	LocalID          string    `json:"local_id" validate:"required,uuid"`
-	StartedAt        time.Time `json:"started_at" validate:"required"`
-	ProjectCode      string    `json:"project_code" validate:"required,notblank,max=100"`
-	Latitude         *float64  `json:"latitude" validate:"required,gte=-90,lte=90"`
-	Longitude        *float64  `json:"longitude" validate:"required,gte=-180,lte=180"`
-	AccuracyMeters   *float64  `json:"accuracy_meters" validate:"required,gte=0,lte=100000"`
-	SubmittedOffline bool      `json:"submitted_offline"`
+	LocalID   string    `json:"local_id" validate:"required,uuid"`
+	StartedAt time.Time `json:"started_at" validate:"required"`
+	// ProjectCode is required for an ad-hoc patrol; one started from a schedule has the schedule's project and may
+	// leave it out (a different one is refused).
+	ProjectCode      string   `json:"project_code" validate:"omitempty,max=100"`
+	Latitude         *float64 `json:"latitude" validate:"required,gte=-90,lte=90"`
+	Longitude        *float64 `json:"longitude" validate:"required,gte=-180,lte=180"`
+	AccuracyMeters   *float64 `json:"accuracy_meters" validate:"required,gte=0,lte=100000"`
+	SubmittedOffline bool     `json:"submitted_offline"`
+	// ScheduleID starts the patrol as the realization of a schedule of the caller's (Phase 10.12).
+	ScheduleID *string `json:"schedule_id" validate:"omitempty,max=64"`
+	// DeviceCondition is the phone's condition at the start, recorded as the patrol's START row.
+	DeviceCondition json.RawMessage `json:"device_condition"`
 }
 
 // Offline is the offline fields of the start, for idem.OfflineCreate's checks.
@@ -82,6 +88,9 @@ type PointsInput struct {
 type EndInput struct {
 	EndedAt time.Time    `json:"ended_at" validate:"required"`
 	Points  []PointInput `json:"points" validate:"omitempty,dive"`
+	// DeviceCondition is the phone's condition at the end, recorded as the patrol's END row (the first one
+	// recorded stays: a replayed end changes nothing).
+	DeviceCondition json.RawMessage `json:"device_condition"`
 }
 
 // PointsResult says what became of a batch: how many points were new, and how many had been
@@ -108,18 +117,46 @@ type Route struct {
 	ScanCount        int
 	SubmittedOffline bool
 	LastPointAt      time.Time
+
+	// Zone, Schedule and StartDelayMinutes are set for a patrol started from a schedule (Phase 10.12): the zone is
+	// the schedule's, and the delay is how late it started (0 when on time or early).
+	Zone              *RouteZone
+	Schedule          *RouteSchedule
+	StartDelayMinutes *int
+}
+
+// RouteZone is the zone of a patrol started from a schedule.
+type RouteZone struct {
+	ID   int64
+	Name string
+	Type string
+}
+
+// RouteSchedule is the schedule a patrol was started from.
+type RouteSchedule struct {
+	ID       string // uuid
+	StartsAt time.Time
+	EndsAt   time.Time
+}
+
+// RouteDeviceCondition is the condition of the phone when the patrol started and ended, as stored (nil: none).
+type RouteDeviceCondition struct {
+	Start json.RawMessage
+	End   json.RawMessage
 }
 
 // RouteScan is a scan of a patrol as a pin on its line.
 type RouteScan struct {
-	ID         int64
-	ZoneID     int64
-	ZoneName   string
-	OccurredAt time.Time
-	Latitude   float64
-	Longitude  float64
-	Status     string
-	Subject    string
+	ID             int64
+	ZoneID         int64
+	ZoneName       string
+	CheckpointID   string // uuid
+	CheckpointName string
+	OccurredAt     time.Time
+	Latitude       float64
+	Longitude      float64
+	Status         string
+	Subject        string
 }
 
 // RouteDetail is one patrol with its line and the scans along it.
@@ -129,6 +166,8 @@ type RouteDetail struct {
 	// received so far; for an ended one it is the stored path.
 	Path  []RoutePoint
 	Scans []RouteScan
+	// DeviceCondition is read for one patrol only (the detail), never in a list: it is large.
+	DeviceCondition RouteDeviceCondition
 }
 
 // RouteResult is what Start returns. Replayed is true when the patrol had been started already: the
@@ -197,6 +236,12 @@ func (s *Service) Start(ctx context.Context, p auth.Principal, in StartInput) (R
 		return res, err
 	}
 	switch database.ConstraintName(err) {
+	case "patrol_routes_schedule_uq":
+		// Two starts from one schedule at once: a replay of the same start, or a second patrol.
+		if got, rerr := s.replayStart(ctx, p, in); rerr == nil {
+			return got, nil
+		}
+		return RouteResult{}, ErrScheduleAlreadyStarted
 	case "patrol_routes_local_id_uq":
 		// Two starts with the same local_id at once: one insert won, the loser gets its patrol.
 		return s.replayStart(ctx, p, in)
@@ -244,7 +289,11 @@ func (s *Service) storedRoute(ctx context.Context, q *db.Queries, p auth.Princip
 	if row.PersonnelID != p.PersonnelID {
 		return Route{}, false, ErrPatrolLocalIDTaken
 	}
-	return routeOf(row), true, nil
+	routes := []Route{routeOf(row)}
+	if err := s.enrichRoutes(ctx, q, routes); err != nil {
+		return Route{}, false, err
+	}
+	return routes[0], true, nil
 }
 
 // mayScan reports whether the person holds the permission to scan a zone of either type on the date.
@@ -269,6 +318,22 @@ func (s *Service) start(ctx context.Context, p auth.Principal, in StartInput) (R
 	if err != nil {
 		return RouteResult{}, apperr.ErrValidation.WithFields(apperr.FieldError{Field: "local_id", Code: "INVALID", Message: "Harus berupa UUID yang valid."})
 	}
+	deviceCondition, err := parseDeviceCondition(in.DeviceCondition, "device_condition")
+	if err != nil {
+		return RouteResult{}, err
+	}
+	var scheduleID pgtype.UUID
+	fromSchedule := in.ScheduleID != nil && strings.TrimSpace(*in.ScheduleID) != ""
+	switch {
+	case fromSchedule:
+		id, ok := parseUUID(*in.ScheduleID)
+		if !ok {
+			return RouteResult{}, ErrScheduleNotFound
+		}
+		scheduleID = id
+	case strings.TrimSpace(in.ProjectCode) == "":
+		return RouteResult{}, apperr.ErrValidation.WithFields(apperr.FieldError{Field: "project_code", Code: "REQUIRED", Message: "Wajib diisi bila tanpa schedule_id."})
+	}
 	now := s.clock.Now()
 	at := in.StartedAt.UTC()
 
@@ -281,7 +346,61 @@ func (s *Service) start(ctx context.Context, p auth.Principal, in StartInput) (R
 			return nil
 		}
 
-		project, err := q.GetProject(ctx, in.ProjectCode)
+		projectCode := in.ProjectCode
+		var zoneID pgtype.Int8
+		// The regu the patrol is filed under is asked for among this one only: the scheduled zone's regu, when it
+		// has one. Unset (an ad-hoc patrol, or a zone of the whole project) leaves the whole project.
+		var zoneTeam pgtype.Text
+		if fromSchedule {
+			// The schedule row is locked for the whole start, so a start and an admin's cancel or edit of the
+			// schedule take turns, and so do two starts from it.
+			sc, err := q.GetPatrolScheduleForUpdate(ctx, scheduleID)
+			if errors.Is(err, pgx.ErrNoRows) {
+				return ErrScheduleNotFound
+			}
+			if err != nil {
+				return fmt.Errorf("get schedule: %w", err)
+			}
+			// Someone else's schedule and a cancelled one are answered like one that does not exist.
+			if sc.PersonnelID != p.PersonnelID || sc.CancelledAt.Valid {
+				return ErrScheduleNotFound
+			}
+			// An identical start that committed while this one waited for the lock is a replay.
+			if got, found, err := s.storedRoute(ctx, q, p, in.LocalID); err != nil {
+				return err
+			} else if found {
+				out = RouteResult{Route: got, Replayed: true}
+				return nil
+			}
+			// A schedule whose zone was deleted since is answered like one that does not exist: deleting a zone
+			// does not cancel its schedules, and a patrol must not be tied to a zone nobody can scan any more.
+			zone, err := q.GetPatrolZone(ctx, sc.ZoneID)
+			if errors.Is(err, pgx.ErrNoRows) || (err == nil && zone.DeletedAt.Valid) {
+				return ErrScheduleNotFound
+			}
+			if err != nil {
+				return fmt.Errorf("get zone of schedule: %w", err)
+			}
+			zoneTeam = zone.TeamCode
+			if strings.TrimSpace(projectCode) != "" && projectCode != sc.ProjectCode {
+				return apperr.ErrValidation.WithFields(apperr.FieldError{Field: "project_code", Code: "INVALID", Message: "Bukan proyek jadwal ini."})
+			}
+			projectCode = sc.ProjectCode
+			// ⚠ The window is judged on started_at, not on the server's clock, so an offline start made inside the
+			// window is accepted when it syncs after it. A late start is allowed: the delay is reported, not refused.
+			earliest := sc.StartsAt.Time.Add(-scheduleEarlyStart)
+			if at.Before(earliest) || at.After(sc.EndsAt.Time) {
+				return errPatrolOutsideSchedule(sc.StartsAt.Time, sc.EndsAt.Time, earliest)
+			}
+			if _, err := q.GetPatrolOfSchedule(ctx, sc.ID); err == nil {
+				return ErrScheduleAlreadyStarted
+			} else if !errors.Is(err, pgx.ErrNoRows) {
+				return fmt.Errorf("get patrol of schedule: %w", err)
+			}
+			zoneID = pgtype.Int8{Int64: sc.ZoneID, Valid: true}
+		}
+
+		project, err := q.GetProject(ctx, projectCode)
 		if errors.Is(err, pgx.ErrNoRows) {
 			// A project that is not there and one the person does not serve in are answered alike.
 			return errNotInProject
@@ -296,9 +415,11 @@ func (s *Service) start(ctx context.Context, p auth.Principal, in StartInput) (R
 		if err := s.mayScan(ctx, q, p.PersonnelID, timeutil.BusinessDate(at, loc)); err != nil {
 			return err
 		}
-		// The regu and the work date from the shift rule of a scan (see place), asked for the whole
-		// project: a patrol belongs to a project and may cross several zones.
-		pl, err := s.placeIn(ctx, q, p, project.Code, pgtype.Text{}, loc, at)
+		// The regu and the work date from the shift rule of a scan (see place). An ad-hoc patrol asks for the
+		// whole project (it may cross several zones); one started from a schedule asks for the scheduled zone's
+		// regu, so a guard of two regus is filed under the one whose DANRU looks after that zone. Making the
+		// schedule already required that membership; a guard taken out of the regu since is refused here.
+		pl, err := s.placeIn(ctx, q, p, project.Code, zoneTeam, loc, at)
 		if errors.Is(err, ErrNotInProject) {
 			return errNotInProject
 		}
@@ -309,7 +430,7 @@ func (s *Service) start(ctx context.Context, p auth.Principal, in StartInput) (R
 		row, err := q.InsertPatrolRoute(ctx, db.InsertPatrolRouteParams{
 			LocalID: pgtype.UUID{Bytes: localID, Valid: true}, PersonnelID: p.PersonnelID, TeamCode: pl.team,
 			ProjectCode: project.Code, StartedAt: ts(at), WorkDate: pgtype.Date{Time: pl.workDate.Time(), Valid: true},
-			SubmittedOffline: in.SubmittedOffline, Now: ts(now),
+			SubmittedOffline: in.SubmittedOffline, ZoneID: zoneID, ScheduleID: scheduleID, Now: ts(now),
 		})
 		if err != nil {
 			return fmt.Errorf("insert patrol: %w", err)
@@ -321,10 +442,61 @@ func (s *Service) start(ctx context.Context, p auth.Principal, in StartInput) (R
 		}); err != nil {
 			return fmt.Errorf("insert first point: %w", err)
 		}
-		out = RouteResult{Route: routeOf(row)}
+		if deviceCondition != nil {
+			if err := q.InsertPatrolMetadata(ctx, db.InsertPatrolMetadataParams{
+				PatrolID: row.ID, Kind: db.PatrolMetadataKindSTART, DeviceCondition: deviceCondition, RecordedAt: ts(at),
+			}); err != nil {
+				return fmt.Errorf("insert start condition: %w", err)
+			}
+		}
+		routes := []Route{routeOf(row)}
+		if err := s.enrichRoutes(ctx, q, routes); err != nil {
+			return err
+		}
+		out = RouteResult{Route: routes[0]}
 		return nil
 	})
 	return out, err
+}
+
+// startDelayMinutes is how late a patrol started, in whole minutes rounded to the nearest (the times are the
+// phone's and the database's, microseconds apart), and 0 for one on time or early.
+func startDelayMinutes(startedAt, startsAt time.Time) int {
+	return max(0, int((startedAt.Sub(startsAt)+30*time.Second)/time.Minute))
+}
+
+// scheduleEarlyStart is how long before its window a schedule may be started.
+const scheduleEarlyStart = 15 * time.Minute
+
+// enrichRoutes fills the zone, the schedule and the start delay of the patrols that were started from a schedule,
+// for all of them in one query.
+func (s *Service) enrichRoutes(ctx context.Context, q *db.Queries, routes []Route) error {
+	if len(routes) == 0 {
+		return nil
+	}
+	ids := make([]int64, 0, len(routes))
+	for _, r := range routes {
+		ids = append(ids, r.ID)
+	}
+	rows, err := q.ListRouteSchedules(ctx, ids)
+	if err != nil {
+		return fmt.Errorf("list patrol schedules: %w", err)
+	}
+	byID := make(map[int64]db.ListRouteSchedulesRow, len(rows))
+	for _, r := range rows {
+		byID[r.PatrolID] = r
+	}
+	for i := range routes {
+		r, ok := byID[routes[i].ID]
+		if !ok {
+			continue
+		}
+		routes[i].Zone = &RouteZone{ID: r.ZoneID, Name: r.ZoneName, Type: string(r.ZoneType)}
+		routes[i].Schedule = &RouteSchedule{ID: uuidString(r.ScheduleID), StartsAt: r.ScheduleStartsAt.Time, EndsAt: r.ScheduleEndsAt.Time}
+		delay := startDelayMinutes(routes[i].StartedAt, r.ScheduleStartsAt.Time)
+		routes[i].StartDelayMinutes = &delay
+	}
+	return nil
 }
 
 // errNotInProject is ZONE_NOT_IN_PROJECT with words that fit a patrol, which has a project, not a zone.
@@ -435,8 +607,12 @@ func (s *Service) AddPoints(ctx context.Context, p auth.Principal, id int64, in 
 // the status ENDED. A retry of the same end (the same ended_at) returns the patrol as stored; any other
 // end of a patrol that is over, by the guard or by patrol:auto-end, is PATROL_NOT_ACTIVE.
 func (s *Service) End(ctx context.Context, p auth.Principal, id int64, in EndInput) (RouteDetail, error) {
+	deviceCondition, err := parseDeviceCondition(in.DeviceCondition, "device_condition")
+	if err != nil {
+		return RouteDetail{}, err
+	}
 	var out RouteDetail
-	err := database.WithTenant(ctx, s.pool, p.OrganizationID, func(q *db.Queries) error {
+	err = database.WithTenant(ctx, s.pool, p.OrganizationID, func(q *db.Queries) error {
 		route, err := s.ownRoute(ctx, q, p, id)
 		if err != nil {
 			return err
@@ -468,6 +644,13 @@ func (s *Service) End(ctx context.Context, p auth.Principal, id int64, in EndInp
 			}
 			if route, err = s.finish(ctx, q, route, db.PatrolRouteStatusENDED, endedAt); err != nil {
 				return err
+			}
+			if deviceCondition != nil {
+				if err := q.InsertPatrolMetadata(ctx, db.InsertPatrolMetadataParams{
+					PatrolID: route.ID, Kind: db.PatrolMetadataKindEND, DeviceCondition: deviceCondition, RecordedAt: ts(endedAt),
+				}); err != nil {
+					return fmt.Errorf("insert end condition: %w", err)
+				}
 			}
 		}
 		out, err = s.detail(ctx, q, route)
@@ -570,7 +753,22 @@ func (s *Service) joinPatrol(ctx context.Context, q *db.Queries, p auth.Principa
 // detail builds one patrol with its line and its scans. An ACTIVE patrol has no stored path yet, so
 // the line is built from the points received so far, and a DANRU watching sees it grow.
 func (s *Service) detail(ctx context.Context, q *db.Queries, row db.PatrolRoute) (RouteDetail, error) {
-	out := RouteDetail{Route: routeOf(row)}
+	routes := []Route{routeOf(row)}
+	if err := s.enrichRoutes(ctx, q, routes); err != nil {
+		return RouteDetail{}, err
+	}
+	out := RouteDetail{Route: routes[0]}
+	meta, err := q.ListPatrolMetadata(ctx, []int64{row.ID})
+	if err != nil {
+		return RouteDetail{}, fmt.Errorf("list patrol metadata: %w", err)
+	}
+	for _, m := range meta {
+		if m.Kind == db.PatrolMetadataKindSTART {
+			out.DeviceCondition.Start = m.DeviceCondition
+		} else {
+			out.DeviceCondition.End = m.DeviceCondition
+		}
+	}
 	names, err := q.ListPersonnelNames(ctx, []int64{row.PersonnelID})
 	if err != nil {
 		return RouteDetail{}, fmt.Errorf("list names: %w", err)
@@ -587,8 +785,9 @@ func (s *Service) detail(ctx context.Context, q *db.Queries, row db.PatrolRoute)
 	pins := make([]geo.Point, 0, len(scans))
 	for _, sc := range scans {
 		out.Scans = append(out.Scans, RouteScan{
-			ID: sc.ID, ZoneID: sc.ZoneID, ZoneName: sc.ZoneName, OccurredAt: sc.OccurredAt.Time,
-			Latitude: sc.Latitude, Longitude: sc.Longitude, Status: string(sc.Status), Subject: sc.Subject,
+			ID: sc.ID, ZoneID: sc.ZoneID, ZoneName: sc.ZoneName, CheckpointID: uuidString(sc.CheckpointID), CheckpointName: sc.CheckpointName,
+			OccurredAt: sc.OccurredAt.Time,
+			Latitude:   sc.Latitude, Longitude: sc.Longitude, Status: string(sc.Status), Subject: sc.Subject,
 		})
 		pins = append(pins, geo.Point{Lat: sc.Latitude, Lng: sc.Longitude})
 	}
@@ -698,6 +897,8 @@ type RouteFilter struct {
 	PersonnelID int64
 	WorkDate    *timeutil.Date
 	Status      string
+	ZoneID      int64
+	ScheduleID  pgtype.UUID // Valid when the list is narrowed to the patrol of one schedule
 	Limit       int
 	Offset      int
 }
@@ -732,6 +933,7 @@ func (s *Service) ListRoutes(ctx context.Context, p auth.Principal, f RouteFilte
 		keys, err := q.ListRouteKeys(ctx, db.ListRouteKeysParams{
 			ViewerID: p.PersonnelID, ProjectCode: text(f.ProjectCode), TeamCode: text(f.TeamCode),
 			PersonnelID: int8Param(positive(f.PersonnelID)), WorkDate: dateParam(f.WorkDate), Status: status,
+			ZoneID: int8Param(positive(f.ZoneID)), ScheduleID: f.ScheduleID,
 		})
 		if err != nil {
 			return fmt.Errorf("list patrol keys: %w", err)
@@ -765,6 +967,7 @@ func (s *Service) ListRoutes(ctx context.Context, p auth.Principal, f RouteFilte
 		rows, err := q.ListPatrolRoutes(ctx, db.ListPatrolRoutesParams{
 			ViewerID: p.PersonnelID, Days: days, Teams: teams, ProjectCode: text(f.ProjectCode), TeamCode: text(f.TeamCode),
 			PersonnelID: int8Param(positive(f.PersonnelID)), WorkDate: dateParam(f.WorkDate), Status: status,
+			ZoneID: int8Param(positive(f.ZoneID)), ScheduleID: f.ScheduleID,
 			PageLimit: int32(f.Limit), PageOffset: int32(f.Offset), //nolint:gosec // bounded by ParseListQuery
 		})
 		if err != nil {
@@ -773,6 +976,7 @@ func (s *Service) ListRoutes(ctx context.Context, p auth.Principal, f RouteFilte
 		total, err = q.CountPatrolRoutes(ctx, db.CountPatrolRoutesParams{
 			ViewerID: p.PersonnelID, Days: days, Teams: teams, ProjectCode: text(f.ProjectCode), TeamCode: text(f.TeamCode),
 			PersonnelID: int8Param(positive(f.PersonnelID)), WorkDate: dateParam(f.WorkDate), Status: status,
+			ZoneID: int8Param(positive(f.ZoneID)), ScheduleID: f.ScheduleID,
 		})
 		if err != nil {
 			return fmt.Errorf("count patrols: %w", err)
@@ -788,7 +992,7 @@ func (s *Service) ListRoutes(ctx context.Context, p auth.Principal, f RouteFilte
 			route.PersonnelName = r.FullName
 			out = append(out, route)
 		}
-		return nil
+		return s.enrichRoutes(ctx, q, out)
 	})
 	return out, int(total), err
 }
