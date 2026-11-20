@@ -30,12 +30,16 @@ const pngSize = 512
 // ⚠ It is static, unlike the attendance QR (which rotates), because it is printed on a sticker and stuck at
 // the checkpoint: a code that changed every minute could not be. What keeps a static code from being a
 // free pass is not the code but what the server does with a scan:
-//   - the checkpoint's geofence rejects a scan made away from it, whatever the code says, so a photo of
-//     the sticker does nothing from the couch;
+//   - the checkpoint's geofence marks a scan made away from it (location_flag OUTSIDE_RADIUS, Phase 10.17) for
+//     the DANRU, whatever the code says, so a photo of the sticker from the couch is seen at approval; check-in
+//     and check-out still refuse it;
 //   - the organization id in the payload stops a sticker of one organization from opening a checkpoint of
 //     another;
 //   - when a sticker leaks, the admin rotates the secret (POST /admin/checkpoints/{id}/rotate-qr) and
-//     every printed one stops working at once.
+//     every printed one stops working for every new visit. One exception (Phase 10.18, qrMatches): a scan that
+//     says it was made offline, dated before the rotation, still accepts the previous secret for qrGraceWindow
+//     (24 h, on the server's clock) after the rotation, so an offline round survives it. occurred_at and
+//     submitted_offline are the phone's claims, so for that window the replaced sticker is not fully dead.
 //
 // The zone has no QR any more (Phase 10.9); the prefix PERSIST-ZONE is not accepted.
 func CheckpointPayload(organizationID int64, checkpointID, secret string) string {

@@ -18817,10 +18817,13 @@ paths:
         ada di respons maupun di log audit.
 
         **Masa tenggang untuk scan offline.** Rahasia sebelum penggantian terakhir tetap diterima oleh
-        `POST /zones/{id}/scan` untuk scan yang `occurred_at`-nya **sebelum** `qr_rotated_at` (dalam batas 7 hari
-        `occurred_at` yang sudah berlaku): petugas memindai stiker lama tanpa sinyal, scan baru sampai setelah admin
-        mengganti. Hanya satu generasi ke belakang: penggantian kedua menimpanya. Scan setelah penggantian, serta
-        check-in dan check-out (online), harus membawa rahasia baru: stiker yang bocor tetap mati untuk semua kunjungan baru.
+        `POST /zones/{id}/scan` hanya bila **semuanya** berlaku: scan itu `submitted_offline: true`, `occurred_at`-nya
+        **sebelum** `qr_rotated_at`, dan penggantian terjadi **kurang dari 24 jam** lalu menurut jam server (bukan jam
+        HP): petugas memindai stiker lama tanpa sinyal, scan baru sampai setelah admin mengganti. Setelah 24 jam rahasia
+        lama mati untuk semua scan. Hanya satu generasi ke belakang: penggantian kedua menimpanya. Scan setelah
+        penggantian, scan yang tidak `submitted_offline`, serta check-in dan check-out (online), harus membawa rahasia
+        baru. ⚠ `occurred_at` dan `submitted_offline` adalah klaim HP, jadi dalam 24 jam itu stiker lama yang bocor masih
+        bisa dipakai untuk scan yang dibuat seolah-olah offline; batasnya jendela itu, bukan 7 hari.
       responses:
         '200':
           description: OK
@@ -21395,7 +21398,7 @@ paths:
         depan dan 7 hari ke belakang. Memeriksa berurutan, dan yang pertama gagal menjadi jawabannya:
         checkpoint harus bagian dari zona ini dan aktif (`CHECKPOINT_NOT_IN_ZONE`; id yang tidak ada, nonaktif
         atau milik zona lain dijawab sama), QR (`CHECKPOINT_QR_INVALID`; rahasia sebelum penggantian terakhir tetap
-        diterima untuk scan yang `occurred_at`-nya sebelum penggantian, lihat `POST /admin/checkpoints/{id}/rotate-qr`), izin `patrol.scan`/`guard.scan` menurut
+        diterima hanya untuk scan `submitted_offline` yang `occurred_at`-nya sebelum penggantian dan penggantian itu kurang dari 24 jam lalu, lihat `POST /admin/checkpoints/{id}/rotate-qr`), izin `patrol.scan`/`guard.scan` menurut
         tipe zona (`PERMISSION_DENIED`, 403), keanggotaan proyek dan regu (`ZONE_NOT_IN_PROJECT`, 403), urutan
         putaran (`CHECKPOINT_OUT_OF_ORDER`), interval
         (`ZONE_INTERVAL_NOT_ELAPSED`: per checkpoint, paling cepat 30 detik, atau interval patroli proyek bila

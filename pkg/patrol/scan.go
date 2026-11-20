@@ -59,7 +59,9 @@ func checkScanInterval(ctx context.Context, q *db.Queries, p auth.Principal, zon
 			return fmt.Errorf("last counted scan: %w", err)
 		}
 		if t := lastScan(last); t != nil {
-			details["next_allowed_at"] = nextAllowedAt(*t, interval).UTC().Format(time.RFC3339)
+			// Nano, not RFC3339: dropping the fraction would make this a moment before the next_allowed_at the field
+			// read shows, and a retry at exactly this time would be refused again.
+			details["next_allowed_at"] = nextAllowedAt(*t, interval).UTC().Format(time.RFC3339Nano)
 		}
 		return ErrIntervalNotElapsed.WithDetails(details)
 	}
@@ -318,18 +320,19 @@ type visit struct {
 // switched off or is another zone's alike. Then the QR: a request with a wrong code learns nothing about
 // the caller's permission or position.
 func (s *Service) arrive(ctx context.Context, q *db.Queries, p auth.Principal, zone db.PatrolZone, project db.Project,
-	checkpointID, qrPayload string, at time.Time,
+	checkpointID, qrPayload string, at time.Time, offline bool,
 ) (visit, error) {
-	return s.reach(ctx, q, p, zone, project, checkpointID, &qrPayload, at)
+	return s.reach(ctx, q, p, zone, project, checkpointID, &qrPayload, at, offline)
 }
 
 // reach is arrive, with the QR optional: a nil qrPayload skips the QR check. Only a skip passes nil (Phase
 // 10.17): the sticker may be the very reason the checkpoint cannot be scanned.
 //
 // at is the moment the guard was there (a scan's occurred_at); the zero time means "now, no grace" (check-in
-// and check-out, which are online). See the QR check below for what at changes.
+// and check-out, which are online). offline is whether the request says it was made offline. See qrMatches for
+// what at and offline change.
 func (s *Service) reach(ctx context.Context, q *db.Queries, p auth.Principal, zone db.PatrolZone, project db.Project,
-	checkpointID string, qrPayload *string, at time.Time,
+	checkpointID string, qrPayload *string, at time.Time, offline bool,
 ) (visit, error) {
 	v := visit{zone: zone, project: project}
 	id, ok := parseUUID(checkpointID)
@@ -352,7 +355,7 @@ func (s *Service) reach(ctx context.Context, q *db.Queries, p auth.Principal, zo
 		return v, fmt.Errorf("get checkpoint: %w", err)
 	}
 	v.checkpoint = cp
-	if qrPayload != nil && !qrMatches(cp, p.OrganizationID, *qrPayload, at) {
+	if qrPayload != nil && !qrMatches(cp, p.OrganizationID, *qrPayload, at, offline, s.clock.Now()) {
 		return v, ErrCheckpointQRInvalid
 	}
 	loc, err := time.LoadLocation(project.Timezone)
@@ -363,23 +366,32 @@ func (s *Service) reach(ctx context.Context, q *db.Queries, p auth.Principal, zo
 	return v, nil
 }
 
+// qrGraceWindow is how long after a rotation the previous secret still works, for a scan that says it was made
+// offline before it. It is measured on the server's clock (not on occurred_at, which the phone writes), and is
+// long enough for a shift's offline queue to reach the server.
+const qrGraceWindow = 24 * time.Hour
+
 // qrMatches says whether a payload is the checkpoint's QR for a visit made at a moment.
 //
-// The current secret always counts. The secret the checkpoint had before its last rotation counts too, but
-// only for a visit made before that rotation (at < qr_rotated_at): a scan made offline while the old sticker
-// was the right one, synced after an admin rotated it. A visit after the rotation, or with no moment (at is
-// zero: check-in and check-out), must carry the current secret, so a rotation still kills a leaked sticker for
-// every new visit. One generation back only (a second rotation overwrites it), and the 7-day limit on
-// occurred_at (idem.OfflineCreate) bounds how long ago the visit can claim to be.
+// The current secret always counts. The secret the checkpoint had before its last rotation counts too, but only
+// when ALL of these hold: the request says it was made offline (offline), the visit is dated before the rotation
+// (at < qr_rotated_at), and the rotation was less than qrGraceWindow ago by the server's clock (now). That is the
+// scan made offline while the old sticker was the right one, synced after an admin rotated it.
+//
+// ⚠ at and offline are the phone's claims, so this is a bounded gap, not a seal: someone with a leaked old
+// sticker can still post a backdated offline scan, but only for qrGraceWindow after the rotation, not for the
+// 7 days idem.CheckOccurredAt allows. A visit with no moment (check-in, check-out) or after the rotation must
+// carry the current secret. One generation back only (a second rotation overwrites it).
 //
 // Both secrets are always compared, so the time taken does not say which one a payload held.
-func qrMatches(cp db.PatrolCheckpoint, organizationID int64, payload string, at time.Time) bool {
+func qrMatches(cp db.PatrolCheckpoint, organizationID int64, payload string, at time.Time, offline bool, now time.Time) bool {
 	current := verifyCheckpointPayload(payload, organizationID, uuidString(cp.ID), cp.QrSecret)
 	previous := false
 	if cp.PreviousQrSecret.Valid {
 		previous = verifyCheckpointPayload(payload, organizationID, uuidString(cp.ID), cp.PreviousQrSecret.String)
 	}
-	return current || (previous && !at.IsZero() && at.Before(cp.QrRotatedAt.Time))
+	rotated := cp.QrRotatedAt.Time
+	return current || (previous && offline && !at.IsZero() && at.Before(rotated) && now.Sub(rotated) < qrGraceWindow)
 }
 
 // authorize is the permission and the membership a scan and a check-in need, after the QR.
@@ -665,7 +677,7 @@ func (s *Service) scan(ctx context.Context, p auth.Principal, zoneID int64, in S
 		}
 
 		// 1 and 2: the checkpoint is the zone's, and the QR is its own.
-		v, err := s.arrive(ctx, q, p, zone, project, in.CheckpointID, in.QRPayload, at)
+		v, err := s.arrive(ctx, q, p, zone, project, in.CheckpointID, in.QRPayload, at, in.SubmittedOffline)
 		if err != nil {
 			return err
 		}

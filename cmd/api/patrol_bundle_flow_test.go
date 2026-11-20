@@ -210,6 +210,24 @@ func TestPatrolQRRotationGrace(t *testing.T) {
 		f.mustScan(f.personTok, z, bodyAt(cp, newPayload, now.Add(2*time.Minute)))
 	})
 
+	t.Run("a scan that does not say it was made offline gets no grace, even when dated before the rotation", func(t *testing.T) {
+		code, _, raw := f.scan(f.personTok, z.ID, bodyAt(cp, oldPayload, now.Add(-30*time.Minute)))
+		reasonIs(t, code, raw, http.StatusUnprocessableEntity, "CHECKPOINT_QR_INVALID")
+	})
+
+	t.Run("the grace ends 24 hours after the rotation, however far back the scan claims to be", func(t *testing.T) {
+		f.exec("UPDATE patrol_checkpoints SET qr_rotated_at = now() - interval '25 hours' WHERE id = $1", cp.ID)
+		body := bodyAt(cp, oldPayload, now.Add(-26*time.Hour))
+		body["submitted_offline"] = true
+		code, _, raw := f.scan(f.personTok, z.ID, body)
+		reasonIs(t, code, raw, http.StatusUnprocessableEntity, "CHECKPOINT_QR_INVALID")
+
+		f.exec("UPDATE patrol_checkpoints SET qr_rotated_at = now() - interval '2 hours' WHERE id = $1", cp.ID)
+		ok := bodyAt(cp, oldPayload, now.Add(-3*time.Hour))
+		ok["submitted_offline"] = true
+		f.mustScan(f.personTok, z, ok)
+	})
+
 	t.Run("check-in and check-out do not get the grace", func(t *testing.T) {
 		code, raw := f.do(http.MethodPost, "/api/v1/zones/"+strconv.FormatInt(z.ID, 10)+"/check-in", f.personTok,
 			jsonBody(t, map[string]any{
@@ -222,7 +240,9 @@ func TestPatrolQRRotationGrace(t *testing.T) {
 		code, _, raw := f.cpCall(http.MethodPost, checkpointPath(cp.ID)+"/rotate-qr", f.adminTok, nil)
 		require.Equal(t, http.StatusOK, code, string(raw))
 		// The secret of the first rotation is the previous one now: still good for a scan before the second.
-		f.mustScan(f.personTok, z, bodyAt(cp, newPayload, now.Add(-20*time.Minute)))
+		offline := bodyAt(cp, newPayload, now.Add(-20*time.Minute))
+		offline["submitted_offline"] = true
+		f.mustScan(f.personTok, z, offline)
 		// The original secret is two back.
 		code, _, raw = f.scan(f.personTok, z.ID, bodyAt(cp, oldPayload, now.Add(-30*time.Minute)))
 		reasonIs(t, code, raw, http.StatusUnprocessableEntity, "CHECKPOINT_QR_INVALID")
