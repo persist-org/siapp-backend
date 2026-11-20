@@ -45,6 +45,20 @@ func (q *Queries) CancelPatrolSchedule(ctx context.Context, arg CancelPatrolSche
 	return i, err
 }
 
+const countActiveCheckpointsOfZone = `-- name: CountActiveCheckpointsOfZone :one
+SELECT count(*)::int FROM patrol_zone_checkpoints zc
+JOIN patrol_checkpoints c ON c.organization_id = zc.organization_id AND c.id = zc.checkpoint_id
+WHERE zc.zone_id = $1 AND c.active AND c.deleted_at IS NULL
+`
+
+// The active checkpoints a zone has now: checkpoints_total of a schedule that a write answers with (Phase 10.19).
+func (q *Queries) CountActiveCheckpointsOfZone(ctx context.Context, zoneID int64) (int32, error) {
+	row := q.db.QueryRow(ctx, countActiveCheckpointsOfZone, zoneID)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const countPatrolSchedules = `-- name: CountPatrolSchedules :one
 SELECT count(*)
 FROM patrol_schedules sc
@@ -158,7 +172,17 @@ func (q *Queries) GetPatrolScheduleForUpdate(ctx context.Context, id pgtype.UUID
 const getPatrolScheduleView = `-- name: GetPatrolScheduleView :one
 SELECT sc.id, sc.organization_id, sc.project_code, sc.zone_id, sc.personnel_id, sc.starts_at, sc.ends_at, sc.work_date, sc.notes, sc.created_by_id, sc.cancelled_at, sc.cancelled_by_id, sc.created_at, sc.updated_at, z.name AS zone_name, z.type AS zone_type, p.full_name AS personnel_name,
        pr.id AS patrol_id, pr.status AS patrol_status, pr.started_at AS patrol_started_at,
-       (SELECT count(*) FROM patrol_scans s WHERE s.patrol_id = pr.id AND s.zone_id = sc.zone_id AND s.outcome = 'SCANNED')::int AS scan_count
+       (SELECT count(*) FROM patrol_scans s WHERE s.patrol_id = pr.id AND s.zone_id = sc.zone_id AND s.outcome = 'SCANNED')::int AS scan_count,
+       (SELECT count(DISTINCT s.checkpoint_id)
+          FROM patrol_scans s
+          JOIN patrol_zone_checkpoints zc ON zc.organization_id = s.organization_id AND zc.zone_id = s.zone_id AND zc.checkpoint_id = s.checkpoint_id
+          JOIN patrol_checkpoints c ON c.organization_id = zc.organization_id AND c.id = zc.checkpoint_id
+         WHERE s.zone_id = sc.zone_id AND s.personnel_id = sc.personnel_id AND s.outcome = 'SCANNED' AND s.status <> 'DECLINED'
+           AND s.occurred_at >= sc.starts_at AND s.occurred_at <= sc.ends_at AND c.active AND c.deleted_at IS NULL)::int AS checkpoints_scanned,
+       (SELECT count(*)
+          FROM patrol_zone_checkpoints zc
+          JOIN patrol_checkpoints c ON c.organization_id = zc.organization_id AND c.id = zc.checkpoint_id
+         WHERE zc.zone_id = sc.zone_id AND c.active AND c.deleted_at IS NULL)::int AS checkpoints_total
 FROM patrol_schedules sc
 JOIN patrol_zones z ON z.organization_id = sc.organization_id AND z.id = sc.zone_id
 JOIN personnels p ON p.id = sc.personnel_id
@@ -167,27 +191,29 @@ WHERE sc.id = $1
 `
 
 type GetPatrolScheduleViewRow struct {
-	ID              pgtype.UUID
-	OrganizationID  int64
-	ProjectCode     string
-	ZoneID          int64
-	PersonnelID     int64
-	StartsAt        pgtype.Timestamptz
-	EndsAt          pgtype.Timestamptz
-	WorkDate        pgtype.Date
-	Notes           pgtype.Text
-	CreatedByID     int64
-	CancelledAt     pgtype.Timestamptz
-	CancelledByID   pgtype.Int8
-	CreatedAt       pgtype.Timestamptz
-	UpdatedAt       pgtype.Timestamptz
-	ZoneName        string
-	ZoneType        PatrolZoneType
-	PersonnelName   string
-	PatrolID        pgtype.Int8
-	PatrolStatus    NullPatrolRouteStatus
-	PatrolStartedAt pgtype.Timestamptz
-	ScanCount       int32
+	ID                 pgtype.UUID
+	OrganizationID     int64
+	ProjectCode        string
+	ZoneID             int64
+	PersonnelID        int64
+	StartsAt           pgtype.Timestamptz
+	EndsAt             pgtype.Timestamptz
+	WorkDate           pgtype.Date
+	Notes              pgtype.Text
+	CreatedByID        int64
+	CancelledAt        pgtype.Timestamptz
+	CancelledByID      pgtype.Int8
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
+	ZoneName           string
+	ZoneType           PatrolZoneType
+	PersonnelName      string
+	PatrolID           pgtype.Int8
+	PatrolStatus       NullPatrolRouteStatus
+	PatrolStartedAt    pgtype.Timestamptz
+	ScanCount          int32
+	CheckpointsScanned int32
+	CheckpointsTotal   int32
 }
 
 // One schedule with its zone and person, the same shape as the list.
@@ -216,6 +242,8 @@ func (q *Queries) GetPatrolScheduleView(ctx context.Context, id pgtype.UUID) (Ge
 		&i.PatrolStatus,
 		&i.PatrolStartedAt,
 		&i.ScanCount,
+		&i.CheckpointsScanned,
+		&i.CheckpointsTotal,
 	)
 	return i, err
 }
@@ -332,7 +360,19 @@ func (q *Queries) ListOverlappingSchedules(ctx context.Context, arg ListOverlapp
 const listPatrolSchedules = `-- name: ListPatrolSchedules :many
 SELECT sc.id, sc.organization_id, sc.project_code, sc.zone_id, sc.personnel_id, sc.starts_at, sc.ends_at, sc.work_date, sc.notes, sc.created_by_id, sc.cancelled_at, sc.cancelled_by_id, sc.created_at, sc.updated_at, z.name AS zone_name, z.type AS zone_type, p.full_name AS personnel_name,
        pr.id AS patrol_id, pr.status AS patrol_status, pr.started_at AS patrol_started_at,
-       (SELECT count(*) FROM patrol_scans s WHERE s.patrol_id = pr.id AND s.zone_id = sc.zone_id AND s.outcome = 'SCANNED')::int AS scan_count
+       (SELECT count(*) FROM patrol_scans s WHERE s.patrol_id = pr.id AND s.zone_id = sc.zone_id AND s.outcome = 'SCANNED')::int AS scan_count,
+       -- Phase 10.19: distinct active checkpoints of the zone this person scanned inside the window, a declined scan
+       -- not counting, out of the active checkpoints the zone has now.
+       (SELECT count(DISTINCT s.checkpoint_id)
+          FROM patrol_scans s
+          JOIN patrol_zone_checkpoints zc ON zc.organization_id = s.organization_id AND zc.zone_id = s.zone_id AND zc.checkpoint_id = s.checkpoint_id
+          JOIN patrol_checkpoints c ON c.organization_id = zc.organization_id AND c.id = zc.checkpoint_id
+         WHERE s.zone_id = sc.zone_id AND s.personnel_id = sc.personnel_id AND s.outcome = 'SCANNED' AND s.status <> 'DECLINED'
+           AND s.occurred_at >= sc.starts_at AND s.occurred_at <= sc.ends_at AND c.active AND c.deleted_at IS NULL)::int AS checkpoints_scanned,
+       (SELECT count(*)
+          FROM patrol_zone_checkpoints zc
+          JOIN patrol_checkpoints c ON c.organization_id = zc.organization_id AND c.id = zc.checkpoint_id
+         WHERE zc.zone_id = sc.zone_id AND c.active AND c.deleted_at IS NULL)::int AS checkpoints_total
 FROM patrol_schedules sc
 JOIN patrol_zones z ON z.organization_id = sc.organization_id AND z.id = sc.zone_id
 JOIN personnels p ON p.id = sc.personnel_id
@@ -376,27 +416,29 @@ type ListPatrolSchedulesParams struct {
 }
 
 type ListPatrolSchedulesRow struct {
-	ID              pgtype.UUID
-	OrganizationID  int64
-	ProjectCode     string
-	ZoneID          int64
-	PersonnelID     int64
-	StartsAt        pgtype.Timestamptz
-	EndsAt          pgtype.Timestamptz
-	WorkDate        pgtype.Date
-	Notes           pgtype.Text
-	CreatedByID     int64
-	CancelledAt     pgtype.Timestamptz
-	CancelledByID   pgtype.Int8
-	CreatedAt       pgtype.Timestamptz
-	UpdatedAt       pgtype.Timestamptz
-	ZoneName        string
-	ZoneType        PatrolZoneType
-	PersonnelName   string
-	PatrolID        pgtype.Int8
-	PatrolStatus    NullPatrolRouteStatus
-	PatrolStartedAt pgtype.Timestamptz
-	ScanCount       int32
+	ID                 pgtype.UUID
+	OrganizationID     int64
+	ProjectCode        string
+	ZoneID             int64
+	PersonnelID        int64
+	StartsAt           pgtype.Timestamptz
+	EndsAt             pgtype.Timestamptz
+	WorkDate           pgtype.Date
+	Notes              pgtype.Text
+	CreatedByID        int64
+	CancelledAt        pgtype.Timestamptz
+	CancelledByID      pgtype.Int8
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
+	ZoneName           string
+	ZoneType           PatrolZoneType
+	PersonnelName      string
+	PatrolID           pgtype.Int8
+	PatrolStatus       NullPatrolRouteStatus
+	PatrolStartedAt    pgtype.Timestamptz
+	ScanCount          int32
+	CheckpointsScanned int32
+	CheckpointsTotal   int32
 }
 
 // The schedules a reader may see, with the zone and the person. One statement for the admin and the field:
@@ -452,6 +494,8 @@ func (q *Queries) ListPatrolSchedules(ctx context.Context, arg ListPatrolSchedul
 			&i.PatrolStatus,
 			&i.PatrolStartedAt,
 			&i.ScanCount,
+			&i.CheckpointsScanned,
+			&i.CheckpointsTotal,
 		); err != nil {
 			return nil, err
 		}

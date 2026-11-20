@@ -69,6 +69,10 @@ type ZoneCheckpoint struct {
 	MyScans *int
 	// Scannable is whether the order rule lets the caller scan it now.
 	Scannable *bool
+	// LastScannedAt is the caller's latest counted scan of it in this zone on today's work date, NextAllowedAt
+	// when the patrol interval lets them scan it again (Phase 10.19). Both nil when there is no such scan.
+	LastScannedAt *time.Time
+	NextAllowedAt *time.Time
 	// Actions is its active checklist, in order. Nil means the read does not carry checklists.
 	Actions []CheckpointAction
 }

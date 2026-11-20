@@ -332,6 +332,69 @@ func (q *Queries) InsertZoneCheckin(ctx context.Context, arg InsertZoneCheckinPa
 	return i, err
 }
 
+const lastCountedScan = `-- name: LastCountedScan :one
+SELECT max(occurred_at)::timestamptz AS last_scanned_at FROM patrol_scans
+WHERE personnel_id = $1 AND zone_id = $2 AND checkpoint_id = $3
+  AND outcome = 'SCANNED' AND status <> 'DECLINED'
+`
+
+type LastCountedScanParams struct {
+	PersonnelID  int64
+	ZoneID       int64
+	CheckpointID pgtype.UUID
+}
+
+// The latest scan of this checkpoint in this zone by this person that the interval counts (SCANNED, not declined),
+// on any work date: the moment next_allowed_at in ZONE_INTERVAL_NOT_ELAPSED is measured from (Phase 10.19).
+func (q *Queries) LastCountedScan(ctx context.Context, arg LastCountedScanParams) (pgtype.Timestamptz, error) {
+	row := q.db.QueryRow(ctx, lastCountedScan, arg.PersonnelID, arg.ZoneID, arg.CheckpointID)
+	var last_scanned_at pgtype.Timestamptz
+	err := row.Scan(&last_scanned_at)
+	return last_scanned_at, err
+}
+
+const listOpenCheckinsOfPersonnel = `-- name: ListOpenCheckinsOfPersonnel :many
+SELECT id, organization_id, zone_id, personnel_id, team_code, shift_id, check_in_at, check_in_lat, check_in_lng, check_out_at, check_out_lat, check_out_lng, created_at, updated_at, checkpoint_id FROM zone_checkins WHERE personnel_id = $1 AND check_out_at IS NULL ORDER BY check_in_at, id
+`
+
+// The person's open check-in, if any (Phase 10.19). There is at most one: zone_checkins_open_uq. The check-in
+// reads it to name the zone in ZONE_ALREADY_CHECKED_IN, and GET /zones/check-ins/open lists it.
+func (q *Queries) ListOpenCheckinsOfPersonnel(ctx context.Context, personnelID int64) ([]ZoneCheckin, error) {
+	rows, err := q.db.Query(ctx, listOpenCheckinsOfPersonnel, personnelID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ZoneCheckin{}
+	for rows.Next() {
+		var i ZoneCheckin
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrganizationID,
+			&i.ZoneID,
+			&i.PersonnelID,
+			&i.TeamCode,
+			&i.ShiftID,
+			&i.CheckInAt,
+			&i.CheckInLat,
+			&i.CheckInLng,
+			&i.CheckOutAt,
+			&i.CheckOutLat,
+			&i.CheckOutLng,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.CheckpointID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listZoneLive = `-- name: ListZoneLive :many
 SELECT c.id, c.organization_id, c.zone_id, c.personnel_id, c.team_code, c.shift_id, c.check_in_at, c.check_in_lat, c.check_in_lng, c.check_out_at, c.check_out_lat, c.check_out_lng, c.created_at, c.updated_at, c.checkpoint_id, p.full_name FROM zone_checkins c
 JOIN personnels p ON p.id = c.personnel_id

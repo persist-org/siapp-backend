@@ -43,7 +43,19 @@ ORDER BY starts_at, id;
 -- name: ListPatrolSchedules :many
 SELECT sc.*, z.name AS zone_name, z.type AS zone_type, p.full_name AS personnel_name,
        pr.id AS patrol_id, pr.status AS patrol_status, pr.started_at AS patrol_started_at,
-       (SELECT count(*) FROM patrol_scans s WHERE s.patrol_id = pr.id AND s.zone_id = sc.zone_id AND s.outcome = 'SCANNED')::int AS scan_count
+       (SELECT count(*) FROM patrol_scans s WHERE s.patrol_id = pr.id AND s.zone_id = sc.zone_id AND s.outcome = 'SCANNED')::int AS scan_count,
+       -- Phase 10.19: distinct active checkpoints of the zone this person scanned inside the window, a declined scan
+       -- not counting, out of the active checkpoints the zone has now.
+       (SELECT count(DISTINCT s.checkpoint_id)
+          FROM patrol_scans s
+          JOIN patrol_zone_checkpoints zc ON zc.organization_id = s.organization_id AND zc.zone_id = s.zone_id AND zc.checkpoint_id = s.checkpoint_id
+          JOIN patrol_checkpoints c ON c.organization_id = zc.organization_id AND c.id = zc.checkpoint_id
+         WHERE s.zone_id = sc.zone_id AND s.personnel_id = sc.personnel_id AND s.outcome = 'SCANNED' AND s.status <> 'DECLINED'
+           AND s.occurred_at >= sc.starts_at AND s.occurred_at <= sc.ends_at AND c.active AND c.deleted_at IS NULL)::int AS checkpoints_scanned,
+       (SELECT count(*)
+          FROM patrol_zone_checkpoints zc
+          JOIN patrol_checkpoints c ON c.organization_id = zc.organization_id AND c.id = zc.checkpoint_id
+         WHERE zc.zone_id = sc.zone_id AND c.active AND c.deleted_at IS NULL)::int AS checkpoints_total
 FROM patrol_schedules sc
 JOIN patrol_zones z ON z.organization_id = sc.organization_id AND z.id = sc.zone_id
 JOIN personnels p ON p.id = sc.personnel_id
@@ -93,11 +105,27 @@ WHERE (sqlc.narg('scope_region')::text IS NULL OR 'OS' || substring(sc.project_c
        OR (sqlc.narg('status') = 'MISSED' AND sc.cancelled_at IS NULL AND pr.id IS NULL AND sc.ends_at < @now)
        OR (sqlc.narg('status') = 'SCHEDULED' AND sc.cancelled_at IS NULL AND pr.id IS NULL AND sc.ends_at >= @now));
 
+-- The active checkpoints a zone has now: checkpoints_total of a schedule that a write answers with (Phase 10.19).
+-- name: CountActiveCheckpointsOfZone :one
+SELECT count(*)::int FROM patrol_zone_checkpoints zc
+JOIN patrol_checkpoints c ON c.organization_id = zc.organization_id AND c.id = zc.checkpoint_id
+WHERE zc.zone_id = @zone_id AND c.active AND c.deleted_at IS NULL;
+
 -- One schedule with its zone and person, the same shape as the list.
 -- name: GetPatrolScheduleView :one
 SELECT sc.*, z.name AS zone_name, z.type AS zone_type, p.full_name AS personnel_name,
        pr.id AS patrol_id, pr.status AS patrol_status, pr.started_at AS patrol_started_at,
-       (SELECT count(*) FROM patrol_scans s WHERE s.patrol_id = pr.id AND s.zone_id = sc.zone_id AND s.outcome = 'SCANNED')::int AS scan_count
+       (SELECT count(*) FROM patrol_scans s WHERE s.patrol_id = pr.id AND s.zone_id = sc.zone_id AND s.outcome = 'SCANNED')::int AS scan_count,
+       (SELECT count(DISTINCT s.checkpoint_id)
+          FROM patrol_scans s
+          JOIN patrol_zone_checkpoints zc ON zc.organization_id = s.organization_id AND zc.zone_id = s.zone_id AND zc.checkpoint_id = s.checkpoint_id
+          JOIN patrol_checkpoints c ON c.organization_id = zc.organization_id AND c.id = zc.checkpoint_id
+         WHERE s.zone_id = sc.zone_id AND s.personnel_id = sc.personnel_id AND s.outcome = 'SCANNED' AND s.status <> 'DECLINED'
+           AND s.occurred_at >= sc.starts_at AND s.occurred_at <= sc.ends_at AND c.active AND c.deleted_at IS NULL)::int AS checkpoints_scanned,
+       (SELECT count(*)
+          FROM patrol_zone_checkpoints zc
+          JOIN patrol_checkpoints c ON c.organization_id = zc.organization_id AND c.id = zc.checkpoint_id
+         WHERE zc.zone_id = sc.zone_id AND c.active AND c.deleted_at IS NULL)::int AS checkpoints_total
 FROM patrol_schedules sc
 JOIN patrol_zones z ON z.organization_id = sc.organization_id AND z.id = sc.zone_id
 JOIN personnels p ON p.id = sc.personnel_id

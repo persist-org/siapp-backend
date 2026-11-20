@@ -80,7 +80,8 @@ func (q *Queries) CountPatrolCheckpoints(ctx context.Context, arg CountPatrolChe
 
 const countScansByPosition = `-- name: CountScansByPosition :many
 
-SELECT zc.checkpoint_id, zc.sort_order AS position, count(s.id)::int AS scans
+SELECT zc.checkpoint_id, zc.sort_order AS position, count(s.id)::int AS scans,
+       (max(s.occurred_at) FILTER (WHERE s.outcome = 'SCANNED' AND s.status <> 'DECLINED'))::timestamptz AS last_scanned_at
 FROM patrol_zone_checkpoints zc
 JOIN patrol_checkpoints c ON c.organization_id = zc.organization_id AND c.id = zc.checkpoint_id
 LEFT JOIN patrol_scans s ON s.organization_id = zc.organization_id AND s.zone_id = zc.zone_id
@@ -99,9 +100,10 @@ type CountScansByPositionParams struct {
 }
 
 type CountScansByPositionRow struct {
-	CheckpointID pgtype.UUID
-	Position     int32
-	Scans        int32
+	CheckpointID  pgtype.UUID
+	Position      int32
+	Scans         int32
+	LastScannedAt pgtype.Timestamptz
 }
 
 // The order rule (Phase 10.9)
@@ -109,6 +111,11 @@ type CountScansByPositionRow struct {
 // How many times one person scanned each checkpoint of a zone on a work date, before a moment, in the
 // zone's order. Every active checkpoint of the zone is listed, with 0 when it was not scanned yet, so
 // the caller always gets one row per position. Any status counts: a later decline does not undo the walk.
+//
+// last_scanned_at (Phase 10.19) is the person's latest scan of the checkpoint that the patrol interval counts:
+// outcome SCANNED and not declined, the same rows HasScanBetween looks at (a skip is not a visit, and a visit the
+// DANRU turned down did not happen). NULL when there is none. The order rule above counts every status; this
+// column does not, on purpose.
 func (q *Queries) CountScansByPosition(ctx context.Context, arg CountScansByPositionParams) ([]CountScansByPositionRow, error) {
 	rows, err := q.db.Query(ctx, countScansByPosition,
 		arg.PersonnelID,
@@ -123,7 +130,12 @@ func (q *Queries) CountScansByPosition(ctx context.Context, arg CountScansByPosi
 	items := []CountScansByPositionRow{}
 	for rows.Next() {
 		var i CountScansByPositionRow
-		if err := rows.Scan(&i.CheckpointID, &i.Position, &i.Scans); err != nil {
+		if err := rows.Scan(
+			&i.CheckpointID,
+			&i.Position,
+			&i.Scans,
+			&i.LastScannedAt,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -135,7 +147,8 @@ func (q *Queries) CountScansByPosition(ctx context.Context, arg CountScansByPosi
 }
 
 const countScansByPositionOfZones = `-- name: CountScansByPositionOfZones :many
-SELECT zc.zone_id, zc.checkpoint_id, zc.sort_order AS position, count(s.id)::int AS scans
+SELECT zc.zone_id, zc.checkpoint_id, zc.sort_order AS position, count(s.id)::int AS scans,
+       (max(s.occurred_at) FILTER (WHERE s.outcome = 'SCANNED' AND s.status <> 'DECLINED'))::timestamptz AS last_scanned_at
 FROM (SELECT z.zone_id, d.work_date
       FROM unnest($1::bigint[]) WITH ORDINALITY AS z(zone_id, n)
       JOIN unnest($2::date[]) WITH ORDINALITY AS d(work_date, n) ON d.n = z.n) w
@@ -156,10 +169,11 @@ type CountScansByPositionOfZonesParams struct {
 }
 
 type CountScansByPositionOfZonesRow struct {
-	ZoneID       int64
-	CheckpointID pgtype.UUID
-	Position     int32
-	Scans        int32
+	ZoneID        int64
+	CheckpointID  pgtype.UUID
+	Position      int32
+	Scans         int32
+	LastScannedAt pgtype.Timestamptz
 }
 
 // CountScansByPosition for many zones at once, each on its own work date (the bundled field list, Phase 10.18):
@@ -179,6 +193,7 @@ func (q *Queries) CountScansByPositionOfZones(ctx context.Context, arg CountScan
 			&i.CheckpointID,
 			&i.Position,
 			&i.Scans,
+			&i.LastScannedAt,
 		); err != nil {
 			return nil, err
 		}

@@ -196,6 +196,7 @@ func scheduleToAPI(s Schedule) apigen.PatrolSchedule {
 	out.Zone.Id, out.Zone.Name, out.Zone.Type = s.ZoneID, s.ZoneName, apigen.PatrolScheduleZoneType(s.ZoneType)
 	out.Personnel.Id, out.Personnel.FullName = s.PersonnelID, s.PersonnelName
 	out.ScanCount, out.StartDelayMinutes = s.ScanCount, s.StartDelayMinutes
+	out.CheckpointsScanned, out.CheckpointsTotal = s.CheckpointsScanned, s.CheckpointsTotal
 	if s.Patrol != nil {
 		asJSON(map[string]any{"id": s.Patrol.ID, "status": s.Patrol.Status}, &out.Patrol)
 	}

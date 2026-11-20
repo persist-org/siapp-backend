@@ -10041,10 +10041,16 @@ type PatrolScanPhotoCaptureSource string
 
 // PatrolSchedule Jadwal patroli: satu orang, satu zona, satu jendela waktu. `notes` dan `cancelled_at` yang kosong tidak disertakan.
 type PatrolSchedule struct {
-	CancelledAt *time.Time         `json:"cancelled_at,omitempty"`
-	EndsAt      time.Time          `json:"ends_at"`
-	Id          openapi_types.UUID `json:"id"`
-	Notes       *string            `json:"notes,omitempty"`
+	CancelledAt *time.Time `json:"cancelled_at,omitempty"`
+
+	// CheckpointsScanned Checkpoint aktif zona yang berbeda yang di-scan (`SCANNED`, bukan yang ditolak DANRU) oleh personil ini antara `starts_at` dan `ends_at`. Tidak mengubah `status`.
+	CheckpointsScanned int `json:"checkpoints_scanned"`
+
+	// CheckpointsTotal Jumlah checkpoint aktif zona saat ini.
+	CheckpointsTotal int                `json:"checkpoints_total"`
+	EndsAt           time.Time          `json:"ends_at"`
+	Id               openapi_types.UUID `json:"id"`
+	Notes            *string            `json:"notes,omitempty"`
 
 	// Patrol Patroli yang dimulai dari jadwal ini; tidak ada bila belum dimulai.
 	Patrol *struct {
@@ -10199,14 +10205,20 @@ type PatrolZoneCheckpoint struct {
 	Id      openapi_types.UUID        `json:"id"`
 
 	// IsActive Checkpoint nonaktif tetap memegang urutannya tetapi tidak bisa di-scan; bacaan lapangan hanya memuat yang aktif.
-	IsActive  bool     `json:"is_active"`
-	Latitude  *float64 `json:"latitude,omitempty"`
-	Longitude *float64 `json:"longitude,omitempty"`
+	IsActive bool     `json:"is_active"`
+	Latitude *float64 `json:"latitude,omitempty"`
+
+	// LastScannedAt `occurred_at` scan terakhir pemanggil atas checkpoint ini di zona ini pada tanggal kerja hari ini yang dihitung interval patroli (`SCANNED`, bukan yang ditolak DANRU; skip tidak dihitung). Tidak ada bila belum ada.
+	LastScannedAt *time.Time `json:"last_scanned_at,omitempty"`
+	Longitude     *float64   `json:"longitude,omitempty"`
 
 	// MyScans Berapa kali pemanggil men-scan checkpoint ini di zona ini pada tanggal kerja hari ini (status apa pun).
-	MyScans      *int   `json:"my_scans,omitempty"`
-	Name         string `json:"name"`
-	RadiusMeters *int   `json:"radius_meters,omitempty"`
+	MyScans *int   `json:"my_scans,omitempty"`
+	Name    string `json:"name"`
+
+	// NextAllowedAt Paling cepat kapan pemanggil boleh men-scan checkpoint ini lagi menurut interval patroli: `last_scanned_at` + interval (paling cepat 30 detik, atau interval patroli proyek). Tidak ada bila `last_scanned_at` tidak ada. Angka yang sama dengan `details.next_allowed_at` pada `ZONE_INTERVAL_NOT_ELAPSED`.
+	NextAllowedAt *time.Time `json:"next_allowed_at,omitempty"`
+	RadiusMeters  *int       `json:"radius_meters,omitempty"`
 
 	// Scannable Apakah aturan urutan mengizinkan pemanggil men-scan checkpoint ini sekarang (checkpoint pertama selalu boleh; yang lain hanya bila sebelumnya sudah lebih sering di-scan).
 	Scannable *bool `json:"scannable,omitempty"`

@@ -135,6 +135,12 @@ type Schedule struct {
 	Patrol            *SchedulePatrol
 	StartDelayMinutes *int
 	ScanCount         int
+
+	// CheckpointsScanned and CheckpointsTotal (Phase 10.19): how many of the zone's active checkpoints the person
+	// scanned inside the window (a declined scan not counting), out of how many it has now. Only the reads work
+	// out the first; a write answers with 0 for it, as it does for ScanCount and Patrol.
+	CheckpointsScanned int
+	CheckpointsTotal   int
 }
 
 // SchedulePatrol is the patrol started from a schedule.
@@ -175,13 +181,20 @@ func patrolOf(id pgtype.Int8, status db.NullPatrolRouteStatus, startedAt pgtype.
 	return &SchedulePatrol{ID: id.Int64, Status: string(status.PatrolRouteStatus), StartedAt: startedAt.Time}
 }
 
+// withCheckpointCounts puts the 10.19 counts on a schedule.
+func (sc Schedule) withCheckpointCounts(scanned, total int) Schedule {
+	sc.CheckpointsScanned, sc.CheckpointsTotal = scanned, total
+	return sc
+}
+
 func scheduleOfRow(now time.Time, r db.ListPatrolSchedulesRow) Schedule {
 	sc := db.PatrolSchedule{
 		ID: r.ID, OrganizationID: r.OrganizationID, ProjectCode: r.ProjectCode, ZoneID: r.ZoneID, PersonnelID: r.PersonnelID,
 		StartsAt: r.StartsAt, EndsAt: r.EndsAt, WorkDate: r.WorkDate, Notes: r.Notes, CreatedByID: r.CreatedByID,
 		CancelledAt: r.CancelledAt, CancelledByID: r.CancelledByID, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 	}
-	return scheduleOf(now, sc, r.ZoneName, r.ZoneType, r.PersonnelName, patrolOf(r.PatrolID, r.PatrolStatus, r.PatrolStartedAt), int(r.ScanCount))
+	return scheduleOf(now, sc, r.ZoneName, r.ZoneType, r.PersonnelName, patrolOf(r.PatrolID, r.PatrolStatus, r.PatrolStartedAt), int(r.ScanCount)).
+		withCheckpointCounts(int(r.CheckpointsScanned), int(r.CheckpointsTotal))
 }
 
 // lockSchedulingOf makes the schedule changes of some people take turns. Two admins scheduling the same person at
@@ -316,6 +329,10 @@ func (s *Service) CreateSchedules(ctx context.Context, actor auth.Principal, sco
 			return err
 		}
 
+		total, err := q.CountActiveCheckpointsOfZone(ctx, zone.ID)
+		if err != nil {
+			return fmt.Errorf("count zone checkpoints: %w", err)
+		}
 		for _, person := range people {
 			var ids []string
 			for _, sl := range in.Slots {
@@ -327,7 +344,7 @@ func (s *Service) CreateSchedules(ctx context.Context, actor auth.Principal, sco
 				if err != nil {
 					return fmt.Errorf("insert schedule: %w", err)
 				}
-				sc := scheduleOf(now, row, zone.Name, zone.Type, names[person], nil, 0)
+				sc := scheduleOf(now, row, zone.Name, zone.Type, names[person], nil, 0).withCheckpointCounts(0, int(total))
 				out = append(out, sc)
 				ids = append(ids, sc.ID)
 				if err := auditSchedule(ctx, q, actor, "patrol.schedule.create", sc, map[string]any{"after": scheduleMeta(sc)}); err != nil {
@@ -594,7 +611,11 @@ func (s *Service) UpdateSchedule(ctx context.Context, actor auth.Principal, scop
 			return err
 		}
 		before := scheduleOf(now, row, zone.Name, zone.Type, names[row.PersonnelID], nil, 0)
-		out = scheduleOf(now, saved, zone.Name, zone.Type, names[saved.PersonnelID], nil, 0)
+		total, err := q.CountActiveCheckpointsOfZone(ctx, zone.ID)
+		if err != nil {
+			return fmt.Errorf("count zone checkpoints: %w", err)
+		}
+		out = scheduleOf(now, saved, zone.Name, zone.Type, names[saved.PersonnelID], nil, 0).withCheckpointCounts(0, int(total))
 		if err := auditSchedule(ctx, q, actor, "patrol.schedule.update", out, map[string]any{"before": scheduleMeta(before), "after": scheduleMeta(out)}); err != nil {
 			return err
 		}
@@ -658,7 +679,11 @@ func (s *Service) CancelSchedule(ctx context.Context, actor auth.Principal, scop
 		if err != nil {
 			return err
 		}
-		sc := scheduleOf(now, saved, zone.Name, zone.Type, names[saved.PersonnelID], nil, 0)
+		total, err := q.CountActiveCheckpointsOfZone(ctx, zone.ID)
+		if err != nil {
+			return fmt.Errorf("count zone checkpoints: %w", err)
+		}
+		sc := scheduleOf(now, saved, zone.Name, zone.Type, names[saved.PersonnelID], nil, 0).withCheckpointCounts(0, int(total))
 		if err := auditSchedule(ctx, q, actor, "patrol.schedule.cancel", sc, map[string]any{"before": scheduleMeta(sc)}); err != nil {
 			return err
 		}
@@ -834,7 +859,8 @@ func (s *Service) GetSchedule(ctx context.Context, p auth.Principal, id string) 
 			ID: row.ID, OrganizationID: row.OrganizationID, ProjectCode: row.ProjectCode, ZoneID: row.ZoneID, PersonnelID: row.PersonnelID,
 			StartsAt: row.StartsAt, EndsAt: row.EndsAt, WorkDate: row.WorkDate, Notes: row.Notes, CreatedByID: row.CreatedByID,
 			CancelledAt: row.CancelledAt, CancelledByID: row.CancelledByID, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
-		}, row.ZoneName, row.ZoneType, row.PersonnelName, patrolOf(row.PatrolID, row.PatrolStatus, row.PatrolStartedAt), int(row.ScanCount))
+		}, row.ZoneName, row.ZoneType, row.PersonnelName, patrolOf(row.PatrolID, row.PatrolStatus, row.PatrolStartedAt), int(row.ScanCount)).
+			withCheckpointCounts(int(row.CheckpointsScanned), int(row.CheckpointsTotal))
 		return nil
 	})
 	return out, err

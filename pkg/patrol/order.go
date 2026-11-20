@@ -61,6 +61,18 @@ type orderStep struct {
 	Position     int // the position in the zone, from 1 (it can skip a number when an inactive one holds it)
 	Scans        int
 	Scannable    bool
+	// LastScannedAt is the occurred_at of the person's latest scan of it that the patrol interval counts (a
+	// SCANNED one, not declined); nil when there is none. Not the order rule's business: Scans counts every status.
+	LastScannedAt *time.Time
+}
+
+// lastScan turns the nullable column of the count queries into a step's LastScannedAt.
+func lastScan(t pgtype.Timestamptz) *time.Time {
+	if !t.Valid {
+		return nil
+	}
+	at := t.Time
+	return &at
 }
 
 // zoneOrder is where a person stands in a zone.
@@ -90,7 +102,7 @@ func loadOrder(ctx context.Context, q *db.Queries, personnelID, zoneID int64, wo
 	}
 	steps := make([]orderStep, len(rows))
 	for i, r := range rows {
-		steps[i] = orderStep{CheckpointID: r.CheckpointID, Position: int(r.Position), Scans: int(r.Scans)}
+		steps[i] = orderStep{CheckpointID: r.CheckpointID, Position: int(r.Position), Scans: int(r.Scans), LastScannedAt: lastScan(r.LastScannedAt)}
 	}
 	return orderOf(steps), nil
 }

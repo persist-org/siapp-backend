@@ -212,8 +212,14 @@ ORDER BY scan_id, (snapshot->>'sort_order')::int, id;
 -- How many times one person scanned each checkpoint of a zone on a work date, before a moment, in the
 -- zone's order. Every active checkpoint of the zone is listed, with 0 when it was not scanned yet, so
 -- the caller always gets one row per position. Any status counts: a later decline does not undo the walk.
+--
+-- last_scanned_at (Phase 10.19) is the person's latest scan of the checkpoint that the patrol interval counts:
+-- outcome SCANNED and not declined, the same rows HasScanBetween looks at (a skip is not a visit, and a visit the
+-- DANRU turned down did not happen). NULL when there is none. The order rule above counts every status; this
+-- column does not, on purpose.
 -- name: CountScansByPosition :many
-SELECT zc.checkpoint_id, zc.sort_order AS position, count(s.id)::int AS scans
+SELECT zc.checkpoint_id, zc.sort_order AS position, count(s.id)::int AS scans,
+       (max(s.occurred_at) FILTER (WHERE s.outcome = 'SCANNED' AND s.status <> 'DECLINED'))::timestamptz AS last_scanned_at
 FROM patrol_zone_checkpoints zc
 JOIN patrol_checkpoints c ON c.organization_id = zc.organization_id AND c.id = zc.checkpoint_id
 LEFT JOIN patrol_scans s ON s.organization_id = zc.organization_id AND s.zone_id = zc.zone_id
@@ -227,7 +233,8 @@ ORDER BY zc.sort_order;
 -- zone_ids[i] is read on work_dates[i]. Same rows, same counting (any status, any outcome), no "before": the
 -- field read wants every scan so far. One row per active checkpoint of each zone, ordered by zone and position.
 -- name: CountScansByPositionOfZones :many
-SELECT zc.zone_id, zc.checkpoint_id, zc.sort_order AS position, count(s.id)::int AS scans
+SELECT zc.zone_id, zc.checkpoint_id, zc.sort_order AS position, count(s.id)::int AS scans,
+       (max(s.occurred_at) FILTER (WHERE s.outcome = 'SCANNED' AND s.status <> 'DECLINED'))::timestamptz AS last_scanned_at
 FROM (SELECT z.zone_id, d.work_date
       FROM unnest(@zone_ids::bigint[]) WITH ORDINALITY AS z(zone_id, n)
       JOIN unnest(@work_dates::date[]) WITH ORDINALITY AS d(work_date, n) ON d.n = z.n) w

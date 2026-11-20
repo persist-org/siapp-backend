@@ -112,6 +112,7 @@ GET /api/v1/teams/{code}/map
 GET /api/v1/teams/{code}/members
 GET /api/v1/ws
 GET /api/v1/zones
+GET /api/v1/zones/check-ins/open
 GET /api/v1/zones/progress
 GET /api/v1/zones/{id}
 GET /api/v1/zones/{id}/live

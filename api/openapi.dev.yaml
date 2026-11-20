@@ -5096,6 +5096,14 @@ components:
         scannable:
           type: boolean
           description: Apakah aturan urutan mengizinkan pemanggil men-scan checkpoint ini sekarang (checkpoint pertama selalu boleh; yang lain hanya bila sebelumnya sudah lebih sering di-scan).
+        last_scanned_at:
+          type: string
+          format: date-time
+          description: '`occurred_at` scan terakhir pemanggil atas checkpoint ini di zona ini pada tanggal kerja hari ini yang dihitung interval patroli (`SCANNED`, bukan yang ditolak DANRU; skip tidak dihitung). Tidak ada bila belum ada.'
+        next_allowed_at:
+          type: string
+          format: date-time
+          description: 'Paling cepat kapan pemanggil boleh men-scan checkpoint ini lagi menurut interval patroli: `last_scanned_at` + interval (paling cepat 30 detik, atau interval patroli proyek). Tidak ada bila `last_scanned_at` tidak ada. Angka yang sama dengan `details.next_allowed_at` pada `ZONE_INTERVAL_NOT_ELAPSED`. Aturan urutan (`scannable`) berdiri sendiri: checkpoint bisa `scannable` namun belum boleh karena interval.'
         actions:
           type: array
           description: Checklist aktif checkpoint, berurutan.
@@ -6584,6 +6592,8 @@ components:
       - work_date
       - status
       - scan_count
+      - checkpoints_scanned
+      - checkpoints_total
       properties:
         id:
           type: string
@@ -6659,6 +6669,14 @@ components:
         scan_count:
           type: integer
           description: Scan patroli itu di zona jadwal (scan di zona lain tidak dihitung). 0 tanpa patroli.
+        checkpoints_scanned:
+          type: integer
+          minimum: 0
+          description: 'Checkpoint aktif zona yang berbeda yang di-scan (`SCANNED`, bukan yang ditolak DANRU) oleh personil jadwal ini antara `starts_at` dan `ends_at`. Skip tidak dihitung. Tidak mengubah `status`: `COMPLETED` tetap mengikuti berakhirnya patroli, jadi `2/3` bisa `COMPLETED`. Dihitung pada baca (daftar dan detail); respons buat/ubah/batal memberi 0.'
+        checkpoints_total:
+          type: integer
+          minimum: 0
+          description: Jumlah checkpoint aktif zona saat ini.
     PatrolScheduleSlot:
       type: object
       required:
@@ -21241,6 +21259,33 @@ paths:
         '422':
           description: 'VALIDATION_ERROR: `type` bukan PATROL atau GUARD, atau `include` bukan `checkpoints`.'
           content: {application/json: {schema: {$ref: '#/components/schemas/ErrorEnvelope'}}}
+  /zones/check-ins/open:
+    get:
+      operationId: getZonesCheckInsOpen
+      tags:
+      - Patrol
+      summary: Check-in terbuka milik pemanggil (Jaga)
+      description: |
+        Check-in pemanggil yang belum di-check-out, di zona mana pun: larik kosong atau satu isi (satu orang hanya
+        boleh punya satu). Dipakai aplikasi untuk tahu di mana pemanggil masih check-in, mis. setelah
+        `409 ZONE_ALREADY_CHECKED_IN` (yang juga memuat `details.zone_id` dan `details.checkpoint_id`) atau setelah
+        aplikasi dibuka kembali. Check-in dan check-out tetap hanya online: tidak ada `local_id` dan tidak ada antrean offline.
+        `data` adalah larik biasa (tanpa pagination).
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/SuccessEnvelope'
+                - properties:
+                    data:
+                      type: array
+                      items:
+                        $ref: '#/components/schemas/ZoneCheckIn'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /zones/progress:
     get:
       operationId: getZonesProgress
@@ -21351,7 +21396,9 @@ paths:
         tipe zona (`PERMISSION_DENIED`, 403), keanggotaan proyek dan regu (`ZONE_NOT_IN_PROJECT`, 403), urutan
         putaran (`CHECKPOINT_OUT_OF_ORDER`), interval
         (`ZONE_INTERVAL_NOT_ELAPSED`: per checkpoint, paling cepat 30 detik, atau interval patroli proyek bila
-        lebih besar), lalu aksi (`CHECKLIST_ITEM_INVALID`, `CHECKLIST_ANSWER_REQUIRED`, `CHECKLIST_ANSWER_INVALID`,
+        lebih besar; diukur dari `occurred_at` scan sebelumnya ke dua arah; scan yang ditolak DANRU dan skip
+        tidak dihitung, berbeda dari aturan urutan yang menghitung semua status; `details.next_allowed_at`
+        memberi kapan boleh mencoba lagi, sama dengan `next_allowed_at` di bacaan zona), lalu aksi (`CHECKLIST_ITEM_INVALID`, `CHECKLIST_ANSWER_REQUIRED`, `CHECKLIST_ANSWER_INVALID`,
         `CHECKLIST_ATTACHMENT_REQUIRED`) dan `device_condition` (`DEVICE_CONDITION_INVALID`, yang tidak pernah
         menolak scan karena isinya); terakhir foto dilampirkan.
 
@@ -21718,7 +21765,7 @@ paths:
         Header `Idempotency-Key` wajib (UUID). Waktu check-in adalah waktu server. QR, izin
         `patrol.scan`/`guard.scan`, keanggotaan dan geofence diperiksa seperti scan (zona nonaktif: 404), dengan `checkpoint_id` dan `qr_payload` dari checkpoint mana pun di zona itu (zona tidak punya QR sendiri); urutan putaran tidak berlaku.
         Satu orang hanya boleh punya satu check-in terbuka di zona mana pun; check-in lagi sebelum
-        check-out dijawab 409 `ZONE_ALREADY_CHECKED_IN`. Respons belum memuat `full_name`.
+        check-out dijawab 409 `ZONE_ALREADY_CHECKED_IN` dengan `details.zone_id` (dan `details.checkpoint_id` bila check-in itu punya), supaya aplikasi bisa menawarkan check-out; `GET /zones/check-ins/open` memberi check-in itu utuh. Check-in/out hanya online: tanpa `local_id`, tidak masuk antrean offline. Respons belum memuat `full_name`.
       parameters:
       - $ref: '#/components/parameters/IdempotencyKeyRequiredHeader'
       requestBody:

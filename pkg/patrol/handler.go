@@ -38,6 +38,7 @@ func (h *Handler) MountField(r chi.Router) {
 	r.Get("/api/v1/zones", h.fieldList)
 	// chi matches a fixed segment before a parameter, so /zones/progress is not read as zone "progress".
 	r.Get("/api/v1/zones/progress", h.progress)
+	r.Get("/api/v1/zones/check-ins/open", h.openCheckIns)
 	r.Get("/api/v1/zones/{id}", h.fieldGet)
 	r.Get("/api/v1/zones/{id}/scanners", h.scanners)
 	r.Get("/api/v1/zones/{id}/scans", h.zoneScans)
@@ -422,6 +423,21 @@ func (h *Handler) presence(w http.ResponseWriter, r *http.Request,
 	httpx.OK(w, r, status, checkInToAPI(got))
 }
 
+// openCheckIns is GET /zones/check-ins/open: the caller's own open check-in (Phase 10.19).
+func (h *Handler) openCheckIns(w http.ResponseWriter, r *http.Request) {
+	p, ok := auth.From(r.Context())
+	if !ok {
+		httpx.Error(w, r, apperr.ErrUnauthenticated)
+		return
+	}
+	got, err := h.service.OpenCheckIns(r.Context(), p)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.OK(w, r, http.StatusOK, checkInsToAPI(got))
+}
+
 func (h *Handler) live(w http.ResponseWriter, r *http.Request) {
 	p, ok := auth.From(r.Context())
 	if !ok {
@@ -633,6 +649,7 @@ func zoneCheckpointToAPI(c ZoneCheckpoint) apigen.PatrolZoneCheckpoint {
 	out := apigen.PatrolZoneCheckpoint{
 		Id: mustUUID(c.ID), Name: c.Name, SortOrder: c.SortOrder, IsActive: c.Active,
 		Latitude: c.Latitude, Longitude: c.Longitude, RadiusMeters: c.RadiusMeters, MyScans: c.MyScans, Scannable: c.Scannable,
+		LastScannedAt: c.LastScannedAt, NextAllowedAt: c.NextAllowedAt,
 	}
 	if c.Actions != nil {
 		actions := actionsToAPI(c.Actions)

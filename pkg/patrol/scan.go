@@ -42,10 +42,7 @@ func lockScanning(ctx context.Context, q *db.Queries, p auth.Principal, zoneID i
 // rule asks for. Even a project with no interval refuses a scan within scanMinGap of another of the same
 // checkpoint: a double tap, or a retry with a new local_id, must not make two scans of one visit.
 func checkScanInterval(ctx context.Context, q *db.Queries, p auth.Principal, zoneID int64, checkpointID pgtype.UUID, project db.Project, at time.Time) error {
-	interval := scanMinGap
-	if project.PatrolIntervalMinutes.Valid {
-		interval = max(interval, time.Duration(project.PatrolIntervalMinutes.Int32)*time.Minute)
-	}
+	interval := scanInterval(project)
 	tooSoon, err := q.HasScanBetween(ctx, db.HasScanBetweenParams{
 		PersonnelID: p.PersonnelID, ZoneID: zoneID, CheckpointID: checkpointID, After: ts(at.Add(-interval)), Before: ts(at.Add(interval)),
 	})
@@ -53,9 +50,36 @@ func checkScanInterval(ctx context.Context, q *db.Queries, p auth.Principal, zon
 		return fmt.Errorf("check patrol interval: %w", err)
 	}
 	if tooSoon {
-		return ErrIntervalNotElapsed.WithDetails(map[string]any{"interval_seconds": int(interval.Seconds())})
+		details := map[string]any{"interval_seconds": int(interval.Seconds())}
+		// Phase 10.19: when the guard may try again. The same last-scan-plus-interval the field read shows as
+		// next_allowed_at, so the app's countdown and this refusal cannot disagree. Left out when no counted
+		// scan is found (the conflict was a scan the read does not count, e.g. one made on another work date).
+		last, err := q.LastCountedScan(ctx, db.LastCountedScanParams{PersonnelID: p.PersonnelID, ZoneID: zoneID, CheckpointID: checkpointID})
+		if err != nil {
+			return fmt.Errorf("last counted scan: %w", err)
+		}
+		if t := lastScan(last); t != nil {
+			details["next_allowed_at"] = nextAllowedAt(*t, interval).UTC().Format(time.RFC3339)
+		}
+		return ErrIntervalNotElapsed.WithDetails(details)
 	}
 	return nil
+}
+
+// scanInterval is the least time between two counted scans of one checkpoint by one person in the project.
+func scanInterval(project db.Project) time.Duration {
+	interval := scanMinGap
+	if project.PatrolIntervalMinutes.Valid {
+		interval = max(interval, time.Duration(project.PatrolIntervalMinutes.Int32)*time.Minute)
+	}
+	return interval
+}
+
+// nextAllowedAt is when a checkpoint scanned at `last` may be scanned again. The interval is measured from the
+// previous scan's occurred_at (not from when it arrived), so an offline scan synced late counts from when it was
+// made. The one function behind next_allowed_at on the read and in ZONE_INTERVAL_NOT_ELAPSED.
+func nextAllowedAt(last time.Time, interval time.Duration) time.Time {
+	return last.Add(interval)
 }
 
 // scanMinGap is the least time between two scans of one checkpoint by one person, whatever the project's

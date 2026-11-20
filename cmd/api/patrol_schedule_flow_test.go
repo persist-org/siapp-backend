@@ -32,7 +32,10 @@ type scheduleOut struct {
 	Status      string     `json:"status"`
 	CancelledAt *time.Time `json:"cancelled_at"`
 	ScanCount   int        `json:"scan_count"`
-	Patrol      *struct {
+	// Phase 10.19
+	CheckpointsScanned int `json:"checkpoints_scanned"`
+	CheckpointsTotal   int `json:"checkpoints_total"`
+	Patrol             *struct {
 		ID     int64  `json:"id"`
 		Status string `json:"status"`
 	} `json:"patrol"`

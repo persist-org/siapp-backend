@@ -26,6 +26,13 @@ SELECT EXISTS (
       AND outcome = 'SCANNED'
       AND occurred_at > @after AND occurred_at < @before);
 
+-- The latest scan of this checkpoint in this zone by this person that the interval counts (SCANNED, not declined),
+-- on any work date: the moment next_allowed_at in ZONE_INTERVAL_NOT_ELAPSED is measured from (Phase 10.19).
+-- name: LastCountedScan :one
+SELECT max(occurred_at)::timestamptz AS last_scanned_at FROM patrol_scans
+WHERE personnel_id = @personnel_id AND zone_id = @zone_id AND checkpoint_id = @checkpoint_id
+  AND outcome = 'SCANNED' AND status <> 'DECLINED';
+
 -- A transaction-scoped lock on a name, so two requests about the same thing take turns.
 -- name: LockPatrolKey :exec
 SELECT pg_advisory_xact_lock(hashtextextended(@key::text, 0));
@@ -41,6 +48,11 @@ RETURNING *;
 UPDATE zone_checkins SET check_out_at = @at, check_out_lat = @latitude, check_out_lng = @longitude, updated_at = @at
 WHERE zone_id = @zone_id AND personnel_id = @personnel_id AND check_out_at IS NULL
 RETURNING *;
+
+-- The person's open check-in, if any (Phase 10.19). There is at most one: zone_checkins_open_uq. The check-in
+-- reads it to name the zone in ZONE_ALREADY_CHECKED_IN, and GET /zones/check-ins/open lists it.
+-- name: ListOpenCheckinsOfPersonnel :many
+SELECT * FROM zone_checkins WHERE personnel_id = @personnel_id AND check_out_at IS NULL ORDER BY check_in_at, id;
 
 -- Everyone still checked in to a zone that goes away: nothing else would let them out, and one
 -- open check-in blocks a check-in anywhere.

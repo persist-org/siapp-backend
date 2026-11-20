@@ -53,9 +53,11 @@ func (s *Service) withFieldBundle(ctx context.Context, q *db.Queries, actor auth
 		}
 	}
 	stepsOf := map[int64][]orderStep{}
+	var intervals map[int64]time.Duration
 	actionsOf := map[string][]CheckpointAction{}
 	if len(withLinks) > 0 {
-		dates, err := s.workDates(ctx, q, actor, withLinks)
+		dates, ivs, err := s.workDates(ctx, q, actor, withLinks)
+		intervals = ivs
 		if err != nil {
 			return nil, err
 		}
@@ -72,7 +74,7 @@ func (s *Service) withFieldBundle(ctx context.Context, q *db.Queries, actor auth
 			return nil, fmt.Errorf("count scans by position of zones: %w", err)
 		}
 		for _, c := range counts {
-			stepsOf[c.ZoneID] = append(stepsOf[c.ZoneID], orderStep{CheckpointID: c.CheckpointID, Position: int(c.Position), Scans: int(c.Scans)})
+			stepsOf[c.ZoneID] = append(stepsOf[c.ZoneID], orderStep{CheckpointID: c.CheckpointID, Position: int(c.Position), Scans: int(c.Scans), LastScannedAt: lastScan(c.LastScannedAt)})
 		}
 		if actionsOf, err = actionsByCheckpoint(ctx, q, checkpointIDs); err != nil {
 			return nil, err
@@ -85,46 +87,55 @@ func (s *Service) withFieldBundle(ctx context.Context, q *db.Queries, actor auth
 			zones[i].Checkpoints = []ZoneCheckpoint{}
 			continue
 		}
-		zones[i] = fieldZoneOf(zones[i], linksOf[id], orderOf(stepsOf[id]), actionsOf)
+		zones[i] = fieldZoneOf(zones[i], linksOf[id], orderOf(stepsOf[id]), actionsOf, intervals[id])
 	}
 	return zones, nil
 }
 
 // workDates is the work date each zone's next scan by the caller would get: the same placeIn the detail uses,
-// asked once for each project and regu the zones come from rather than once for each zone.
-func (s *Service) workDates(ctx context.Context, q *db.Queries, actor auth.Principal, rows []db.PatrolZone) (map[int64]timeutil.Date, error) {
+// asked once for each project and regu the zones come from rather than once for each zone. It also gives each
+// zone's patrol interval (scanInterval of its project, which it has read anyway) for next_allowed_at.
+func (s *Service) workDates(ctx context.Context, q *db.Queries, actor auth.Principal, rows []db.PatrolZone) (map[int64]timeutil.Date, map[int64]time.Duration, error) {
 	type placeKey struct {
 		project string
 		team    pgtype.Text
 	}
-	zoneLoc := map[string]*time.Location{}
+	type projectInfo struct {
+		loc      *time.Location
+		interval time.Duration
+	}
+	projects := map[string]projectInfo{}
 	placed := map[placeKey]timeutil.Date{}
 	out := make(map[int64]timeutil.Date, len(rows))
+	intervals := make(map[int64]time.Duration, len(rows))
 	for _, r := range rows {
 		key := placeKey{project: r.ProjectCode, team: r.TeamCode}
+		info, ok := projects[r.ProjectCode]
+		if !ok {
+			project, err := q.GetProject(ctx, r.ProjectCode)
+			if err != nil {
+				return nil, nil, fmt.Errorf("get project: %w", err)
+			}
+			loc, err := time.LoadLocation(project.Timezone)
+			if err != nil {
+				return nil, nil, fmt.Errorf("project %s: timezone %q: %w", project.Code, project.Timezone, err)
+			}
+			info = projectInfo{loc: loc, interval: scanInterval(project)}
+			projects[r.ProjectCode] = info
+		}
 		day, ok := placed[key]
 		if !ok {
-			loc, ok := zoneLoc[r.ProjectCode]
-			if !ok {
-				project, err := q.GetProject(ctx, r.ProjectCode)
-				if err != nil {
-					return nil, fmt.Errorf("get project: %w", err)
-				}
-				if loc, err = time.LoadLocation(project.Timezone); err != nil {
-					return nil, fmt.Errorf("project %s: timezone %q: %w", project.Code, project.Timezone, err)
-				}
-				zoneLoc[r.ProjectCode] = loc
-			}
-			where, err := s.placeIn(ctx, q, actor, r.ProjectCode, r.TeamCode, loc, s.clock.Now())
+			where, err := s.placeIn(ctx, q, actor, r.ProjectCode, r.TeamCode, info.loc, s.clock.Now())
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			day = where.workDate
 			placed[key] = day
 		}
 		out[r.ID] = day
+		intervals[r.ID] = info.interval
 	}
-	return out, nil
+	return out, intervals, nil
 }
 
 // bundleLinkRow is the checkpoint columns of a row of ListCheckpointsOfZones.

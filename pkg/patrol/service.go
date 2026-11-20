@@ -782,7 +782,7 @@ func (s *Service) withFieldCheckpoints(ctx context.Context, q *db.Queries, actor
 	if err != nil {
 		return Zone{}, err
 	}
-	return fieldZoneOf(z, links, order, actionsOf), nil
+	return fieldZoneOf(z, links, order, actionsOf, scanInterval(project)), nil
 }
 
 // linkedCheckpoint is an active checkpoint of a zone with its position there.
@@ -808,7 +808,9 @@ func actionsByCheckpoint(ctx context.Context, q *db.Queries, ids []pgtype.UUID) 
 // fieldZoneOf puts a zone's active checkpoints on it as the field read shows them: each with its checklist and
 // what the caller has done (my_scans, scannable), and the zone with next_checkpoint_id. The one place that
 // shapes it, for the detail of one zone and the bundled list of all, so the two read the same.
-func fieldZoneOf(z Zone, links []linkedCheckpoint, order zoneOrder, actionsOf map[string][]CheckpointAction) Zone {
+//
+// interval is the project's patrol interval (scanInterval), from which next_allowed_at is worked out.
+func fieldZoneOf(z Zone, links []linkedCheckpoint, order zoneOrder, actionsOf map[string][]CheckpointAction, interval time.Duration) Zone {
 	stepOf := make(map[string]orderStep, len(order.Steps))
 	for _, st := range order.Steps {
 		stepOf[uuidString(st.CheckpointID)] = st
@@ -820,6 +822,10 @@ func fieldZoneOf(z Zone, links []linkedCheckpoint, order zoneOrder, actionsOf ma
 		st := stepOf[cp.ID]
 		scans, scannable := st.Scans, st.Scannable
 		cp.MyScans, cp.Scannable = &scans, &scannable
+		if st.LastScannedAt != nil {
+			next := nextAllowedAt(*st.LastScannedAt, interval)
+			cp.LastScannedAt, cp.NextAllowedAt = st.LastScannedAt, &next
+		}
 		cp.Actions = actionsOf[cp.ID]
 		if cp.Actions == nil {
 			cp.Actions = []CheckpointAction{}
