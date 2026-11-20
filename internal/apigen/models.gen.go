@@ -7325,6 +7325,21 @@ func (e GetZonesParamsType) Valid() bool {
 	}
 }
 
+// Defines values for GetZonesParamsInclude.
+const (
+	Checkpoints GetZonesParamsInclude = "checkpoints"
+)
+
+// Valid indicates whether the value is a known member of the GetZonesParamsInclude enum.
+func (e GetZonesParamsInclude) Valid() bool {
+	switch e {
+	case Checkpoints:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetZones200JSONResponseBodySuccess.
 const (
 	GetZones200JSONResponseBodySuccessTrue GetZones200JSONResponseBodySuccess = true
@@ -7334,6 +7349,21 @@ const (
 func (e GetZones200JSONResponseBodySuccess) Valid() bool {
 	switch e {
 	case GetZones200JSONResponseBodySuccessTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetZonesCheckInsOpen200JSONResponseBodySuccess.
+const (
+	GetZonesCheckInsOpen200JSONResponseBodySuccessTrue GetZonesCheckInsOpen200JSONResponseBodySuccess = true
+)
+
+// Valid indicates whether the value is a known member of the GetZonesCheckInsOpen200JSONResponseBodySuccess enum.
+func (e GetZonesCheckInsOpen200JSONResponseBodySuccess) Valid() bool {
+	switch e {
+	case GetZonesCheckInsOpen200JSONResponseBodySuccessTrue:
 		return true
 	default:
 		return false
@@ -8278,7 +8308,7 @@ type CheckpointProgressItem struct {
 	// Required `min_visit` zona: jumlah scan yang dibutuhkan checkpoint ini.
 	Required int `json:"required"`
 
-	// Skipped Dilewati dengan alasan (`outcome` = `SKIPPED`), belum ditolak. Bukan kunjungan.
+	// Skipped Dilewati dengan alasan (`outcome` = `SKIPPED`) dan belum ditolak. Bukan kunjungan, jadi tidak masuk lingkaran mana pun.
 	Skipped   int `json:"skipped"`
 	SortOrder int `json:"sort_order"`
 	Submitted int `json:"submitted"`
@@ -9667,10 +9697,10 @@ type PatrolCheckpointZone struct {
 // PatrolCheckpointZoneType defines model for PatrolCheckpointZone.Type.
 type PatrolCheckpointZoneType string
 
-// PatrolLocationFlag Tanda dari server atas posisi saat scan, untuk DANRU saat approval; tidak pernah penolakan. Urutan penilaian,
-// yang pertama cocok menang: `NO_FIX` (tidak ada posisi), `OUTSIDE_RADIUS` (lebih jauh dari radius checkpoint
-// ditambah `min(accuracy_meters, 30)`), `LOW_ACCURACY` (`accuracy_meters` di atas 50), `OK`. Checkpoint tanpa
-// geofence `OK` selama ada posisi.
+// PatrolLocationFlag Tanda dari server atas posisi saat scan, untuk DANRU saat approval; tidak pernah penolakan. Dinilai berurutan, yang
+// pertama cocok menang: `NO_FIX` (tidak ada posisi), `OUTSIDE_RADIUS` (lebih jauh dari radius checkpoint ditambah
+// `min(accuracy_meters, 30)`), `LOW_ACCURACY` (`accuracy_meters` di atas 50), `OK`. Checkpoint tanpa geofence `OK` selama
+// ada posisi.
 type PatrolLocationFlag string
 
 // PatrolRoute Satu patroli. `team_code` dan `work_date` ditentukan server dari shift penjaga. `point_count` adalah
@@ -9829,28 +9859,32 @@ type PatrolRouteScan struct {
 	CheckpointName string             `json:"checkpoint_name"`
 	Id             int64              `json:"id"`
 
-	// Latitude Tidak dikirim bila scan tanpa posisi; scan itu tidak punya pin.
+	// Latitude Tidak dikirim bila scan tanpa posisi (`location_flag` = `NO_FIX`); scan itu tidak punya pin di peta.
 	Latitude *float64 `json:"latitude,omitempty"`
 
-	// LocationFlag Tanda dari server atas posisi saat scan, untuk DANRU saat approval; tidak pernah penolakan. Urutan penilaian,
-	// yang pertama cocok menang: `NO_FIX` (tidak ada posisi), `OUTSIDE_RADIUS` (lebih jauh dari radius checkpoint
-	// ditambah `min(accuracy_meters, 30)`), `LOW_ACCURACY` (`accuracy_meters` di atas 50), `OK`. Checkpoint tanpa
-	// geofence `OK` selama ada posisi.
-	LocationFlag PatrolLocationFlag         `json:"location_flag"`
-	Longitude    *float64                   `json:"longitude,omitempty"`
-	OccurredAt   time.Time                  `json:"occurred_at"`
-	Outcome      PatrolRouteScanOutcome     `json:"outcome"`
-	SkipReason   *PatrolRouteScanSkipReason `json:"skip_reason,omitempty"`
-	Status       PatrolRouteScanStatus      `json:"status"`
-	Subject      string                     `json:"subject"`
-	ZoneId       int64                      `json:"zone_id"`
-	ZoneName     string                     `json:"zone_name"`
+	// LocationFlag Tanda dari server atas posisi saat scan, untuk DANRU saat approval; tidak pernah penolakan. Dinilai berurutan, yang
+	// pertama cocok menang: `NO_FIX` (tidak ada posisi), `OUTSIDE_RADIUS` (lebih jauh dari radius checkpoint ditambah
+	// `min(accuracy_meters, 30)`), `LOW_ACCURACY` (`accuracy_meters` di atas 50), `OK`. Checkpoint tanpa geofence `OK` selama
+	// ada posisi.
+	LocationFlag PatrolLocationFlag `json:"location_flag"`
+
+	// Longitude Idem `latitude`.
+	Longitude  *float64               `json:"longitude,omitempty"`
+	OccurredAt time.Time              `json:"occurred_at"`
+	Outcome    PatrolRouteScanOutcome `json:"outcome"`
+
+	// SkipReason Hanya ada bila `outcome` = `SKIPPED`.
+	SkipReason *PatrolRouteScanSkipReason `json:"skip_reason,omitempty"`
+	Status     PatrolRouteScanStatus      `json:"status"`
+	Subject    string                     `json:"subject"`
+	ZoneId     int64                      `json:"zone_id"`
+	ZoneName   string                     `json:"zone_name"`
 }
 
 // PatrolRouteScanOutcome defines model for PatrolRouteScan.Outcome.
 type PatrolRouteScanOutcome string
 
-// PatrolRouteScanSkipReason defines model for PatrolRouteScan.SkipReason.
+// PatrolRouteScanSkipReason Hanya ada bila `outcome` = `SKIPPED`.
 type PatrolRouteScanSkipReason string
 
 // PatrolRouteScanStatus defines model for PatrolRouteScan.Status.
@@ -9901,7 +9935,7 @@ type PatrolScan struct {
 	// DecisionNote Catatan DANRU, wajib saat ditolak.
 	DecisionNote *string `json:"decision_note,omitempty"`
 
-	// DistanceMeters Jarak dari checkpoint; null bila checkpoint tanpa geofence atau tanpa posisi.
+	// DistanceMeters Jarak dari checkpoint; tidak ada bila checkpoint tanpa geofence atau scan tanpa posisi.
 	DistanceMeters *int  `json:"distance_meters,omitempty"`
 	Id             int64 `json:"id"`
 
@@ -9909,10 +9943,10 @@ type PatrolScan struct {
 	Latitude *float64           `json:"latitude,omitempty"`
 	LocalId  openapi_types.UUID `json:"local_id"`
 
-	// LocationFlag Tanda dari server atas posisi saat scan, untuk DANRU saat approval; tidak pernah penolakan. Urutan penilaian,
-	// yang pertama cocok menang: `NO_FIX` (tidak ada posisi), `OUTSIDE_RADIUS` (lebih jauh dari radius checkpoint
-	// ditambah `min(accuracy_meters, 30)`), `LOW_ACCURACY` (`accuracy_meters` di atas 50), `OK`. Checkpoint tanpa
-	// geofence `OK` selama ada posisi.
+	// LocationFlag Tanda dari server atas posisi saat scan, untuk DANRU saat approval; tidak pernah penolakan. Dinilai berurutan, yang
+	// pertama cocok menang: `NO_FIX` (tidak ada posisi), `OUTSIDE_RADIUS` (lebih jauh dari radius checkpoint ditambah
+	// `min(accuracy_meters, 30)`), `LOW_ACCURACY` (`accuracy_meters` di atas 50), `OK`. Checkpoint tanpa geofence `OK` selama
+	// ada posisi.
 	LocationFlag PatrolLocationFlag `json:"location_flag"`
 
 	// Longitude Idem `latitude`.
@@ -9920,7 +9954,7 @@ type PatrolScan struct {
 	Notes      *string   `json:"notes,omitempty"`
 	OccurredAt time.Time `json:"occurred_at"`
 
-	// Outcome `SKIPPED`: checkpoint dilewati dengan alasan (`POST /zones/{id}/skip`), bukan kunjungan. Scan yang dilewati tanpa `actions`; fotonya di `photos`.
+	// Outcome `SKIPPED`: checkpoint dilewati dengan alasan (`POST /zones/{id}/skip`), bukan kunjungan. Scan yang dilewati tidak punya `actions`; fotonya ada di `photos`.
 	Outcome PatrolScanOutcome `json:"outcome"`
 
 	// PatrolId Patroli yang sedang berjalan saat scan (Phase 10.4); diisi server.
@@ -9948,7 +9982,7 @@ type PatrolScan struct {
 	ZoneType PatrolScanZoneType `json:"zone_type"`
 }
 
-// PatrolScanOutcome `SKIPPED`: checkpoint dilewati dengan alasan (`POST /zones/{id}/skip`), bukan kunjungan. Scan yang dilewati tanpa `actions`; fotonya di `photos`.
+// PatrolScanOutcome `SKIPPED`: checkpoint dilewati dengan alasan (`POST /zones/{id}/skip`), bukan kunjungan. Scan yang dilewati tidak punya `actions`; fotonya ada di `photos`.
 type PatrolScanOutcome string
 
 // PatrolScanSkipReason Hanya ada bila `outcome` = `SKIPPED`.
@@ -10013,7 +10047,7 @@ type PatrolScanCreate struct {
 	// disimpan apa adanya. Yang salah: 422 `DEVICE_CONDITION_INVALID`.
 	DeviceCondition *DeviceCondition `json:"device_condition,omitempty"`
 
-	// Latitude Posisi: ketiganya (`latitude`, `longitude`, `accuracy_meters`) atau tidak sama sekali; setengah posisi 422. Tanpa posisi, scan tersimpan dengan `location_flag` = `NO_FIX`.
+	// Latitude Posisi: `latitude`, `longitude` dan `accuracy_meters` dikirim ketiganya atau tidak sama sekali; yang setengah 422 (`REQUIRED` pada field yang kurang). Tanpa posisi, scan tersimpan dengan `location_flag` = `NO_FIX`.
 	Latitude *float64 `json:"latitude,omitempty"`
 
 	// LocalId Harus sama dengan header Idempotency-Key.
@@ -10046,7 +10080,7 @@ type PatrolScanPhotoCaptureSource string
 type PatrolSchedule struct {
 	CancelledAt *time.Time `json:"cancelled_at,omitempty"`
 
-	// CheckpointsScanned Checkpoint aktif zona yang berbeda yang di-scan (`SCANNED`, bukan yang ditolak DANRU) oleh personil ini antara `starts_at` dan `ends_at`. Tidak mengubah `status`.
+	// CheckpointsScanned Checkpoint aktif zona yang berbeda yang di-scan (`SCANNED`, bukan yang ditolak DANRU) oleh personil jadwal ini antara `starts_at` dan `ends_at`. Skip tidak dihitung. Tidak mengubah `status`: `COMPLETED` tetap mengikuti berakhirnya patroli, jadi `2/3` bisa `COMPLETED`. Dihitung pada baca (daftar dan detail); respons buat/ubah/batal memberi 0.
 	CheckpointsScanned int `json:"checkpoints_scanned"`
 
 	// CheckpointsTotal Jumlah checkpoint aktif zona saat ini.
@@ -10123,23 +10157,23 @@ type PatrolScheduleUpdate struct {
 	StartsAt    *time.Time `json:"starts_at,omitempty"`
 }
 
-// PatrolSkipCreate Badan `POST /zones/{id}/skip`: checkpoint putaran yang tidak bisa di-scan, mis. stiker rusak atau ruangan
-// terkunci. Tanpa QR dan tanpa geofence; posisi hanya diberi tanda.
+// PatrolSkipCreate Badan `POST /zones/{id}/skip`: checkpoint putaran yang tidak bisa di-scan, mis. stiker rusak atau ruangan terkunci.
+// Tanpa QR dan tanpa geofence; posisi hanya diberi tanda. Tidak ada `device_condition` (skip tidak punya aksi yang menyimpannya).
 type PatrolSkipCreate struct {
 	AccuracyMeters *float64           `json:"accuracy_meters,omitempty"`
 	CheckpointId   openapi_types.UUID `json:"checkpoint_id"`
 
-	// Latitude Seperti pada scan: ketiganya atau tidak sama sekali.
+	// Latitude Seperti pada scan, ketiganya (`latitude`, `longitude`, `accuracy_meters`) atau tidak sama sekali.
 	Latitude *float64 `json:"latitude,omitempty"`
 
 	// LocalId Harus sama dengan header Idempotency-Key.
 	LocalId   openapi_types.UUID `json:"local_id"`
 	Longitude *float64           `json:"longitude,omitempty"`
 
-	// MediaIds Foto (`POST /media` dengan tujuan `PATROL_SCAN`), mis. stiker yang rusak. Tiap id hanya sekali.
+	// MediaIds Foto (`POST /media` dengan tujuan `PATROL_SCAN`), mis. stiker yang rusak. Tiap id hanya sekali (`DUPLICATE`).
 	MediaIds *[]int64 `json:"media_ids,omitempty"`
 
-	// Note Wajib bila `reason` = `OTHER` (422 pada field `note`).
+	// Note Wajib (tidak kosong atau spasi saja) bila `reason` = `OTHER`; selain itu 422 `REQUIRED` pada field `note`.
 	Note *string `json:"note,omitempty"`
 
 	// OccurredAt Saat perangkat memutuskan melewati. Maksimal 5 menit di depan dan 7 hari ke belakang.
@@ -10208,18 +10242,18 @@ type PatrolZoneCheckpoint struct {
 	Id      openapi_types.UUID        `json:"id"`
 
 	// IsActive Checkpoint nonaktif tetap memegang urutannya tetapi tidak bisa di-scan; bacaan lapangan hanya memuat yang aktif.
-	IsActive bool     `json:"is_active"`
-	Latitude *float64 `json:"latitude,omitempty"`
+	IsActive bool `json:"is_active"`
 
 	// LastScannedAt `occurred_at` scan terakhir pemanggil atas checkpoint ini di zona ini pada tanggal kerja hari ini yang dihitung interval patroli (`SCANNED`, bukan yang ditolak DANRU; skip tidak dihitung). Tidak ada bila belum ada.
 	LastScannedAt *time.Time `json:"last_scanned_at,omitempty"`
+	Latitude      *float64   `json:"latitude,omitempty"`
 	Longitude     *float64   `json:"longitude,omitempty"`
 
 	// MyScans Berapa kali pemanggil men-scan checkpoint ini di zona ini pada tanggal kerja hari ini (status apa pun).
 	MyScans *int   `json:"my_scans,omitempty"`
 	Name    string `json:"name"`
 
-	// NextAllowedAt Paling cepat kapan pemanggil boleh men-scan checkpoint ini lagi menurut interval patroli: `last_scanned_at` + interval (paling cepat 30 detik, atau interval patroli proyek). Tidak ada bila `last_scanned_at` tidak ada. Angka yang sama dengan `details.next_allowed_at` pada `ZONE_INTERVAL_NOT_ELAPSED`.
+	// NextAllowedAt Paling cepat kapan pemanggil boleh men-scan checkpoint ini lagi menurut interval patroli: `last_scanned_at` + interval (paling cepat 30 detik, atau interval patroli proyek). Tidak ada bila `last_scanned_at` tidak ada. Angka yang sama dengan `details.next_allowed_at` pada `ZONE_INTERVAL_NOT_ELAPSED`. Aturan urutan (`scannable`) berdiri sendiri: checkpoint bisa `scannable` namun belum boleh karena interval.
 	NextAllowedAt *time.Time `json:"next_allowed_at,omitempty"`
 	RadiusMeters  *int       `json:"radius_meters,omitempty"`
 
@@ -11803,7 +11837,7 @@ type ZoneProgressItem struct {
 	// Required Lingkaran merah: jumlah scan yang dibutuhkan (`min_visit`).
 	Required int `json:"required"`
 
-	// Skipped Checkpoint yang dilewati dengan alasan dan belum ditolak. Bukan kunjungan, jadi tidak masuk lingkaran mana pun.
+	// Skipped Jumlah checkpoint zona yang dilewati dengan alasan dan belum ditolak. Bukan kunjungan, jadi tidak masuk lingkaran mana pun.
 	Skipped int `json:"skipped"`
 
 	// Submitted Lingkaran biru: sudah di-scan, belum diputuskan.
@@ -14853,13 +14887,25 @@ type GetZonesParams struct {
 	Type        *GetZonesParamsType `form:"type,omitempty" json:"type,omitempty"`
 	ProjectCode *string             `form:"project_code,omitempty" json:"project_code,omitempty"`
 	TeamCode    *string             `form:"team_code,omitempty" json:"team_code,omitempty"`
+
+	// Include `checkpoints`: bundel checkpoint tiap zona (lihat deskripsi). Nilai lain 422 (field `include`).
+	Include *GetZonesParamsInclude `form:"include,omitempty" json:"include,omitempty"`
+
+	// IfNoneMatch Tag dari jawaban `include=checkpoints` sebelumnya; hanya berlaku untuk bundel. Sama berarti 304.
+	IfNoneMatch *string `json:"If-None-Match,omitempty"`
 }
 
 // GetZonesParamsType defines parameters for GetZones.
 type GetZonesParamsType string
 
+// GetZonesParamsInclude defines parameters for GetZones.
+type GetZonesParamsInclude string
+
 // GetZones200JSONResponseBodySuccess defines parameters for GetZones.
 type GetZones200JSONResponseBodySuccess bool
+
+// GetZonesCheckInsOpen200JSONResponseBodySuccess defines parameters for GetZonesCheckInsOpen.
+type GetZonesCheckInsOpen200JSONResponseBodySuccess bool
 
 // GetZonesProgressParams defines parameters for GetZonesProgress.
 type GetZonesProgressParams struct {
