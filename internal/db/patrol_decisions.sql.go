@@ -76,7 +76,7 @@ const decideScans = `-- name: DecideScans :many
 UPDATE patrol_scans SET status = $1, decided_by_id = $2, decided_at = $3,
                         decision_note = $4, updated_at = $3
 WHERE id = ANY($5::bigint[]) AND status = 'SUBMITTED'
-RETURNING id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at, checkpoint_id
+RETURNING id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at, checkpoint_id, location_flag, outcome, skip_reason, skip_media_ids
 `
 
 type DecideScansParams struct {
@@ -132,6 +132,10 @@ func (q *Queries) DecideScans(ctx context.Context, arg DecideScansParams) ([]Pat
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.CheckpointID,
+			&i.LocationFlag,
+			&i.Outcome,
+			&i.SkipReason,
+			&i.SkipMediaIds,
 		); err != nil {
 			return nil, err
 		}
@@ -145,7 +149,7 @@ func (q *Queries) DecideScans(ctx context.Context, arg DecideScansParams) ([]Pat
 
 const getPatrolScan = `-- name: GetPatrolScan :one
 
-SELECT id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at, checkpoint_id FROM patrol_scans WHERE id = $1
+SELECT id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at, checkpoint_id, location_flag, outcome, skip_reason, skip_media_ids FROM patrol_scans WHERE id = $1
 `
 
 // Progress, approval and decline of scans (Phase 10.3). Everything runs inside database.WithTenant.
@@ -179,12 +183,16 @@ func (q *Queries) GetPatrolScan(ctx context.Context, id int64) (PatrolScan, erro
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CheckpointID,
+		&i.LocationFlag,
+		&i.Outcome,
+		&i.SkipReason,
+		&i.SkipMediaIds,
 	)
 	return i, err
 }
 
 const getPatrolScansByIDs = `-- name: GetPatrolScansByIDs :many
-SELECT id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at, checkpoint_id FROM patrol_scans WHERE id = ANY($1::bigint[]) ORDER BY id
+SELECT id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at, checkpoint_id, location_flag, outcome, skip_reason, skip_media_ids FROM patrol_scans WHERE id = ANY($1::bigint[]) ORDER BY id
 `
 
 func (q *Queries) GetPatrolScansByIDs(ctx context.Context, ids []int64) ([]PatrolScan, error) {
@@ -223,6 +231,10 @@ func (q *Queries) GetPatrolScansByIDs(ctx context.Context, ids []int64) ([]Patro
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.CheckpointID,
+			&i.LocationFlag,
+			&i.Outcome,
+			&i.SkipReason,
+			&i.SkipMediaIds,
 		); err != nil {
 			return nil, err
 		}
@@ -314,7 +326,7 @@ func (q *Queries) ListPendingKeys(ctx context.Context, teamCode pgtype.Text) ([]
 }
 
 const listPendingScans = `-- name: ListPendingScans :many
-SELECT id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at, checkpoint_id FROM patrol_scans
+SELECT id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at, checkpoint_id, location_flag, outcome, skip_reason, skip_media_ids FROM patrol_scans
 WHERE status = 'SUBMITTED'
   AND (zone_type::text, team_code, work_date) IN (SELECT unnest($1::text[]), unnest($2::text[]), unnest($3::date[]))
   AND ($4::text IS NULL OR team_code = $4)
@@ -374,6 +386,10 @@ func (q *Queries) ListPendingScans(ctx context.Context, arg ListPendingScansPara
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.CheckpointID,
+			&i.LocationFlag,
+			&i.Outcome,
+			&i.SkipReason,
+			&i.SkipMediaIds,
 		); err != nil {
 			return nil, err
 		}
@@ -415,7 +431,7 @@ func (q *Queries) ListPersonnelNames(ctx context.Context, ids []int64) ([]ListPe
 }
 
 const listZoneScans = `-- name: ListZoneScans :many
-SELECT id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at, checkpoint_id FROM patrol_scans
+SELECT id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at, checkpoint_id, location_flag, outcome, skip_reason, skip_media_ids FROM patrol_scans
 WHERE zone_id = $1
   AND (team_code = ANY($2::text[]) OR personnel_id = $3)
   AND ($4::bigint IS NULL OR personnel_id = $4)
@@ -486,6 +502,10 @@ func (q *Queries) ListZoneScans(ctx context.Context, arg ListZoneScansParams) ([
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.CheckpointID,
+			&i.LocationFlag,
+			&i.Outcome,
+			&i.SkipReason,
+			&i.SkipMediaIds,
 		); err != nil {
 			return nil, err
 		}
@@ -500,9 +520,11 @@ func (q *Queries) ListZoneScans(ctx context.Context, arg ListZoneScansParams) ([
 const zoneProgress = `-- name: ZoneProgress :many
 SELECT z.id, z.project_code, z.team_code, z.type, z.name, z.alias, z.min_visit,
        cp.checkpoint_id, COALESCE(cp.checkpoint_name, '')::text AS checkpoint_name, COALESCE(cp.position, 0)::int AS position,
-       count(s.id) FILTER (WHERE s.status = 'SUBMITTED')::int AS submitted,
-       count(s.id) FILTER (WHERE s.status = 'APPROVED')::int  AS approved,
-       count(s.id) FILTER (WHERE s.status = 'DECLINED')::int  AS declined
+       count(s.id) FILTER (WHERE s.outcome = 'SCANNED' AND s.status = 'SUBMITTED')::int AS submitted,
+       count(s.id) FILTER (WHERE s.outcome = 'SCANNED' AND s.status = 'APPROVED')::int  AS approved,
+       count(s.id) FILTER (WHERE s.outcome = 'SCANNED' AND s.status = 'DECLINED')::int  AS declined,
+       -- A skip is not a visit (Phase 10.17): it has a counter of its own and is in none of the above.
+       count(s.id) FILTER (WHERE s.outcome = 'SKIPPED' AND s.status <> 'DECLINED')::int AS skipped
 FROM patrol_zones z
 LEFT JOIN (
     SELECT zc.organization_id, zc.zone_id, c.id AS checkpoint_id, c.name AS checkpoint_name, zc.sort_order AS position
@@ -539,6 +561,7 @@ type ZoneProgressRow struct {
 	Submitted      int32
 	Approved       int32
 	Declined       int32
+	Skipped        int32
 }
 
 // ⚠ The three circles of every zone, and of each of its checkpoints, in ONE query: the zones LEFT JOIN their
@@ -580,6 +603,7 @@ func (q *Queries) ZoneProgress(ctx context.Context, arg ZoneProgressParams) ([]Z
 			&i.Submitted,
 			&i.Approved,
 			&i.Declined,
+			&i.Skipped,
 		); err != nil {
 			return nil, err
 		}
@@ -593,8 +617,8 @@ func (q *Queries) ZoneProgress(ctx context.Context, arg ZoneProgressParams) ([]Z
 
 const zoneScanners = `-- name: ZoneScanners :many
 SELECT s.personnel_id, p.full_name,
-       count(*) FILTER (WHERE s.status = 'SUBMITTED')::int AS submitted_count,
-       count(*) FILTER (WHERE s.status = 'APPROVED')::int  AS approved_count
+       count(*) FILTER (WHERE s.outcome = 'SCANNED' AND s.status = 'SUBMITTED')::int AS submitted_count,
+       count(*) FILTER (WHERE s.outcome = 'SCANNED' AND s.status = 'APPROVED')::int  AS approved_count
 FROM patrol_scans s
 JOIN personnels p ON p.id = s.personnel_id
 WHERE s.zone_id = $1 AND s.work_date = $2 AND s.team_code = ANY($3::text[])

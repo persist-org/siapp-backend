@@ -112,6 +112,7 @@ GET /api/v1/teams/{code}/map
 GET /api/v1/teams/{code}/members
 GET /api/v1/ws
 GET /api/v1/zones
+GET /api/v1/zones/check-ins/open
 GET /api/v1/zones/progress
 GET /api/v1/zones/{id}
 GET /api/v1/zones/{id}/live
@@ -196,6 +197,7 @@ POST /api/v1/ws/ticket
 POST /api/v1/zones/{id}/check-in
 POST /api/v1/zones/{id}/check-out
 POST /api/v1/zones/{id}/scan
+POST /api/v1/zones/{id}/skip
 PUT /api/v1/admin/checkpoints/{id}/actions
 PUT /api/v1/admin/field-permissions/{team_role}
 PUT /api/v1/admin/leave-client-settings/{client_code}

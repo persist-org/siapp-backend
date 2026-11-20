@@ -66,9 +66,11 @@ WHERE status = 'SUBMITTED'
 -- name: ZoneProgress :many
 SELECT z.id, z.project_code, z.team_code, z.type, z.name, z.alias, z.min_visit,
        cp.checkpoint_id, COALESCE(cp.checkpoint_name, '')::text AS checkpoint_name, COALESCE(cp.position, 0)::int AS position,
-       count(s.id) FILTER (WHERE s.status = 'SUBMITTED')::int AS submitted,
-       count(s.id) FILTER (WHERE s.status = 'APPROVED')::int  AS approved,
-       count(s.id) FILTER (WHERE s.status = 'DECLINED')::int  AS declined
+       count(s.id) FILTER (WHERE s.outcome = 'SCANNED' AND s.status = 'SUBMITTED')::int AS submitted,
+       count(s.id) FILTER (WHERE s.outcome = 'SCANNED' AND s.status = 'APPROVED')::int  AS approved,
+       count(s.id) FILTER (WHERE s.outcome = 'SCANNED' AND s.status = 'DECLINED')::int  AS declined,
+       -- A skip is not a visit (Phase 10.17): it has a counter of its own and is in none of the above.
+       count(s.id) FILTER (WHERE s.outcome = 'SKIPPED' AND s.status <> 'DECLINED')::int AS skipped
 FROM patrol_zones z
 LEFT JOIN (
     SELECT zc.organization_id, zc.zone_id, c.id AS checkpoint_id, c.name AS checkpoint_name, zc.sort_order AS position
@@ -87,8 +89,8 @@ ORDER BY z.name, z.id, cp.position;
 -- it to one person, for a reader who may only see themselves.
 -- name: ZoneScanners :many
 SELECT s.personnel_id, p.full_name,
-       count(*) FILTER (WHERE s.status = 'SUBMITTED')::int AS submitted_count,
-       count(*) FILTER (WHERE s.status = 'APPROVED')::int  AS approved_count
+       count(*) FILTER (WHERE s.outcome = 'SCANNED' AND s.status = 'SUBMITTED')::int AS submitted_count,
+       count(*) FILTER (WHERE s.outcome = 'SCANNED' AND s.status = 'APPROVED')::int  AS approved_count
 FROM patrol_scans s
 JOIN personnels p ON p.id = s.personnel_id
 WHERE s.zone_id = @zone_id AND s.work_date = @work_date AND s.team_code = ANY(@team_codes::text[])

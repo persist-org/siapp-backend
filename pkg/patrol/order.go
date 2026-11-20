@@ -61,6 +61,18 @@ type orderStep struct {
 	Position     int // the position in the zone, from 1 (it can skip a number when an inactive one holds it)
 	Scans        int
 	Scannable    bool
+	// LastScannedAt is the occurred_at of the person's latest scan of it that the patrol interval counts (a
+	// SCANNED one, not declined); nil when there is none. Not the order rule's business: Scans counts every status.
+	LastScannedAt *time.Time
+}
+
+// lastScan turns the nullable column of the count queries into a step's LastScannedAt.
+func lastScan(t pgtype.Timestamptz) *time.Time {
+	if !t.Valid {
+		return nil
+	}
+	at := t.Time
+	return &at
 }
 
 // zoneOrder is where a person stands in a zone.
@@ -88,14 +100,24 @@ func loadOrder(ctx context.Context, q *db.Queries, personnelID, zoneID int64, wo
 	if err != nil {
 		return zoneOrder{}, fmt.Errorf("count scans by position: %w", err)
 	}
-	counts := make([]int, len(rows))
+	steps := make([]orderStep, len(rows))
 	for i, r := range rows {
-		counts[i] = int(r.Scans)
+		steps[i] = orderStep{CheckpointID: r.CheckpointID, Position: int(r.Position), Scans: int(r.Scans), LastScannedAt: lastScan(r.LastScannedAt)}
+	}
+	return orderOf(steps), nil
+}
+
+// orderOf applies the rule to steps that have their Scans, in position order, and fills Scannable and Next.
+// The one place the rule meets the data, shared by the read of one zone (loadOrder) and of many
+// (the bundled list), so the two cannot disagree.
+func orderOf(steps []orderStep) zoneOrder {
+	counts := make([]int, len(steps))
+	for i, st := range steps {
+		counts[i] = st.Scans
 	}
 	scannable, next := nextAllowed(counts)
-	out := zoneOrder{Steps: make([]orderStep, len(rows)), Next: next}
-	for i, r := range rows {
-		out.Steps[i] = orderStep{CheckpointID: r.CheckpointID, Position: int(r.Position), Scans: counts[i], Scannable: scannable[i]}
+	for i := range steps {
+		steps[i].Scannable = scannable[i]
 	}
-	return out, nil
+	return zoneOrder{Steps: steps, Next: next}
 }

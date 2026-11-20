@@ -104,6 +104,10 @@ func (n notifier) NotifyPatrol(ctx context.Context, nt patrol.Notice) {
 	if nt.CheckpointID != "" {
 		data["checkpoint_id"], data["checkpoint_name"] = nt.CheckpointID, nt.CheckpointName
 	}
+	// Whether the checkpoint was scanned or skipped, and what the position showed (Phase 10.17).
+	if nt.Outcome != "" {
+		data["outcome"], data["location_flag"] = nt.Outcome, nt.LocationFlag
+	}
 	in := notifications.Input{
 		Type:         typ,
 		RecipientIDs: nt.RecipientIDs,

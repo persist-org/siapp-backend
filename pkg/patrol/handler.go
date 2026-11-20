@@ -38,6 +38,7 @@ func (h *Handler) MountField(r chi.Router) {
 	r.Get("/api/v1/zones", h.fieldList)
 	// chi matches a fixed segment before a parameter, so /zones/progress is not read as zone "progress".
 	r.Get("/api/v1/zones/progress", h.progress)
+	r.Get("/api/v1/zones/check-ins/open", h.openCheckIns)
 	r.Get("/api/v1/zones/{id}", h.fieldGet)
 	r.Get("/api/v1/zones/{id}/scanners", h.scanners)
 	r.Get("/api/v1/zones/{id}/scans", h.zoneScans)
@@ -49,6 +50,7 @@ func (h *Handler) MountField(r chi.Router) {
 	r.Get("/api/v1/patrol-schedules", h.scheduleList)
 	r.Get("/api/v1/patrol-schedules/{id}", h.scheduleGet)
 	r.With(h.idempotent).Post("/api/v1/zones/{id}/scan", h.scan)
+	r.With(h.idempotent).Post("/api/v1/zones/{id}/skip", h.skip)
 	r.With(h.idempotent).Post("/api/v1/zones/{id}/check-in", h.checkIn)
 	r.With(h.idempotent).Post("/api/v1/zones/{id}/check-out", h.checkOut)
 	r.Get("/api/v1/zones/{id}/live", h.live)
@@ -251,16 +253,53 @@ func (h *Handler) fieldList(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, r, err)
 		return
 	}
+	bundle, err := includeQuery(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
 	zones, err := h.service.ListForField(r.Context(), p, FieldFilter{
 		ProjectCode: r.URL.Query().Get("project_code"), TeamCode: r.URL.Query().Get("team_code"), Type: typ,
+		WithCheckpoints: bundle,
 	})
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
 	}
+	data := zonesToAPI(zones)
+	if bundle {
+		// The bundle is what an app keeps for offline scans, so it can ask "has it changed?" instead of
+		// pulling the lot every time. The tag is a hash of the data (see httpx.ETag), so it changes when
+		// anything the caller would see changes: a checkpoint, a checklist, a scan, the clock moving into
+		// a new work date. private, no-cache: it is the caller's own view, to be revalidated on each use.
+		tag, err := httpx.ETag(data)
+		if err != nil {
+			httpx.Error(w, r, err)
+			return
+		}
+		w.Header().Set("ETag", tag)
+		w.Header().Set("Cache-Control", "private, no-cache")
+		if httpx.IfNoneMatch(r, tag) {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+	}
 	// The whole list is one page: a person serves in a handful of projects, each with a handful
 	// of zones, and the app caches the lot.
-	httpx.List(w, r, zonesToAPI(zones), httpx.Page{Page: 1, Limit: max(len(zones), 1), Total: len(zones)})
+	httpx.List(w, r, data, httpx.Page{Page: 1, Limit: max(len(zones), 1), Total: len(zones)})
+}
+
+// includeQuery reads ?include=: only "checkpoints" exists, and says to bundle each zone's checkpoints.
+func includeQuery(r *http.Request) (bool, error) {
+	switch r.URL.Query().Get("include") {
+	case "":
+		return false, nil
+	case "checkpoints":
+		return true, nil
+	}
+	return false, apperr.ErrValidation.WithFields(apperr.FieldError{
+		Field: "include", Code: "INVALID", Message: "Harus checkpoints, atau dikosongkan.",
+	})
 }
 
 func (h *Handler) fieldGet(w http.ResponseWriter, r *http.Request) {
@@ -316,6 +355,39 @@ func (h *Handler) scan(w http.ResponseWriter, r *http.Request) {
 	httpx.OK(w, r, status, scanToAPI(res.Scan))
 }
 
+// skip is POST /zones/{id}/skip: a checkpoint of the round that could not be scanned (Phase 10.17).
+func (h *Handler) skip(w http.ResponseWriter, r *http.Request) {
+	p, ok := auth.From(r.Context())
+	if !ok {
+		httpx.Error(w, r, apperr.ErrUnauthenticated)
+		return
+	}
+	id, err := idParam(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	var in SkipInput
+	if err := httpx.Decode(r, &in); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	if err := in.Offline().Check(r, h.service.Now()); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	res, err := h.service.Skip(r.Context(), p, id, in)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	status := http.StatusCreated
+	if res.Replayed {
+		status = http.StatusOK
+	}
+	httpx.OK(w, r, status, scanToAPI(res.Scan))
+}
+
 func (h *Handler) checkIn(w http.ResponseWriter, r *http.Request) {
 	h.presence(w, r, h.service.CheckIn, http.StatusCreated)
 }
@@ -349,6 +421,21 @@ func (h *Handler) presence(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	httpx.OK(w, r, status, checkInToAPI(got))
+}
+
+// openCheckIns is GET /zones/check-ins/open: the caller's own open check-in (Phase 10.19).
+func (h *Handler) openCheckIns(w http.ResponseWriter, r *http.Request) {
+	p, ok := auth.From(r.Context())
+	if !ok {
+		httpx.Error(w, r, apperr.ErrUnauthenticated)
+		return
+	}
+	got, err := h.service.OpenCheckIns(r.Context(), p)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.OK(w, r, http.StatusOK, checkInsToAPI(got))
 }
 
 func (h *Handler) live(w http.ResponseWriter, r *http.Request) {
@@ -476,7 +563,7 @@ func scanToAPI(sc Scan) apigen.PatrolScan {
 		name = &sc.PersonnelName
 	}
 	checkpoint := apigen.PatrolScanCheckpoint{Id: mustUUID(sc.Checkpoint.ID), Name: sc.Checkpoint.Name, SortOrder: sc.Checkpoint.SortOrder}
-	return apigen.PatrolScan{
+	out := apigen.PatrolScan{
 		Id: sc.ID, LocalId: local, ZoneId: sc.ZoneID, ZoneType: apigen.PatrolScanZoneType(sc.ZoneType),
 		CheckpointId: checkpoint.Id, Checkpoint: checkpoint,
 		PersonnelId: sc.PersonnelID, TeamCode: sc.TeamCode, ProjectCode: sc.ProjectCode, OccurredAt: sc.OccurredAt,
@@ -484,9 +571,15 @@ func scanToAPI(sc Scan) apigen.PatrolScan {
 		Longitude: sc.Longitude, AccuracyMeters: sc.AccuracyMeters, DistanceMeters: sc.DistanceMeters, Subject: sc.Subject,
 		Notes: sc.Notes, Actions: actions, Status: apigen.PatrolScanStatus(sc.Status), PatrolId: sc.PatrolID,
 		SubmittedOffline: sc.SubmittedOffline, CreatedAt: sc.CreatedAt,
-		DecidedById: sc.DecidedByID, DecidedAt: sc.DecidedAt, DecisionNote: sc.DecisionNote,
-		PersonnelName: name,
+		DecidedById: sc.DecidedByID, DecidedByName: sc.DecidedByName, DecidedAt: sc.DecidedAt, DecisionNote: sc.DecisionNote,
+		PersonnelName: name, LocationFlag: apigen.PatrolLocationFlag(sc.LocationFlag), Outcome: apigen.PatrolScanOutcome(sc.Outcome),
+		Photos: photosToAPI(sc.Photos),
 	}
+	if sc.SkipReason != nil {
+		reason := apigen.PatrolScanSkipReason(*sc.SkipReason)
+		out.SkipReason = &reason
+	}
+	return out
 }
 
 func checkInToAPI(c CheckIn) apigen.ZoneCheckIn {
@@ -556,6 +649,7 @@ func zoneCheckpointToAPI(c ZoneCheckpoint) apigen.PatrolZoneCheckpoint {
 	out := apigen.PatrolZoneCheckpoint{
 		Id: mustUUID(c.ID), Name: c.Name, SortOrder: c.SortOrder, IsActive: c.Active,
 		Latitude: c.Latitude, Longitude: c.Longitude, RadiusMeters: c.RadiusMeters, MyScans: c.MyScans, Scannable: c.Scannable,
+		LastScannedAt: c.LastScannedAt, NextAllowedAt: c.NextAllowedAt,
 	}
 	if c.Actions != nil {
 		actions := actionsToAPI(c.Actions)

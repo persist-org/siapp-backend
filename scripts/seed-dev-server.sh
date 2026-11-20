@@ -10,6 +10,7 @@
 #     (the project has a GPS point, 150 m radius)
 #   - 3 field people (danru + 2 members) and their memberships in the regu
 #   - starting shifts, default permissions, first ORG_ADMIN   (SiAPP's own "seed" command)
+#   - the danru KPIDANRU01 is also made ORG_ADMIN (plain SQL, step 4b), so it can hit every /api/v1/admin route
 #   - schedules from 7 days ago to 30 days ahead
 #   - ATTENDANCE for the last 6 days: on time, late, absent (mangkir), leave. TODAY IS LEFT EMPTY
 #     on purpose, so you can test check-in yourself.
@@ -29,6 +30,12 @@
 #     Patrol schedules (10.11): per member, Pos Gerbang Utama today (whole day), Pos Belakang yesterday
 #     (MISSED) and tomorrow night (crosses midnight).
 #     Re-running adds nothing: scans are keyed by guard, day and zone.
+#     Phase 10.17: scans stored with a location flag instead of refused (OUTSIDE_RADIUS, LOW_ACCURACY), and
+#     SKIPPED checkpoints with a reason (one with no GPS fix: NO_FIX), all SUBMITTED for the danru to decide.
+#     Phase 10.18: "Ruang Panel Listrik" has a rotated QR (rotated 2 h ago, old secret kept as previous_qr_secret);
+#     step 6 prints previous_qr_payload next to qr_payload.
+#     Phase 10.19/10.20 need no extra rows: next_allowed_at, checkpoints_scanned/total, the open check-in and
+#     decided_by_name are all derived from the rows above (anggota2's open check-in is the one to read).
 #   - leave requests in every state (PENDING, APPROVED, REJECTED, CANCELLED) with the ledger and counters,
 #     one shift swap, GPS points + last locations, the inbox notifications, and the master data
 #     (panic / stakeholder types, report + instruction categories, app links, a letterhead)
@@ -157,6 +164,7 @@ PSQL() {
   dc exec -T postgres psql -U siapp_owner -d siapp -v ON_ERROR_STOP=1 -q \
     -v org="$ORG_ID" -v company="$COMPANY_ID" -v every_day="$EVERY_DAY_SHIFT" \
     -v attendance="$([ "$SKIP_ATTENDANCE" = "1" ] && echo false || echo true)" \
+    -v admin_nik="$ADMIN_NIK" \
     -v danru_uid="$DANRU_UID" -v ang1_uid="$ANG1_UID" -v ang2_uid="$ANG2_UID" "$@"
 }
 
@@ -219,6 +227,23 @@ else
   warn "grant-admin failed. It asks Personalia for the NIK, so SiAPP must reach Personalia first"
   warn "(PERSONEL_BASE_URL / key in .env) and $ADMIN_NIK must exist there. Fix that and re-run (safe)."
 fi
+
+# ---------- 4b. the danru may use the admin API too ----------
+# /api/v1/admin/* is guarded by access.RequireAdmin, which reads web_role_assignments and never the team role,
+# so a DANRU alone gets 403 NOT_ADMIN on every admin route. For dev testing the seeded danru is also an ORG_ADMIN:
+# the whole admin API, including the ORG_ADMIN-only routes (the field permission matrix, web roles). Plain SQL,
+# not "seed grant-admin": that one asks Personalia, and the danru is already in SiAPP from step 1. Safe to re-run.
+say "4b/8 Danru KPIDANRU01 as ORG_ADMIN (whole admin API, dev only)"
+PSQL <<'SQL'
+SELECT set_config('app.current_org', :'org', false) \gset
+INSERT INTO web_role_assignments (personnel_id, role, region_code, granted_by_personnel_id)
+SELECT d.id, 'ORG_ADMIN', NULL, (SELECT id FROM personnels WHERE nik = :'admin_nik')
+FROM personnels d WHERE d.nik = 'KPIDANRU01'
+ON CONFLICT (organization_id, personnel_id) DO UPDATE
+  SET role = 'ORG_ADMIN', region_code = NULL, updated_at = now();
+SELECT p.nik, w.role FROM web_role_assignments w JOIN personnels p ON p.id = w.personnel_id ORDER BY p.nik;
+SQL
+echo "ok"
 
 # ---------- 5. schedules, leave, attendance ----------
 say "5/8 Schedules, leave data and attendance"
@@ -427,6 +452,19 @@ FROM (VALUES
 JOIN patrol_checkpoints c ON c.project_code = '1K-DEMO-S' AND lower(c.name) = lower(a.checkpoint_name) AND c.deleted_at IS NULL
 WHERE NOT EXISTS (SELECT 1 FROM patrol_checkpoint_actions x WHERE x.checkpoint_id = c.id);
 
+-- A rotated QR (Phase 10.18): "Ruang Panel Listrik" was rotated 2 hours ago, once. The secret it had is kept in
+-- previous_qr_secret, so a scan made OFFLINE (submitted_offline: true) before qr_rotated_at with the OLD sticker
+-- is still accepted for 24 hours after the rotation (CHECKPOINT_QR_INVALID after that, or for an online scan).
+-- Only done for a checkpoint that was never rotated, so a re-run keeps the current secret. The old sticker's QR
+-- text is printed below as previous_qr_payload. Note: 2 hours ago means the grace ends 22 hours from the first
+-- run; rotate it again from the admin panel (POST /admin/checkpoints/{id}/rotate-qr) to get a fresh window.
+UPDATE patrol_checkpoints
+SET previous_qr_secret = qr_secret,
+    qr_secret = substr(translate(encode(decode(md5(random()::text || name || 'rotated'), 'hex'), 'base64'), '+/=', '-_'), 1, 22),
+    qr_rotated_at = now() - interval '2 hours', updated_at = now()
+WHERE project_code = '1K-DEMO-S' AND lower(name) = 'ruang panel listrik' AND deleted_at IS NULL
+  AND previous_qr_secret IS NULL;
+
 COMMIT;
 
 \pset footer off
@@ -438,7 +476,9 @@ GROUP BY z.id ORDER BY z.id;
 \echo Checkpoints of each zone, in order (qr_payload is the text to turn into a QR code and scan)
 SELECT z.name AS zone, zc.sort_order AS pos, c.name AS checkpoint,
        (SELECT count(*) FROM patrol_checkpoint_actions a WHERE a.checkpoint_id = c.id AND a.active) AS actions,
-       'PERSIST-CP:1:' || :'org' || ':' || c.id || ':' || c.qr_secret AS qr_payload
+       'PERSIST-CP:1:' || :'org' || ':' || c.id || ':' || c.qr_secret AS qr_payload,
+       CASE WHEN c.previous_qr_secret IS NOT NULL
+            THEN 'PERSIST-CP:1:' || :'org' || ':' || c.id || ':' || c.previous_qr_secret END AS previous_qr_payload
 FROM patrol_zone_checkpoints zc
 JOIN patrol_zones z ON z.id = zc.zone_id
 JOIN patrol_checkpoints c ON c.id = zc.checkpoint_id
@@ -557,7 +597,69 @@ FROM scans s
 JOIN patrol_checkpoint_actions a ON a.checkpoint_id = s.checkpoint_id AND a.active
 ON CONFLICT DO NOTHING;
 
-UPDATE patrol_routes r SET scan_count = (SELECT count(*) FROM patrol_scans s WHERE s.patrol_id = r.id);
+-- Location flags and skips (Phase 10.17): the rest of a round walked on top of the first-checkpoint scans above, each
+-- SUBMITTED so the danru sees the flag and the skip in /patrol/pending-approvals. Each is placed minutes after the
+-- zone's first-checkpoint scan of the same person and day (none is made when that scan does not exist, e.g. a day off).
+--   Pos Gerbang Utama, 3 days ago, anggota1: Pagar Timur scanned 110 m away  -> OUTSIDE_RADIUS (stored, not refused)
+--                                            Pintu Belakang SKIPPED, sticker damaged, no GPS fix -> NO_FIX
+--   Pos Belakang, today, anggota2:           Ruang Panel Listrik scanned with accuracy 80 m -> LOW_ACCURACY
+--   Pos Belakang, yesterday, anggota1:       Ruang Panel Listrik SKIPPED, access blocked, with a fix inside the radius (OK)
+-- The order rule still holds (1, 2, 3 in position order; a skip counts like a scan). A skip has no answers, no photos
+-- here (media needs real files) and is not in a patrol's scan_count.
+WITH me AS (SELECT (now() AT TIME ZONE 'Asia/Jakarta')::date AS today),
+spec(zone_name, ago, nik, cp_name, outcome, flag, reason, off_min, note) AS (VALUES
+  ('Pos Gerbang Utama', 3, 'KPIANG0001', 'Pagar Timur',         'SCANNED', 'OUTSIDE_RADIUS', NULL::text,          5,  'GPS basement melenceng'),
+  ('Pos Gerbang Utama', 3, 'KPIANG0001', 'Pintu Belakang',      'SKIPPED', 'NO_FIX',         'STICKER_DAMAGED',   10, 'Stiker rusak, tidak terbaca'),
+  ('Pos Belakang',      0, 'KPIANG0002', 'Ruang Panel Listrik', 'SCANNED', 'LOW_ACCURACY',   NULL::text,          5,  NULL::text),
+  ('Pos Belakang',      1, 'KPIANG0001', 'Ruang Panel Listrik', 'SKIPPED', 'OK',             'ACCESS_BLOCKED',    5,  'Ruangan terkunci, kunci dibawa teknisi')
+),
+src AS (
+  SELECT p.id AS pid, p.nik, z.id AS zone_id, z.type AS zone_type, z.name AS zone_name,
+         c.id AS checkpoint_id, c.name AS cp_name, c.latitude AS clat, c.longitude AS clng,
+         (me.today - sp.ago) AS work_date, sp.outcome, sp.flag, sp.reason, sp.off_min, sp.note, b.occurred_at AS base_at
+  FROM me
+  CROSS JOIN spec sp
+  JOIN personnels p ON p.nik = sp.nik
+  JOIN patrol_zones z ON z.project_code = '1K-DEMO-S' AND z.name = sp.zone_name AND z.deleted_at IS NULL
+  JOIN patrol_checkpoints c ON c.project_code = '1K-DEMO-S' AND c.name = sp.cp_name AND c.deleted_at IS NULL
+  JOIN patrol_zone_checkpoints zc1 ON zc1.zone_id = z.id AND zc1.sort_order = 1
+  JOIN patrol_scans b ON b.zone_id = z.id AND b.personnel_id = p.id AND b.work_date = me.today - sp.ago
+                     AND b.checkpoint_id = zc1.checkpoint_id AND b.outcome = 'SCANNED'
+),
+scans AS (
+  INSERT INTO patrol_scans (local_id, zone_id, checkpoint_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at,
+                            work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, status,
+                            patrol_id, submitted_offline, location_flag, outcome, skip_reason, skip_media_ids)
+  SELECT md5('seed-scan-flag-' || s.pid || '-' || s.work_date || '-' || s.zone_id || '-' || s.checkpoint_id)::uuid,
+         s.zone_id, s.checkpoint_id, s.zone_type, s.pid, '1K-DEMO-S1', '1K-DEMO-S', t.at, t.at + interval '1 minute', s.work_date,
+         CASE s.flag WHEN 'NO_FIX' THEN NULL WHEN 'OUTSIDE_RADIUS' THEN s.clat + 0.001 ELSE s.clat END,
+         CASE s.flag WHEN 'NO_FIX' THEN NULL ELSE s.clng END,
+         CASE s.flag WHEN 'NO_FIX' THEN NULL WHEN 'LOW_ACCURACY' THEN 80 ELSE 8 END,
+         CASE s.flag WHEN 'NO_FIX' THEN NULL WHEN 'OUTSIDE_RADIUS' THEN 111 ELSE 5 END,
+         CASE WHEN s.zone_type = 'PATROL' THEN 'Patroli ' ELSE 'Jaga ' END || s.zone_name || ' - ' || s.cp_name,
+         s.note, 'SUBMITTED'::patrol_scan_status,
+         (SELECT r.id FROM patrol_routes r WHERE r.personnel_id = s.pid AND r.work_date = s.work_date AND r.status <> 'ACTIVE' LIMIT 1),
+         s.flag <> 'OK', s.flag::patrol_location_flag, s.outcome::patrol_scan_outcome, s.reason::patrol_skip_reason, '{}'::bigint[]
+  FROM src s
+  CROSS JOIN LATERAL (SELECT LEAST(s.base_at + s.off_min * interval '1 minute', now() - interval '2 minutes') AS at) t
+  ON CONFLICT DO NOTHING
+  RETURNING id, checkpoint_id, personnel_id, outcome
+)
+-- A scan (not a skip) answers every action of its checkpoint, like the first-checkpoint scans above.
+INSERT INTO patrol_scan_actions (scan_id, checkpoint_id, action_id, personnel_id, note, media_ids, snapshot)
+SELECT s.id, s.checkpoint_id, a.id, s.personnel_id,
+       CASE WHEN a.is_note_required THEN 'Aman, tidak ada kelainan' END,
+       '{}'::bigint[],
+       jsonb_build_object('action', a.action, 'instruction', a.instruction, 'min_photos', a.min_photos, 'max_photos', a.max_photos,
+                          'is_note_required', a.is_note_required, 'sort_order', a.sort_order,
+                          'note', CASE WHEN a.is_note_required THEN 'Aman, tidak ada kelainan' END, 'media_ids', '[]'::jsonb)
+FROM scans s
+JOIN patrol_checkpoint_actions a ON a.checkpoint_id = s.checkpoint_id AND a.active
+WHERE s.outcome = 'SCANNED'
+ON CONFLICT DO NOTHING;
+
+-- A skip is not a visit: a patrol's scan_count counts only SCANNED rows (the same as the API).
+UPDATE patrol_routes r SET scan_count = (SELECT count(*) FROM patrol_scans s WHERE s.patrol_id = r.id AND s.outcome = 'SCANNED');
 
 -- Patrol schedules (Phase 10.11), for each of the two members: Pos Gerbang Utama today for the whole Jakarta day (so a
 -- tester can always start a patrol from one), Pos Belakang yesterday 08:00-16:00 (over with no patrol: MISSED) and
@@ -778,6 +880,8 @@ FROM attendances a JOIN personnels p ON p.id = a.personnel_id
 GROUP BY p.nik, a.status ORDER BY p.nik, a.status;
 \echo Patrol scans by status
 SELECT status, count(*) AS scans FROM patrol_scans GROUP BY status ORDER BY status;
+\echo Patrol scans by outcome and location flag
+SELECT outcome, location_flag, count(*) AS scans FROM patrol_scans GROUP BY outcome, location_flag ORDER BY outcome, location_flag;
 \echo Leave requests by status
 SELECT status, count(*) AS requests FROM leave_requests GROUP BY status ORDER BY status;
 \echo Rows per seeded table
@@ -796,7 +900,7 @@ Test login body (POST /api/v1/auth/login). The password is whatever the account 
   { "identifier": "danru.kpi@siapp.test", "password": "<password>",
     "client": "MOBILE", "device_token": "my-test-phone-001", "remember_me": true }
 
-People: danru KPIDANRU01, members KPIANG0001 and KPIANG0002, admin $ADMIN_NIK (ORG_ADMIN, if step 4 worked)
+People: danru KPIDANRU01 (also ORG_ADMIN: it can call /api/v1/admin/*), members KPIANG0001 and KPIANG0002, admin $ADMIN_NIK (ORG_ADMIN, if step 4 worked)
 Regu 1K-DEMO-S1 at project 1K-DEMO-S, GPS -6.175392, 106.827153 (radius 150 m).
 Today has no attendance rows: check in as a member to test it.
 Patrol zones: Pos Gerbang Utama, Pos Belakang (PATROL) and Pos Jaga Depan (GUARD), see the table above.

@@ -108,7 +108,7 @@ func (q *Queries) CountZoneTracking(ctx context.Context, arg CountZoneTrackingPa
 
 const getPatrolScanByLocalID = `-- name: GetPatrolScanByLocalID :one
 
-SELECT id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at, checkpoint_id FROM patrol_scans WHERE local_id = $1
+SELECT id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at, checkpoint_id, location_flag, outcome, skip_reason, skip_media_ids FROM patrol_scans WHERE local_id = $1
 `
 
 // Scans and zone check-ins (Phase 10.2). Everything runs inside database.WithTenant.
@@ -142,6 +142,10 @@ func (q *Queries) GetPatrolScanByLocalID(ctx context.Context, localID pgtype.UUI
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CheckpointID,
+		&i.LocationFlag,
+		&i.Outcome,
+		&i.SkipReason,
+		&i.SkipMediaIds,
 	)
 	return i, err
 }
@@ -150,6 +154,7 @@ const hasScanBetween = `-- name: HasScanBetween :one
 SELECT EXISTS (
     SELECT 1 FROM patrol_scans
     WHERE personnel_id = $1 AND zone_id = $2 AND checkpoint_id = $3 AND status <> 'DECLINED'
+      AND outcome = 'SCANNED'
       AND occurred_at > $4 AND occurred_at < $5)
 `
 
@@ -163,7 +168,11 @@ type HasScanBetweenParams struct {
 
 // A scan of this checkpoint in this zone by this person between two instants, a declined one not
 // counting: the patrol interval is about how often a guard visits a checkpoint, and a visit the DANRU turned
-// down did not happen, so the guard may do it again.
+// down did not happen, so the guard may do it again. A skip is not a visit either (Phase 10.17), so it does not
+// hold up the interval: the interval will not refuse a scan a minute after a skip. The ORDER rule still
+// decides whether that scan is allowed: a skip counts as the walk past that checkpoint, so a checkpoint
+// after the first that was skipped cannot be scanned again in the same round (CHECKPOINT_OUT_OF_ORDER), only in
+// the next one.
 func (q *Queries) HasScanBetween(ctx context.Context, arg HasScanBetweenParams) (bool, error) {
 	row := q.db.QueryRow(ctx, hasScanBetween,
 		arg.PersonnelID,
@@ -180,11 +189,14 @@ func (q *Queries) HasScanBetween(ctx context.Context, arg HasScanBetweenParams) 
 const insertPatrolScan = `-- name: InsertPatrolScan :one
 INSERT INTO patrol_scans (local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at,
                           received_at, work_date, latitude, longitude, accuracy_meters, distance_meters,
-                          subject, notes, patrol_id, checkpoint_id, submitted_offline, created_at, updated_at)
+                          subject, notes, patrol_id, checkpoint_id, submitted_offline, location_flag, outcome,
+                          skip_reason, skip_media_ids, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
-        $9, $10, $11, $12, $13, $14,
-        $15, $16, $17, $18, $8, $8)
-RETURNING id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at, checkpoint_id
+        $9, $10, $11, $12,
+        $13, $14,
+        $15, $16, $17, $18, $19, $20,
+        $21, $22::bigint[], $8, $8)
+RETURNING id, organization_id, local_id, zone_id, zone_type, personnel_id, team_code, project_code, occurred_at, received_at, work_date, latitude, longitude, accuracy_meters, distance_meters, subject, notes, status, decided_by_id, decided_at, decision_note, patrol_id, submitted_offline, created_at, updated_at, checkpoint_id, location_flag, outcome, skip_reason, skip_media_ids
 `
 
 type InsertPatrolScanParams struct {
@@ -197,15 +209,19 @@ type InsertPatrolScanParams struct {
 	OccurredAt       pgtype.Timestamptz
 	ReceivedAt       pgtype.Timestamptz
 	WorkDate         pgtype.Date
-	Latitude         float64
-	Longitude        float64
-	AccuracyMeters   float64
+	Latitude         *float64
+	Longitude        *float64
+	AccuracyMeters   *float64
 	DistanceMeters   pgtype.Int4
 	Subject          string
 	Notes            pgtype.Text
 	PatrolID         pgtype.Int8
 	CheckpointID     pgtype.UUID
 	SubmittedOffline bool
+	LocationFlag     PatrolLocationFlag
+	Outcome          PatrolScanOutcome
+	SkipReason       NullPatrolSkipReason
+	SkipMediaIds     []int64
 }
 
 func (q *Queries) InsertPatrolScan(ctx context.Context, arg InsertPatrolScanParams) (PatrolScan, error) {
@@ -228,6 +244,10 @@ func (q *Queries) InsertPatrolScan(ctx context.Context, arg InsertPatrolScanPara
 		arg.PatrolID,
 		arg.CheckpointID,
 		arg.SubmittedOffline,
+		arg.LocationFlag,
+		arg.Outcome,
+		arg.SkipReason,
+		arg.SkipMediaIds,
 	)
 	var i PatrolScan
 	err := row.Scan(
@@ -257,6 +277,10 @@ func (q *Queries) InsertPatrolScan(ctx context.Context, arg InsertPatrolScanPara
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CheckpointID,
+		&i.LocationFlag,
+		&i.Outcome,
+		&i.SkipReason,
+		&i.SkipMediaIds,
 	)
 	return i, err
 }
@@ -309,6 +333,99 @@ func (q *Queries) InsertZoneCheckin(ctx context.Context, arg InsertZoneCheckinPa
 		&i.CheckpointID,
 	)
 	return i, err
+}
+
+const lastCountedScan = `-- name: LastCountedScan :one
+SELECT max(occurred_at)::timestamptz AS last_scanned_at FROM patrol_scans
+WHERE personnel_id = $1 AND zone_id = $2 AND checkpoint_id = $3
+  AND outcome = 'SCANNED' AND status <> 'DECLINED'
+`
+
+type LastCountedScanParams struct {
+	PersonnelID  int64
+	ZoneID       int64
+	CheckpointID pgtype.UUID
+}
+
+// The latest scan of this checkpoint in this zone by this person that the interval counts (SCANNED, not declined),
+// on any work date: the moment next_allowed_at in ZONE_INTERVAL_NOT_ELAPSED is measured from (Phase 10.19).
+func (q *Queries) LastCountedScan(ctx context.Context, arg LastCountedScanParams) (pgtype.Timestamptz, error) {
+	row := q.db.QueryRow(ctx, lastCountedScan, arg.PersonnelID, arg.ZoneID, arg.CheckpointID)
+	var last_scanned_at pgtype.Timestamptz
+	err := row.Scan(&last_scanned_at)
+	return last_scanned_at, err
+}
+
+const lastRowBetween = `-- name: LastRowBetween :one
+SELECT max(occurred_at)::timestamptz AS last_at FROM patrol_scans
+WHERE personnel_id = $1 AND zone_id = $2 AND checkpoint_id = $3
+  AND occurred_at > $4 AND occurred_at < $5
+`
+
+type LastRowBetweenParams struct {
+	PersonnelID  int64
+	ZoneID       int64
+	CheckpointID pgtype.UUID
+	After        pgtype.Timestamptz
+	Before       pgtype.Timestamptz
+}
+
+// The latest row of any outcome and status (a scan, a declined one, a skip) of this checkpoint in this zone by this
+// person between two instants; null when there is none. The skip's double-tap guard: every row counts for the order
+// rule, so two rows of one visit would leave the round one step behind for good.
+func (q *Queries) LastRowBetween(ctx context.Context, arg LastRowBetweenParams) (pgtype.Timestamptz, error) {
+	row := q.db.QueryRow(ctx, lastRowBetween,
+		arg.PersonnelID,
+		arg.ZoneID,
+		arg.CheckpointID,
+		arg.After,
+		arg.Before,
+	)
+	var last_at pgtype.Timestamptz
+	err := row.Scan(&last_at)
+	return last_at, err
+}
+
+const listOpenCheckinsOfPersonnel = `-- name: ListOpenCheckinsOfPersonnel :many
+SELECT id, organization_id, zone_id, personnel_id, team_code, shift_id, check_in_at, check_in_lat, check_in_lng, check_out_at, check_out_lat, check_out_lng, created_at, updated_at, checkpoint_id FROM zone_checkins WHERE personnel_id = $1 AND check_out_at IS NULL ORDER BY check_in_at, id
+`
+
+// The person's open check-in, if any (Phase 10.19). There is at most one: zone_checkins_open_uq. The check-in
+// reads it to name the zone in ZONE_ALREADY_CHECKED_IN, and GET /zones/check-ins/open lists it.
+func (q *Queries) ListOpenCheckinsOfPersonnel(ctx context.Context, personnelID int64) ([]ZoneCheckin, error) {
+	rows, err := q.db.Query(ctx, listOpenCheckinsOfPersonnel, personnelID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ZoneCheckin{}
+	for rows.Next() {
+		var i ZoneCheckin
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrganizationID,
+			&i.ZoneID,
+			&i.PersonnelID,
+			&i.TeamCode,
+			&i.ShiftID,
+			&i.CheckInAt,
+			&i.CheckInLat,
+			&i.CheckInLng,
+			&i.CheckOutAt,
+			&i.CheckOutLat,
+			&i.CheckOutLng,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.CheckpointID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listZoneLive = `-- name: ListZoneLive :many

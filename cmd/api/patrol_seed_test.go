@@ -182,15 +182,41 @@ func TestSeedPatrolScans(t *testing.T) {
 	require.Positive(t, scans)
 	require.Positive(t, actions)
 
-	t.Run("every scan is of the first checkpoint of its zone", func(t *testing.T) {
+	t.Run("every plain scan (outcome SCANNED, location OK) is of the first checkpoint of its zone", func(t *testing.T) {
 		require.Zero(t, count(`SELECT count(*) FROM patrol_scans s
-		    WHERE s.checkpoint_id IS DISTINCT FROM (SELECT zc.checkpoint_id FROM patrol_zone_checkpoints zc
+		    WHERE s.outcome = 'SCANNED' AND s.location_flag = 'OK'
+		      AND s.checkpoint_id IS DISTINCT FROM (SELECT zc.checkpoint_id FROM patrol_zone_checkpoints zc
 		                                            WHERE zc.zone_id = s.zone_id ORDER BY zc.sort_order LIMIT 1)`))
 	})
 
-	t.Run("each scan answers every active action of its checkpoint, once", func(t *testing.T) {
+	// Phase 10.17: the demo also has the rest of a round: a scan stored 110 m away (OUTSIDE_RADIUS), one with a vague
+	// fix (LOW_ACCURACY) and skipped checkpoints (one with no GPS fix at all).
+	t.Run("the flagged scans and skips follow the order rule and are told apart", func(t *testing.T) {
+		flags := map[string]int{}
+		for _, flag := range []string{"OUTSIDE_RADIUS", "LOW_ACCURACY", "NO_FIX"} {
+			flags[flag] = count("SELECT count(*) FROM patrol_scans WHERE location_flag = '" + flag + "'")
+			require.Equal(t, 1, flags[flag], flag)
+		}
+		require.Equal(t, 2, count("SELECT count(*) FROM patrol_scans WHERE outcome = 'SKIPPED'"))
+		require.Equal(t, 2, count("SELECT count(*) FROM patrol_scans WHERE outcome = 'SKIPPED' AND skip_reason IS NOT NULL"))
+		require.Equal(t, 1, count("SELECT count(*) FROM patrol_scans WHERE latitude IS NULL"), "only the NO_FIX skip has no position")
+		require.Zero(t, count(`SELECT count(*) FROM patrol_scans s WHERE s.outcome = 'SKIPPED'
+		    AND EXISTS (SELECT 1 FROM patrol_scan_actions a WHERE a.scan_id = s.id)`), "a skip has no answers")
+		// Each of them comes after a scan or skip of the checkpoint before it, by the same person, zone and day.
 		require.Zero(t, count(`SELECT count(*) FROM patrol_scans s
-		    WHERE (SELECT count(*) FROM patrol_scan_actions a WHERE a.scan_id = s.id)
+		    JOIN patrol_zone_checkpoints z ON z.zone_id = s.zone_id AND z.checkpoint_id = s.checkpoint_id
+		    WHERE (s.location_flag <> 'OK' OR s.outcome = 'SKIPPED')
+		      AND NOT EXISTS (SELECT 1 FROM patrol_scans p
+		                      JOIN patrol_zone_checkpoints pz ON pz.zone_id = p.zone_id AND pz.checkpoint_id = p.checkpoint_id
+		                      WHERE p.personnel_id = s.personnel_id AND p.zone_id = s.zone_id AND p.work_date = s.work_date
+		                        AND pz.sort_order = z.sort_order - 1 AND p.occurred_at < s.occurred_at)`))
+		// They wait for the danru, who sees the flag in the pending list.
+		require.Zero(t, count("SELECT count(*) FROM patrol_scans WHERE (location_flag <> 'OK' OR outcome = 'SKIPPED') AND status <> 'SUBMITTED'"))
+	})
+
+	t.Run("each scan answers every active action of its checkpoint, once", func(t *testing.T) {
+		require.Zero(t, count(`SELECT count(*) FROM patrol_scans s WHERE s.outcome = 'SCANNED'
+		    AND (SELECT count(*) FROM patrol_scan_actions a WHERE a.scan_id = s.id)
 		       <> (SELECT count(*) FROM patrol_checkpoint_actions c WHERE c.checkpoint_id = s.checkpoint_id AND c.active)`))
 		require.Zero(t, count(`SELECT count(*) FROM patrol_scan_actions a JOIN patrol_checkpoint_actions c ON c.id = a.action_id
 		    WHERE a.snapshot->>'action' <> c.action OR a.snapshot->'media_ids' <> '[]'::jsonb`))
@@ -198,9 +224,9 @@ func TestSeedPatrolScans(t *testing.T) {
 		    WHERE c.is_note_required AND a.note IS NULL`), "an action that needs a note has one")
 	})
 
-	t.Run("the patrols count the scans made on their day", func(t *testing.T) {
+	t.Run("the patrols count the scans made on their day, not the skips", func(t *testing.T) {
 		require.Zero(t, count(`SELECT count(*) FROM patrol_routes r
-		    WHERE r.scan_count <> (SELECT count(*) FROM patrol_scans s WHERE s.patrol_id = r.id)`))
+		    WHERE r.scan_count <> (SELECT count(*) FROM patrol_scans s WHERE s.patrol_id = r.id AND s.outcome = 'SCANNED')`))
 	})
 
 	t.Run("running it again changes nothing", func(t *testing.T) {

@@ -18,15 +18,20 @@ type photoOut struct {
 }
 
 type scanFull struct {
-	ID            int64   `json:"id"`
-	ZoneID        int64   `json:"zone_id"`
-	PersonnelID   int64   `json:"personnel_id"`
-	PersonnelName string  `json:"personnel_name"`
-	TeamCode      string  `json:"team_code"`
-	Status        string  `json:"status"`
-	DecidedByID   *int64  `json:"decided_by_id"`
-	DecisionNote  *string `json:"decision_note"`
-	CheckpointID  string  `json:"checkpoint_id"`
+	ID            int64      `json:"id"`
+	ZoneID        int64      `json:"zone_id"`
+	PersonnelID   int64      `json:"personnel_id"`
+	PersonnelName string     `json:"personnel_name"`
+	TeamCode      string     `json:"team_code"`
+	Status        string     `json:"status"`
+	DecidedByID   *int64     `json:"decided_by_id"`
+	DecidedByName *string    `json:"decided_by_name"`
+	DecisionNote  *string    `json:"decision_note"`
+	CheckpointID  string     `json:"checkpoint_id"`
+	Outcome       string     `json:"outcome"`
+	SkipReason    *string    `json:"skip_reason"`
+	LocationFlag  string     `json:"location_flag"`
+	Photos        []photoOut `json:"photos"`
 	Checkpoint    struct {
 		ID        string `json:"id"`
 		Name      string `json:"name"`
@@ -53,6 +58,7 @@ type progressOut struct {
 	Submitted   int `json:"submitted"`
 	Approved    int `json:"approved"`
 	Declined    int `json:"declined"`
+	Skipped     int `json:"skipped"`
 	Checkpoints []struct {
 		CheckpointID string `json:"checkpoint_id"`
 		Name         string `json:"name"`
@@ -61,6 +67,7 @@ type progressOut struct {
 		Submitted    int    `json:"submitted"`
 		Approved     int    `json:"approved"`
 		Declined     int    `json:"declined"`
+		Skipped      int    `json:"skipped"`
 	} `json:"checkpoints"`
 }
 

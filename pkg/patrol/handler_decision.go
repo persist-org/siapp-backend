@@ -79,7 +79,7 @@ func (h *Handler) progress(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]apigen.ZoneProgressItem, 0, len(got))
 	for _, g := range got {
-		item := apigen.ZoneProgressItem{Required: g.Required, Submitted: g.Submitted, Approved: g.Approved, Declined: g.Declined}
+		item := apigen.ZoneProgressItem{Required: g.Required, Submitted: g.Submitted, Approved: g.Approved, Declined: g.Declined, Skipped: g.Skipped}
 		item.Zone.Id, item.Zone.ProjectCode, item.Zone.TeamCode = g.Zone.ID, g.Zone.ProjectCode, g.Zone.TeamCode
 		item.Zone.Type, item.Zone.Name, item.Zone.Alias = apigen.ZoneProgressItemZoneType(g.Zone.Type), g.Zone.Name, g.Zone.Alias
 		item.Zone.MinVisit = g.Zone.MinVisit
@@ -87,7 +87,7 @@ func (h *Handler) progress(w http.ResponseWriter, r *http.Request) {
 		for _, c := range g.Checkpoints {
 			item.Checkpoints = append(item.Checkpoints, apigen.CheckpointProgressItem{
 				CheckpointId: mustUUID(c.CheckpointID), Name: c.Name, SortOrder: c.SortOrder,
-				Required: c.Required, Submitted: c.Submitted, Approved: c.Approved, Declined: c.Declined,
+				Required: c.Required, Submitted: c.Submitted, Approved: c.Approved, Declined: c.Declined, Skipped: c.Skipped,
 			})
 		}
 		out = append(out, item)

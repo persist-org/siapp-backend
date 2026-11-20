@@ -52,7 +52,7 @@ RETURNING *;
 -- The scans of a patrol, in the order they were made, for the pins on the line.
 -- name: ListRouteScans :many
 SELECT s.id, s.zone_id, z.name AS zone_name, s.checkpoint_id, c.name AS checkpoint_name, s.occurred_at, s.latitude, s.longitude,
-       s.status, s.subject
+       s.status, s.subject, s.outcome, s.skip_reason, s.location_flag
 FROM patrol_scans s
 JOIN patrol_zones z ON z.id = s.zone_id
 JOIN patrol_checkpoints c ON c.id = s.checkpoint_id

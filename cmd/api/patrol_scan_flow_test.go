@@ -19,19 +19,23 @@ import (
 const zoneLat, zoneLng = -6.2, 106.8
 
 type scanOut struct {
-	ID               int64   `json:"id"`
-	LocalID          string  `json:"local_id"`
-	ZoneID           int64   `json:"zone_id"`
-	ZoneType         string  `json:"zone_type"`
-	CheckpointID     *string `json:"checkpoint_id"`
-	PersonnelID      int64   `json:"personnel_id"`
-	TeamCode         string  `json:"team_code"`
-	ProjectCode      string  `json:"project_code"`
-	WorkDate         string  `json:"work_date"`
-	DistanceMeters   *int    `json:"distance_meters"`
-	Subject          string  `json:"subject"`
-	Status           string  `json:"status"`
-	SubmittedOffline bool    `json:"submitted_offline"`
+	ID               int64    `json:"id"`
+	LocalID          string   `json:"local_id"`
+	ZoneID           int64    `json:"zone_id"`
+	ZoneType         string   `json:"zone_type"`
+	CheckpointID     *string  `json:"checkpoint_id"`
+	PersonnelID      int64    `json:"personnel_id"`
+	TeamCode         string   `json:"team_code"`
+	ProjectCode      string   `json:"project_code"`
+	WorkDate         string   `json:"work_date"`
+	DistanceMeters   *int     `json:"distance_meters"`
+	Latitude         *float64 `json:"latitude"`
+	LocationFlag     string   `json:"location_flag"`
+	Outcome          string   `json:"outcome"`
+	SkipReason       *string  `json:"skip_reason"`
+	Subject          string   `json:"subject"`
+	Status           string   `json:"status"`
+	SubmittedOffline bool     `json:"submitted_offline"`
 	Checkpoint       struct {
 		ID        string `json:"id"`
 		Name      string `json:"name"`
@@ -374,7 +378,11 @@ func TestPatrolScanCheckpointAndQR(t *testing.T) {
 	t.Run("a rotated QR stops working, the new one works", func(t *testing.T) {
 		code, raw := f.do(http.MethodPost, checkpointPath(z.checkpoint.ID)+"/rotate-qr", f.adminTok, nil, nil)
 		require.Equal(t, http.StatusOK, code, string(raw))
-		code, _, raw2 := f.scan(f.personTok, z.ID, scanBody(z))
+		// Made after the rotation: the old sticker is dead. (One made before it is still good when it syncs,
+		// Phase 10.18: see TestPatrolQRRotationGrace.)
+		afterRotation := scanBody(z)
+		afterRotation["occurred_at"] = time.Now().Add(time.Minute).UTC().Format(time.RFC3339Nano)
+		code, _, raw2 := f.scan(f.personTok, z.ID, afterRotation)
 		reasonIs(t, code, raw2, http.StatusUnprocessableEntity, "CHECKPOINT_QR_INVALID")
 		z.payload = f.checkpointPayload(z.checkpoint.ID)
 		z.checkpoint.payload = z.payload
@@ -421,33 +429,26 @@ func TestPatrolScanCheckpointAndQR(t *testing.T) {
 		}
 	})
 
-	t.Run("a scan outside the radius is refused, inside it accepted, and the tolerance is capped", func(t *testing.T) {
+	// Phase 10.17: the position is a mark for the DANRU, never a refusal (the refusal was not stored, so it
+	// broke the order rule for the rest of an offline round).
+	t.Run("a scan outside the radius is stored and flagged, the tolerance is capped", func(t *testing.T) {
 		far := scanBody(z)
 		far["latitude"] = zoneLat + 0.001 // about 111 m
-		code, _, raw := f.scan(f.personTok, z.ID, far)
-		reasonIs(t, code, raw, http.StatusUnprocessableEntity, "CHECKPOINT_OUTSIDE_RADIUS")
-		require.NotNil(t, detailsOf(t, raw)["distance_meters"])
-		require.EqualValues(t, 50, detailsOf(t, raw)["radius_meters"])
+		s := f.mustScan(f.personTok, z, far)
+		require.Equal(t, "OUTSIDE_RADIUS", s.LocationFlag)
+		require.NotNil(t, s.DistanceMeters)
+		require.Greater(t, *s.DistanceMeters, 50)
 
 		hopeful := scanBody(z)
 		hopeful["latitude"], hopeful["accuracy_meters"] = zoneLat+0.001, 5000 // a poor fix does not unlock the checkpoint
-		code, _, raw = f.scan(f.personTok, z.ID, hopeful)
-		reasonIs(t, code, raw, http.StatusUnprocessableEntity, "CHECKPOINT_OUTSIDE_RADIUS")
+		require.Equal(t, "OUTSIDE_RADIUS", f.mustScan(f.personTok, z, hopeful).LocationFlag)
 
 		edge := scanBody(z)
 		edge["latitude"], edge["accuracy_meters"] = zoneLat+0.0006, 20 // about 67 m, inside 50 + 20
-		s := f.mustScan(f.personTok, z, edge)
+		s = f.mustScan(f.personTok, z, edge)
 		require.NotNil(t, s.DistanceMeters)
 		require.Greater(t, *s.DistanceMeters, 50, "outside the radius itself, let in by the accuracy")
-	})
-
-	t.Run("a refused scan stores nothing", func(t *testing.T) {
-		before := countOf(t, f, "SELECT count(*) FROM patrol_scans")
-		far := scanBody(z)
-		far["latitude"] = zoneLat + 0.01
-		f.scan(f.personTok, z.ID, far)
-		require.Equal(t, before, countOf(t, f, "SELECT count(*) FROM patrol_scans"))
-		require.Zero(t, countOf(t, f, "SELECT count(*) FROM patrol_scan_actions WHERE scan_id NOT IN (SELECT id FROM patrol_scans)"))
+		require.Equal(t, "OK", s.LocationFlag, "inside once the accuracy (20, under the 50 m limit) is allowed")
 	})
 }
 

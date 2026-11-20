@@ -20,16 +20,19 @@ import (
 
 // zoneCheckpointOut is a checkpoint as a zone shows it. The last three are the field detail only.
 type zoneCheckpointOut struct {
-	ID           string      `json:"id"`
-	Name         string      `json:"name"`
-	SortOrder    int         `json:"sort_order"`
-	IsActive     bool        `json:"is_active"`
-	Latitude     *float64    `json:"latitude"`
-	Longitude    *float64    `json:"longitude"`
-	RadiusMeters *int        `json:"radius_meters"`
-	MyScans      *int        `json:"my_scans"`
-	Scannable    *bool       `json:"scannable"`
-	Actions      []actionOut `json:"actions"`
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
+	SortOrder    int      `json:"sort_order"`
+	IsActive     bool     `json:"is_active"`
+	Latitude     *float64 `json:"latitude"`
+	Longitude    *float64 `json:"longitude"`
+	RadiusMeters *int     `json:"radius_meters"`
+	MyScans      *int     `json:"my_scans"`
+	Scannable    *bool    `json:"scannable"`
+	// Phase 10.19: the patrol interval, from the caller's latest counted scan.
+	LastScannedAt *time.Time  `json:"last_scanned_at"`
+	NextAllowedAt *time.Time  `json:"next_allowed_at"`
+	Actions       []actionOut `json:"actions"`
 }
 
 func (f *flow) assign(zoneID int64, ids ...string) (int, zoneOut, []byte) {

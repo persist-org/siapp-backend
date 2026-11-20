@@ -71,6 +71,10 @@ func (s *Service) present(ctx context.Context, q *db.Queries, rows []db.PatrolSc
 	for _, r := range rows {
 		ids = append(ids, r.ID)
 		personnel = append(personnel, r.PersonnelID)
+		// The decider's name comes from the same query as the author's (Phase 10.20, CP9).
+		if r.DecidedByID.Valid {
+			personnel = append(personnel, r.DecidedByID.Int64)
+		}
 	}
 	names, err := q.ListPersonnelNames(ctx, personnel)
 	if err != nil {
@@ -108,9 +112,21 @@ func (s *Service) present(ctx context.Context, q *db.Queries, rows []db.PatrolSc
 			return nil, err
 		}
 		scan.PersonnelName = nameOf[r.PersonnelID]
+		if r.DecidedByID.Valid {
+			if name := nameOf[r.DecidedByID.Int64]; name != "" {
+				scan.DecidedByName = &name
+			}
+		}
 		scan.Checkpoint = checkpointOf[r.ID]
 		if scan.Actions, err = s.actionsOfScan(ctx, q, r.ID, actionsOf[r.ID]); err != nil {
 			return nil, err
+		}
+		// A skip has no actions: its photos are its own. Few skips make a page, so one lookup each is fine
+		// (the media views ask for one record at a time).
+		if r.Outcome == db.PatrolScanOutcomeSKIPPED {
+			if scan.Photos, err = s.photos(ctx, q, r.ID, r.SkipMediaIds); err != nil {
+				return nil, err
+			}
 		}
 		out = append(out, scan)
 	}
@@ -366,6 +382,7 @@ type Progress struct {
 	Submitted   int
 	Approved    int
 	Declined    int
+	Skipped     int // checkpoints skipped with a reason (Phase 10.17); not visits, so in no circle above
 	Checkpoints []CheckpointProgress
 }
 
@@ -378,6 +395,7 @@ type CheckpointProgress struct {
 	Submitted    int
 	Approved     int
 	Declined     int
+	Skipped      int
 }
 
 // ProgressFilter narrows the progress list. A zero WorkDate is today in each project's timezone.
@@ -495,12 +513,13 @@ func progressOf(rows []db.ZoneProgressRow) []Progress {
 		}
 		z.Checkpoints = append(z.Checkpoints, CheckpointProgress{
 			CheckpointID: uuidString(r.CheckpointID), Name: r.CheckpointName, SortOrder: int(r.Position),
-			Required: int(r.MinVisit), Submitted: int(r.Submitted), Approved: int(r.Approved), Declined: int(r.Declined),
+			Required: int(r.MinVisit), Submitted: int(r.Submitted), Approved: int(r.Approved), Declined: int(r.Declined), Skipped: int(r.Skipped),
 		})
 		z.Required += int(r.MinVisit)
 		z.Submitted += int(r.Submitted)
 		z.Approved += int(r.Approved)
 		z.Declined += int(r.Declined)
+		z.Skipped += int(r.Skipped)
 	}
 	return out
 }

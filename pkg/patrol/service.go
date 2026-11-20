@@ -502,11 +502,14 @@ type FieldFilter struct {
 	ProjectCode string
 	TeamCode    string
 	Type        string
+	// WithCheckpoints (?include=checkpoints) fills each zone as its own read does: the bundle an app keeps
+	// for offline scans (bundle.go).
+	WithCheckpoints bool
 }
 
 // ListForField returns the active zones the caller can work: those of the projects they serve in
 // today that are for the whole project or for one of their own regu, each with how many checkpoints
-// it has (the checkpoints themselves are in the zone's own read).
+// it has. With WithCheckpoints each zone also has its checkpoints, as the zone's own read shows them.
 //
 // A project_code that is not one of the caller's is PERMISSION_DENIED, not an empty list: the
 // caller asked about something they have no part in.
@@ -532,6 +535,10 @@ func (s *Service) ListForField(ctx context.Context, actor auth.Principal, f Fiel
 			return fmt.Errorf("list zones for field: %w", err)
 		}
 		out, err = withCounts(ctx, q, rows)
+		if err != nil || !f.WithCheckpoints {
+			return err
+		}
+		out, err = s.withFieldBundle(ctx, q, actor, rows, out)
 		return err
 	})
 	return out, err
@@ -764,42 +771,72 @@ func (s *Service) withFieldCheckpoints(ctx context.Context, q *db.Queries, actor
 	if err != nil {
 		return Zone{}, err
 	}
+	links := make([]linkedCheckpoint, 0, len(rows))
+	ids := make([]pgtype.UUID, 0, len(rows))
+	for _, r := range rows {
+		links = append(links, linkedCheckpoint{cp: activeLinkRow(r), position: r.Position})
+		ids = append(ids, r.ID)
+	}
+	// One query for the checklists of every checkpoint of the zone, not one per checkpoint.
+	actionsOf, err := actionsByCheckpoint(ctx, q, ids)
+	if err != nil {
+		return Zone{}, err
+	}
+	return fieldZoneOf(z, links, order, actionsOf, scanInterval(project)), nil
+}
+
+// linkedCheckpoint is an active checkpoint of a zone with its position there.
+type linkedCheckpoint struct {
+	cp       db.PatrolCheckpoint
+	position int32
+}
+
+// actionsByCheckpoint reads the active actions of many checkpoints in one query, grouped by checkpoint id.
+func actionsByCheckpoint(ctx context.Context, q *db.Queries, ids []pgtype.UUID) (map[string][]CheckpointAction, error) {
+	actions, err := q.ListActionsOfCheckpoints(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("list checkpoint actions: %w", err)
+	}
+	out := make(map[string][]CheckpointAction, len(ids))
+	for _, a := range actions {
+		key := uuidString(a.CheckpointID)
+		out[key] = append(out[key], actionOf(a))
+	}
+	return out, nil
+}
+
+// fieldZoneOf puts a zone's active checkpoints on it as the field read shows them: each with its checklist and
+// what the caller has done (my_scans, scannable), and the zone with next_checkpoint_id. The one place that
+// shapes it, for the detail of one zone and the bundled list of all, so the two read the same.
+//
+// interval is the project's patrol interval (scanInterval), from which next_allowed_at is worked out.
+func fieldZoneOf(z Zone, links []linkedCheckpoint, order zoneOrder, actionsOf map[string][]CheckpointAction, interval time.Duration) Zone {
 	stepOf := make(map[string]orderStep, len(order.Steps))
 	for _, st := range order.Steps {
 		stepOf[uuidString(st.CheckpointID)] = st
 	}
-
-	ids := make([]pgtype.UUID, 0, len(rows))
-	for _, r := range rows {
-		ids = append(ids, r.ID)
-	}
-	// One query for the checklists of every checkpoint of the zone, not one per checkpoint.
-	actions, err := q.ListActionsOfCheckpoints(ctx, ids)
-	if err != nil {
-		return Zone{}, fmt.Errorf("list checkpoint actions: %w", err)
-	}
-	actionsOf := make(map[string][]CheckpointAction, len(rows))
-	for _, a := range actions {
-		key := uuidString(a.CheckpointID)
-		actionsOf[key] = append(actionsOf[key], actionOf(a))
-	}
-
-	for _, r := range rows {
-		cp := zoneCheckpointOf(activeLinkRow(r), r.Position)
+	z.Checkpoints = make([]ZoneCheckpoint, 0, len(links))
+	z.CheckpointCount = len(links)
+	for _, l := range links {
+		cp := zoneCheckpointOf(l.cp, l.position)
 		st := stepOf[cp.ID]
 		scans, scannable := st.Scans, st.Scannable
 		cp.MyScans, cp.Scannable = &scans, &scannable
+		if st.LastScannedAt != nil {
+			next := nextAllowedAt(*st.LastScannedAt, interval)
+			cp.LastScannedAt, cp.NextAllowedAt = st.LastScannedAt, &next
+		}
 		cp.Actions = actionsOf[cp.ID]
 		if cp.Actions == nil {
 			cp.Actions = []CheckpointAction{}
 		}
 		z.Checkpoints = append(z.Checkpoints, cp)
 	}
-	if order.Next >= 0 {
+	if order.Next >= 0 && order.Next < len(order.Steps) {
 		next := uuidString(order.Steps[order.Next].CheckpointID)
 		z.NextCheckpointID = &next
 	}
-	return z, nil
+	return z
 }
 
 // activeLinkRow is the checkpoint columns of an active zone-link row.

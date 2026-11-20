@@ -107,7 +107,7 @@ func (s *Service) CheckIn(ctx context.Context, p auth.Principal, zoneID int64, i
 		if !zone.Active {
 			return ErrZoneNotFound
 		}
-		v, err := s.arrive(ctx, q, p, zone, project, in.CheckpointID, in.QRPayload)
+		v, err := s.arrive(ctx, q, p, zone, project, in.CheckpointID, in.QRPayload, time.Time{}, false)
 		if err != nil {
 			return err
 		}
@@ -121,6 +121,15 @@ func (s *Service) CheckIn(ctx context.Context, p auth.Principal, zoneID int64, i
 		if err != nil {
 			return err
 		}
+		// Say where the open check-in is (Phase 10.19), so the app can offer the check-out. Read before the insert:
+		// a failed insert aborts the transaction, and nothing more could be read after it.
+		open, err := q.ListOpenCheckinsOfPersonnel(ctx, p.PersonnelID)
+		if err != nil {
+			return fmt.Errorf("list open check-ins: %w", err)
+		}
+		if len(open) > 0 {
+			return alreadyCheckedIn(open[0])
+		}
 		row, err := q.InsertZoneCheckin(ctx, db.InsertZoneCheckinParams{
 			ZoneID: zoneID, CheckpointID: v.checkpoint.ID, PersonnelID: p.PersonnelID, TeamCode: pl.team, ShiftID: int8Param(pl.shiftID),
 			At: ts(now), Latitude: *in.Latitude, Longitude: *in.Longitude,
@@ -132,6 +141,34 @@ func (s *Service) CheckIn(ctx context.Context, p auth.Principal, zoneID int64, i
 			return fmt.Errorf("insert check-in: %w", err)
 		}
 		out = checkInOf(row, "")
+		return nil
+	})
+	return out, err
+}
+
+// alreadyCheckedIn is ZONE_ALREADY_CHECKED_IN naming the zone (and the checkpoint, when the check-in has one) the
+// person is still in. A race that only the unique index catches answers without them: the winner's row is not
+// readable once the insert has failed.
+func alreadyCheckedIn(open db.ZoneCheckin) error {
+	details := map[string]any{"zone_id": open.ZoneID}
+	if open.CheckpointID.Valid {
+		details["checkpoint_id"] = uuidString(open.CheckpointID)
+	}
+	return ErrAlreadyCheckedIn.WithDetails(details)
+}
+
+// OpenCheckIns is the caller's open check-in: an empty list, or one (Phase 10.19). Check-in and check-out stay
+// online-only and take no local_id, so this is how the app finds out where it is checked in.
+func (s *Service) OpenCheckIns(ctx context.Context, p auth.Principal) ([]CheckIn, error) {
+	out := []CheckIn{}
+	err := database.WithTenant(ctx, s.pool, p.OrganizationID, func(q *db.Queries) error {
+		rows, err := q.ListOpenCheckinsOfPersonnel(ctx, p.PersonnelID)
+		if err != nil {
+			return fmt.Errorf("list open check-ins: %w", err)
+		}
+		for _, r := range rows {
+			out = append(out, checkInOf(r, ""))
+		}
 		return nil
 	})
 	return out, err
@@ -153,7 +190,7 @@ func (s *Service) CheckOut(ctx context.Context, p auth.Principal, zoneID int64, 
 		// check-in, so a guard must always be able to leave. A deleted zone closes its check-ins itself
 		// (Delete), and so does a zone that loses its last checkpoint (releaseIfEmpty): with no sticker left
 		// nobody could check out.
-		v, err := s.arrive(ctx, q, p, zone, project, in.CheckpointID, in.QRPayload)
+		v, err := s.arrive(ctx, q, p, zone, project, in.CheckpointID, in.QRPayload, time.Time{}, false)
 		if err != nil {
 			return err
 		}
