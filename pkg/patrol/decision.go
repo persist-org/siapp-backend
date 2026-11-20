@@ -71,6 +71,10 @@ func (s *Service) present(ctx context.Context, q *db.Queries, rows []db.PatrolSc
 	for _, r := range rows {
 		ids = append(ids, r.ID)
 		personnel = append(personnel, r.PersonnelID)
+		// The decider's name comes from the same query as the author's (Phase 10.20, CP9).
+		if r.DecidedByID.Valid {
+			personnel = append(personnel, r.DecidedByID.Int64)
+		}
 	}
 	names, err := q.ListPersonnelNames(ctx, personnel)
 	if err != nil {
@@ -108,6 +112,11 @@ func (s *Service) present(ctx context.Context, q *db.Queries, rows []db.PatrolSc
 			return nil, err
 		}
 		scan.PersonnelName = nameOf[r.PersonnelID]
+		if r.DecidedByID.Valid {
+			if name := nameOf[r.DecidedByID.Int64]; name != "" {
+				scan.DecidedByName = &name
+			}
+		}
 		scan.Checkpoint = checkpointOf[r.ID]
 		if scan.Actions, err = s.actionsOfScan(ctx, q, r.ID, actionsOf[r.ID]); err != nil {
 			return nil, err

@@ -571,7 +571,7 @@ func scanToAPI(sc Scan) apigen.PatrolScan {
 		Longitude: sc.Longitude, AccuracyMeters: sc.AccuracyMeters, DistanceMeters: sc.DistanceMeters, Subject: sc.Subject,
 		Notes: sc.Notes, Actions: actions, Status: apigen.PatrolScanStatus(sc.Status), PatrolId: sc.PatrolID,
 		SubmittedOffline: sc.SubmittedOffline, CreatedAt: sc.CreatedAt,
-		DecidedById: sc.DecidedByID, DecidedAt: sc.DecidedAt, DecisionNote: sc.DecisionNote,
+		DecidedById: sc.DecidedByID, DecidedByName: sc.DecidedByName, DecidedAt: sc.DecidedAt, DecisionNote: sc.DecisionNote,
 		PersonnelName: name, LocationFlag: apigen.PatrolLocationFlag(sc.LocationFlag), Outcome: apigen.PatrolScanOutcome(sc.Outcome),
 		Photos: photosToAPI(sc.Photos),
 	}

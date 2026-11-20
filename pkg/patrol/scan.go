@@ -219,6 +219,8 @@ type Scan struct {
 	DecidedByID  *int64
 	DecidedAt    *time.Time
 	DecisionNote *string
+	// DecidedByName is filled when a scan is read (Service.present); nil while undecided.
+	DecidedByName *string
 
 	// Filled when a scan is read, not when it is stored: the author's name (Service.present).
 	PersonnelName string

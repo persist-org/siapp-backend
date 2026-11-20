@@ -25,6 +25,7 @@ type scanFull struct {
 	TeamCode      string     `json:"team_code"`
 	Status        string     `json:"status"`
 	DecidedByID   *int64     `json:"decided_by_id"`
+	DecidedByName *string    `json:"decided_by_name"`
 	DecisionNote  *string    `json:"decision_note"`
 	CheckpointID  string     `json:"checkpoint_id"`
 	Outcome       string     `json:"outcome"`

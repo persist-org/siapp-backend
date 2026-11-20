@@ -9895,6 +9895,9 @@ type PatrolScan struct {
 	DecidedAt    *time.Time         `json:"decided_at,omitempty"`
 	DecidedById  *int64             `json:"decided_by_id,omitempty"`
 
+	// DecidedByName Nama DANRU yang memutuskan. Ada saat scan dibaca (daftar dan detail) dan sudah diputuskan; tidak ada selama `SUBMITTED`.
+	DecidedByName *string `json:"decided_by_name,omitempty"`
+
 	// DecisionNote Catatan DANRU, wajib saat ditolak.
 	DecisionNote *string `json:"decision_note,omitempty"`
 

@@ -1,4 +1,4 @@
-openapi: 3.1.0
+openapi: 3.0.3
 info:
   title: 'PERSIST API (dev: built endpoints only)'
   version: 1.0.0
@@ -5823,6 +5823,9 @@ components:
           type: integer
           format: int64
           nullable: true
+        decided_by_name:
+          type: string
+          description: Nama DANRU yang memutuskan. Ada saat scan dibaca (daftar dan detail) dan sudah diputuskan; tidak ada selama `SUBMITTED`.
         decided_at:
           type: string
           format: date-time
@@ -21431,8 +21434,9 @@ paths:
         tersimpan, DANRU regu diberi tahu (`PATROL_SUBMITTED`/`GUARD_SUBMITTED`, dengan `data.checkpoint_id` dan
         `data.checkpoint_name`) dan, untuk `submitted_offline`, pengirim menerima `OFFLINE_SUBMISSION_SENT`. Bila
         patroli pemanggil sedang berjalan di proyek itu, scan ikut patroli (`patrol_id`). Respons 201/200 belum
-        memuat `personnel_name` dan `media` (URL foto); baca scan untuk itu. Jawaban per aksi disimpan di
-        `patrol_scan_actions` dan baru tampil di bacaan scan pada Phase 10.10.
+        memuat `personnel_name`, `decided_by_name` dan `media` (URL foto); baca scan untuk itu. Jawaban per aksi
+        (`actions[]`: jawaban, catatan, `device_condition` dan foto) dan foto skip dibaca kembali lewat
+        `GET /scans/{id}` dan `GET /zones/{id}/scans`.
       parameters:
       - $ref: '#/components/parameters/IdempotencyKeyRequiredHeader'
       requestBody:

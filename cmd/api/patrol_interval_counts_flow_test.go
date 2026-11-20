@@ -92,6 +92,33 @@ func TestPatrolNextAllowedAt(t *testing.T) {
 	})
 }
 
+// Phase 10.20 (CP9): a decided scan names its decider on every read; an undecided one has no such field.
+func TestPatrolScanDecidedByName(t *testing.T) {
+	f := newFlow(t)
+	danruID, danruTok := f.danru()
+	z := f.fencedRound(1, nil)
+	s := f.mustScan(f.personTok, z, scanBody(z))
+
+	code, got, raw := f.getScan(f.personTok, s.ID)
+	require.Equal(t, http.StatusOK, code, string(raw))
+	require.Nil(t, got.DecidedByName)
+	require.NotContains(t, string(raw), "decided_by_name")
+
+	code, raw = f.approve(danruTok, s.ID)
+	require.Equal(t, http.StatusOK, code, string(raw))
+
+	code, got, raw = f.getScan(f.personTok, s.ID)
+	require.Equal(t, http.StatusOK, code, string(raw))
+	require.EqualValues(t, danruID, *got.DecidedByID)
+	require.NotNil(t, got.DecidedByName)
+	require.Equal(t, "Danru Satu", *got.DecidedByName)
+
+	code, list, raw := f.getScans(f.personTok, zoneURL(z.ID, "/scans"))
+	require.Equal(t, http.StatusOK, code, string(raw))
+	require.NotEmpty(t, list)
+	require.Equal(t, "Danru Satu", *list[0].DecidedByName, "the list carries it too")
+}
+
 func TestPatrolOpenCheckIn(t *testing.T) {
 	f := newFlow(t)
 	z := f.fencedRound(1, nil)
