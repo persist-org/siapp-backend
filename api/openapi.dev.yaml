@@ -21503,12 +21503,16 @@ paths:
         bagian dari zona (`CHECKPOINT_NOT_IN_ZONE`), izin dan keanggotaan seperti scan (`PERMISSION_DENIED`,
         `ZONE_NOT_IN_PROJECT`, 403), urutan putaran (`CHECKPOINT_OUT_OF_ORDER`, 409, aturan dan `details` sama dengan
         scan). **Tidak ada** QR (stikernya bisa jadi yang rusak), geofence (posisi hanya diberi `location_flag`),
-        interval, maupun aksi.
+        interval patroli, maupun aksi. Hanya jeda minimum 30 detik: skip checkpoint yang sama dalam 30 detik dari
+        baris lain atas checkpoint itu oleh pemanggil (scan, scan yang ditolak, atau skip lain), ke dua arah dari
+        `occurred_at`, ditolak `ZONE_INTERVAL_NOT_ELAPSED` (422, `details.interval_seconds` dan `details.next_allowed_at`),
+        supaya ketuk ganda atau kirim ulang dengan `local_id` baru tidak menyimpan dua baris untuk satu kunjungan.
 
         Skip dihitung untuk aturan urutan seperti scan (status apa pun, juga yang ditolak DANRU), tetapi bukan
         kunjungan: tidak masuk lingkaran `submitted`/`approved`/`declined` (ada `skipped`), tidak masuk `scan_count`
         patroli maupun jadwal, dan tidak menghalangi scan checkpoint itu semenit kemudian (interval). Skip yang
-        ditolak DANRU tidak masuk `skipped`.
+        ditolak DANRU tidak masuk `skipped`. Checkpoint urutan kedua dan seterusnya yang sudah di-skip tidak bisa
+        di-scan lagi pada putaran yang sama (`CHECKPOINT_OUT_OF_ORDER`), hanya pada putaran berikutnya.
 
         Header `Idempotency-Key` wajib (UUID) dan harus sama dengan `local_id`; `occurred_at`, kirim ulang (200) dan
         urutan offline seperti scan: kirim berurutan menurut `occurred_at`. DANRU diberi tahu seperti pada scan, dengan

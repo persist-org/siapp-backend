@@ -199,6 +199,27 @@ func TestPatrolSkip(t *testing.T) {
 		require.Equal(t, 1, countOf(t, f, "SELECT count(*) FROM patrol_scans WHERE zone_id = $1", z.ID))
 	})
 
+	t.Run("a double tap or a retry with a new local_id does not store a second skip", func(t *testing.T) {
+		z := f.fencedRound(3, nil)
+		f.mustSkip(f.personTok, z, skipBody(z.all[0], "STICKER_DAMAGED", base))
+
+		// Ten seconds later, either side of the first: a new local_id, so not a replay.
+		for _, at := range []time.Time{base.Add(10 * time.Second), base.Add(-10 * time.Second)} {
+			code, _, raw := f.skip(f.personTok, z.ID, skipBody(z.all[0], "STICKER_DAMAGED", at))
+			reasonIs(t, code, raw, http.StatusUnprocessableEntity, "ZONE_INTERVAL_NOT_ELAPSED")
+			require.Equal(t, float64(30), detailsOf(t, raw)["interval_seconds"])
+			require.NotEmpty(t, detailsOf(t, raw)["next_allowed_at"])
+		}
+		require.Equal(t, 1, countOf(t, f, "SELECT count(*) FROM patrol_scans WHERE zone_id = $1", z.ID))
+
+		// The round is not left a step behind: the checkpoints after it follow, and the next one is the second.
+		f.mustSkip(f.personTok, z, skipBody(z.all[1], "ACCESS_BLOCKED", base.Add(5*time.Minute)))
+		f.mustScan(f.personTok, z, bodyAt(z.all[2], z.all[2].payload, base.Add(10*time.Minute)))
+
+		// A skip 20 minutes later is another row, as a second round's would be.
+		f.mustSkip(f.personTok, z, skipBody(z.all[0], "STICKER_DAMAGED", base.Add(20*time.Minute)))
+	})
+
 	t.Run("a skip is not a visit: the interval ignores it, and so do the circles", func(t *testing.T) {
 		z := f.fencedRound(2, nil)
 		f.mustSkip(f.personTok, z, skipBody(z.all[0], "STICKER_DAMAGED", base))

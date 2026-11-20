@@ -17,14 +17,25 @@ RETURNING *;
 
 -- A scan of this checkpoint in this zone by this person between two instants, a declined one not
 -- counting: the patrol interval is about how often a guard visits a checkpoint, and a visit the DANRU turned
--- down did not happen, so the guard may do it again. A skip is not a visit either (Phase 10.17), so a guard
--- who skipped a checkpoint may scan it a minute later.
+-- down did not happen, so the guard may do it again. A skip is not a visit either (Phase 10.17), so it does not
+-- hold up the interval: the interval will not refuse a scan a minute after a skip. The ORDER rule still
+-- decides whether that scan is allowed: a skip counts as the walk past that checkpoint, so a checkpoint
+-- after the first that was skipped cannot be scanned again in the same round (CHECKPOINT_OUT_OF_ORDER), only in
+-- the next one.
 -- name: HasScanBetween :one
 SELECT EXISTS (
     SELECT 1 FROM patrol_scans
     WHERE personnel_id = @personnel_id AND zone_id = @zone_id AND checkpoint_id = @checkpoint_id AND status <> 'DECLINED'
       AND outcome = 'SCANNED'
       AND occurred_at > @after AND occurred_at < @before);
+
+-- The latest row of any outcome and status (a scan, a declined one, a skip) of this checkpoint in this zone by this
+-- person between two instants; null when there is none. The skip's double-tap guard: every row counts for the order
+-- rule, so two rows of one visit would leave the round one step behind for good.
+-- name: LastRowBetween :one
+SELECT max(occurred_at)::timestamptz AS last_at FROM patrol_scans
+WHERE personnel_id = @personnel_id AND zone_id = @zone_id AND checkpoint_id = @checkpoint_id
+  AND occurred_at > @after AND occurred_at < @before;
 
 -- The latest scan of this checkpoint in this zone by this person that the interval counts (SCANNED, not declined),
 -- on any work date: the moment next_allowed_at in ZONE_INTERVAL_NOT_ELAPSED is measured from (Phase 10.19).

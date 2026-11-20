@@ -137,9 +137,13 @@ func (s *Service) skip(ctx context.Context, p auth.Principal, zoneID int64, in S
 		if err != nil {
 			return err
 		}
-		// The order of the round, under the lock a scan takes (see lockScanning). No interval: a skip is not a
-		// visit.
+		// The order of the round, under the lock a scan takes (see lockScanning). Not the patrol interval (a skip is
+		// not a visit), but the scanMinGap: a double tap or a retry with a new local_id must not make two rows
+		// of one skip, which the order rule would count as two walks past the checkpoint.
 		if err := lockScanning(ctx, q, p, zoneID); err != nil {
+			return err
+		}
+		if err := checkSkipGap(ctx, q, p, zoneID, v.checkpoint.ID, at); err != nil {
 			return err
 		}
 		if err := checkOrder(ctx, q, p, zoneID, v.checkpoint.ID, pl.workDate, at); err != nil {
@@ -190,6 +194,27 @@ func (s *Service) skip(ctx context.Context, p auth.Principal, zoneID int64, in S
 	}
 	s.notify(ctx, notices...)
 	return out, nil
+}
+
+// checkSkipGap refuses a skip of the checkpoint within scanMinGap of any other row of it by the person (a scan, a
+// declined one or another skip), on either side of its own moment, with the same ZONE_INTERVAL_NOT_ELAPSED a
+// scan gets. Only the minimum gap, not the project's patrol interval: that one is about visits. The caller holds
+// lockScanning.
+func checkSkipGap(ctx context.Context, q *db.Queries, p auth.Principal, zoneID int64, checkpointID pgtype.UUID, at time.Time) error {
+	last, err := q.LastRowBetween(ctx, db.LastRowBetweenParams{
+		PersonnelID: p.PersonnelID, ZoneID: zoneID, CheckpointID: checkpointID, After: ts(at.Add(-scanMinGap)), Before: ts(at.Add(scanMinGap)),
+	})
+	if err != nil {
+		return fmt.Errorf("check skip gap: %w", err)
+	}
+	t := lastScan(last)
+	if t == nil {
+		return nil
+	}
+	return ErrIntervalNotElapsed.WithDetails(map[string]any{
+		"interval_seconds": int(scanMinGap.Seconds()),
+		"next_allowed_at":  nextAllowedAt(*t, scanMinGap).UTC().Format(time.RFC3339Nano),
+	})
 }
 
 // mediaAttach is the claim of a skip's photos for the scan row, as a scan's actions make for theirs.
